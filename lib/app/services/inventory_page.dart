@@ -14,6 +14,7 @@ import '../shared/page_routes.dart';
 import '../shared/operational_ui/operational_widgets.dart';
 import 'inventory_movements_grid.dart';
 import 'services_page.dart';
+import 'weighings_page.dart';
 import 'services_shell.dart';
 
 const List<_MaterialOption> _kInventoryMaterials = [
@@ -368,6 +369,17 @@ class _InventoryPageState extends State<InventoryPage>
     );
   }
 
+  Future<void> _goToWeighings() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const WeighingsPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -379,6 +391,7 @@ class _InventoryPageState extends State<InventoryPage>
         onGoToOperacion: _goToDashboard,
         onGoToServices: _goToServices,
         onGoToProduction: _goToProduction,
+        onGoToWeighings: _goToWeighings,
         onGoToCatalogs: null,
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -822,6 +835,17 @@ class _InventoryProductionPageState extends State<InventoryProductionPage> {
     );
   }
 
+  Future<void> _goToWeighings() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const WeighingsPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ServicesShell(
@@ -831,6 +855,7 @@ class _InventoryProductionPageState extends State<InventoryProductionPage> {
       onGoToOperacion: _goToDashboard,
       onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
       onGoToServices: _goToServices,
+      onGoToWeighings: _goToWeighings,
       onGoToCatalogs: null,
       topContent: _topBarData == null
           ? null
@@ -1120,6 +1145,17 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const ServicesPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToWeighings() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const WeighingsPage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
@@ -2151,6 +2187,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
         onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
         onGoToProduction: _goToProduction,
         onGoToServices: _goToServices,
+        onGoToWeighings: _goToWeighings,
         onGoToCatalogs: null,
         topContent: _loading
             ? null
@@ -2776,6 +2813,9 @@ class _OpeningBalancesFloatingDialogState
   final FocusNode _insertFocusNode = FocusNode(
     debugLabel: 'opening-insert-row',
   );
+  final FocusNode _insertKgFocusNode = FocusNode(
+    debugLabel: 'opening-insert-kg',
+  );
   final ScrollController _tableVerticalScroll = ScrollController();
   final ScrollController _tableHorizontalScroll = ScrollController();
   int _activeRowIndex = 0;
@@ -2806,6 +2846,7 @@ class _OpeningBalancesFloatingDialogState
     _sourceFilterC = TextEditingController();
     _insertKgC = TextEditingController(text: '0');
     _insertFocusNode.addListener(_syncInsertRowFocusState);
+    _insertKgFocusNode.addListener(_syncInsertRowFocusState);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !widget.editable) return;
       _insertFocusNode.requestFocus();
@@ -2815,7 +2856,9 @@ class _OpeningBalancesFloatingDialogState
   @override
   void dispose() {
     _insertFocusNode.removeListener(_syncInsertRowFocusState);
+    _insertKgFocusNode.removeListener(_syncInsertRowFocusState);
     _insertFocusNode.dispose();
+    _insertKgFocusNode.dispose();
     _materialFilterC.dispose();
     _commercialFilterC.dispose();
     _kgFilterC.dispose();
@@ -2829,9 +2872,27 @@ class _OpeningBalancesFloatingDialogState
 
   void _syncInsertRowFocusState() {
     if (!mounted) return;
-    final next = _insertFocusNode.hasFocus;
-    if (next == _insertRowActive) return;
-    setState(() => _insertRowActive = next);
+    final next = _insertFocusNode.hasFocus || _insertKgFocusNode.hasFocus;
+    var shouldSetState = false;
+    if (next != _insertRowActive) {
+      _insertRowActive = next;
+      shouldSetState = true;
+    }
+    if (_insertKgFocusNode.hasFocus && _activeInsertColumn != 2) {
+      _activeInsertColumn = 2;
+      shouldSetState = true;
+    }
+    if (shouldSetState) {
+      setState(() {});
+    }
+  }
+
+  bool _isEditableTextFocusedInOpeningGrid() {
+    final focused = FocusManager.instance.primaryFocus;
+    final ctx = focused?.context;
+    if (ctx == null) return false;
+    if (ctx.widget is EditableText) return true;
+    return ctx.findAncestorWidgetOfExactType<EditableText>() != null;
   }
 
   bool get _insertCanSubmit =>
@@ -3506,6 +3567,7 @@ class _OpeningBalancesFloatingDialogState
   }
 
   Future<void> _activateInsertCellFromKeyboard() async {
+    var keepInsertRowFocus = true;
     switch (_activeInsertColumn) {
       case 0:
         await _pickInsertMaterial();
@@ -3514,13 +3576,18 @@ class _OpeningBalancesFloatingDialogState
         await _pickInsertCommercial();
         break;
       case 2:
-        // Keep focus on row; direct typing is allowed when text field is focused by click.
+        keepInsertRowFocus = false;
+        _insertKgFocusNode.requestFocus();
+        _insertKgC.selection = TextSelection(
+          baseOffset: 0,
+          extentOffset: _insertKgC.text.length,
+        );
         break;
       case 3:
         if (_insertCanSubmit) await _submitInsertRow();
         break;
     }
-    if (mounted) _insertFocusNode.requestFocus();
+    if (mounted && keepInsertRowFocus) _insertFocusNode.requestFocus();
   }
 
   Future<void> _submitInsertRow() async {
@@ -3857,6 +3924,9 @@ class _OpeningBalancesFloatingDialogState
 
   KeyEventResult _handleGridKey(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (_isEditableTextFocusedInOpeningGrid()) {
+      return KeyEventResult.ignored;
+    }
     if (_visibleRows.isEmpty) {
       if (event.logicalKey == LogicalKeyboardKey.escape) {
         Navigator.pop(context, const _OpeningDialogAction.close());
@@ -4049,6 +4119,9 @@ class _OpeningBalancesFloatingDialogState
       child: Focus(
         focusNode: _insertFocusNode,
         onKeyEvent: (_, event) {
+          if (_isEditableTextFocusedInOpeningGrid()) {
+            return KeyEventResult.ignored;
+          }
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
           final key = event.logicalKey;
           if (key == LogicalKeyboardKey.arrowLeft) {
@@ -4107,14 +4180,16 @@ class _OpeningBalancesFloatingDialogState
                     width: _kOpeningTableKgColW,
                     child: TextField(
                       controller: _insertKgC,
+                      focusNode: _insertKgFocusNode,
                       enabled: widget.editable,
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
                       decoration: _openingInlineFieldDecoration(hintText: '0'),
                       onTap: () {
-                        _insertFocusNode.requestFocus();
-                        setState(() => _activeInsertColumn = 2);
+                        if (!_insertKgFocusNode.hasFocus) {
+                          _insertKgFocusNode.requestFocus();
+                        }
                       },
                       onChanged: (_) => setState(() {}),
                       onSubmitted: (_) {

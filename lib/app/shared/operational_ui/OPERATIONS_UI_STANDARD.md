@@ -21,6 +21,29 @@ No implementar UX de grid/picker/filtros desde cero en una página nueva.
 
 Se configura una base existente.
 
+## Paridad Funcional Base (Obligatorio)
+
+Para cualquier módulo nuevo o migrado (`Pesadas`, `Servicios`, `Producción`, etc.):
+
+- Primero clonar 1:1 el comportamiento funcional de `Entradas/Salidas`.
+- Después adaptar únicamente columnas/campos del módulo.
+- No reinterpretar interacción base ni “aproximar” comportamiento.
+
+### Orden de implementación obligatorio
+
+1. Replicar foco/teclado/refresh/base grid desde `Entradas/Salidas`.
+2. Validar paridad funcional completa.
+3. Adaptar columnas, validaciones y copy del módulo.
+4. Ajustar estilo solo si el contrato ya lo exige.
+
+### Reglas críticas de interacción (sin excepción)
+
+- Click simple en `TextField` debe permitir escribir al primer click (sin doble click).
+- `Enter` y `Esc` deben comportarse igual que en `Entradas/Salidas` para edición/guardar/cancelar.
+- `Delete`/`Backspace` dentro de campos editables borran texto, no disparan eliminar fila.
+- Auto refresh debe mantener las mismas reglas de defer/coalescing y no robar foco activo.
+- Evitar rebuilds estructurales que cambien jerarquía del input activo y tumben el caret.
+
 ## Réplica Visual (Obligatorio)
 
 - Las páginas nuevas/migradas deben ser una réplica visual e interactiva del grid de referencia (`services`) y no una aproximación.

@@ -12,17 +12,27 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 const double _kInvActionsW = 150;
 const double _kInvKgColW = 110;
+const double _kInvGrossColW = 110;
+const double _kInvTareColW = 110;
+const double _kInvHumidityColW = 110;
+const double _kInvTrashColW = 110;
+const double _kInvAmountColW = 120;
 const double _kInvCounterpartyColW = 220;
 const double _kInvRefColW = 180;
 const double _kInvNotesColW = 240;
 const double _kInvTableContentW =
     90 +
     190 +
-    _kInvKgColW +
     _kInvCounterpartyColW +
     190 +
     140 +
     _kInvRefColW +
+    _kInvGrossColW +
+    _kInvTareColW +
+    _kInvKgColW +
+    _kInvHumidityColW +
+    _kInvTrashColW +
+    _kInvAmountColW +
     _kInvNotesColW +
     10 +
     _kInvActionsW;
@@ -253,8 +263,17 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     debugLabel: 'inv_insert_row_focus',
   );
   final FocusNode _rowsFocusNode = FocusNode(debugLabel: 'inv_rows_focus');
-  final FocusNode _insertWeightFocusNode = FocusNode(
-    debugLabel: 'inv_insert_weight',
+  final FocusNode _insertGrossFocusNode = FocusNode(
+    debugLabel: 'inv_insert_gross',
+  );
+  final FocusNode _insertTareFocusNode = FocusNode(
+    debugLabel: 'inv_insert_tare',
+  );
+  final FocusNode _insertHumidityFocusNode = FocusNode(
+    debugLabel: 'inv_insert_humidity',
+  );
+  final FocusNode _insertTrashFocusNode = FocusNode(
+    debugLabel: 'inv_insert_trash',
   );
   final FocusNode _insertReferenceFocusNode = FocusNode(
     debugLabel: 'inv_insert_ref',
@@ -267,6 +286,10 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   final GlobalKey _insertRowKey = GlobalKey(debugLabel: 'inv_insert_row');
 
   final TextEditingController _draftWeightC = TextEditingController();
+  final TextEditingController _draftGrossC = TextEditingController();
+  final TextEditingController _draftTareC = TextEditingController();
+  final TextEditingController _draftHumidityC = TextEditingController();
+  final TextEditingController _draftTrashC = TextEditingController();
   final TextEditingController _draftReferenceC = TextEditingController();
   final TextEditingController _draftNotesC = TextEditingController();
 
@@ -323,8 +346,8 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   int _pageSize = 40;
   bool _topBarSyncScheduled = false;
 
-  static const int _insertColumnCount = 9;
-  static const int _gridColumnCount = 9;
+  static const int _insertColumnCount = 14;
+  static const int _gridColumnCount = 14;
   static const List<String> _gridColumnLabels = <String>[
     'FECHA',
     'TICKET',
@@ -332,7 +355,12 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     'CONTRAPARTE',
     'CHOFER',
     'UNIDAD',
-    'KG',
+    'BRUTO KG',
+    'TARA KG',
+    'NETO KG',
+    'HUMEDAD %',
+    'BASURA KG',
+    'IMPORTE KG',
     'COMENTARIO',
     'ACCIONES',
   ];
@@ -346,7 +374,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       _draft.materialId != null &&
       (_draftReferenceC.text.trim().isNotEmpty) &&
       _draft.counterpartySiteId != null &&
-      (_draft.weightKg ?? 0) > 0 &&
+      (_draft.netKg ?? 0) > 0 &&
       (_draft.commercialMaterialCode?.trim().isNotEmpty ?? false);
 
   @override
@@ -354,7 +382,10 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _insertFocusNode.addListener(_syncInsertRowFocusState);
-    _insertWeightFocusNode.addListener(_syncInsertRowFocusState);
+    _insertGrossFocusNode.addListener(_syncInsertRowFocusState);
+    _insertTareFocusNode.addListener(_syncInsertRowFocusState);
+    _insertHumidityFocusNode.addListener(_syncInsertRowFocusState);
+    _insertTrashFocusNode.addListener(_syncInsertRowFocusState);
     _insertReferenceFocusNode.addListener(_syncInsertRowFocusState);
     _insertNotesFocusNode.addListener(_syncInsertRowFocusState);
     _initDraftDefaults();
@@ -377,16 +408,26 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     _marqueeAutoScrollTimer?.cancel();
     _realtimeChannel?.unsubscribe();
     _insertFocusNode.removeListener(_syncInsertRowFocusState);
-    _insertWeightFocusNode.removeListener(_syncInsertRowFocusState);
+    _insertGrossFocusNode.removeListener(_syncInsertRowFocusState);
+    _insertTareFocusNode.removeListener(_syncInsertRowFocusState);
+    _insertHumidityFocusNode.removeListener(_syncInsertRowFocusState);
+    _insertTrashFocusNode.removeListener(_syncInsertRowFocusState);
     _insertReferenceFocusNode.removeListener(_syncInsertRowFocusState);
     _insertNotesFocusNode.removeListener(_syncInsertRowFocusState);
     _insertFocusNode.dispose();
     _rowsFocusNode.dispose();
-    _insertWeightFocusNode.dispose();
+    _insertGrossFocusNode.dispose();
+    _insertTareFocusNode.dispose();
+    _insertHumidityFocusNode.dispose();
+    _insertTrashFocusNode.dispose();
     _insertReferenceFocusNode.dispose();
     _insertNotesFocusNode.dispose();
     _rowsScrollController.dispose();
     _draftWeightC.dispose();
+    _draftGrossC.dispose();
+    _draftTareC.dispose();
+    _draftHumidityC.dispose();
+    _draftTrashC.dispose();
     _draftReferenceC.dispose();
     _draftNotesC.dispose();
     super.dispose();
@@ -413,7 +454,12 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     _draft = _MovementDraft(
       opDate: DateUtils.dateOnly(DateTime.now()),
       materialId: null,
-      weightKg: null,
+      grossKg: null,
+      tareKg: null,
+      netKg: null,
+      humidityPercent: null,
+      trashKg: null,
+      totalAmountKg: null,
       counterpartySiteId: null,
       driverEmployeeId: null,
       vehicleId: null,
@@ -424,6 +470,10 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       scaleTicket: '',
     );
     _draftWeightC.clear();
+    _draftGrossC.clear();
+    _draftTareC.clear();
+    _draftHumidityC.clear();
+    _draftTrashC.clear();
     _draftReferenceC.clear();
     _draftNotesC.clear();
     _activeInsertColumn = 0;
@@ -432,7 +482,10 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   void _syncInsertRowFocusState() {
     final next =
         _insertFocusNode.hasFocus ||
-        _insertWeightFocusNode.hasFocus ||
+        _insertGrossFocusNode.hasFocus ||
+        _insertTareFocusNode.hasFocus ||
+        _insertHumidityFocusNode.hasFocus ||
+        _insertTrashFocusNode.hasFocus ||
         _insertReferenceFocusNode.hasFocus ||
         _insertNotesFocusNode.hasFocus;
     if (_insertRowActive == next || !mounted) return;
@@ -459,6 +512,10 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
 
   bool get _hasDraftChanges =>
       _draftWeightC.text.trim().isNotEmpty ||
+      _draftGrossC.text.trim().isNotEmpty ||
+      _draftTareC.text.trim().isNotEmpty ||
+      _draftHumidityC.text.trim().isNotEmpty ||
+      _draftTrashC.text.trim().isNotEmpty ||
       _draftReferenceC.text.trim().isNotEmpty ||
       _draftNotesC.text.trim().isNotEmpty ||
       (_draft.scaleTicket.trim().isNotEmpty) ||
@@ -696,7 +753,12 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   }
 
   Future<void> _insertDraft() async {
-    final weight = _parseNum(_draftWeightC.text);
+    _draft = _draftWithComputed();
+    final grossKg = _parseNum(_draftGrossC.text);
+    final tareKg = _parseNum(_draftTareC.text);
+    final netKg = grossKg == null || grossKg <= 0
+        ? null
+        : math.max(0, grossKg - (tareKg ?? 0)).toDouble();
     final missingFields = <String>[];
     if (_draft.opDate == null) missingFields.add('Fecha');
     if (_draft.materialId == null) missingFields.add('Material general');
@@ -707,7 +769,8 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         _counterpartyLabel == 'PROVEEDOR' ? 'Proveedor' : 'Cliente',
       );
     }
-    if (weight == null || weight <= 0) missingFields.add('Peso (kg)');
+    if (grossKg == null || grossKg <= 0) missingFields.add('Bruto (kg)');
+    if (netKg == null || netKg <= 0) missingFields.add('Neto calculado (kg)');
     if ((_draft.commercialMaterialCode ?? '').trim().isEmpty) {
       missingFields.add('Material comercial (Extras)');
     }
@@ -744,13 +807,24 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         );
         return;
       }
+      final totalAmountKg = _totalAmountKg(
+        netKg: netKg!,
+        humidityPercent: _parseNum(_draftHumidityC.text),
+        trashKg: _parseNum(_draftTrashC.text),
+      );
       final siteName = _labelOf(_counterparties, _draft.counterpartySiteId);
       await supa.from('movements').insert({
         'op_date': _fmtDbDate(_draft.opDate!),
         'flow': widget.flow,
         'material_id': _draft.materialId,
         'material': invCode,
-        'weight_kg': weight,
+        'weight_kg': netKg,
+        'gross_kg': grossKg,
+        'tare_kg': tareKg,
+        'net_kg': netKg,
+        'humidity_percent': _parseNum(_draftHumidityC.text),
+        'trash_kg': _parseNum(_draftTrashC.text),
+        'total_amount_kg': totalAmountKg,
         'commercial_material_code': _draft.commercialMaterialCode,
         'movement_reason': _isIn ? _draft.movementReason : null,
         'scale_ticket': _draft.scaleTicket.trim().isEmpty
@@ -895,6 +969,12 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         'flow',
         'material',
         'weight_kg',
+        'gross_kg',
+        'tare_kg',
+        'net_kg',
+        'humidity_percent',
+        'trash_kg',
+        'total_amount_kg',
         'counterparty_site_id',
         'driver_employee_id',
         'vehicle_id',
@@ -981,6 +1061,11 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       commercialOptions: _commercialOptionsForMaterial(_draft.materialId),
       initialCommercialMaterialCode: _draft.commercialMaterialCode,
       initialMovementReason: _draft.movementReason,
+      initialGrossKg: null,
+      initialTareKg: null,
+      initialNetKg: null,
+      initialHumidityPercent: null,
+      initialTrashKg: null,
     );
     if (!mounted || result == null) return;
     setState(() {
@@ -1030,6 +1115,67 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     return double.tryParse(c);
   }
 
+  double? _effectiveNetKgFromValues({
+    required double? netKg,
+    required double? grossKg,
+    required double? tareKg,
+  }) {
+    if (netKg != null && netKg > 0) return netKg;
+    if (grossKg == null || grossKg <= 0) return null;
+    final tare = tareKg == null || tareKg < 0 ? 0 : tareKg;
+    return math.max(0, grossKg - tare);
+  }
+
+  double? _effectiveNetKgFromRow(Map<String, dynamic> row) {
+    return _effectiveNetKgFromValues(
+      netKg: _toDouble(row['net_kg']) ?? _toDouble(row['weight_kg']),
+      grossKg: _toDouble(row['gross_kg']),
+      tareKg: _toDouble(row['tare_kg']),
+    );
+  }
+
+  double _totalAmountKg({
+    required double netKg,
+    required double? humidityPercent,
+    required double? trashKg,
+  }) {
+    final humidity = humidityPercent == null || humidityPercent < 0
+        ? 0.0
+        : humidityPercent;
+    final trash = trashKg == null || trashKg < 0 ? 0.0 : trashKg;
+    final humidityDiscount = netKg * (humidity / 100.0);
+    return math.max(0, netKg - humidityDiscount - trash);
+  }
+
+  _MovementDraft _draftWithComputed() {
+    final grossKg = _parseNum(_draftGrossC.text);
+    final tareKg = _parseNum(_draftTareC.text);
+    final humidityPercent = _parseNum(_draftHumidityC.text);
+    final trashKg = _parseNum(_draftTrashC.text);
+    final netKg = grossKg == null || grossKg <= 0
+        ? null
+        : math.max(0, grossKg - (tareKg ?? 0)).toDouble();
+    final netText = netKg == null ? '' : netKg.toStringAsFixed(2);
+    if (_draftWeightC.text != netText) {
+      _draftWeightC.text = netText;
+    }
+    final totalAmountKg = netKg == null
+        ? null
+        : _totalAmountKg(
+            netKg: netKg,
+            humidityPercent: humidityPercent,
+            trashKg: trashKg,
+          );
+    return _draft.copyWith(
+      grossKg: grossKg,
+      tareKg: tareKg,
+      netKg: netKg,
+      humidityPercent: humidityPercent,
+      trashKg: trashKg,
+      totalAmountKg: totalAmountKg,
+    );
+  }
+
   _InvMaterialOpt? _materialById(String? id) {
     if (id == null) return null;
     for (final m in _materials) {
@@ -1068,7 +1214,22 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         }
         return _invMaterialLabel(row['material']?.toString());
       case 'kg':
-        final n = _toDouble(row['weight_kg']);
+        final n = _effectiveNetKgFromRow(row);
+        return n == null ? '' : n.toStringAsFixed(2);
+      case 'bruto':
+        final n = _toDouble(row['gross_kg']);
+        return n == null ? '' : n.toStringAsFixed(2);
+      case 'tara':
+        final n = _toDouble(row['tare_kg']);
+        return n == null ? '' : n.toStringAsFixed(2);
+      case 'humedad':
+        final n = _toDouble(row['humidity_percent']);
+        return n == null ? '' : n.toStringAsFixed(2);
+      case 'basura':
+        final n = _toDouble(row['trash_kg']);
+        return n == null ? '' : n.toStringAsFixed(2);
+      case 'importe':
+        final n = _toDouble(row['total_amount_kg']);
         return n == null ? '' : n.toStringAsFixed(2);
       case 'counterparty':
         return (_labelOf(
@@ -1382,9 +1543,18 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
           FocusScope.of(context).requestFocus(_insertReferenceFocusNode);
           break;
         case 6:
-          FocusScope.of(context).requestFocus(_insertWeightFocusNode);
+          FocusScope.of(context).requestFocus(_insertGrossFocusNode);
           break;
         case 7:
+          FocusScope.of(context).requestFocus(_insertTareFocusNode);
+          break;
+        case 9:
+          FocusScope.of(context).requestFocus(_insertHumidityFocusNode);
+          break;
+        case 10:
+          FocusScope.of(context).requestFocus(_insertTrashFocusNode);
+          break;
+        case 12:
           FocusScope.of(context).requestFocus(_insertNotesFocusNode);
           break;
         default:
@@ -1398,7 +1568,10 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       _setActiveInsertColumn(_activeInsertColumn + delta);
 
   bool get _isInsertTextFocused =>
-      _insertWeightFocusNode.hasFocus ||
+      _insertGrossFocusNode.hasFocus ||
+      _insertTareFocusNode.hasFocus ||
+      _insertHumidityFocusNode.hasFocus ||
+      _insertTrashFocusNode.hasFocus ||
       _insertReferenceFocusNode.hasFocus ||
       _insertNotesFocusNode.hasFocus;
 
@@ -1465,7 +1638,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         if (!mounted) return;
         setState(() => _draft = _draft.copyWith(vehicleId: id));
         return;
-      case 8:
+      case 13:
         await _editDraftExtras();
         return;
       default:
@@ -1486,8 +1659,23 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         setState(() => _draft = _draft.copyWith(materialId: null));
         return;
       case 6:
-        _draftWeightC.clear();
-        setState(() => _draft = _draft.copyWith(weightKg: null));
+        _draftGrossC.clear();
+        setState(() => _draft = _draftWithComputed());
+        return;
+      case 7:
+        _draftTareC.clear();
+        setState(() => _draft = _draftWithComputed());
+        return;
+      case 8:
+        setState(() => _draft = _draftWithComputed());
+        return;
+      case 9:
+        _draftHumidityC.clear();
+        setState(() => _draft = _draftWithComputed());
+        return;
+      case 10:
+        _draftTrashC.clear();
+        setState(() => _draft = _draftWithComputed());
         return;
       case 3:
         setState(() => _draft = _draft.copyWith(counterpartySiteId: null));
@@ -1498,7 +1686,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       case 5:
         setState(() => _draft = _draft.copyWith(vehicleId: null));
         return;
-      case 7:
+      case 12:
         _draftNotesC.clear();
         setState(() => _draft = _draft.copyWith(notes: ''));
         return;
@@ -1512,7 +1700,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         ? null
         : _visibleRows.first['id'] as String;
     setState(() {
-      _activeGridColumn = _activeInsertColumn > 8 ? 8 : _activeInsertColumn;
+      _activeGridColumn = _activeInsertColumn > 13 ? 13 : _activeInsertColumn;
       if (firstVisibleId != null) {
         _selectedRowId = firstVisibleId;
         _selectionAnchorRowId = firstVisibleId;
@@ -1535,7 +1723,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
 
   void _focusInsertFromGrid() {
     setState(() {
-      _activeInsertColumn = _activeGridColumn > 8 ? 8 : _activeGridColumn;
+      _activeInsertColumn = _activeGridColumn > 13 ? 13 : _activeGridColumn;
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _setActiveInsertColumn(_activeInsertColumn);
@@ -1999,7 +2187,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     for (final row in _rows) {
       final id = row['id'] as String?;
       if (id == null || !ids.contains(id)) continue;
-      total += _toDouble(row['weight_kg']) ?? 0;
+      total += _effectiveNetKgFromRow(row) ?? 0;
     }
     return total;
   }
@@ -2013,7 +2201,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   double get _filteredWeightKg {
     double total = 0;
     for (final row in _filteredRows) {
-      total += _toDouble(row['weight_kg']) ?? 0;
+      total += _effectiveNetKgFromRow(row) ?? 0;
     }
     return total;
   }
@@ -2039,7 +2227,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         : null;
     return InventoryGridTopBarData(
       metricIcon: _isIn ? Icons.download_rounded : Icons.local_shipping_rounded,
-      metricLabel: _isIn ? 'KG ENTRADAS' : 'KG SALIDAS',
+      metricLabel: _isIn ? 'NETO ENTRADAS' : 'NETO SALIDAS',
       metricValue: '${_fmtInvCount(_filteredWeightKg)} kg',
       metricSubtitle:
           'Filtrado (${_fmtInvInt(_filteredRows.length)} registros)',
@@ -2527,7 +2715,11 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                           }
                                           if (col != 1 &&
                                               col != 6 &&
-                                              col != 7) {
+                                              col != 7 &&
+                                              col != 8 &&
+                                              col != 9 &&
+                                              col != 10 &&
+                                              col != 12) {
                                             _requestRowsFocus();
                                           }
                                         },
@@ -2695,8 +2887,23 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                   if (event is! KeyDownEvent) return KeyEventResult.ignored;
                   final key = event.logicalKey;
                   if (key == LogicalKeyboardKey.arrowLeft) {
-                    if (_insertWeightFocusNode.hasFocus &&
-                        !_caretAtStart(_draftWeightC, _insertWeightFocusNode)) {
+                    if (_insertGrossFocusNode.hasFocus &&
+                        !_caretAtStart(_draftGrossC, _insertGrossFocusNode)) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (_insertTareFocusNode.hasFocus &&
+                        !_caretAtStart(_draftTareC, _insertTareFocusNode)) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (_insertHumidityFocusNode.hasFocus &&
+                        !_caretAtStart(
+                          _draftHumidityC,
+                          _insertHumidityFocusNode,
+                        )) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (_insertTrashFocusNode.hasFocus &&
+                        !_caretAtStart(_draftTrashC, _insertTrashFocusNode)) {
                       return KeyEventResult.ignored;
                     }
                     if (_insertReferenceFocusNode.hasFocus &&
@@ -2714,8 +2921,23 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                     return KeyEventResult.handled;
                   }
                   if (key == LogicalKeyboardKey.arrowRight) {
-                    if (_insertWeightFocusNode.hasFocus &&
-                        !_caretAtEnd(_draftWeightC, _insertWeightFocusNode)) {
+                    if (_insertGrossFocusNode.hasFocus &&
+                        !_caretAtEnd(_draftGrossC, _insertGrossFocusNode)) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (_insertTareFocusNode.hasFocus &&
+                        !_caretAtEnd(_draftTareC, _insertTareFocusNode)) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (_insertHumidityFocusNode.hasFocus &&
+                        !_caretAtEnd(
+                          _draftHumidityC,
+                          _insertHumidityFocusNode,
+                        )) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (_insertTrashFocusNode.hasFocus &&
+                        !_caretAtEnd(_draftTrashC, _insertTrashFocusNode)) {
                       return KeyEventResult.ignored;
                     }
                     if (_insertReferenceFocusNode.hasFocus &&
@@ -2909,20 +3131,20 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                           frame(
                             6,
                             SizedBox(
-                              width: _kInvKgColW,
+                              width: _kInvGrossColW,
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 2,
                                 ),
                                 child: TextField(
-                                  controller: _draftWeightC,
-                                  focusNode: _insertWeightFocusNode,
+                                  controller: _draftGrossC,
+                                  focusNode: _insertGrossFocusNode,
                                   keyboardType:
                                       const TextInputType.numberWithOptions(
                                         decimal: true,
                                       ),
                                   decoration: _invGlassFieldDecoration(
-                                    hintText: 'Peso kg',
+                                    hintText: 'Bruto kg',
                                     suppressFocusedBorder: true,
                                     hideBorder: _activeInsertColumn == 6,
                                   ),
@@ -2930,20 +3152,153 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                     6,
                                     requestFocus: false,
                                   ),
-                                  onChanged: (v) => setState(
-                                    () => _draft = _draft.copyWith(
-                                      weightKg: _parseNum(v),
-                                    ),
+                                  onChanged: (_) => setState(
+                                    () => _draft = _draftWithComputed(),
                                   ),
-                                  onSubmitted: (_) {
-                                    _insertDraft();
-                                  },
                                 ),
                               ),
                             ),
                           ),
                           frame(
                             7,
+                            SizedBox(
+                              width: _kInvTareColW,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 2,
+                                ),
+                                child: TextField(
+                                  controller: _draftTareC,
+                                  focusNode: _insertTareFocusNode,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  decoration: _invGlassFieldDecoration(
+                                    hintText: 'Tara kg',
+                                    suppressFocusedBorder: true,
+                                    hideBorder: _activeInsertColumn == 7,
+                                  ),
+                                  onTap: () => _setActiveInsertColumn(
+                                    7,
+                                    requestFocus: false,
+                                  ),
+                                  onChanged: (_) => setState(
+                                    () => _draft = _draftWithComputed(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          frame(
+                            8,
+                            SizedBox(
+                              width: _kInvKgColW,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 8,
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    _draft.netKg == null
+                                        ? '—'
+                                        : '${_fmtInvCount(_draft.netKg!)} kg',
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          frame(
+                            9,
+                            SizedBox(
+                              width: _kInvHumidityColW,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 2,
+                                ),
+                                child: TextField(
+                                  controller: _draftHumidityC,
+                                  focusNode: _insertHumidityFocusNode,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  decoration: _invGlassFieldDecoration(
+                                    hintText: 'Humedad %',
+                                    suppressFocusedBorder: true,
+                                    hideBorder: _activeInsertColumn == 9,
+                                  ),
+                                  onTap: () => _setActiveInsertColumn(
+                                    9,
+                                    requestFocus: false,
+                                  ),
+                                  onChanged: (_) => setState(
+                                    () => _draft = _draftWithComputed(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          frame(
+                            10,
+                            SizedBox(
+                              width: _kInvTrashColW,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 2,
+                                ),
+                                child: TextField(
+                                  controller: _draftTrashC,
+                                  focusNode: _insertTrashFocusNode,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  decoration: _invGlassFieldDecoration(
+                                    hintText: 'Basura kg',
+                                    suppressFocusedBorder: true,
+                                    hideBorder: _activeInsertColumn == 10,
+                                  ),
+                                  onTap: () => _setActiveInsertColumn(
+                                    10,
+                                    requestFocus: false,
+                                  ),
+                                  onChanged: (_) => setState(
+                                    () => _draft = _draftWithComputed(),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          frame(
+                            11,
+                            SizedBox(
+                              width: _kInvAmountColW,
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 8,
+                                ),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    _draft.totalAmountKg == null
+                                        ? '—'
+                                        : _fmtInvCount(_draft.totalAmountKg!),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          frame(
+                            12,
                             SizedBox(
                               width: _kInvNotesColW,
                               child: Padding(
@@ -2956,10 +3311,10 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                   decoration: _invGlassFieldDecoration(
                                     hintText: 'Comentario / notas',
                                     suppressFocusedBorder: true,
-                                    hideBorder: _activeInsertColumn == 7,
+                                    hideBorder: _activeInsertColumn == 12,
                                   ),
                                   onTap: () => _setActiveInsertColumn(
-                                    7,
+                                    12,
                                     requestFocus: false,
                                   ),
                                   onChanged: (t) => setState(
@@ -2974,7 +3329,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                           ),
                           const SizedBox(width: 10),
                           frame(
-                            8,
+                            13,
                             SizedBox(
                               width: _kInvActionsW,
                               child: Row(
@@ -3228,11 +3583,46 @@ class _InvHeaderRow extends StatelessWidget {
                         onFilter: () => onOpenFilter('unidad', 'UNIDAD'),
                       ),
                       _InvHCell(
-                        'KG',
+                        'BRUTO',
+                        _kInvGrossColW,
+                        s,
+                        active: hasActiveFilter('bruto'),
+                        onFilter: () => onOpenFilter('bruto', 'BRUTO'),
+                      ),
+                      _InvHCell(
+                        'TARA',
+                        _kInvTareColW,
+                        s,
+                        active: hasActiveFilter('tara'),
+                        onFilter: () => onOpenFilter('tara', 'TARA'),
+                      ),
+                      _InvHCell(
+                        'NETO KG',
                         _kInvKgColW,
                         s,
                         active: hasActiveFilter('kg'),
-                        onFilter: () => onOpenFilter('kg', 'KG'),
+                        onFilter: () => onOpenFilter('kg', 'NETO KG'),
+                      ),
+                      _InvHCell(
+                        'HUMEDAD %',
+                        _kInvHumidityColW,
+                        s,
+                        active: hasActiveFilter('humedad'),
+                        onFilter: () => onOpenFilter('humedad', 'HUMEDAD %'),
+                      ),
+                      _InvHCell(
+                        'BASURA',
+                        _kInvTrashColW,
+                        s,
+                        active: hasActiveFilter('basura'),
+                        onFilter: () => onOpenFilter('basura', 'BASURA'),
+                      ),
+                      _InvHCell(
+                        'IMPORTE',
+                        _kInvAmountColW,
+                        s,
+                        active: hasActiveFilter('importe'),
+                        onFilter: () => onOpenFilter('importe', 'IMPORTE'),
                       ),
                       SizedBox(
                         width: _kInvNotesColW,
@@ -3429,13 +3819,24 @@ class _MovementDataRowState extends State<_MovementDataRow> {
   String? _vehicleId;
   String? _commercialMaterialCode;
   String? _movementReason;
+  double? _grossKg;
+  double? _tareKg;
+  double? _humidityPercent;
+  double? _trashKg;
 
   final TextEditingController _weightC = TextEditingController();
+  final TextEditingController _grossC = TextEditingController();
+  final TextEditingController _tareC = TextEditingController();
+  final TextEditingController _humidityC = TextEditingController();
+  final TextEditingController _trashC = TextEditingController();
   final TextEditingController _referenceC = TextEditingController();
   final TextEditingController _notesC = TextEditingController();
   final TextEditingController _scaleTicketC = TextEditingController();
 
-  final FocusNode _weightFocusNode = FocusNode(debugLabel: 'row_weight');
+  final FocusNode _grossFocusNode = FocusNode(debugLabel: 'row_gross');
+  final FocusNode _tareFocusNode = FocusNode(debugLabel: 'row_tare');
+  final FocusNode _humidityFocusNode = FocusNode(debugLabel: 'row_humidity');
+  final FocusNode _trashFocusNode = FocusNode(debugLabel: 'row_trash');
   final FocusNode _referenceFocusNode = FocusNode(debugLabel: 'row_ref');
   final FocusNode _notesFocusNode = FocusNode(debugLabel: 'row_notes');
 
@@ -3469,10 +3870,17 @@ class _MovementDataRowState extends State<_MovementDataRow> {
   @override
   void dispose() {
     _weightC.dispose();
+    _grossC.dispose();
+    _tareC.dispose();
+    _humidityC.dispose();
+    _trashC.dispose();
     _referenceC.dispose();
     _notesC.dispose();
     _scaleTicketC.dispose();
-    _weightFocusNode.dispose();
+    _grossFocusNode.dispose();
+    _tareFocusNode.dispose();
+    _humidityFocusNode.dispose();
+    _trashFocusNode.dispose();
     _referenceFocusNode.dispose();
     _notesFocusNode.dispose();
     super.dispose();
@@ -3490,7 +3898,20 @@ class _MovementDataRowState extends State<_MovementDataRow> {
     _vehicleId = r['vehicle_id'] as String?;
     _commercialMaterialCode = r['commercial_material_code'] as String?;
     _movementReason = r['movement_reason'] as String?;
-    _weightC.text = _toDouble(r['weight_kg'])?.toStringAsFixed(2) ?? '';
+    _grossKg = _toDouble(r['gross_kg']);
+    _tareKg = _toDouble(r['tare_kg']);
+    final storedNetKg = _toDouble(r['net_kg']) ?? _toDouble(r['weight_kg']);
+    _humidityPercent = _toDouble(r['humidity_percent']);
+    _trashKg = _toDouble(r['trash_kg']);
+    _grossC.text = _grossKg?.toStringAsFixed(2) ?? '';
+    _tareC.text = _tareKg?.toStringAsFixed(2) ?? '';
+    _humidityC.text = _humidityPercent?.toStringAsFixed(2) ?? '';
+    _trashC.text = _trashKg?.toStringAsFixed(2) ?? '';
+    final computedNetFromGross = (_grossKg == null || _grossKg! <= 0)
+        ? null
+        : math.max(0, _grossKg! - (_tareKg ?? 0)).toDouble();
+    final effectiveNet = computedNetFromGross ?? storedNetKg;
+    _weightC.text = effectiveNet?.toStringAsFixed(2) ?? '';
     _referenceC.text = (r['reference'] ?? '').toString();
     _notesC.text = (r['notes'] ?? '').toString();
     _scaleTicketC.text = (r['scale_ticket'] ?? '').toString();
@@ -3505,6 +3926,30 @@ class _MovementDataRowState extends State<_MovementDataRow> {
       if (y != null && m != null && d != null) return DateTime(y, m, d);
     }
     return DateUtils.dateOnly(DateTime.now());
+  }
+
+  double? _rowEffectiveNetKg({
+    required double? netKg,
+    required double? grossKg,
+    required double? tareKg,
+  }) {
+    if (netKg != null && netKg > 0) return netKg;
+    if (grossKg == null || grossKg <= 0) return null;
+    final tare = tareKg == null || tareKg < 0 ? 0 : tareKg;
+    return math.max(0, grossKg - tare).toDouble();
+  }
+
+  double _rowTotalAmountKg({
+    required double netKg,
+    required double? humidityPercent,
+    required double? trashKg,
+  }) {
+    final humidity = humidityPercent == null || humidityPercent < 0
+        ? 0.0
+        : humidityPercent;
+    final trash = trashKg == null || trashKg < 0 ? 0.0 : trashKg;
+    final humidityDiscount = netKg * (humidity / 100.0);
+    return math.max(0, netKg - humidityDiscount - trash).toDouble();
   }
 
   bool _isAdditiveSelectionPressed() {
@@ -3547,22 +3992,31 @@ class _MovementDataRowState extends State<_MovementDataRow> {
     if (!_editing) return false;
     return switch (col) {
       1 => _referenceFocusNode.hasFocus,
-      6 => _weightFocusNode.hasFocus,
-      7 => _notesFocusNode.hasFocus,
+      6 => _grossFocusNode.hasFocus,
+      7 => _tareFocusNode.hasFocus,
+      9 => _humidityFocusNode.hasFocus,
+      10 => _trashFocusNode.hasFocus,
+      12 => _notesFocusNode.hasFocus,
       _ => false,
     };
   }
 
   bool get isAnyTextFocused =>
       _referenceFocusNode.hasFocus ||
-      _weightFocusNode.hasFocus ||
+      _grossFocusNode.hasFocus ||
+      _tareFocusNode.hasFocus ||
+      _humidityFocusNode.hasFocus ||
+      _trashFocusNode.hasFocus ||
       _notesFocusNode.hasFocus;
 
   bool activeTextCaretAtStart(int col) {
     return switch (col) {
       1 => _caretAtStart(_referenceC, _referenceFocusNode),
-      6 => _caretAtStart(_weightC, _weightFocusNode),
-      7 => _caretAtStart(_notesC, _notesFocusNode),
+      6 => _caretAtStart(_grossC, _grossFocusNode),
+      7 => _caretAtStart(_tareC, _tareFocusNode),
+      9 => _caretAtStart(_humidityC, _humidityFocusNode),
+      10 => _caretAtStart(_trashC, _trashFocusNode),
+      12 => _caretAtStart(_notesC, _notesFocusNode),
       _ => true,
     };
   }
@@ -3570,8 +4024,11 @@ class _MovementDataRowState extends State<_MovementDataRow> {
   bool activeTextCaretAtEnd(int col) {
     return switch (col) {
       1 => _caretAtEnd(_referenceC, _referenceFocusNode),
-      6 => _caretAtEnd(_weightC, _weightFocusNode),
-      7 => _caretAtEnd(_notesC, _notesFocusNode),
+      6 => _caretAtEnd(_grossC, _grossFocusNode),
+      7 => _caretAtEnd(_tareC, _tareFocusNode),
+      9 => _caretAtEnd(_humidityC, _humidityFocusNode),
+      10 => _caretAtEnd(_trashC, _trashFocusNode),
+      12 => _caretAtEnd(_notesC, _notesFocusNode),
       _ => true,
     };
   }
@@ -3597,7 +4054,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
 
   void focusTextIfNeeded(int col) {
     if (!_editing) return;
-    if (col == 7) {
+    if (col == 12) {
       focusCommentField();
     }
   }
@@ -3678,12 +4135,21 @@ class _MovementDataRowState extends State<_MovementDataRow> {
         setState(() => _vehicleId = vh);
         return;
       case 6:
-        FocusScope.of(context).requestFocus(_weightFocusNode);
+        FocusScope.of(context).requestFocus(_grossFocusNode);
         return;
       case 7:
+        FocusScope.of(context).requestFocus(_tareFocusNode);
+        return;
+      case 9:
+        FocusScope.of(context).requestFocus(_humidityFocusNode);
+        return;
+      case 10:
+        FocusScope.of(context).requestFocus(_trashFocusNode);
+        return;
+      case 12:
         focusCommentField();
         return;
-      case 8:
+      case 13:
         await _editExtras();
         return;
       default:
@@ -3998,8 +4464,14 @@ class _MovementDataRowState extends State<_MovementDataRow> {
   }
 
   Future<void> _save({bool keepEditing = false}) async {
-    final weight = _toDouble(_weightC.text);
-    if (_material == null || weight == null || weight <= 0) {
+    final grossKg = _toDouble(_grossC.text);
+    final tareKg = _toDouble(_tareC.text);
+    final humidityPercent = _toDouble(_humidityC.text);
+    final trashKg = _toDouble(_trashC.text);
+    final netKg = (grossKg == null || grossKg <= 0)
+        ? null
+        : math.max(0, grossKg - (tareKg ?? 0)).toDouble();
+    if (_material == null || netKg == null || netKg <= 0) {
       return;
     }
     final selectedMaterial = widget.materialsById[_material!];
@@ -4024,11 +4496,22 @@ class _MovementDataRowState extends State<_MovementDataRow> {
       );
       return;
     }
+    final totalAmountKg = _rowTotalAmountKg(
+      netKg: netKg,
+      humidityPercent: humidityPercent,
+      trashKg: trashKg,
+    );
     final patch = <String, dynamic>{
       'op_date': _fmtDbDate(_opDate),
       'material_id': _material,
       'material': invCode,
-      'weight_kg': weight,
+      'weight_kg': netKg,
+      'gross_kg': grossKg,
+      'tare_kg': tareKg,
+      'net_kg': netKg,
+      'humidity_percent': humidityPercent,
+      'trash_kg': trashKg,
+      'total_amount_kg': totalAmountKg,
       'counterparty_site_id': _counterpartySiteId,
       'driver_employee_id': _driverId,
       'vehicle_id': _vehicleId,
@@ -4068,6 +4551,11 @@ class _MovementDataRowState extends State<_MovementDataRow> {
           : filteredCommercials,
       initialCommercialMaterialCode: _commercialMaterialCode,
       initialMovementReason: _movementReason,
+      initialGrossKg: null,
+      initialTareKg: null,
+      initialNetKg: null,
+      initialHumidityPercent: null,
+      initialTrashKg: null,
     );
     if (!mounted || result == null) return;
     setState(() {
@@ -4463,22 +4951,22 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                               gridFrame(
                                 6,
                                 SizedBox(
-                                  width: _kInvKgColW,
+                                  width: _kInvGrossColW,
                                   child: _editing
                                       ? Padding(
                                           padding: const EdgeInsets.symmetric(
                                             horizontal: 2,
                                           ),
                                           child: TextField(
-                                            controller: _weightC,
-                                            focusNode: _weightFocusNode,
+                                            controller: _grossC,
+                                            focusNode: _grossFocusNode,
                                             keyboardType:
                                                 const TextInputType.numberWithOptions(
                                                   decimal: true,
                                                 ),
                                             decoration:
                                                 _invGlassFieldDecoration(
-                                                  hintText: 'Peso kg',
+                                                  hintText: 'Bruto kg',
                                                   suppressFocusedBorder: true,
                                                   hideBorder:
                                                       widget.isSelected &&
@@ -4493,10 +4981,9 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                           col: 6,
                                           child: readonlyCell(
                                             child: _InvFitText(
-                                              '${_fmtInvCount(_toDouble(widget.row['weight_kg']) ?? 0)} kg',
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w700,
-                                              ),
+                                              _grossC.text.isEmpty
+                                                  ? '—'
+                                                  : '${_fmtInvCount(_toDouble(_grossC.text) ?? 0)} kg',
                                             ),
                                           ),
                                         ),
@@ -4504,6 +4991,195 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                               ),
                               gridFrame(
                                 7,
+                                SizedBox(
+                                  width: _kInvTareColW,
+                                  child: _editing
+                                      ? Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 2,
+                                          ),
+                                          child: TextField(
+                                            controller: _tareC,
+                                            focusNode: _tareFocusNode,
+                                            keyboardType:
+                                                const TextInputType.numberWithOptions(
+                                                  decimal: true,
+                                                ),
+                                            decoration:
+                                                _invGlassFieldDecoration(
+                                                  hintText: 'Tara kg',
+                                                  suppressFocusedBorder: true,
+                                                  hideBorder:
+                                                      widget.isSelected &&
+                                                      widget.activeGridColumn ==
+                                                          7,
+                                                ),
+                                            onTap: () =>
+                                                widget.onActivateColumn(7),
+                                          ),
+                                        )
+                                      : previewEditableCell(
+                                          col: 7,
+                                          child: readonlyCell(
+                                            child: _InvFitText(
+                                              _tareC.text.isEmpty
+                                                  ? '—'
+                                                  : '${_fmtInvCount(_toDouble(_tareC.text) ?? 0)} kg',
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+                              gridFrame(
+                                8,
+                                SizedBox(
+                                  width: _kInvKgColW,
+                                  child: readonlyCell(
+                                    child: Builder(
+                                      builder: (_) {
+                                        final gross = _toDouble(_grossC.text);
+                                        final tare = _toDouble(_tareC.text);
+                                        final computedNet =
+                                            (gross == null || gross <= 0)
+                                            ? (_toDouble(
+                                                    widget.row['net_kg'],
+                                                  ) ??
+                                                  _toDouble(
+                                                    widget.row['weight_kg'],
+                                                  ))
+                                            : math
+                                                  .max(0, gross - (tare ?? 0))
+                                                  .toDouble();
+                                        return _InvFitText(
+                                          computedNet == null
+                                              ? '—'
+                                              : '${_fmtInvCount(computedNet)} kg',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              gridFrame(
+                                9,
+                                SizedBox(
+                                  width: _kInvHumidityColW,
+                                  child: _editing
+                                      ? Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 2,
+                                          ),
+                                          child: TextField(
+                                            controller: _humidityC,
+                                            focusNode: _humidityFocusNode,
+                                            keyboardType:
+                                                const TextInputType.numberWithOptions(
+                                                  decimal: true,
+                                                ),
+                                            decoration:
+                                                _invGlassFieldDecoration(
+                                                  hintText: 'Humedad %',
+                                                  suppressFocusedBorder: true,
+                                                  hideBorder:
+                                                      widget.isSelected &&
+                                                      widget.activeGridColumn ==
+                                                          9,
+                                                ),
+                                            onTap: () =>
+                                                widget.onActivateColumn(9),
+                                          ),
+                                        )
+                                      : previewEditableCell(
+                                          col: 9,
+                                          child: readonlyCell(
+                                            child: _InvFitText(
+                                              _humidityC.text.isEmpty
+                                                  ? '—'
+                                                  : '${_fmtInvCount(_toDouble(_humidityC.text) ?? 0)} %',
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+                              gridFrame(
+                                10,
+                                SizedBox(
+                                  width: _kInvTrashColW,
+                                  child: _editing
+                                      ? Padding(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 2,
+                                          ),
+                                          child: TextField(
+                                            controller: _trashC,
+                                            focusNode: _trashFocusNode,
+                                            keyboardType:
+                                                const TextInputType.numberWithOptions(
+                                                  decimal: true,
+                                                ),
+                                            decoration:
+                                                _invGlassFieldDecoration(
+                                                  hintText: 'Basura kg',
+                                                  suppressFocusedBorder: true,
+                                                  hideBorder:
+                                                      widget.isSelected &&
+                                                      widget.activeGridColumn ==
+                                                          10,
+                                                ),
+                                            onTap: () =>
+                                                widget.onActivateColumn(10),
+                                          ),
+                                        )
+                                      : previewEditableCell(
+                                          col: 10,
+                                          child: readonlyCell(
+                                            child: _InvFitText(
+                                              _trashC.text.isEmpty
+                                                  ? '—'
+                                                  : '${_fmtInvCount(_toDouble(_trashC.text) ?? 0)} kg',
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+                              gridFrame(
+                                11,
+                                SizedBox(
+                                  width: _kInvAmountColW,
+                                  child: readonlyCell(
+                                    child: Builder(
+                                      builder: (_) {
+                                        final netKg = _rowEffectiveNetKg(
+                                          netKg: null,
+                                          grossKg: _toDouble(_grossC.text),
+                                          tareKg: _toDouble(_tareC.text),
+                                        );
+                                        final amount = netKg == null
+                                            ? null
+                                            : _rowTotalAmountKg(
+                                                netKg: netKg,
+                                                humidityPercent: _toDouble(
+                                                  _humidityC.text,
+                                                ),
+                                                trashKg: _toDouble(
+                                                  _trashC.text,
+                                                ),
+                                              );
+                                        return _InvFitText(
+                                          amount == null
+                                              ? '—'
+                                              : _fmtInvCount(amount),
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              gridFrame(
+                                12,
                                 SizedBox(
                                   width: _kInvNotesColW,
                                   child: _editing
@@ -4522,14 +5198,14 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                                   hideBorder:
                                                       widget.isSelected &&
                                                       widget.activeGridColumn ==
-                                                          7,
+                                                          12,
                                                 ),
                                             onTap: () =>
-                                                widget.onActivateColumn(7),
+                                                widget.onActivateColumn(12),
                                           ),
                                         )
                                       : previewEditableCell(
-                                          col: 7,
+                                          col: 12,
                                           child: readonlyCell(
                                             showDivider: true,
                                             child: _InvFitText(
@@ -4542,7 +5218,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                               ),
                               const SizedBox(width: 10),
                               gridFrame(
-                                8,
+                                13,
                                 SizedBox(
                                   width: _kInvActionsW,
                                   child: Row(
@@ -5003,10 +5679,22 @@ class _CommercialMaterialOpt {
 class _MovementExtrasResult {
   final String? commercialMaterialCode;
   final String? movementReason;
+  final double? grossKg;
+  final double? tareKg;
+  final double? netKg;
+  final double? humidityPercent;
+  final double? trashKg;
+  final double? totalAmountKg;
 
   const _MovementExtrasResult({
     required this.commercialMaterialCode,
     required this.movementReason,
+    required this.grossKg,
+    required this.tareKg,
+    required this.netKg,
+    required this.humidityPercent,
+    required this.trashKg,
+    required this.totalAmountKg,
   });
 }
 
@@ -5024,9 +5712,19 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
   required List<_CommercialMaterialOpt> commercialOptions,
   required String? initialCommercialMaterialCode,
   required String? initialMovementReason,
+  required double? initialGrossKg,
+  required double? initialTareKg,
+  required double? initialNetKg,
+  required double? initialHumidityPercent,
+  required double? initialTrashKg,
 }) async {
   String? selectedCommercial = initialCommercialMaterialCode;
   String? selectedReason = initialMovementReason;
+  double? grossKg = initialGrossKg;
+  double? tareKg = initialTareKg;
+  double? netKg = initialNetKg;
+  double? humidityPercent = initialHumidityPercent;
+  double? trashKg = initialTrashKg;
   final isInFlow = flow == 'IN';
   final generalCode = (inventoryGeneralCode ?? '').trim().toUpperCase();
   final showReason = isInFlow && generalCode == 'METAL';
@@ -5044,9 +5742,32 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
     context: context,
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setLocalState) {
+        double _sanitize(double? v) => (v == null || v < 0) ? 0 : v;
+        final effectiveNetKg = (netKg != null && netKg > 0)
+            ? netKg
+            : (grossKg != null && grossKg > 0)
+            ? math.max(0, grossKg - _sanitize(tareKg)).toDouble()
+            : null;
+        final totalAmountKg = effectiveNetKg == null
+            ? null
+            : math
+                  .max(
+                    0,
+                    effectiveNetKg -
+                        (effectiveNetKg *
+                            (_sanitize(humidityPercent) / 100.0)) -
+                        _sanitize(trashKg),
+                  )
+                  .toDouble();
         _MovementExtrasResult buildResult() => _MovementExtrasResult(
           commercialMaterialCode: selectedCommercial,
           movementReason: showReason ? selectedReason : null,
+          grossKg: grossKg,
+          tareKg: tareKg,
+          netKg: netKg,
+          humidityPercent: humidityPercent,
+          trashKg: trashKg,
+          totalAmountKg: totalAmountKg,
         );
 
         Widget pickerField({
@@ -5136,7 +5857,7 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
                 color: const Color(0xFF8AA9C2).withOpacity(0.42),
               ),
             ),
-            title: const Text('Material Comercial y Origen'),
+            title: const Text('Extras de Movimiento'),
             content: SizedBox(
               width: 440,
               child: Column(
@@ -5254,7 +5975,12 @@ class _MovementDraft {
 
   final DateTime? opDate;
   final String? materialId;
-  final double? weightKg;
+  final double? grossKg;
+  final double? tareKg;
+  final double? netKg;
+  final double? humidityPercent;
+  final double? trashKg;
+  final double? totalAmountKg;
   final String? counterpartySiteId;
   final String? driverEmployeeId;
   final String? vehicleId;
@@ -5267,7 +5993,12 @@ class _MovementDraft {
   const _MovementDraft({
     required this.opDate,
     required this.materialId,
-    required this.weightKg,
+    required this.grossKg,
+    required this.tareKg,
+    required this.netKg,
+    required this.humidityPercent,
+    required this.trashKg,
+    required this.totalAmountKg,
     required this.counterpartySiteId,
     required this.driverEmployeeId,
     required this.vehicleId,
@@ -5281,7 +6012,12 @@ class _MovementDraft {
   _MovementDraft copyWith({
     Object? opDate = _unset,
     Object? materialId = _unset,
-    Object? weightKg = _unset,
+    Object? grossKg = _unset,
+    Object? tareKg = _unset,
+    Object? netKg = _unset,
+    Object? humidityPercent = _unset,
+    Object? trashKg = _unset,
+    Object? totalAmountKg = _unset,
     Object? counterpartySiteId = _unset,
     Object? driverEmployeeId = _unset,
     Object? vehicleId = _unset,
@@ -5296,9 +6032,16 @@ class _MovementDraft {
       materialId: identical(materialId, _unset)
           ? this.materialId
           : materialId as String?,
-      weightKg: identical(weightKg, _unset)
-          ? this.weightKg
-          : weightKg as double?,
+      grossKg: identical(grossKg, _unset) ? this.grossKg : grossKg as double?,
+      tareKg: identical(tareKg, _unset) ? this.tareKg : tareKg as double?,
+      netKg: identical(netKg, _unset) ? this.netKg : netKg as double?,
+      humidityPercent: identical(humidityPercent, _unset)
+          ? this.humidityPercent
+          : humidityPercent as double?,
+      trashKg: identical(trashKg, _unset) ? this.trashKg : trashKg as double?,
+      totalAmountKg: identical(totalAmountKg, _unset)
+          ? this.totalAmountKg
+          : totalAmountKg as double?,
       counterpartySiteId: identical(counterpartySiteId, _unset)
           ? this.counterpartySiteId
           : counterpartySiteId as String?,

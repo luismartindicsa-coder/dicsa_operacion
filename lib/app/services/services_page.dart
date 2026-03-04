@@ -9,6 +9,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/auth_gate.dart';
 import '../dashboard/dashboard_page.dart';
 import 'inventory_page.dart';
+import 'weighings_page.dart';
 import 'services_shell.dart'; // ajusta el path si lo guardaste en /ui/ o /app/
 import '../shared/page_routes.dart';
 
@@ -1166,8 +1167,19 @@ class _ServicesPageState extends State<ServicesPage>
 
   void _syncInsertRowFocusState() {
     final next = _insertFocusNode.hasFocus || _draftNotesFocusNode.hasFocus;
-    if (_insertRowActive == next || !mounted) return;
-    setState(() => _insertRowActive = next);
+    if (!mounted) return;
+    var shouldSetState = false;
+    if (_insertRowActive != next) {
+      _insertRowActive = next;
+      shouldSetState = true;
+    }
+    if (_draftNotesFocusNode.hasFocus && _activeInsertColumn != 7) {
+      _activeInsertColumn = 7;
+      shouldSetState = true;
+    }
+    if (shouldSetState) {
+      setState(() {});
+    }
   }
 
   @override
@@ -1280,6 +1292,17 @@ class _ServicesPageState extends State<ServicesPage>
     Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const InventoryProductionPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToWeighings() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const WeighingsPage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
@@ -3219,8 +3242,11 @@ class _ServicesPageState extends State<ServicesPage>
 
             return Focus(
               focusNode: _insertFocusNode,
-              autofocus: true,
+              autofocus: false,
               onKeyEvent: (_, event) {
+                if (_isEditableTextFocused()) {
+                  return KeyEventResult.ignored;
+                }
                 if (event is! KeyDownEvent) {
                   return KeyEventResult.ignored;
                 }
@@ -3446,7 +3472,11 @@ class _ServicesPageState extends State<ServicesPage>
                                 controller: _draftNotesC,
                                 focusNode: _draftNotesFocusNode,
                                 decoration: _glassFieldDecoration(),
-                                onTap: () => _setActiveInsertColumn(7),
+                                onTap: () {
+                                  if (!_draftNotesFocusNode.hasFocus) {
+                                    _draftNotesFocusNode.requestFocus();
+                                  }
+                                },
                                 onChanged: (t) => setState(
                                   () => _draft = _draft.copyWith(notes: t),
                                 ),
@@ -3716,6 +3746,7 @@ class _ServicesPageState extends State<ServicesPage>
       onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
       onGoToProduction: _goToProduction,
       onGoToServices: () async {},
+      onGoToWeighings: _goToWeighings,
       onGoToCatalogs: null,
       topContent: _loadingCats || _loadingRows
           ? null
@@ -3809,6 +3840,7 @@ class _ServicesPageState extends State<ServicesPage>
                                       }
                                       return KeyEventResult.ignored;
                                     }
+                                    return KeyEventResult.ignored;
                                   }
                                   if (keyboardCellMode) {
                                     if (key == LogicalKeyboardKey.arrowRight) {
@@ -5121,8 +5153,12 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                           controller: _notes,
                                           focusNode: _notesFocusNode,
                                           decoration: _glassFieldDecoration(),
-                                          onTap: () =>
-                                              widget.onActivateColumn(7),
+                                          onTap: () {
+                                            widget.onActivateColumn(7);
+                                            if (!_notesFocusNode.hasFocus) {
+                                              _notesFocusNode.requestFocus();
+                                            }
+                                          },
                                         )
                                       : previewEditableCell(
                                           col: 7,

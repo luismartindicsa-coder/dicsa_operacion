@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/inventory_page.dart';
 import '../services/services_catalog_page.dart';
 import '../services/services_page.dart';
+import '../services/weighings_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/page_routes.dart';
 import '../shared/dicsa_logo_mark.dart';
@@ -120,6 +121,11 @@ class _DashboardPageState extends State<DashboardPage> {
     await Navigator.of(context).push(appPageRoute(page: const ServicesPage()));
   }
 
+  Future<void> _openWeighings() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(appPageRoute(page: const WeighingsPage()));
+  }
+
   Future<void> _logout(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -188,6 +194,7 @@ class _DashboardPageState extends State<DashboardPage> {
       onOpenInventoryProduction: _openInventoryProduction,
       onOpenInventoryStock: _openInventoryStock,
       onOpenServices: _openServices,
+      onOpenWeighings: _openWeighings,
       catalogsExpanded: _catalogsExpanded,
       onToggleCatalogsExpanded: _canOpenCatalogs
           ? () => setState(() => _catalogsExpanded = !_catalogsExpanded)
@@ -528,6 +535,7 @@ class _DashboardSideMenu extends StatelessWidget {
   final Future<void> Function() onOpenInventoryProduction;
   final Future<void> Function() onOpenInventoryStock;
   final Future<void> Function() onOpenServices;
+  final Future<void> Function() onOpenWeighings;
   final bool catalogsExpanded;
   final VoidCallback? onToggleCatalogsExpanded;
   final Future<void> Function()? onOpenCatalogsFleet;
@@ -541,6 +549,7 @@ class _DashboardSideMenu extends StatelessWidget {
     required this.onOpenInventoryProduction,
     required this.onOpenInventoryStock,
     required this.onOpenServices,
+    required this.onOpenWeighings,
     required this.catalogsExpanded,
     this.onToggleCatalogsExpanded,
     this.onOpenCatalogsFleet,
@@ -611,6 +620,13 @@ class _DashboardSideMenu extends StatelessWidget {
                             title: 'Viajes y Servicios',
                             subtitle: 'Programación y captura operativa',
                             onTap: onOpenServices,
+                          ),
+                          const SizedBox(height: 8),
+                          _SideMenuActionItem(
+                            icon: Icons.scale_rounded,
+                            title: 'Pesadas',
+                            subtitle: 'Fecha, ticket, proveedor y precio',
+                            onTap: onOpenWeighings,
                           ),
                           if (onOpenCatalogsFleet != null ||
                               onOpenCatalogsCompanies != null ||

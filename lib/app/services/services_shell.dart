@@ -8,6 +8,7 @@ enum ServicesOverlayNavModule {
   produccion,
   inventario,
   servicios,
+  pesadas,
 }
 
 class ServicesShell extends StatefulWidget {
@@ -21,6 +22,7 @@ class ServicesShell extends StatefulWidget {
   final Future<void> Function()? onGoToEntriesAndOutputs;
   final Future<void> Function()? onGoToProduction;
   final Future<void> Function()? onGoToServices;
+  final Future<void> Function()? onGoToWeighings;
   final Future<void> Function()? onGoToCatalogs;
 
   const ServicesShell({
@@ -35,6 +37,7 @@ class ServicesShell extends StatefulWidget {
     this.onGoToEntriesAndOutputs,
     this.onGoToProduction,
     this.onGoToServices,
+    this.onGoToWeighings,
     this.onGoToCatalogs,
   });
 
@@ -213,6 +216,7 @@ class _ServicesShellState extends State<ServicesShell>
                       onGoToEntriesAndOutputs: widget.onGoToEntriesAndOutputs,
                       onGoToProduction: widget.onGoToProduction,
                       onGoToServices: widget.onGoToServices,
+                      onGoToWeighings: widget.onGoToWeighings,
                       onNavigate: () {
                         if (!mounted) return;
                         setState(() => _menuOverlayOpen = false);
@@ -905,6 +909,7 @@ class _ServicesSideMenu extends StatelessWidget {
   final Future<void> Function()? onGoToEntriesAndOutputs;
   final Future<void> Function()? onGoToProduction;
   final Future<void> Function()? onGoToServices;
+  final Future<void> Function()? onGoToWeighings;
   final VoidCallback onNavigate;
 
   const _ServicesSideMenu({
@@ -913,6 +918,7 @@ class _ServicesSideMenu extends StatelessWidget {
     required this.onGoToEntriesAndOutputs,
     required this.onGoToProduction,
     required this.onGoToServices,
+    required this.onGoToWeighings,
     required this.onNavigate,
   });
 
@@ -955,6 +961,13 @@ class _ServicesSideMenu extends StatelessWidget {
             title: 'Servicios',
             active: activeModule == ServicesOverlayNavModule.servicios,
             onTap: () => _handleTap(onGoToServices),
+          ),
+          const SizedBox(height: 8),
+          _SideMenuTile(
+            icon: Icons.scale_rounded,
+            title: 'Pesadas',
+            active: activeModule == ServicesOverlayNavModule.pesadas,
+            onTap: () => _handleTap(onGoToWeighings),
           ),
           const SizedBox(height: 8),
           _SideMenuTile(
