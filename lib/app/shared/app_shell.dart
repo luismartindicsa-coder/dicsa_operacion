@@ -14,10 +14,13 @@ class AppShell extends StatefulWidget {
   final EdgeInsetsGeometry padding;
   final double headerBodySpacing;
   final bool wrapBodyInGlass;
+  final Widget? bodyTop;
+  final double bodyTopSpacing;
   final double headerCenterSidePadding;
   final double? minContentWidth;
   final bool animateHeaderSlots;
   final bool animateBody;
+  final Widget? foregroundOverlay;
 
   const AppShell({
     super.key,
@@ -29,10 +32,13 @@ class AppShell extends StatefulWidget {
     this.padding = const EdgeInsets.fromLTRB(18, 14, 18, 18),
     this.headerBodySpacing = 12,
     this.wrapBodyInGlass = true,
+    this.bodyTop,
+    this.bodyTopSpacing = 10,
     this.headerCenterSidePadding = 340,
     this.minContentWidth,
     this.animateHeaderSlots = true,
     this.animateBody = true,
+    this.foregroundOverlay,
   });
 
   @override
@@ -109,6 +115,21 @@ class _AppShellState extends State<AppShell>
               ),
             ),
             SizedBox(height: widget.headerBodySpacing),
+            if (widget.bodyTop != null) ...[
+              widget.animateBody
+                  ? AnimatedBuilder(
+                      animation: _content,
+                      builder: (_, __) => Opacity(
+                        opacity: _content.value,
+                        child: Transform.translate(
+                          offset: Offset(0, (1 - _content.value) * 10),
+                          child: widget.bodyTop!,
+                        ),
+                      ),
+                    )
+                  : widget.bodyTop!,
+              SizedBox(height: widget.bodyTopSpacing),
+            ],
             Expanded(
               child: widget.animateBody
                   ? AnimatedBuilder(
@@ -155,7 +176,13 @@ class _AppShellState extends State<AppShell>
 
     return Scaffold(
       backgroundColor: Colors.transparent,
-      body: Stack(children: [widget.background, shellContent]),
+      body: Stack(
+        children: [
+          widget.background,
+          shellContent,
+          if (widget.foregroundOverlay != null) widget.foregroundOverlay!,
+        ],
+      ),
     );
   }
 }

@@ -2,18 +2,19 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/auth_gate.dart';
 import '../dashboard/dashboard_page.dart';
-import 'services_catalog_page.dart';
+import 'inventory_page.dart';
 import 'services_shell.dart'; // ajusta el path si lo guardaste en /ui/ o /app/
 import '../shared/page_routes.dart';
 
 const double _kActionsW = 150; // prueba 150-170 si quieres más aire
 
-const Color _kGlassMenuBg = Color(0xE6F2F7F6);
+const Color _kGlassMenuBg = Color(0xE6EAF2F9);
 const Color _kFilterAccent = Color(0xFF4F8E8C);
 const Color _kFilterAccentSoft = Color(0xFFE2EEEC);
 const double _kCommentColW = 230;
@@ -400,6 +401,139 @@ Future<T?> _showSearchablePickerDialog<T>(
   );
 }
 
+Future<DateTime?> _showGlassDatePickerDialog(
+  BuildContext context, {
+  required DateTime initialDate,
+  required DateTime firstDate,
+  required DateTime lastDate,
+}) {
+  DateTime tempDate = DateUtils.dateOnly(initialDate);
+
+  DateTime clampDate(DateTime value) {
+    if (value.isBefore(firstDate)) return firstDate;
+    if (value.isAfter(lastDate)) return lastDate;
+    return value;
+  }
+
+  void moveDateByDays(void Function(void Function()) setInnerState, int days) {
+    setInnerState(() {
+      tempDate = DateUtils.dateOnly(
+        clampDate(tempDate.add(Duration(days: days))),
+      );
+    });
+  }
+
+  void deferredPop(BuildContext ctx, [DateTime? value]) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!ctx.mounted) return;
+      Navigator.of(ctx).pop(value);
+    });
+  }
+
+  return showDialog<DateTime>(
+    context: context,
+    barrierColor: Colors.black.withOpacity(0.28),
+    builder: (dialogContext) {
+      return StatefulBuilder(
+        builder: (innerContext, setInnerState) {
+          return FocusScope(
+            autofocus: true,
+            child: Focus(
+              autofocus: true,
+              onKeyEvent: (_, event) {
+                if (event is! KeyDownEvent) {
+                  return KeyEventResult.ignored;
+                }
+                final key = event.logicalKey;
+                if (key == LogicalKeyboardKey.escape) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  deferredPop(dialogContext);
+                  return KeyEventResult.handled;
+                }
+                if (key == LogicalKeyboardKey.arrowLeft) {
+                  moveDateByDays(setInnerState, -1);
+                  return KeyEventResult.handled;
+                }
+                if (key == LogicalKeyboardKey.arrowRight) {
+                  moveDateByDays(setInnerState, 1);
+                  return KeyEventResult.handled;
+                }
+                if (key == LogicalKeyboardKey.arrowUp) {
+                  moveDateByDays(setInnerState, -7);
+                  return KeyEventResult.handled;
+                }
+                if (key == LogicalKeyboardKey.arrowDown) {
+                  moveDateByDays(setInnerState, 7);
+                  return KeyEventResult.handled;
+                }
+                if (key == LogicalKeyboardKey.enter ||
+                    key == LogicalKeyboardKey.numpadEnter) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  deferredPop(dialogContext, DateUtils.dateOnly(tempDate));
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: Theme(
+                data: Theme.of(innerContext).copyWith(
+                  colorScheme: Theme.of(innerContext).colorScheme.copyWith(
+                    primary: const Color(0xFF6A99C7),
+                    onPrimary: Colors.white,
+                    surface: const Color(0xFFEAF2F9),
+                  ),
+                ),
+                child: AlertDialog(
+                  backgroundColor: const Color(0xFFEAF2F9).withOpacity(0.98),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: const Color(0xFF8AA9C2).withOpacity(0.42),
+                    ),
+                  ),
+                  title: const Text('Selecciona fecha'),
+                  content: SizedBox(
+                    width: 320,
+                    child: CalendarDatePicker(
+                      key: ValueKey<DateTime>(tempDate),
+                      initialDate: tempDate,
+                      firstDate: firstDate,
+                      lastDate: lastDate,
+                      onDateChanged: (d) {
+                        setInnerState(() {
+                          tempDate = DateUtils.dateOnly(d);
+                        });
+                      },
+                    ),
+                  ),
+                  actions: [
+                    TextButton(
+                      style: TextButton.styleFrom(
+                        foregroundColor: const Color(0xFF2D5478),
+                      ),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      child: const Text('Cancelar'),
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: const Color(0xFF6A99C7),
+                        foregroundColor: Colors.white,
+                      ),
+                      onPressed: () => Navigator.of(
+                        dialogContext,
+                      ).pop(DateUtils.dateOnly(tempDate)),
+                      child: const Text('Aceptar'),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
 class _SearchablePickerDialog<T> extends StatefulWidget {
   final String title;
   final List<_PickerOption<T>> options;
@@ -459,183 +593,223 @@ class _SearchablePickerDialogState<T>
       child: ConstrainedBox(
         constraints: BoxConstraints(maxWidth: 420, maxHeight: maxDialogHeight),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFE7F1F8),
-              borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: const Color(0xFF0B72FF).withOpacity(0.25),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.08),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
+          borderRadius: BorderRadius.circular(20),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    const Color(0xFF9CC7E5).withOpacity(0.44),
+                    const Color(0xFFDDEAF5).withOpacity(0.40),
+                    const Color(0xFF8BE0CF).withOpacity(0.30),
+                  ],
                 ),
-              ],
-            ),
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.title,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0B2B2B),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: Colors.white.withOpacity(0.72)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.12),
+                    blurRadius: 22,
+                    offset: const Offset(0, 10),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Focus(
-                  onKeyEvent: (_, event) {
-                    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                    if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
-                        _itemFocusNodes.isNotEmpty) {
-                      _itemFocusNodes.first.requestFocus();
-                      return KeyEventResult.handled;
-                    }
-                    return KeyEventResult.ignored;
-                  },
-                  child: Shortcuts(
-                    shortcuts: const <ShortcutActivator, Intent>{
-                      SingleActivator(LogicalKeyboardKey.arrowDown):
-                          _FocusFirstPickerItemIntent(),
+                ],
+              ),
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    widget.title,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF0B2B2B),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Focus(
+                    onKeyEvent: (_, event) {
+                      if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                      if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+                          _itemFocusNodes.isNotEmpty) {
+                        _itemFocusNodes.first.requestFocus();
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
                     },
-                    child: Actions(
-                      actions: <Type, Action<Intent>>{
-                        _FocusFirstPickerItemIntent:
-                            CallbackAction<_FocusFirstPickerItemIntent>(
-                              onInvoke: (_) {
-                                if (_itemFocusNodes.isNotEmpty) {
-                                  _itemFocusNodes.first.requestFocus();
-                                }
-                                return null;
-                              },
-                            ),
+                    child: Shortcuts(
+                      shortcuts: const <ShortcutActivator, Intent>{
+                        SingleActivator(LogicalKeyboardKey.arrowDown):
+                            _FocusFirstPickerItemIntent(),
                       },
-                      child: TextField(
-                        focusNode: _searchFocusNode,
-                        autofocus: true,
-                        decoration: _glassFieldDecoration(
-                          hintText: 'Buscar...',
+                      child: Actions(
+                        actions: <Type, Action<Intent>>{
+                          _FocusFirstPickerItemIntent:
+                              CallbackAction<_FocusFirstPickerItemIntent>(
+                                onInvoke: (_) {
+                                  if (_itemFocusNodes.isNotEmpty) {
+                                    _itemFocusNodes.first.requestFocus();
+                                  }
+                                  return null;
+                                },
+                              ),
+                        },
+                        child: TextField(
+                          focusNode: _searchFocusNode,
+                          autofocus: true,
+                          decoration: _glassFieldDecoration(
+                            hintText: 'Buscar...',
+                          ),
+                          onChanged: (v) => setState(() => _query = v),
                         ),
-                        onChanged: (v) => setState(() => _query = v),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(height: 8),
-                Expanded(
-                  child: filtered.isEmpty
-                      ? const Center(
-                          child: Text(
-                            'Sin resultados',
-                            style: TextStyle(fontWeight: FontWeight.w600),
-                          ),
-                        )
-                      : ListView.builder(
-                          itemCount: filtered.length,
-                          itemBuilder: (_, i) {
-                            final option = filtered[i];
-                            final selected =
-                                option.value == widget.initialValue;
-                            final active =
-                                _hoveredIndex == i || _focusedIndex == i;
-                            return Focus(
-                              focusNode: _itemFocusNodes[i],
-                              onFocusChange: (hasFocus) {
-                                if (!mounted) return;
-                                setState(() {
-                                  if (hasFocus) {
-                                    _focusedIndex = i;
-                                  } else if (_focusedIndex == i) {
-                                    _focusedIndex = null;
-                                  }
-                                });
-                              },
-                              onKeyEvent: (_, event) {
-                                if (event is! KeyDownEvent) {
-                                  return KeyEventResult.ignored;
-                                }
-                                final key = event.logicalKey;
-                                if (key == LogicalKeyboardKey.arrowUp) {
-                                  if (i == 0) {
-                                    _searchFocusNode.requestFocus();
-                                  } else {
-                                    _itemFocusNodes[i - 1].requestFocus();
-                                  }
-                                  return KeyEventResult.handled;
-                                }
-                                if (key == LogicalKeyboardKey.arrowDown &&
-                                    i < _itemFocusNodes.length - 1) {
-                                  _itemFocusNodes[i + 1].requestFocus();
-                                  return KeyEventResult.handled;
-                                }
-                                if (key == LogicalKeyboardKey.enter ||
-                                    key == LogicalKeyboardKey.numpadEnter ||
-                                    key == LogicalKeyboardKey.space) {
-                                  Navigator.pop(context, option.value);
-                                  return KeyEventResult.handled;
-                                }
-                                return KeyEventResult.ignored;
-                              },
-                              child: MouseRegion(
-                                onEnter: (_) =>
-                                    setState(() => _hoveredIndex = i),
-                                onExit: (_) {
-                                  if (_hoveredIndex == i) {
-                                    setState(() => _hoveredIndex = null);
-                                  }
+                  const SizedBox(height: 8),
+                  Expanded(
+                    child: filtered.isEmpty
+                        ? const Center(
+                            child: Text(
+                              'Sin resultados',
+                              style: TextStyle(fontWeight: FontWeight.w600),
+                            ),
+                          )
+                        : ListView.builder(
+                            itemCount: filtered.length,
+                            itemBuilder: (_, i) {
+                              final option = filtered[i];
+                              final selected =
+                                  option.value == widget.initialValue;
+                              final active =
+                                  _hoveredIndex == i || _focusedIndex == i;
+                              return Focus(
+                                focusNode: _itemFocusNodes[i],
+                                onFocusChange: (hasFocus) {
+                                  if (!mounted) return;
+                                  setState(() {
+                                    if (hasFocus) {
+                                      _focusedIndex = i;
+                                    } else if (_focusedIndex == i) {
+                                      _focusedIndex = null;
+                                    }
+                                  });
                                 },
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 90),
-                                  margin: const EdgeInsets.symmetric(
-                                    vertical: 1,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: active
-                                        ? const Color(0xFFD9ECFA)
-                                        : Colors.transparent,
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
+                                onKeyEvent: (_, event) {
+                                  if (event is! KeyDownEvent) {
+                                    return KeyEventResult.ignored;
+                                  }
+                                  final key = event.logicalKey;
+                                  if (key == LogicalKeyboardKey.arrowUp) {
+                                    if (i == 0) {
+                                      _searchFocusNode.requestFocus();
+                                    } else {
+                                      _itemFocusNodes[i - 1].requestFocus();
+                                    }
+                                    return KeyEventResult.handled;
+                                  }
+                                  if (key == LogicalKeyboardKey.arrowDown &&
+                                      i < _itemFocusNodes.length - 1) {
+                                    _itemFocusNodes[i + 1].requestFocus();
+                                    return KeyEventResult.handled;
+                                  }
+                                  if (key == LogicalKeyboardKey.enter ||
+                                      key == LogicalKeyboardKey.numpadEnter ||
+                                      key == LogicalKeyboardKey.space) {
+                                    Navigator.pop(context, option.value);
+                                    return KeyEventResult.handled;
+                                  }
+                                  return KeyEventResult.ignored;
+                                },
+                                child: MouseRegion(
+                                  onEnter: (_) =>
+                                      setState(() => _hoveredIndex = i),
+                                  onExit: (_) {
+                                    if (_hoveredIndex == i) {
+                                      setState(() => _hoveredIndex = null);
+                                    }
+                                  },
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 60),
+                                    curve: Curves.easeOutCubic,
+                                    margin: const EdgeInsets.symmetric(
+                                      vertical: 2,
+                                      horizontal: 2,
+                                    ),
+                                    decoration: BoxDecoration(
                                       color: active
                                           ? const Color(
-                                              0xFF0B72FF,
-                                            ).withOpacity(0.75)
+                                              0xFFA9E8CF,
+                                            ).withOpacity(0.48)
                                           : Colors.transparent,
-                                      width: active ? 1.1 : 1,
-                                    ),
-                                  ),
-                                  child: ListTile(
-                                    dense: true,
-                                    selected: selected,
-                                    shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: active
+                                            ? const Color(
+                                                0xFF0B72FF,
+                                              ).withOpacity(0.56)
+                                            : Colors.transparent,
+                                        width: active ? 1.0 : 0.8,
+                                      ),
+                                      boxShadow: active
+                                          ? [
+                                              BoxShadow(
+                                                color: const Color(
+                                                  0xFF75C8A5,
+                                                ).withOpacity(0.22),
+                                                blurRadius: 10,
+                                                offset: const Offset(0, 3),
+                                              ),
+                                            ]
+                                          : const [],
                                     ),
-                                    title: Text(
-                                      option.label,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        border: Border(
+                                          bottom: BorderSide(
+                                            color: Colors.white.withOpacity(
+                                              0.40,
+                                            ),
+                                            width: 1,
+                                          ),
+                                        ),
+                                      ),
+                                      child: ListTile(
+                                        dense: true,
+                                        selected: selected,
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                        ),
+                                        title: Text(
+                                          option.label,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        trailing: selected
+                                            ? const Icon(
+                                                Icons.check,
+                                                size: 16,
+                                                color: Color(0xFF0B72FF),
+                                              )
+                                            : null,
+                                        onTap: () => Navigator.pop(
+                                          context,
+                                          option.value,
+                                        ),
+                                      ),
                                     ),
-                                    trailing: selected
-                                        ? const Icon(
-                                            Icons.check,
-                                            size: 16,
-                                            color: Color(0xFF0B72FF),
-                                          )
-                                        : null,
-                                    onTap: () =>
-                                        Navigator.pop(context, option.value),
                                   ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-              ],
+                              );
+                            },
+                          ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -888,6 +1062,9 @@ class _ServicesPageState extends State<ServicesPage>
   final FocusNode _insertFocusNode = FocusNode(debugLabel: 'insert_row_focus');
   final FocusNode _rowsFocusNode = FocusNode(debugLabel: 'services_rows_focus');
   final ScrollController _rowsScrollController = ScrollController();
+  final GlobalKey _rowsViewportKey = GlobalKey(
+    debugLabel: 'services_rows_viewport',
+  );
   final Map<String, GlobalKey<_ServiceDataRowState>> _rowKeys =
       <String, GlobalKey<_ServiceDataRowState>>{};
   final Map<String, Set<String>> _columnValueFilters = <String, Set<String>>{};
@@ -895,7 +1072,11 @@ class _ServicesPageState extends State<ServicesPage>
       <String, DateTimeRange>{};
   RealtimeChannel? _servicesRealtimeChannel;
   Timer? _autoRefreshTimer;
+  Timer? _deferredRefreshTimer;
   bool _refreshingRows = false;
+  bool _refreshQueued = false;
+  DateTime? _lastBackgroundRefreshAt;
+  String _rowsSnapshotSignature = '';
   // ===== catálogos (para dropdowns) =====
   bool _loadingCats = true;
   List<_Opt> _clients = []; // sites type='cliente'
@@ -931,11 +1112,17 @@ class _ServicesPageState extends State<ServicesPage>
   int _currentPage = 0;
   int _pageSize = 40;
   bool _exportingCsv = false;
-
-  bool get _canInsert =>
-      _draft.serviceDate != null &&
-      _draft.clientId != null &&
-      _draft.materialId != null;
+  bool _marqueeActive = false;
+  Offset? _marqueeStartLocal;
+  Offset? _marqueePointerLocal;
+  Offset? _marqueeStartContent;
+  Offset? _marqueeCurrentContent;
+  bool _marqueeAdditive = false;
+  Set<String> _marqueeBaseSelection = <String>{};
+  Timer? _marqueeAutoScrollTimer;
+  double _marqueeAutoScrollVelocity = 0;
+  static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
+  static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
 
   // ===== inline insert (fila superior) =====
   late _ServiceDraft _draft;
@@ -953,6 +1140,8 @@ class _ServicesPageState extends State<ServicesPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _autoRefreshTimer?.cancel();
+    _deferredRefreshTimer?.cancel();
+    _marqueeAutoScrollTimer?.cancel();
     _servicesRealtimeChannel?.unsubscribe();
     _insertFocusNode.removeListener(_syncInsertRowFocusState);
     _draftNotesFocusNode.removeListener(_syncInsertRowFocusState);
@@ -984,7 +1173,7 @@ class _ServicesPageState extends State<ServicesPage>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _refreshRowsIfIdle();
+      _refreshRowsIfIdle(force: true);
     }
   }
 
@@ -1014,14 +1203,87 @@ class _ServicesPageState extends State<ServicesPage>
         .subscribe();
   }
 
-  Future<void> _refreshRowsIfIdle() async {
+  bool get _hasDraftChanges =>
+      _draft.serviceDate != null ||
+      _draft.dueDate != null ||
+      _draft.direction != null ||
+      _draft.status != null ||
+      _draft.clientId != null ||
+      _draft.materialId != null ||
+      _draft.driverEmployeeId != null ||
+      _draft.vehicleId != null ||
+      _draft.notes.trim().isNotEmpty;
+
+  bool get _hasRowsInEditingState {
+    if (_gridEditMode) return true;
+    for (final key in _rowKeys.values) {
+      if (key.currentState?.isEditing ?? false) return true;
+    }
+    return false;
+  }
+
+  bool get _shouldDeferBackgroundRefresh =>
+      _insertRowActive || _hasDraftChanges || _hasRowsInEditingState;
+
+  String _rowsSignature(List<Map<String, dynamic>> rows) => jsonEncode(rows);
+
+  void _queueDeferredBackgroundRefresh([Duration? delay]) {
+    if (!mounted) return;
+    _refreshQueued = true;
+    _deferredRefreshTimer?.cancel();
+    _deferredRefreshTimer = Timer(delay ?? _backgroundRefreshRetryDelay, () {
+      _deferredRefreshTimer = null;
+      unawaited(_refreshRowsIfIdle());
+    });
+  }
+
+  Future<void> _refreshRowsIfIdle({bool force = false}) async {
     if (!mounted || _refreshingRows) return;
+    if (!force && _shouldDeferBackgroundRefresh) {
+      _queueDeferredBackgroundRefresh();
+      return;
+    }
+    if (!force && _lastBackgroundRefreshAt != null) {
+      final elapsed = DateTime.now().difference(_lastBackgroundRefreshAt!);
+      if (elapsed < _backgroundRefreshMinGap) {
+        _queueDeferredBackgroundRefresh(_backgroundRefreshMinGap - elapsed);
+        return;
+      }
+    }
     _refreshingRows = true;
     try {
-      await _loadRows(showLoader: false);
+      await _loadRows(showLoader: false, onlyApplyIfChanged: true);
+      _lastBackgroundRefreshAt = DateTime.now();
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        _refreshQueued = false;
+      } else if (_refreshQueued) {
+        _queueDeferredBackgroundRefresh();
+      }
     } finally {
       _refreshingRows = false;
     }
+  }
+
+  Future<void> _goToEntriesAndOutputs() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const InventoryPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToProduction() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const InventoryProductionPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
   }
 
   Future<void> _loadCatalogs() async {
@@ -1032,12 +1294,14 @@ class _ServicesPageState extends State<ServicesPage>
         .from('sites')
         .select('id,name,type')
         .eq('type', 'cliente')
+        .eq('is_active', true)
         .order('name');
 
     // MATERIALES (área LOGISTICA) -> join via materials + areas
     final mats = await supa
         .from('materials')
         .select('id,name,areas(name)')
+        .eq('is_active', true)
         .eq('areas.name', 'LOGISTICA')
         .order('name');
 
@@ -1112,7 +1376,10 @@ class _ServicesPageState extends State<ServicesPage>
     _activeInsertColumn = 0;
   }
 
-  Future<void> _loadRows({bool showLoader = true}) async {
+  Future<bool> _loadRows({
+    bool showLoader = true,
+    bool onlyApplyIfChanged = false,
+  }) async {
     if (showLoader) {
       setState(() => _loadingRows = true);
     }
@@ -1124,6 +1391,13 @@ class _ServicesPageState extends State<ServicesPage>
         .order('created_at', ascending: false);
 
     final nextRows = (data as List).cast<Map<String, dynamic>>();
+    final nextSignature = _rowsSignature(nextRows);
+    if (onlyApplyIfChanged && nextSignature == _rowsSnapshotSignature) {
+      if (showLoader && mounted) {
+        setState(() => _loadingRows = false);
+      }
+      return false;
+    }
     final ids = nextRows.map((r) => r['id'] as String).toSet();
     final visibleIds = nextRows
         .where((r) => _matchesFilters(r))
@@ -1137,11 +1411,13 @@ class _ServicesPageState extends State<ServicesPage>
 
     setState(() {
       _rows = nextRows;
+      _rowsSnapshotSignature = nextSignature;
       _selectedRowId = nextSelected;
       _bulkSelectedRowIds.removeWhere((id) => !ids.contains(id));
       _clampCurrentPage();
       if (showLoader) _loadingRows = false;
     });
+    return true;
   }
 
   GlobalKey<_ServiceDataRowState> _rowKeyFor(String id) {
@@ -1252,7 +1528,8 @@ class _ServicesPageState extends State<ServicesPage>
   }
 
   Future<void> _deleteSelectedRows() async {
-    if (_bulkSelectedRowIds.isEmpty) {
+    final selectedIds = _currentSelectionIds();
+    if (selectedIds.isEmpty) {
       _toast('Selecciona al menos una fila');
       return;
     }
@@ -1261,17 +1538,18 @@ class _ServicesPageState extends State<ServicesPage>
       context,
       title: 'Eliminar seleccionados',
       content:
-          '¿Seguro que deseas eliminar ${_bulkSelectedRowIds.length} servicio(s)?',
+          '¿Seguro que deseas eliminar ${_fmtCountInt(selectedIds.length)} servicio(s)?',
       confirmText: 'Eliminar',
     );
     if (ok != true) return;
 
     setState(() => _bulkDeleting = true);
     try {
-      final ids = _bulkSelectedRowIds.toList();
+      final ids = selectedIds.toList();
       await supa.from('services').delete().inFilter('id', ids);
+      _selectedRowId = null;
       _bulkSelectedRowIds.clear();
-      _toast('Eliminados ${ids.length} servicio(s)');
+      _toast('Eliminados ${_fmtCountInt(ids.length)} servicio(s)');
       await _loadRows();
     } finally {
       if (mounted) {
@@ -1494,7 +1772,7 @@ class _ServicesPageState extends State<ServicesPage>
     final initialSelected = {...(_columnValueFilters[columnId] ?? <String>{})};
 
     final result = await showDialog<_FilterDialogResult>(
-      context: this.context,
+      context: context,
       builder: (dialogContext) {
         final localSelected = <String>{...initialSelected};
         String localSearch = '';
@@ -1712,6 +1990,192 @@ class _ServicesPageState extends State<ServicesPage>
       curve: Curves.easeOutCubic,
       alignmentPolicy: alignmentPolicy,
     );
+  }
+
+  double get _rowsScrollOffset =>
+      _rowsScrollController.hasClients ? _rowsScrollController.offset : 0;
+
+  Offset _localToContent(Offset local) =>
+      Offset(local.dx, local.dy + _rowsScrollOffset);
+
+  Rect _marqueeRectContent() {
+    final start = _marqueeStartContent ?? Offset.zero;
+    final current = _marqueeCurrentContent ?? start;
+    return Rect.fromPoints(start, current);
+  }
+
+  Rect _marqueeRectForPaint() =>
+      _marqueeRectContent().shift(Offset(0, -_rowsScrollOffset));
+
+  Rect _clampRectToViewport(Rect rectViewport) {
+    final viewportContext = _rowsViewportKey.currentContext;
+    final viewportBox = viewportContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null) return rectViewport;
+    final width = viewportBox.size.width;
+    final height = viewportBox.size.height;
+    final left = rectViewport.left.clamp(0.0, width).toDouble();
+    final top = rectViewport.top.clamp(0.0, height).toDouble();
+    final right = rectViewport.right.clamp(0.0, width).toDouble();
+    final bottom = rectViewport.bottom.clamp(0.0, height).toDouble();
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  Set<String> _marqueeIntersectedIds(Rect rectContent) {
+    final viewportContext = _rowsViewportKey.currentContext;
+    final viewportBox = viewportContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null) return const <String>{};
+
+    final scrollOffset = _rowsScrollOffset;
+    final hits = <String>{};
+    for (final row in _visibleRows) {
+      final id = row['id'] as String;
+      final rowContext = _rowKeyFor(id).currentContext;
+      final rowBox = rowContext?.findRenderObject() as RenderBox?;
+      if (rowBox == null || !rowBox.hasSize) continue;
+      final rowTopLeftGlobal = rowBox.localToGlobal(Offset.zero);
+      final rowTopLeftViewport = viewportBox.globalToLocal(rowTopLeftGlobal);
+      final viewportRect = Rect.fromLTWH(
+        rowTopLeftViewport.dx,
+        rowTopLeftViewport.dy,
+        rowBox.size.width,
+        rowBox.size.height,
+      );
+      final rowRectContent = viewportRect.shift(Offset(0, scrollOffset));
+      if (rowRectContent.overlaps(rectContent)) {
+        hits.add(id);
+      }
+    }
+    return hits;
+  }
+
+  void _applyMarqueeSelection() {
+    if (!_marqueeActive) return;
+    final rect = _marqueeRectContent();
+    final hit = _marqueeIntersectedIds(rect);
+    final next = _marqueeAdditive ? ({..._marqueeBaseSelection, ...hit}) : hit;
+    if (!mounted) return;
+    setState(() {
+      if (next.isEmpty) {
+        _selectedRowId = null;
+        _bulkSelectedRowIds.clear();
+        return;
+      }
+      String? primary;
+      if (_selectedRowId != null && next.contains(_selectedRowId)) {
+        primary = _selectedRowId;
+      } else {
+        for (final row in _visibleRows) {
+          final id = row['id'] as String;
+          if (next.contains(id)) {
+            primary = id;
+            break;
+          }
+        }
+      }
+      _selectedRowId = primary;
+      _bulkSelectedRowIds
+        ..clear()
+        ..addAll(next);
+    });
+  }
+
+  void _syncMarqueeAutoScroll() {
+    final viewportContext = _rowsViewportKey.currentContext;
+    final viewportBox = viewportContext?.findRenderObject() as RenderBox?;
+    if (!_marqueeActive ||
+        _marqueePointerLocal == null ||
+        viewportBox == null) {
+      _marqueeAutoScrollVelocity = 0;
+      _marqueeAutoScrollTimer?.cancel();
+      _marqueeAutoScrollTimer = null;
+      return;
+    }
+    if (!_rowsScrollController.hasClients) {
+      _marqueeAutoScrollVelocity = 0;
+      return;
+    }
+    const edge = 64.0;
+    const maxVelocity = 18.0;
+    final h = viewportBox.size.height;
+    final y = _marqueePointerLocal!.dy;
+    if (y < edge) {
+      _marqueeAutoScrollVelocity = -((edge - y) / edge) * maxVelocity;
+    } else if (y > h - edge) {
+      _marqueeAutoScrollVelocity = ((y - (h - edge)) / edge) * maxVelocity;
+    } else {
+      _marqueeAutoScrollVelocity = 0;
+    }
+    if (_marqueeAutoScrollVelocity == 0) {
+      _marqueeAutoScrollTimer?.cancel();
+      _marqueeAutoScrollTimer = null;
+      return;
+    }
+    _marqueeAutoScrollTimer ??= Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _tickMarqueeAutoScroll(),
+    );
+  }
+
+  void _tickMarqueeAutoScroll() {
+    if (!_marqueeActive ||
+        _marqueeAutoScrollVelocity == 0 ||
+        !_rowsScrollController.hasClients) {
+      _marqueeAutoScrollTimer?.cancel();
+      _marqueeAutoScrollTimer = null;
+      return;
+    }
+    final pos = _rowsScrollController.position;
+    final next = (pos.pixels + _marqueeAutoScrollVelocity).clamp(
+      pos.minScrollExtent,
+      pos.maxScrollExtent,
+    );
+    if (next == pos.pixels) return;
+    _rowsScrollController.jumpTo(next.toDouble());
+    if (_marqueePointerLocal != null) {
+      _marqueeCurrentContent = _localToContent(_marqueePointerLocal!);
+      _applyMarqueeSelection();
+      if (mounted) setState(() {});
+    }
+  }
+
+  void _startMarqueeSelection(Offset local) {
+    _marqueeStartLocal = local;
+    _marqueePointerLocal = local;
+    _marqueeStartContent = _localToContent(local);
+    _marqueeCurrentContent = _marqueeStartContent;
+    _marqueeAdditive = _isCtrlOrCmdPressed();
+    _marqueeBaseSelection = _currentSelectionIds();
+    _marqueeActive = false;
+  }
+
+  void _updateMarqueeSelection(Offset local) {
+    if (_marqueeStartLocal == null) return;
+    _marqueePointerLocal = local;
+    _marqueeCurrentContent = _localToContent(local);
+    final shouldActivate = (local - _marqueeStartLocal!).distance > 6;
+    if (!shouldActivate && !_marqueeActive) return;
+    if (!_marqueeActive && mounted) {
+      setState(() => _marqueeActive = true);
+    }
+    _applyMarqueeSelection();
+    _syncMarqueeAutoScroll();
+  }
+
+  void _endMarqueeSelection() {
+    _marqueeAutoScrollVelocity = 0;
+    _marqueeAutoScrollTimer?.cancel();
+    _marqueeAutoScrollTimer = null;
+    _marqueeStartLocal = null;
+    _marqueePointerLocal = null;
+    _marqueeStartContent = null;
+    _marqueeCurrentContent = null;
+    _marqueeAdditive = false;
+    _marqueeBaseSelection = <String>{};
+    if (_marqueeActive && mounted) {
+      setState(() => _marqueeActive = false);
+    } else {
+      _marqueeActive = false;
+    }
   }
 
   void _selectRow(
@@ -2027,11 +2491,225 @@ class _ServicesPageState extends State<ServicesPage>
     unawaited(states.first.deleteWithConfirmation());
   }
 
+  List<MapEntry<String, String>> _rowContextActions() {
+    final states = _selectedRowStates();
+    final multiContext = _hasExplicitMultiSelection;
+    final anyEditing = states.any((s) => s.isEditing);
+    if (multiContext) {
+      return <MapEntry<String, String>>[
+        if (!anyEditing) const MapEntry('edit', 'EDITAR SELECCION'),
+        if (anyEditing) ...const [
+          MapEntry('save', 'GUARDAR SELECCION'),
+          MapEntry('cancel', 'CANCELAR SELECCION'),
+        ],
+        const MapEntry('delete', 'ELIMINAR SELECCION'),
+      ];
+    }
+    return <MapEntry<String, String>>[
+      if (!anyEditing) const MapEntry('edit', 'EDITAR'),
+      if (anyEditing) ...const [
+        MapEntry('save', 'ACTUALIZAR'),
+        MapEntry('cancel', 'CANCELAR'),
+      ],
+      const MapEntry('delete', 'ELIMINAR'),
+    ];
+  }
+
+  Future<String?> _showRowsContextMenu(Offset globalPosition) {
+    final actions = _rowContextActions();
+    final mediaSize = MediaQuery.of(context).size;
+    const menuWidth = 228.0;
+    final left = globalPosition.dx.clamp(
+      8.0,
+      mediaSize.width - menuWidth - 8.0,
+    );
+    final top = globalPosition.dy.clamp(8.0, mediaSize.height - 8.0);
+    return showGeneralDialog<String>(
+      context: context,
+      barrierLabel: 'context_menu',
+      barrierColor: Colors.transparent,
+      barrierDismissible: true,
+      transitionDuration: const Duration(milliseconds: 90),
+      pageBuilder: (dialogContext, _, __) {
+        int? hoveredIndex;
+        return Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                onTap: () => Navigator.of(dialogContext).pop(),
+                behavior: HitTestBehavior.translucent,
+              ),
+            ),
+            Positioned(
+              left: left.toDouble(),
+              top: top.toDouble(),
+              child: StatefulBuilder(
+                builder: (context, setMenuState) {
+                  return Focus(
+                    autofocus: true,
+                    onKeyEvent: (_, event) {
+                      if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                      if (event.logicalKey == LogicalKeyboardKey.escape) {
+                        Navigator.of(dialogContext).pop();
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(18),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+                        child: Container(
+                          width: menuWidth,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: const Color(0xE6EAF2F9),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: Colors.white.withOpacity(0.72),
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withOpacity(0.18),
+                                blurRadius: 20,
+                                offset: const Offset(0, 10),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (var i = 0; i < actions.length; i++) ...[
+                                MouseRegion(
+                                  onEnter: (_) =>
+                                      setMenuState(() => hoveredIndex = i),
+                                  onExit: (_) {
+                                    if (hoveredIndex == i) {
+                                      setMenuState(() => hoveredIndex = null);
+                                    }
+                                  },
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTap: () => Navigator.of(
+                                      dialogContext,
+                                    ).pop(actions[i].key),
+                                    child: AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 80,
+                                      ),
+                                      curve: Curves.easeOutCubic,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 12,
+                                        vertical: 10,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: hoveredIndex == i
+                                            ? const Color(
+                                                0xFFA9E8CF,
+                                              ).withOpacity(0.55)
+                                            : Colors.transparent,
+                                        borderRadius: BorderRadius.circular(12),
+                                        boxShadow: hoveredIndex == i
+                                            ? [
+                                                BoxShadow(
+                                                  color: const Color(
+                                                    0xFF75C8A5,
+                                                  ).withOpacity(0.30),
+                                                  blurRadius: 10,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                              ]
+                                            : const [],
+                                      ),
+                                      child: Text(
+                                        actions[i].value,
+                                        style: TextStyle(
+                                          fontSize: 13.5,
+                                          fontWeight: FontWeight.w800,
+                                          color: actions[i].key == 'delete'
+                                              ? const Color(0xFF8A1F1F)
+                                              : const Color(0xFF1C3E5D),
+                                          decoration: TextDecoration.none,
+                                          decorationColor: Colors.transparent,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                if (i != actions.length - 1)
+                                  Divider(
+                                    height: 1,
+                                    thickness: 1,
+                                    color: Colors.white.withOpacity(0.44),
+                                  ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _openRowsContextMenuAt(
+    Offset globalPosition, {
+    String? rowId,
+  }) async {
+    if (rowId != null && !_currentSelectionIds().contains(rowId)) {
+      _selectRow(
+        rowId,
+        allowToggle: false,
+        additive: false,
+        ensureVisible: false,
+      );
+    }
+    final choice = await _showRowsContextMenu(globalPosition);
+    if (choice == null || !mounted) return;
+    final states = _selectedRowStates();
+    switch (choice) {
+      case 'edit':
+        if (states.isEmpty) return;
+        setState(() => _activeGridColumn = 0);
+        for (final state in states) {
+          state.startEditingFromKeyboard();
+        }
+        return;
+      case 'save':
+        if (states.isEmpty) return;
+        await Future.wait(states.map((s) => s.saveFromKeyboard()));
+        return;
+      case 'cancel':
+        if (states.isEmpty) return;
+        for (final state in states) {
+          state.cancelEditingFromKeyboard();
+        }
+        return;
+      case 'delete':
+        _handleDeleteOnSelectedRow();
+        return;
+      default:
+        return;
+    }
+  }
+
   Future<void> _insertDraft() async {
-    if (_draft.serviceDate == null ||
-        _draft.clientId == null ||
-        _draft.materialId == null) {
-      _toast('Completa FECHA, EMPRESA y MATERIAL');
+    final missing = <String>[];
+    if (_draft.serviceDate == null) missing.add('Fecha');
+    if (_draft.clientId == null) missing.add('Empresa');
+    if (_draft.materialId == null) missing.add('Material');
+    if (missing.isNotEmpty) {
+      await _showInsertMissingFieldsDialog(missing);
       return;
     }
 
@@ -2059,6 +2737,73 @@ class _ServicesPageState extends State<ServicesPage>
       if (!mounted) return;
       _insertFocusNode.requestFocus();
     });
+  }
+
+  Future<void> _showInsertMissingFieldsDialog(List<String> missing) async {
+    final detail = missing.join(', ');
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withOpacity(0.28),
+      builder: (dialogContext) => Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+                decoration: BoxDecoration(
+                  color: const Color(0xE6EAF2F9),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: Colors.white.withOpacity(0.72)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.14),
+                      blurRadius: 18,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'No se puede agregar',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF173248),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'Completa estos campos primero: $detail',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF1F3C54),
+                        height: 1.25,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: FilledButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(),
+                        child: const Text('Entendido'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _deleteRow(String id) async {
@@ -2094,6 +2839,63 @@ class _ServicesPageState extends State<ServicesPage>
     final mm = d.month.toString().padLeft(2, '0');
     final dd = d.day.toString().padLeft(2, '0');
     return '$dd/$mm/$yy';
+  }
+
+  String _fmtCountInt(int value) {
+    final raw = value.toString();
+    final sign = raw.startsWith('-') ? '-' : '';
+    final digits = sign.isEmpty ? raw : raw.substring(1);
+    final sb = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      final idxFromEnd = digits.length - i;
+      sb.write(digits[i]);
+      if (idxFromEnd > 1 && idxFromEnd % 3 == 1) {
+        sb.write(',');
+      }
+    }
+    return '$sign$sb';
+  }
+
+  String _fmtKg(num value, {int decimals = 2}) {
+    final fixed = value.toStringAsFixed(decimals);
+    final parts = fixed.split('.');
+    final whole = _fmtCountInt(int.tryParse(parts[0]) ?? 0);
+    if (decimals <= 0 || parts.length < 2) return whole;
+    return '$whole.${parts[1]}';
+  }
+
+  double _numFromAny(dynamic raw) {
+    if (raw is num) return raw.toDouble();
+    final parsed = double.tryParse(raw?.toString() ?? '');
+    return parsed ?? 0;
+  }
+
+  Set<String> _currentSelectionIds() {
+    final ids = <String>{};
+    final primary = _selectedRowId;
+    if (primary != null) ids.add(primary);
+    ids.addAll(_bulkSelectedRowIds);
+    return ids;
+  }
+
+  int get _selectedCount => _currentSelectionIds().length;
+
+  double get _selectedWeightSum {
+    final ids = _currentSelectionIds();
+    if (ids.isEmpty) return 0;
+    var sum = 0.0;
+    for (final row in _visibleRows) {
+      final id = row['id'] as String;
+      if (!ids.contains(id)) continue;
+      sum += _numFromAny(row['weight_kg']);
+    }
+    return sum;
+  }
+
+  double get _selectedWeightAvg {
+    final count = _selectedCount;
+    if (count == 0) return 0;
+    return _selectedWeightSum / count;
   }
 
   DateTime _parseDate(dynamic v) {
@@ -2259,128 +3061,11 @@ class _ServicesPageState extends State<ServicesPage>
   }
 
   Future<DateTime?> _pickInlineDate(DateTime? current) async {
-    DateTime tempDate = current ?? DateUtils.dateOnly(DateTime.now());
-    final firstDate = DateTime(2024, 1, 1);
-    final lastDate = DateTime(2035, 12, 31);
-
-    DateTime clampDate(DateTime value) {
-      if (value.isBefore(firstDate)) return firstDate;
-      if (value.isAfter(lastDate)) return lastDate;
-      return value;
-    }
-
-    void moveDateByDays(
-      void Function(void Function()) setInnerState,
-      int days,
-    ) {
-      setInnerState(() {
-        tempDate = DateUtils.dateOnly(
-          clampDate(tempDate.add(Duration(days: days))),
-        );
-      });
-    }
-
-    void deferredPop(BuildContext ctx, [DateTime? value]) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!ctx.mounted) return;
-        Navigator.of(ctx).pop(value);
-      });
-    }
-
-    return showDialog<DateTime>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (innerContext, setInnerState) {
-            return FocusScope(
-              autofocus: true,
-              child: Focus(
-                autofocus: true,
-                onKeyEvent: (_, event) {
-                  if (event is! KeyDownEvent) {
-                    return KeyEventResult.ignored;
-                  }
-                  final key = event.logicalKey;
-                  if (key == LogicalKeyboardKey.escape) {
-                    FocusManager.instance.primaryFocus?.unfocus();
-                    deferredPop(dialogContext);
-                    return KeyEventResult.handled;
-                  }
-                  if (key == LogicalKeyboardKey.arrowLeft) {
-                    moveDateByDays(setInnerState, -1);
-                    return KeyEventResult.handled;
-                  }
-                  if (key == LogicalKeyboardKey.arrowRight) {
-                    moveDateByDays(setInnerState, 1);
-                    return KeyEventResult.handled;
-                  }
-                  if (key == LogicalKeyboardKey.arrowUp) {
-                    moveDateByDays(setInnerState, -7);
-                    return KeyEventResult.handled;
-                  }
-                  if (key == LogicalKeyboardKey.arrowDown) {
-                    moveDateByDays(setInnerState, 7);
-                    return KeyEventResult.handled;
-                  }
-                  if (key == LogicalKeyboardKey.enter ||
-                      key == LogicalKeyboardKey.numpadEnter) {
-                    FocusManager.instance.primaryFocus?.unfocus();
-                    deferredPop(dialogContext, DateUtils.dateOnly(tempDate));
-                    return KeyEventResult.handled;
-                  }
-                  return KeyEventResult.ignored;
-                },
-                child: Theme(
-                  data: Theme.of(innerContext).copyWith(
-                    colorScheme: Theme.of(innerContext).colorScheme.copyWith(
-                      primary: const Color(0xFF0B72FF),
-                      onPrimary: Colors.white,
-                      surface: const Color(0xFFEAF4FE),
-                    ),
-                  ),
-                  child: AlertDialog(
-                    backgroundColor: const Color(0xFFEAF4FE),
-                    surfaceTintColor: Colors.transparent,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(
-                        color: const Color(0xFF0B72FF).withOpacity(0.22),
-                      ),
-                    ),
-                    title: const Text('Selecciona fecha'),
-                    content: SizedBox(
-                      width: 320,
-                      child: CalendarDatePicker(
-                        key: ValueKey<DateTime>(tempDate),
-                        initialDate: tempDate,
-                        firstDate: firstDate,
-                        lastDate: lastDate,
-                        onDateChanged: (d) {
-                          setInnerState(() {
-                            tempDate = DateUtils.dateOnly(d);
-                          });
-                        },
-                      ),
-                    ),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(dialogContext).pop(),
-                        child: const Text('Cancelar'),
-                      ),
-                      FilledButton(
-                        onPressed: () => Navigator.of(
-                          dialogContext,
-                        ).pop(DateUtils.dateOnly(tempDate)),
-                        child: const Text('Aceptar'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            );
-          },
-        );
-      },
+    return _showGlassDatePickerDialog(
+      context,
+      initialDate: current ?? DateUtils.dateOnly(DateTime.now()),
+      firstDate: DateTime(2024, 1, 1),
+      lastDate: DateTime(2035, 12, 31),
     );
   }
 
@@ -2456,9 +3141,7 @@ class _ServicesPageState extends State<ServicesPage>
         setState(() => _draft = _draft.copyWith(status: v));
         return;
       case 9:
-        if (_canInsert) {
-          await _insertDraft();
-        }
+        await _insertDraft();
         return;
       default:
         return;
@@ -2581,11 +3264,8 @@ class _ServicesPageState extends State<ServicesPage>
                 }
                 if (key == LogicalKeyboardKey.enter ||
                     key == LogicalKeyboardKey.numpadEnter) {
-                  if (_canInsert) {
-                    unawaited(_insertDraft());
-                    return KeyEventResult.handled;
-                  }
-                  return KeyEventResult.ignored;
+                  unawaited(_insertDraft());
+                  return KeyEventResult.handled;
                 }
                 return KeyEventResult.ignored;
               },
@@ -2755,10 +3435,8 @@ class _ServicesPageState extends State<ServicesPage>
                                   return KeyEventResult.ignored;
                                 }
                                 final key = event.logicalKey;
-                                if ((key == LogicalKeyboardKey.enter ||
-                                        key ==
-                                            LogicalKeyboardKey.numpadEnter) &&
-                                    _canInsert) {
+                                if (key == LogicalKeyboardKey.enter ||
+                                    key == LogicalKeyboardKey.numpadEnter) {
                                   unawaited(_insertDraft());
                                   return KeyEventResult.handled;
                                 }
@@ -2773,9 +3451,7 @@ class _ServicesPageState extends State<ServicesPage>
                                   () => _draft = _draft.copyWith(notes: t),
                                 ),
                                 onSubmitted: (_) {
-                                  if (_canInsert) {
-                                    _insertDraft();
-                                  }
+                                  _insertDraft();
                                 },
                               ),
                             ),
@@ -2808,16 +3484,14 @@ class _ServicesPageState extends State<ServicesPage>
                                     message: 'AGREGAR',
                                     child: InkWell(
                                       borderRadius: BorderRadius.circular(10),
-                                      onTap: _canInsert ? _insertDraft : null,
+                                      onTap: _insertDraft,
                                       child: Container(
                                         width: 34,
                                         height: 34,
                                         decoration: BoxDecoration(
-                                          color: _canInsert
-                                              ? const Color(
-                                                  0xFF19C37D,
-                                                ).withOpacity(0.92)
-                                              : Colors.white.withOpacity(0.35),
+                                          color: const Color(
+                                            0xFF19C37D,
+                                          ).withOpacity(0.92),
                                           borderRadius: BorderRadius.circular(
                                             10,
                                           ),
@@ -2830,9 +3504,7 @@ class _ServicesPageState extends State<ServicesPage>
                                         child: Icon(
                                           Icons.add,
                                           size: 18,
-                                          color: _canInsert
-                                              ? Colors.white
-                                              : const Color(0xFF0B2B2B),
+                                          color: Colors.white,
                                         ),
                                       ),
                                     ),
@@ -2854,9 +3526,154 @@ class _ServicesPageState extends State<ServicesPage>
     );
   }
 
+  Widget _buildServicesTopActionsBar() {
+    final cellMode = _gridEditMode || (_selectedRowState()?.isEditing ?? false);
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
+      child: Card(
+        elevation: 0,
+        color: Colors.white.withOpacity(0.34),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final actions = FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    OutlinedButton.icon(
+                      style: _actionOutlinedButtonStyle(),
+                      onPressed: _exportingCsv ? null : _exportServicesCsv,
+                      icon: Icon(
+                        _exportingCsv
+                            ? Icons.hourglass_top
+                            : Icons.download_rounded,
+                      ),
+                      label: const Text('Descargar CSV'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      style: _actionOutlinedButtonStyle(),
+                      onPressed: () => setState(() {
+                        _gridEditMode = !_gridEditMode;
+                        if (_gridEditMode) {
+                          _activeGridColumn = 0;
+                          _ensureGridSelection();
+                        } else {
+                          _gridCancelSignal++;
+                        }
+                      }),
+                      icon: Icon(
+                        _gridEditMode
+                            ? Icons.grid_off
+                            : Icons.grid_view_rounded,
+                      ),
+                      label: Text(
+                        _gridEditMode
+                            ? 'Salir de cuadrícula'
+                            : 'Edición en cuadrícula',
+                      ),
+                    ),
+                    if (_gridEditMode) ...[
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        style: _actionFilledButtonStyle(),
+                        onPressed: () => setState(() {
+                          _gridSaveSignal++;
+                          _gridEditMode = false;
+                        }),
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('Guardar'),
+                      ),
+                    ],
+                    if (_selectedCount > 0) ...[
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        style: _actionFilledButtonStyle(),
+                        onPressed: _bulkDeleting ? null : _deleteSelectedRows,
+                        icon: const Icon(Icons.delete_outline),
+                        label: Text(
+                          'Eliminar (${_fmtCountInt(_selectedCount)})',
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+
+              final info = Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${_fmtCountInt(_selectedCount)} seleccionadas',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  if (_selectedCount > 0)
+                    Text(
+                      'Suma: ${_fmtKg(_selectedWeightSum)} kg · Promedio: ${_fmtKg(_selectedWeightAvg)} kg',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF2A4B49),
+                      ),
+                    ),
+                  if (cellMode)
+                    Text(
+                      'Celda: $_activeGridColumnLabel · Space',
+                      textAlign: TextAlign.right,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF2A4B49),
+                      ),
+                    ),
+                ],
+              );
+
+              if (constraints.maxWidth < 980) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(alignment: Alignment.centerLeft, child: actions),
+                    const SizedBox(height: 6),
+                    Align(alignment: Alignment.centerRight, child: info),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: actions,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  info,
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ServicesShell(
+      headerTitle: 'Programación de Viajes y Servicios',
+      activeOverlayModule: ServicesOverlayNavModule.servicios,
       onLogout: () async {
         final ok = await _showGlassConfirmDialog(
           context,
@@ -2896,18 +3713,13 @@ class _ServicesPageState extends State<ServicesPage>
           );
         }
       },
-      onGoToCatalogs: () async {
-        final changed = await showDialog<bool>(
-          context: context,
-          barrierDismissible: true,
-          barrierColor: Colors.black.withOpacity(0.26),
-          builder: (_) => const ServicesCatalogPage(),
-        );
-        if (changed == true && mounted) {
-          await _loadCatalogs();
-          setState(() {});
-        }
-      },
+      onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
+      onGoToProduction: _goToProduction,
+      onGoToServices: () async {},
+      onGoToCatalogs: null,
+      topContent: _loadingCats || _loadingRows
+          ? null
+          : _buildServicesTopActionsBar(),
       child: _loadingCats || _loadingRows
           ? const Center(child: CircularProgressIndicator())
           : Column(
@@ -2921,148 +3733,6 @@ class _ServicesPageState extends State<ServicesPage>
                         height: constraints.maxHeight,
                         child: Column(
                           children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 2, 12, 8),
-                              child: Card(
-                                elevation: 0,
-                                color: Colors.white.withOpacity(0.34),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 12,
-                                    vertical: 8,
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Expanded(
-                                        child: Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: FittedBox(
-                                            fit: BoxFit.scaleDown,
-                                            alignment: Alignment.centerLeft,
-                                            child: Row(
-                                              children: [
-                                                OutlinedButton.icon(
-                                                  style:
-                                                      _actionOutlinedButtonStyle(),
-                                                  onPressed: _exportingCsv
-                                                      ? null
-                                                      : _exportServicesCsv,
-                                                  icon: Icon(
-                                                    _exportingCsv
-                                                        ? Icons.hourglass_top
-                                                        : Icons
-                                                              .download_rounded,
-                                                  ),
-                                                  label: const Text(
-                                                    'Descargar CSV',
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                OutlinedButton.icon(
-                                                  style:
-                                                      _actionOutlinedButtonStyle(),
-                                                  onPressed: () => setState(() {
-                                                    _gridEditMode =
-                                                        !_gridEditMode;
-                                                    if (_gridEditMode) {
-                                                      _activeGridColumn = 0;
-                                                      _ensureGridSelection();
-                                                    } else {
-                                                      _gridCancelSignal++;
-                                                    }
-                                                  }),
-                                                  icon: Icon(
-                                                    _gridEditMode
-                                                        ? Icons.grid_off
-                                                        : Icons
-                                                              .grid_view_rounded,
-                                                  ),
-                                                  label: Text(
-                                                    _gridEditMode
-                                                        ? 'Salir de cuadrícula'
-                                                        : 'Edición en cuadrícula',
-                                                  ),
-                                                ),
-                                                if (_gridEditMode) ...[
-                                                  const SizedBox(width: 8),
-                                                  FilledButton.icon(
-                                                    style:
-                                                        _actionFilledButtonStyle(),
-                                                    onPressed: () =>
-                                                        setState(() {
-                                                          _gridSaveSignal++;
-                                                          _gridEditMode = false;
-                                                        }),
-                                                    icon: const Icon(
-                                                      Icons.save_outlined,
-                                                    ),
-                                                    label: const Text(
-                                                      'Guardar',
-                                                    ),
-                                                  ),
-                                                ],
-                                                if (_bulkSelectedRowIds
-                                                    .isNotEmpty) ...[
-                                                  const SizedBox(width: 8),
-                                                  FilledButton.icon(
-                                                    style:
-                                                        _actionFilledButtonStyle(),
-                                                    onPressed: _bulkDeleting
-                                                        ? null
-                                                        : _deleteSelectedRows,
-                                                    icon: const Icon(
-                                                      Icons.delete_outline,
-                                                    ),
-                                                    label: Text(
-                                                      'Eliminar (${_bulkSelectedRowIds.length})',
-                                                    ),
-                                                  ),
-                                                ],
-                                              ],
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      Builder(
-                                        builder: (_) {
-                                          final cellMode =
-                                              _gridEditMode ||
-                                              (_selectedRowState()?.isEditing ??
-                                                  false);
-                                          return Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.end,
-                                            children: [
-                                              Text(
-                                                '${_bulkSelectedRowIds.length} seleccionadas',
-                                                textAlign: TextAlign.right,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  fontWeight: FontWeight.w700,
-                                                ),
-                                              ),
-                                              if (cellMode)
-                                                Text(
-                                                  'Celda: $_activeGridColumnLabel · Space',
-                                                  style: const TextStyle(
-                                                    fontSize: 11,
-                                                    fontWeight: FontWeight.w600,
-                                                    color: Color(0xFF2A4B49),
-                                                  ),
-                                                ),
-                                            ],
-                                          );
-                                        },
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ),
-                            ),
                             Padding(
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 12,
@@ -3256,60 +3926,136 @@ class _ServicesPageState extends State<ServicesPage>
                                           _uiUpper('No hay servicios todavía'),
                                         ),
                                       )
-                                    : ListView.builder(
-                                        controller: _rowsScrollController,
-                                        padding: const EdgeInsets.fromLTRB(
-                                          12,
-                                          0,
-                                          12,
-                                          20,
-                                        ),
-                                        itemCount: _visibleRows.length,
-                                        itemBuilder: (_, i) {
-                                          final row = _visibleRows[i];
-                                          final rowId = row['id'] as String;
-                                          return _ServiceDataRow(
-                                            key: _rowKeyFor(rowId),
-                                            row: row,
-                                            clients: _clients,
-                                            materials: _materials,
-                                            drivers: _drivers,
-                                            vehicles: _vehicles,
-                                            directions: _directions,
-                                            statuses: _statuses,
-                                            uiLabel: _uiLabel,
-                                            parseDate: _parseDate,
-                                            fmtDateDb: _fmtDbDate,
-                                            fmtDateUi: _fmtUiDate,
-                                            onDelete: _deleteRow,
-                                            onUpdate: _updateRow,
-                                            isSelected: _selectedRowId == rowId,
-                                            isChecked: _bulkSelectedRowIds
-                                                .contains(rowId),
-                                            gridEditMode: _gridEditMode,
-                                            gridSaveSignal: _gridSaveSignal,
-                                            gridCancelSignal: _gridCancelSignal,
-                                            activeGridColumn: _activeGridColumn,
-                                            showRowActions: true,
-                                            onSelect: (additive) => _selectRow(
-                                              rowId,
-                                              allowToggle: true,
-                                              additive: additive,
-                                              ensureVisible: false,
+                                    : Listener(
+                                        behavior: HitTestBehavior.translucent,
+                                        onPointerDown: (event) =>
+                                            _startMarqueeSelection(
+                                              event.localPosition,
                                             ),
-                                            onActivateColumn: (columnIndex) {
-                                              _selectRow(
-                                                rowId,
-                                                allowToggle: false,
-                                                additive: false,
-                                                ensureVisible: false,
-                                              );
-                                              setState(() {
-                                                _activeGridColumn = columnIndex;
-                                              });
-                                            },
-                                          );
-                                        },
+                                        onPointerMove: (event) =>
+                                            _updateMarqueeSelection(
+                                              event.localPosition,
+                                            ),
+                                        onPointerUp: (_) =>
+                                            _endMarqueeSelection(),
+                                        onPointerCancel: (_) =>
+                                            _endMarqueeSelection(),
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.translucent,
+                                          onSecondaryTapDown: (details) {
+                                            if (_selectedCount <= 0) return;
+                                            unawaited(
+                                              _openRowsContextMenuAt(
+                                                details.globalPosition,
+                                              ),
+                                            );
+                                          },
+                                          child: Stack(
+                                            key: _rowsViewportKey,
+                                            children: [
+                                              Positioned.fill(
+                                                child: AbsorbPointer(
+                                                  absorbing: _marqueeActive,
+                                                  child: ListView.builder(
+                                                    controller:
+                                                        _rowsScrollController,
+                                                    padding:
+                                                        const EdgeInsets.fromLTRB(
+                                                          12,
+                                                          0,
+                                                          12,
+                                                          20,
+                                                        ),
+                                                    itemCount:
+                                                        _visibleRows.length,
+                                                    itemBuilder: (_, i) {
+                                                      final row =
+                                                          _visibleRows[i];
+                                                      final rowId =
+                                                          row['id'] as String;
+                                                      return _ServiceDataRow(
+                                                        key: _rowKeyFor(rowId),
+                                                        row: row,
+                                                        clients: _clients,
+                                                        materials: _materials,
+                                                        drivers: _drivers,
+                                                        vehicles: _vehicles,
+                                                        directions: _directions,
+                                                        statuses: _statuses,
+                                                        uiLabel: _uiLabel,
+                                                        parseDate: _parseDate,
+                                                        fmtDateDb: _fmtDbDate,
+                                                        fmtDateUi: _fmtUiDate,
+                                                        onDelete: _deleteRow,
+                                                        onUpdate: _updateRow,
+                                                        isSelected:
+                                                            _selectedRowId ==
+                                                            rowId,
+                                                        isChecked:
+                                                            _bulkSelectedRowIds
+                                                                .contains(
+                                                                  rowId,
+                                                                ),
+                                                        gridEditMode:
+                                                            _gridEditMode,
+                                                        gridSaveSignal:
+                                                            _gridSaveSignal,
+                                                        gridCancelSignal:
+                                                            _gridCancelSignal,
+                                                        activeGridColumn:
+                                                            _activeGridColumn,
+                                                        showRowActions: true,
+                                                        onOpenContextMenu:
+                                                            (position) =>
+                                                                _openRowsContextMenuAt(
+                                                                  position,
+                                                                  rowId: rowId,
+                                                                ),
+                                                        onSelect: (additive) =>
+                                                            _selectRow(
+                                                              rowId,
+                                                              allowToggle:
+                                                                  false,
+                                                              additive:
+                                                                  additive,
+                                                              ensureVisible:
+                                                                  false,
+                                                            ),
+                                                        onActivateColumn:
+                                                            (columnIndex) {
+                                                              _selectRow(
+                                                                rowId,
+                                                                allowToggle:
+                                                                    false,
+                                                                additive: false,
+                                                                ensureVisible:
+                                                                    false,
+                                                              );
+                                                              setState(() {
+                                                                _activeGridColumn =
+                                                                    columnIndex;
+                                                              });
+                                                            },
+                                                      );
+                                                    },
+                                                  ),
+                                                ),
+                                              ),
+                                              if (_marqueeActive)
+                                                Positioned.fill(
+                                                  child: IgnorePointer(
+                                                    child: CustomPaint(
+                                                      painter: _MarqueeSelectionPainter(
+                                                        rect: _clampRectToViewport(
+                                                          _marqueeRectForPaint(),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                            ],
+                                          ),
+                                        ),
                                       ),
                               ),
                             ),
@@ -3342,11 +4088,7 @@ class _ServicesPageState extends State<ServicesPage>
                                         label: const Text('Anterior'),
                                       ),
                                       Text(
-                                        'Página ${_currentPage + 1} de $_totalPages',
-                                        style: const TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.w700,
-                                        ),
+                                        'Página ${_fmtCountInt(_currentPage + 1)} de ${_fmtCountInt(_totalPages)}',
                                       ),
                                       OutlinedButton.icon(
                                         style: _actionOutlinedButtonStyle(),
@@ -3358,19 +4100,16 @@ class _ServicesPageState extends State<ServicesPage>
                                         icon: const Icon(Icons.chevron_right),
                                         label: const Text('Siguiente'),
                                       ),
-                                      const Text(
-                                        'Filas/pág:',
-                                        style: TextStyle(fontSize: 12),
-                                      ),
+                                      const Text('Filas/pág:'),
                                       SizedBox(
-                                        width: 92,
-                                        child: _TypeAheadDropdownField<int>(
+                                        width: 90,
+                                        child: DropdownButtonFormField<int>(
                                           value: _pageSize,
-                                          labelOf: (v) => '$v',
+                                          isDense: true,
                                           decoration: _glassFieldDecoration(),
                                           items: const [40, 80, 120]
                                               .map(
-                                                (s) => DropdownMenuItem(
+                                                (s) => DropdownMenuItem<int>(
                                                   value: s,
                                                   child: Text('$s'),
                                                 ),
@@ -3387,8 +4126,7 @@ class _ServicesPageState extends State<ServicesPage>
                                         ),
                                       ),
                                       Text(
-                                        'Total: ${_filteredRows.length}',
-                                        style: const TextStyle(fontSize: 12),
+                                        'Total: ${_fmtCountInt(_filteredRows.length)}',
                                       ),
                                     ],
                                   ),
@@ -3619,6 +4357,7 @@ class _ServiceDataRow extends StatefulWidget {
   final int gridCancelSignal;
   final int activeGridColumn;
   final bool showRowActions;
+  final ValueChanged<Offset>? onOpenContextMenu;
   final ValueChanged<bool> onSelect;
   final ValueChanged<int> onActivateColumn;
 
@@ -3644,6 +4383,7 @@ class _ServiceDataRow extends StatefulWidget {
     required this.gridCancelSignal,
     required this.activeGridColumn,
     required this.showRowActions,
+    this.onOpenContextMenu,
     required this.onSelect,
     required this.onActivateColumn,
   });
@@ -3655,6 +4395,8 @@ class _ServiceDataRow extends StatefulWidget {
 class _ServiceDataRowState extends State<_ServiceDataRow> {
   bool _editing = false;
   bool _hovering = false;
+  int? _hoveredEditableColumn;
+  bool _hoverActionsButton = false;
 
   late DateTime _serviceDate;
   DateTime? _dueDate;
@@ -3950,111 +4692,11 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
   }
 
   Future<DateTime?> _pickDateWithKeyboard(DateTime initialDate) async {
-    DateTime tempDate = DateUtils.dateOnly(initialDate);
-    final firstDate = DateTime(2024, 1, 1);
-    final lastDate = DateTime(2035, 12, 31);
-
-    DateTime clampDate(DateTime value) {
-      if (value.isBefore(firstDate)) return firstDate;
-      if (value.isAfter(lastDate)) return lastDate;
-      return value;
-    }
-
-    void moveDateByDays(
-      void Function(void Function()) setInnerState,
-      int days,
-    ) {
-      setInnerState(() {
-        tempDate = DateUtils.dateOnly(
-          clampDate(tempDate.add(Duration(days: days))),
-        );
-      });
-    }
-
-    void deferredPop(BuildContext ctx, [DateTime? value]) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!ctx.mounted) return;
-        Navigator.of(ctx).pop(value);
-      });
-    }
-
-    return showDialog<DateTime>(
-      context: context,
-      builder: (dialogContext) {
-        return StatefulBuilder(
-          builder: (innerContext, setInnerState) {
-            return FocusScope(
-              autofocus: true,
-              child: Focus(
-                autofocus: true,
-                onKeyEvent: (_, event) {
-                  if (event is! KeyDownEvent) {
-                    return KeyEventResult.ignored;
-                  }
-                  final key = event.logicalKey;
-                  if (key == LogicalKeyboardKey.escape) {
-                    FocusManager.instance.primaryFocus?.unfocus();
-                    deferredPop(dialogContext);
-                    return KeyEventResult.handled;
-                  }
-                  if (key == LogicalKeyboardKey.arrowLeft) {
-                    moveDateByDays(setInnerState, -1);
-                    return KeyEventResult.handled;
-                  }
-                  if (key == LogicalKeyboardKey.arrowRight) {
-                    moveDateByDays(setInnerState, 1);
-                    return KeyEventResult.handled;
-                  }
-                  if (key == LogicalKeyboardKey.arrowUp) {
-                    moveDateByDays(setInnerState, -7);
-                    return KeyEventResult.handled;
-                  }
-                  if (key == LogicalKeyboardKey.arrowDown) {
-                    moveDateByDays(setInnerState, 7);
-                    return KeyEventResult.handled;
-                  }
-                  if (key == LogicalKeyboardKey.enter ||
-                      key == LogicalKeyboardKey.numpadEnter) {
-                    FocusManager.instance.primaryFocus?.unfocus();
-                    deferredPop(dialogContext, DateUtils.dateOnly(tempDate));
-                    return KeyEventResult.handled;
-                  }
-                  return KeyEventResult.ignored;
-                },
-                child: AlertDialog(
-                  title: const Text('Selecciona fecha'),
-                  content: SizedBox(
-                    width: 320,
-                    child: CalendarDatePicker(
-                      key: ValueKey<DateTime>(tempDate),
-                      initialDate: tempDate,
-                      firstDate: firstDate,
-                      lastDate: lastDate,
-                      onDateChanged: (d) {
-                        setInnerState(() {
-                          tempDate = DateUtils.dateOnly(d);
-                        });
-                      },
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      child: const Text('Cancelar'),
-                    ),
-                    FilledButton(
-                      onPressed: () => Navigator.of(
-                        dialogContext,
-                      ).pop(DateUtils.dateOnly(tempDate)),
-                      child: const Text('Aceptar'),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+    return _showGlassDatePickerDialog(
+      context,
+      initialDate: initialDate,
+      firstDate: DateTime(2024, 1, 1),
+      lastDate: DateTime(2035, 12, 31),
     );
   }
 
@@ -4099,353 +4741,510 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
       );
     }
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: () => widget.onSelect(_isAdditiveSelectionPressed()),
+    void previewEditableCellTap(int col) {
+      if (_isAdditiveSelectionPressed()) {
+        widget.onSelect(true);
+        return;
+      }
+      widget.onSelect(false);
+      widget.onActivateColumn(col);
+    }
+
+    void enterEditingFromPointer(int col) {
+      if (_isAdditiveSelectionPressed()) {
+        widget.onSelect(true);
+        return;
+      }
+      widget.onSelect(false);
+      widget.onActivateColumn(col);
+      if (!_editing) {
+        setState(() => _editing = true);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        unawaited(activateGridCell(col));
+      });
+    }
+
+    Widget previewEditableCell({required int col, required Widget child}) {
+      final hovered = !_editing && _hoveredEditableColumn == col;
+      final top = hasSelection
+          ? const Color(0xFFD9EBFB).withOpacity(0.64)
+          : const Color(0xFFDDEFE6).withOpacity(0.84);
+      final bottom = hasSelection
+          ? const Color(0xFFCCE5FA).withOpacity(0.42)
+          : const Color(0xFFCFE8DD).withOpacity(0.56);
+      return MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) {
+          if (_editing) return;
+          if (_hoveredEditableColumn != col) {
+            setState(() => _hoveredEditableColumn = col);
+          }
+        },
+        onExit: (_) {
+          if (_hoveredEditableColumn == col) {
+            setState(() => _hoveredEditableColumn = null);
+          }
+        },
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
+          duration: const Duration(milliseconds: 80),
           curve: Curves.easeOutCubic,
-          transform: Matrix4.translationValues(
-            0.0,
-            highlighted ? -2.0 : 0.0,
-            0.0,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            gradient: hovered
+                ? LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [top, bottom],
+                  )
+                : null,
+            boxShadow: hovered
+                ? [
+                    BoxShadow(
+                      color: const Color(0xFF7FCBAA).withOpacity(0.22),
+                      blurRadius: 9,
+                      offset: const Offset(0, 3),
+                    ),
+                  ]
+                : const [],
           ),
-          child: Card(
-            elevation: highlighted ? 4 : 0.5,
-            color: rowBg,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(
-                color: widget.isSelected
-                    ? const Color(0xFF00A3FF).withOpacity(0.65)
-                    : Colors.white.withOpacity(0.0),
-                width: 1.0,
-              ),
+          child: Listener(
+            behavior: HitTestBehavior.opaque,
+            onPointerDown: (event) {
+              if (event.buttons != kPrimaryMouseButton) return;
+              previewEditableCellTap(col);
+            },
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onDoubleTap: () => enterEditingFromPointer(col),
+              child: child,
             ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              child: LayoutBuilder(
-                builder: (context, constraints) {
-                  return SizedBox(
-                    width: constraints.maxWidth,
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: SizedBox(
-                        width: _kTableContentW,
-                        child: Row(
-                          children: [
-                            // FECHA
-                            gridCellFrame(
-                              0,
-                              SizedBox(
-                                width: 90,
-                                child: _editing
-                                    ? InkWell(
-                                        onTap: () {
-                                          widget.onActivateColumn(0);
-                                          _pickServiceDate();
-                                        },
-                                        child: _CellBox(
-                                          text: widget.fmtDateUi(_serviceDate),
-                                          icon: Icons.calendar_month,
-                                        ),
-                                      )
-                                    : _FitText(
-                                        widget.fmtDateUi(_serviceDate),
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                              ),
-                            ),
+          ),
+        ),
+      );
+    }
 
-                            // EMPRESA
-                            gridCellFrame(
-                              1,
-                              SizedBox(
-                                width: 190,
-                                child: _editing
-                                    ? _DropOptInline(
-                                        valueId: _clientId,
-                                        items: widget.clients,
-                                        onTapStart: () =>
-                                            widget.onActivateColumn(1),
-                                        onChanged: (v) =>
-                                            setState(() => _clientId = v),
-                                      )
-                                    : _FitText(
-                                        _labelOf(widget.clients, _clientId) ??
-                                            '—',
-                                      ),
-                              ),
-                            ),
+    Widget readonlyCell({
+      required Widget child,
+      bool showDivider = true,
+      EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: 4),
+    }) {
+      return Padding(
+        padding: padding,
+        child: Row(
+          children: [
+            Expanded(child: child),
+            if (showDivider)
+              Container(
+                width: 1,
+                height: 30,
+                margin: const EdgeInsets.only(left: 8, right: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFC9D5E2).withOpacity(0.90),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
 
-                            // MATERIAL
-                            gridCellFrame(
-                              2,
-                              SizedBox(
-                                width: 190,
-                                child: _editing
-                                    ? _DropOptInline(
-                                        valueId: _materialId,
-                                        items: widget.materials,
-                                        onTapStart: () =>
-                                            widget.onActivateColumn(2),
-                                        onChanged: (v) =>
-                                            setState(() => _materialId = v),
-                                      )
-                                    : _FitText(
-                                        _labelOf(
-                                              widget.materials,
-                                              _materialId,
-                                            ) ??
-                                            '—',
-                                      ),
-                              ),
-                            ),
-
-                            // TIPO (recolección/entrega)
-                            gridCellFrame(
-                              3,
-                              SizedBox(
-                                width: 130,
-                                child: _editing
-                                    ? _DropStrInline(
-                                        value: _direction,
-                                        items: widget.directions,
-                                        format: widget.uiLabel,
-                                        onTapStart: () =>
-                                            widget.onActivateColumn(3),
-                                        onChanged: (v) =>
-                                            setState(() => _direction = v),
-                                      )
-                                    : _FitText(widget.uiLabel(_direction)),
-                              ),
-                            ),
-
-                            // CHOFER
-                            gridCellFrame(
-                              4,
-                              SizedBox(
-                                width: 190,
-                                child: _editing
-                                    ? _DropOptInline(
-                                        valueId: _driverId,
-                                        items: widget.drivers,
-                                        onTapStart: () =>
-                                            widget.onActivateColumn(4),
-                                        onChanged: (v) =>
-                                            setState(() => _driverId = v),
-                                      )
-                                    : _FitText(
-                                        _labelOf(widget.drivers, _driverId) ??
-                                            '—',
-                                      ),
-                              ),
-                            ),
-
-                            // UNIDAD
-                            gridCellFrame(
-                              5,
-                              SizedBox(
-                                width: 140,
-                                child: _editing
-                                    ? _DropOptInline(
-                                        valueId: _vehicleId,
-                                        items: widget.vehicles,
-                                        onTapStart: () =>
-                                            widget.onActivateColumn(5),
-                                        onChanged: (v) =>
-                                            setState(() => _vehicleId = v),
-                                      )
-                                    : _FitText(
-                                        _labelOf(widget.vehicles, _vehicleId) ??
-                                            '—',
-                                      ),
-                              ),
-                            ),
-
-                            // PARA EL DÍA (due_date)
-                            gridCellFrame(
-                              6,
-                              SizedBox(
-                                width: 130,
-                                child: _editing
-                                    ? InkWell(
-                                        onTap: () {
-                                          widget.onActivateColumn(6);
-                                          _pickDueDate();
-                                        },
-                                        child: _CellBox(
-                                          text: _dueDate == null
-                                              ? '—'
-                                              : widget.fmtDateUi(_dueDate!),
-                                          icon: Icons.calendar_today,
-                                        ),
-                                      )
-                                    : _FitText(
-                                        _dueDate == null
-                                            ? '—'
-                                            : widget.fmtDateUi(_dueDate!),
-                                      ),
-                              ),
-                            ),
-
-                            // COMENTARIO
-                            gridCellFrame(
-                              7,
-                              SizedBox(
-                                width: _kCommentColW,
-                                child: _editing
-                                    ? TextField(
-                                        controller: _notes,
-                                        focusNode: _notesFocusNode,
-                                        decoration: _glassFieldDecoration(),
-                                        onTap: () => widget.onActivateColumn(7),
-                                      )
-                                    : _FitText(
-                                        (widget.row['notes'] ?? '') as String,
-                                      ),
-                              ),
-                            ),
-
-                            const SizedBox(width: 10),
-
-                            // ACCIONES
-                            // ACCIONES
-                            gridCellFrame(
-                              8,
-                              SizedBox(
-                                width: _kActionsW,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    if (_editing)
-                                      SizedBox(
-                                        width:
-                                            _kActionsW -
-                                            54, // deja espacio al menú (⋯)
-                                        child: _DropStrInline(
-                                          value: _status,
-                                          items: widget.statuses,
-                                          format: widget.uiLabel,
-                                          onTapStart: () =>
-                                              widget.onActivateColumn(8),
-                                          onChanged: (v) =>
-                                              setState(() => _status = v),
-                                        ),
-                                      )
-                                    else
-                                      Flexible(
-                                        child: _StatusPill(
-                                          text: widget.uiLabel(_status),
-                                        ),
-                                      ),
-
-                                    if (widget.showRowActions) ...[
-                                      const SizedBox(width: 6),
-                                      SizedBox(
-                                        width: 32,
-                                        height: 32,
-                                        child: PopupMenuButton<String>(
-                                          tooltip: 'Acciones',
-                                          padding: EdgeInsets.zero,
-                                          constraints: const BoxConstraints(
-                                            minWidth: 30,
-                                            minHeight: 30,
-                                          ),
-                                          color: _kGlassMenuBg,
-                                          elevation: 8,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              16,
-                                            ),
-                                            side: BorderSide(
-                                              color: Colors.white.withOpacity(
-                                                0.7,
-                                              ),
-                                            ),
-                                          ),
-                                          shadowColor: Colors.black.withOpacity(
-                                            0.12,
-                                          ),
-                                          onSelected: (v) async {
-                                            if (v == 'edit') {
-                                              _setEditing(true);
-                                              return;
-                                            }
-                                            if (v == 'save') {
-                                              await _save();
-                                              return;
-                                            }
-                                            if (v == 'cancel') {
-                                              _setEditing(false);
-                                              return;
-                                            }
-                                            if (v == 'delete') {
-                                              await deleteWithConfirmation();
-                                            }
+    return TapRegion(
+      onTapOutside: (_) {
+        if (_editing) {
+          cancelEditingFromKeyboard();
+        }
+      },
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onSecondaryTapDown: (details) {
+            widget.onOpenContextMenu?.call(details.globalPosition);
+          },
+          onTapDown: (_) {
+            if (_editing) return;
+            widget.onSelect(_isAdditiveSelectionPressed());
+          },
+          child: AnimatedContainer(
+            duration: Duration.zero,
+            curve: Curves.easeOutCubic,
+            transform: Matrix4.translationValues(
+              0.0,
+              highlighted ? -2.0 : 0.0,
+              0.0,
+            ),
+            child: Card(
+              elevation: highlighted ? 4 : 0.5,
+              color: rowBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(
+                  color: widget.isSelected
+                      ? const Color(0xFF00A3FF).withOpacity(0.65)
+                      : Colors.white.withOpacity(0.0),
+                  width: 1.0,
+                ),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    return SizedBox(
+                      width: constraints.maxWidth,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: SizedBox(
+                          width: _kTableContentW,
+                          child: Row(
+                            children: [
+                              // FECHA
+                              gridCellFrame(
+                                0,
+                                SizedBox(
+                                  width: 90,
+                                  child: _editing
+                                      ? InkWell(
+                                          onTap: () {
+                                            widget.onActivateColumn(0);
+                                            _pickServiceDate();
                                           },
-                                          itemBuilder: (_) => [
-                                            if (!_editing)
-                                              const PopupMenuItem(
-                                                value: 'edit',
-                                                child: Text(
-                                                  'EDITAR',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.w700,
-                                                  ),
-                                                ),
-                                              ),
-                                            if (_editing) ...const [
-                                              PopupMenuItem(
-                                                value: 'save',
-                                                child: Text(
-                                                  'ACTUALIZAR',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.w700,
-                                                  ),
-                                                ),
-                                              ),
-                                              PopupMenuItem(
-                                                value: 'cancel',
-                                                child: Text(
-                                                  'CANCELAR',
-                                                  style: TextStyle(
-                                                    fontWeight: FontWeight.w700,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                            const PopupMenuDivider(height: 8),
-                                            const PopupMenuItem(
-                                              value: 'delete',
-                                              child: Text(
-                                                'ELIMINAR',
-                                                style: TextStyle(
-                                                  fontWeight: FontWeight.w700,
-                                                ),
+                                          child: _CellBox(
+                                            text: widget.fmtDateUi(
+                                              _serviceDate,
+                                            ),
+                                            icon: Icons.calendar_month,
+                                          ),
+                                        )
+                                      : previewEditableCell(
+                                          col: 0,
+                                          child: readonlyCell(
+                                            child: _FitText(
+                                              widget.fmtDateUi(_serviceDate),
+                                              style: const TextStyle(
+                                                fontWeight: FontWeight.w600,
                                               ),
                                             ),
-                                          ],
-                                          child: const Icon(Icons.more_horiz),
+                                          ),
                                         ),
-                                      ),
-                                    ],
-                                  ],
                                 ),
                               ),
-                            ),
-                          ],
+
+                              // EMPRESA
+                              gridCellFrame(
+                                1,
+                                SizedBox(
+                                  width: 190,
+                                  child: _editing
+                                      ? _DropOptInline(
+                                          valueId: _clientId,
+                                          items: widget.clients,
+                                          onTapStart: () =>
+                                              widget.onActivateColumn(1),
+                                          onChanged: (v) =>
+                                              setState(() => _clientId = v),
+                                        )
+                                      : previewEditableCell(
+                                          col: 1,
+                                          child: readonlyCell(
+                                            child: _FitText(
+                                              _labelOf(
+                                                    widget.clients,
+                                                    _clientId,
+                                                  ) ??
+                                                  '—',
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+
+                              // MATERIAL
+                              gridCellFrame(
+                                2,
+                                SizedBox(
+                                  width: 190,
+                                  child: _editing
+                                      ? _DropOptInline(
+                                          valueId: _materialId,
+                                          items: widget.materials,
+                                          onTapStart: () =>
+                                              widget.onActivateColumn(2),
+                                          onChanged: (v) =>
+                                              setState(() => _materialId = v),
+                                        )
+                                      : previewEditableCell(
+                                          col: 2,
+                                          child: readonlyCell(
+                                            child: _ServiceMaterialBadge(
+                                              text:
+                                                  _labelOf(
+                                                    widget.materials,
+                                                    _materialId,
+                                                  ) ??
+                                                  '—',
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+
+                              // TIPO (recolección/entrega)
+                              gridCellFrame(
+                                3,
+                                SizedBox(
+                                  width: 130,
+                                  child: _editing
+                                      ? _DropStrInline(
+                                          value: _direction,
+                                          items: widget.directions,
+                                          format: widget.uiLabel,
+                                          onTapStart: () =>
+                                              widget.onActivateColumn(3),
+                                          onChanged: (v) =>
+                                              setState(() => _direction = v),
+                                        )
+                                      : previewEditableCell(
+                                          col: 3,
+                                          child: readonlyCell(
+                                            child: _FitText(
+                                              widget.uiLabel(_direction),
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+
+                              // CHOFER
+                              gridCellFrame(
+                                4,
+                                SizedBox(
+                                  width: 190,
+                                  child: _editing
+                                      ? _DropOptInline(
+                                          valueId: _driverId,
+                                          items: widget.drivers,
+                                          onTapStart: () =>
+                                              widget.onActivateColumn(4),
+                                          onChanged: (v) =>
+                                              setState(() => _driverId = v),
+                                        )
+                                      : previewEditableCell(
+                                          col: 4,
+                                          child: readonlyCell(
+                                            child: _FitText(
+                                              _labelOf(
+                                                    widget.drivers,
+                                                    _driverId,
+                                                  ) ??
+                                                  '—',
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+
+                              // UNIDAD
+                              gridCellFrame(
+                                5,
+                                SizedBox(
+                                  width: 140,
+                                  child: _editing
+                                      ? _DropOptInline(
+                                          valueId: _vehicleId,
+                                          items: widget.vehicles,
+                                          onTapStart: () =>
+                                              widget.onActivateColumn(5),
+                                          onChanged: (v) =>
+                                              setState(() => _vehicleId = v),
+                                        )
+                                      : previewEditableCell(
+                                          col: 5,
+                                          child: readonlyCell(
+                                            child: _ServiceUnitBadge(
+                                              text:
+                                                  _labelOf(
+                                                    widget.vehicles,
+                                                    _vehicleId,
+                                                  ) ??
+                                                  '—',
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+
+                              // PARA EL DÍA (due_date)
+                              gridCellFrame(
+                                6,
+                                SizedBox(
+                                  width: 130,
+                                  child: _editing
+                                      ? InkWell(
+                                          onTap: () {
+                                            widget.onActivateColumn(6);
+                                            _pickDueDate();
+                                          },
+                                          child: _CellBox(
+                                            text: _dueDate == null
+                                                ? '—'
+                                                : widget.fmtDateUi(_dueDate!),
+                                            icon: Icons.calendar_today,
+                                          ),
+                                        )
+                                      : previewEditableCell(
+                                          col: 6,
+                                          child: readonlyCell(
+                                            child: _FitText(
+                                              _dueDate == null
+                                                  ? '—'
+                                                  : widget.fmtDateUi(_dueDate!),
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+
+                              // COMENTARIO
+                              gridCellFrame(
+                                7,
+                                SizedBox(
+                                  width: _kCommentColW,
+                                  child: _editing
+                                      ? TextField(
+                                          controller: _notes,
+                                          focusNode: _notesFocusNode,
+                                          decoration: _glassFieldDecoration(),
+                                          onTap: () =>
+                                              widget.onActivateColumn(7),
+                                        )
+                                      : previewEditableCell(
+                                          col: 7,
+                                          child: readonlyCell(
+                                            showDivider: false,
+                                            child: _FitText(
+                                              (widget.row['notes'] ?? '')
+                                                  as String,
+                                            ),
+                                          ),
+                                        ),
+                                ),
+                              ),
+
+                              const SizedBox(width: 10),
+
+                              // ACCIONES
+                              // ACCIONES
+                              gridCellFrame(
+                                8,
+                                SizedBox(
+                                  width: _kActionsW,
+                                  child: Row(
+                                    mainAxisAlignment: MainAxisAlignment.end,
+                                    children: [
+                                      if (_editing)
+                                        SizedBox(
+                                          width:
+                                              _kActionsW -
+                                              54, // deja espacio al menú (⋯)
+                                          child: _DropStrInline(
+                                            value: _status,
+                                            items: widget.statuses,
+                                            format: widget.uiLabel,
+                                            onTapStart: () =>
+                                                widget.onActivateColumn(8),
+                                            onChanged: (v) =>
+                                                setState(() => _status = v),
+                                          ),
+                                        )
+                                      else
+                                        Flexible(
+                                          child: _StatusPill(
+                                            text: widget.uiLabel(_status),
+                                          ),
+                                        ),
+
+                                      if (widget.showRowActions) ...[
+                                        const SizedBox(width: 6),
+                                        MouseRegion(
+                                          onEnter: (_) => setState(
+                                            () => _hoverActionsButton = true,
+                                          ),
+                                          onExit: (_) => setState(
+                                            () => _hoverActionsButton = false,
+                                          ),
+                                          child: GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTapDown: (details) => widget
+                                                .onOpenContextMenu
+                                                ?.call(details.globalPosition),
+                                            child: AnimatedContainer(
+                                              duration: const Duration(
+                                                milliseconds: 120,
+                                              ),
+                                              curve: Curves.easeOutCubic,
+                                              width: 32,
+                                              height: 32,
+                                              decoration: BoxDecoration(
+                                                color: _hoverActionsButton
+                                                    ? Colors.white.withOpacity(
+                                                        0.62,
+                                                      )
+                                                    : Colors.white.withOpacity(
+                                                        0.42,
+                                                      ),
+                                                borderRadius:
+                                                    BorderRadius.circular(999),
+                                                border: Border.all(
+                                                  color: Colors.white
+                                                      .withOpacity(0.72),
+                                                ),
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withOpacity(
+                                                          _hoverActionsButton
+                                                              ? 0.15
+                                                              : 0.08,
+                                                        ),
+                                                    blurRadius:
+                                                        _hoverActionsButton
+                                                        ? 14
+                                                        : 8,
+                                                    offset: Offset(
+                                                      0,
+                                                      _hoverActionsButton
+                                                          ? 7
+                                                          : 4,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Icon(
+                                                Icons.more_horiz,
+                                                size: 20,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  );
-                },
+                    );
+                  },
+                ),
               ),
             ),
           ),
@@ -4477,6 +5276,111 @@ class _CellBox extends StatelessWidget {
           Expanded(child: Text(text, overflow: TextOverflow.ellipsis)),
           Icon(icon, size: 16),
         ],
+      ),
+    );
+  }
+}
+
+class _MarqueeSelectionPainter extends CustomPainter {
+  final Rect rect;
+
+  const _MarqueeSelectionPainter({required this.rect});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (rect.isEmpty) return;
+    final fill = Paint()..color = const Color(0xFF4B8DBD).withOpacity(0.18);
+    final stroke = Paint()
+      ..color = const Color(0xFF3C7FB0).withOpacity(0.80)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawRect(rect, fill);
+    canvas.drawRect(rect, stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant _MarqueeSelectionPainter oldDelegate) =>
+      oldDelegate.rect != rect;
+}
+
+class _ServiceMaterialBadge extends StatelessWidget {
+  final String text;
+
+  const _ServiceMaterialBadge({required this.text});
+
+  ({Color bg, Color fg}) _colors(String label) {
+    final key = label.trim().toUpperCase();
+    if (key.contains('METAL')) {
+      return (bg: const Color(0xFFD9E6F7), fg: const Color(0xFF24435E));
+    }
+    if (key.contains('CARTON')) {
+      return (bg: const Color(0xFFD2EEE9), fg: const Color(0xFF1F4F4B));
+    }
+    if (key.contains('CHATARRA')) {
+      return (bg: const Color(0xFFE0DCF7), fg: const Color(0xFF3F3A6C));
+    }
+    return (bg: const Color(0xFFE2E8F2), fg: const Color(0xFF31475F));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = _colors(text);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+        decoration: BoxDecoration(
+          color: c.bg,
+          borderRadius: BorderRadius.circular(999),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 10.8,
+            fontWeight: FontWeight.w800,
+            color: c.fg,
+            letterSpacing: 0.15,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ServiceUnitBadge extends StatelessWidget {
+  final String text;
+
+  const _ServiceUnitBadge({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+        decoration: BoxDecoration(
+          color: const Color(0xFFDEE3EE),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF36485C),
+          ),
+        ),
       ),
     );
   }
