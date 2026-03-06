@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/inventory_page.dart';
+import '../maintenance/maintenance_page.dart';
 import '../services/services_catalog_page.dart';
 import '../services/services_page.dart';
 import '../services/weighings_page.dart';
@@ -126,6 +127,13 @@ class _DashboardPageState extends State<DashboardPage> {
     await Navigator.of(context).push(appPageRoute(page: const WeighingsPage()));
   }
 
+  Future<void> _openMaintenance() async {
+    if (!mounted) return;
+    await Navigator.of(
+      context,
+    ).push(appPageRoute(page: const MaintenancePage()));
+  }
+
   Future<void> _logout(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -195,6 +203,7 @@ class _DashboardPageState extends State<DashboardPage> {
       onOpenInventoryStock: _openInventoryStock,
       onOpenServices: _openServices,
       onOpenWeighings: _openWeighings,
+      onOpenMaintenance: _openMaintenance,
       catalogsExpanded: _catalogsExpanded,
       onToggleCatalogsExpanded: _canOpenCatalogs
           ? () => setState(() => _catalogsExpanded = !_catalogsExpanded)
@@ -536,6 +545,7 @@ class _DashboardSideMenu extends StatelessWidget {
   final Future<void> Function() onOpenInventoryStock;
   final Future<void> Function() onOpenServices;
   final Future<void> Function() onOpenWeighings;
+  final Future<void> Function() onOpenMaintenance;
   final bool catalogsExpanded;
   final VoidCallback? onToggleCatalogsExpanded;
   final Future<void> Function()? onOpenCatalogsFleet;
@@ -550,6 +560,7 @@ class _DashboardSideMenu extends StatelessWidget {
     required this.onOpenInventoryStock,
     required this.onOpenServices,
     required this.onOpenWeighings,
+    required this.onOpenMaintenance,
     required this.catalogsExpanded,
     this.onToggleCatalogsExpanded,
     this.onOpenCatalogsFleet,
@@ -627,6 +638,13 @@ class _DashboardSideMenu extends StatelessWidget {
                             title: 'Pesadas',
                             subtitle: 'Fecha, ticket, proveedor y precio',
                             onTap: onOpenWeighings,
+                          ),
+                          const SizedBox(height: 8),
+                          _SideMenuActionItem(
+                            icon: Icons.build_circle_outlined,
+                            title: 'Mantenimiento',
+                            subtitle: 'Ordenes de trabajo y evidencias',
+                            onTap: onOpenMaintenance,
                           ),
                           if (onOpenCatalogsFleet != null ||
                               onOpenCatalogsCompanies != null ||

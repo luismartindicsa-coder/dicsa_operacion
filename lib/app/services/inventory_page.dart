@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_gate.dart';
 import '../dashboard/dashboard_page.dart';
+import '../maintenance/maintenance_page.dart';
 import '../shared/page_routes.dart';
 import '../shared/operational_ui/operational_widgets.dart';
 import 'inventory_movements_grid.dart';
@@ -380,6 +381,17 @@ class _InventoryPageState extends State<InventoryPage>
     );
   }
 
+  Future<void> _goToMaintenance() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const MaintenancePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -392,6 +404,7 @@ class _InventoryPageState extends State<InventoryPage>
         onGoToServices: _goToServices,
         onGoToProduction: _goToProduction,
         onGoToWeighings: _goToWeighings,
+        onGoToMaintenance: _goToMaintenance,
         onGoToCatalogs: null,
         child: _loading
             ? const Center(child: CircularProgressIndicator())
@@ -846,6 +859,17 @@ class _InventoryProductionPageState extends State<InventoryProductionPage> {
     );
   }
 
+  Future<void> _goToMaintenance() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const MaintenancePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ServicesShell(
@@ -856,6 +880,7 @@ class _InventoryProductionPageState extends State<InventoryProductionPage> {
       onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
       onGoToServices: _goToServices,
       onGoToWeighings: _goToWeighings,
+      onGoToMaintenance: _goToMaintenance,
       onGoToCatalogs: null,
       topContent: _topBarData == null
           ? null
@@ -1156,6 +1181,17 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const WeighingsPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToMaintenance() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const MaintenancePage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
@@ -2188,6 +2224,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
         onGoToProduction: _goToProduction,
         onGoToServices: _goToServices,
         onGoToWeighings: _goToWeighings,
+        onGoToMaintenance: _goToMaintenance,
         onGoToCatalogs: null,
         topContent: _loading
             ? null

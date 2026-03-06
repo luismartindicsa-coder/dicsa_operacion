@@ -8,6 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_gate.dart';
 import '../dashboard/dashboard_page.dart';
+import '../maintenance/maintenance_page.dart';
 import '../shared/page_routes.dart';
 import 'inventory_page.dart';
 import 'services_page.dart';
@@ -895,6 +896,18 @@ class _WeighingsPageState extends State<WeighingsPage>
                         Navigator.of(dialogContext).pop();
                         return KeyEventResult.handled;
                       }
+                      if (event.logicalKey == LogicalKeyboardKey.enter ||
+                          event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                        if (actions.isEmpty) return KeyEventResult.handled;
+                        final activeIndex = (hoveredIndex ?? 0).clamp(
+                          0,
+                          actions.length - 1,
+                        );
+                        Navigator.of(
+                          dialogContext,
+                        ).pop(actions[activeIndex].key);
+                        return KeyEventResult.handled;
+                      }
                       return KeyEventResult.ignored;
                     },
                     child: ClipRRect(
@@ -1259,6 +1272,17 @@ class _WeighingsPageState extends State<WeighingsPage>
     );
   }
 
+  Future<void> _goToMaintenance() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const MaintenancePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   void _toast(String msg) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
@@ -1289,6 +1313,7 @@ class _WeighingsPageState extends State<WeighingsPage>
       onGoToProduction: _goToProduction,
       onGoToServices: _goToServices,
       onGoToWeighings: () async {},
+      onGoToMaintenance: _goToMaintenance,
       topContent: Padding(
         padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
         child: Card(
@@ -1443,15 +1468,36 @@ class _WeighingsPageState extends State<WeighingsPage>
                   child: Focus(
                     focusNode: _rowsFocusNode,
                     onKeyEvent: (_, event) {
-                      if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                      if (_isEditableTextFocused()) {
+                      if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
                         return KeyEventResult.ignored;
                       }
                       final key = event.logicalKey;
+                      final editingText = _isEditableTextFocused();
                       final ctrlOrCmd = _isCtrlOrCmdPressed();
                       final editingAnyRow =
                           _selectedRowState()?.isEditing ?? false;
                       final keyboardCellMode = _gridEditMode || editingAnyRow;
+
+                      if (editingText) {
+                        if (key == LogicalKeyboardKey.enter ||
+                            key == LogicalKeyboardKey.numpadEnter) {
+                          _handleEnterOnSelectedRow();
+                          return KeyEventResult.handled;
+                        }
+                        if (key == LogicalKeyboardKey.escape) {
+                          _handleEscapeOnSelectedRow();
+                          return KeyEventResult.handled;
+                        }
+                        if (key == LogicalKeyboardKey.delete ||
+                            key == LogicalKeyboardKey.backspace ||
+                            key == LogicalKeyboardKey.arrowLeft ||
+                            key == LogicalKeyboardKey.arrowRight ||
+                            key == LogicalKeyboardKey.arrowUp ||
+                            key == LogicalKeyboardKey.arrowDown ||
+                            key == LogicalKeyboardKey.space) {
+                          return KeyEventResult.ignored;
+                        }
+                      }
 
                       if (key == LogicalKeyboardKey.arrowUp) {
                         if (ctrlOrCmd) {
@@ -2490,6 +2536,8 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
                                       controller: _ticket,
                                       focusNode: _ticketFocus,
                                       decoration: _glassFieldDecoration(),
+                                      onSubmitted: (_) =>
+                                          unawaited(saveFromKeyboard()),
                                       onTap: () {
                                         widget.onActivateColumn(1);
                                         if (!_ticketFocus.hasFocus) {
@@ -2518,6 +2566,8 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
                                         _ProviderInputFormatter(),
                                       ],
                                       decoration: _glassFieldDecoration(),
+                                      onSubmitted: (_) =>
+                                          unawaited(saveFromKeyboard()),
                                       onTap: () {
                                         widget.onActivateColumn(2);
                                         if (!_proveedorFocus.hasFocus) {
@@ -2550,6 +2600,8 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
                                         _MoneyInputFormatter(),
                                       ],
                                       decoration: _glassFieldDecoration(),
+                                      onSubmitted: (_) =>
+                                          unawaited(saveFromKeyboard()),
                                       onTap: () {
                                         widget.onActivateColumn(3);
                                         if (!_precioFocus.hasFocus) {
@@ -3275,77 +3327,95 @@ Future<bool?> _showGlassConfirmDialog(
   return showDialog<bool>(
     context: context,
     barrierColor: Colors.black.withOpacity(0.28),
-    builder: (dialogContext) => Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 430),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(22),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.72),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(color: Colors.white.withOpacity(0.84)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.14),
-                    blurRadius: 24,
-                    offset: const Offset(0, 12),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontSize: 19,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0B2B2B),
+    builder: (dialogContext) => Focus(
+      autofocus: true,
+      onKeyEvent: (_, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        if (event.logicalKey == LogicalKeyboardKey.escape) {
+          Navigator.of(dialogContext).pop(false);
+          return KeyEventResult.handled;
+        }
+        if (event.logicalKey == LogicalKeyboardKey.enter ||
+            event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+          Navigator.of(dialogContext).pop(true);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 430),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(22),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(0.72),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(color: Colors.white.withOpacity(0.84)),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withOpacity(0.14),
+                      blurRadius: 24,
+                      offset: const Offset(0, 12),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    content,
-                    style: const TextStyle(
-                      fontSize: 14.5,
-                      height: 1.35,
-                      color: Color(0xFF1D3D3B),
+                  ],
+                ),
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF0B2B2B),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlinedButton(
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: const Color(0xFF2A4B49),
-                          side: BorderSide(
-                            color: const Color(0xFF2A4B49).withOpacity(0.25),
+                    const SizedBox(height: 10),
+                    Text(
+                      content,
+                      style: const TextStyle(
+                        fontSize: 14.5,
+                        height: 1.35,
+                        color: Color(0xFF1D3D3B),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton(
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: const Color(0xFF2A4B49),
+                            side: BorderSide(
+                              color: const Color(0xFF2A4B49).withOpacity(0.25),
+                            ),
+                            backgroundColor: Colors.white.withOpacity(0.36),
                           ),
-                          backgroundColor: Colors.white.withOpacity(0.36),
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          child: const Text('Cancelar'),
                         ),
-                        onPressed: () => Navigator.of(dialogContext).pop(false),
-                        child: const Text('Cancelar'),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF2D6A6A),
-                          foregroundColor: Colors.white,
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFF2D6A6A),
+                            foregroundColor: Colors.white,
+                          ),
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
+                          child: Text(confirmText),
                         ),
-                        onPressed: () => Navigator.of(dialogContext).pop(true),
-                        child: Text(confirmText),
-                      ),
-                    ],
-                  ),
-                ],
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),

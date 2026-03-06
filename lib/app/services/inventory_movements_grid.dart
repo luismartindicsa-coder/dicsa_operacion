@@ -4300,6 +4300,18 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                         Navigator.of(dialogContext).pop();
                         return KeyEventResult.handled;
                       }
+                      if (event.logicalKey == LogicalKeyboardKey.enter ||
+                          event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                        if (actions.isEmpty) return KeyEventResult.handled;
+                        final activeIndex = (hoveredIndex ?? 0).clamp(
+                          0,
+                          actions.length - 1,
+                        );
+                        Navigator.of(
+                          dialogContext,
+                        ).pop(actions[activeIndex].key);
+                        return KeyEventResult.handled;
+                      }
                       return KeyEventResult.ignored;
                     },
                     child: Material(
@@ -4464,18 +4476,48 @@ class _MovementDataRowState extends State<_MovementDataRow> {
   }
 
   Future<void> _save({bool keepEditing = false}) async {
-    final grossKg = _toDouble(_grossC.text);
-    final tareKg = _toDouble(_tareC.text);
-    final humidityPercent = _toDouble(_humidityC.text);
-    final trashKg = _toDouble(_trashC.text);
+    final grossText = _grossC.text.trim();
+    final tareText = _tareC.text.trim();
+    final humidityText = _humidityC.text.trim();
+    final trashText = _trashC.text.trim();
+    final grossKg = _toDouble(grossText);
+    final tareKg = _toDouble(tareText);
+    final humidityPercent = _toDouble(humidityText);
+    final trashKg = _toDouble(trashText);
+
+    if (grossText.isNotEmpty && (grossKg == null || grossKg <= 0)) {
+      _toast('Bruto debe ser mayor a 0');
+      return;
+    }
+    if (tareText.isNotEmpty && tareKg == null) {
+      _toast('Tara inválida');
+      return;
+    }
+    if (humidityText.isNotEmpty && humidityPercent == null) {
+      _toast('Humedad inválida');
+      return;
+    }
+    if (trashText.isNotEmpty && trashKg == null) {
+      _toast('Basura inválida');
+      return;
+    }
+
+    final storedNetKg =
+        _toDouble(widget.row['net_kg']) ?? _toDouble(widget.row['weight_kg']);
     final netKg = (grossKg == null || grossKg <= 0)
-        ? null
+        ? storedNetKg
         : math.max(0, grossKg - (tareKg ?? 0)).toDouble();
-    if (_material == null || netKg == null || netKg <= 0) {
+    if (_material == null) {
+      _toast('Material es obligatorio');
+      return;
+    }
+    if (netKg == null || netKg <= 0) {
+      _toast('Peso neto debe ser mayor a 0');
       return;
     }
     final selectedMaterial = widget.materialsById[_material!];
     if (selectedMaterial == null) {
+      _toast('Material no válido para actualizar');
       return;
     }
     final extrasError = _movementExtrasRequiredError(
@@ -7025,7 +7067,10 @@ ButtonStyle _invActionFilledButtonStyle() {
 double? _toDouble(dynamic v) {
   if (v == null) return null;
   if (v is num) return v.toDouble();
-  return double.tryParse(v.toString());
+  final text = v.toString().trim();
+  if (text.isEmpty) return null;
+  final normalized = text.replaceAll(',', '.');
+  return double.tryParse(normalized);
 }
 
 class _InvTopMetricCard extends StatelessWidget {

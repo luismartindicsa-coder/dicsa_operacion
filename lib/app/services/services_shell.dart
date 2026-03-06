@@ -9,6 +9,7 @@ enum ServicesOverlayNavModule {
   inventario,
   servicios,
   pesadas,
+  mantenimiento,
 }
 
 class ServicesShell extends StatefulWidget {
@@ -23,7 +24,10 @@ class ServicesShell extends StatefulWidget {
   final Future<void> Function()? onGoToProduction;
   final Future<void> Function()? onGoToServices;
   final Future<void> Function()? onGoToWeighings;
+  final Future<void> Function()? onGoToMaintenance;
   final Future<void> Function()? onGoToCatalogs;
+  final Future<void> Function()? onHeaderGuide;
+  final String? headerGuideLabel;
 
   const ServicesShell({
     super.key,
@@ -38,7 +42,10 @@ class ServicesShell extends StatefulWidget {
     this.onGoToProduction,
     this.onGoToServices,
     this.onGoToWeighings,
+    this.onGoToMaintenance,
     this.onGoToCatalogs,
+    this.onHeaderGuide,
+    this.headerGuideLabel,
   });
 
   @override
@@ -155,6 +162,22 @@ class _ServicesShellState extends State<ServicesShell>
                                 ),
                               ),
                             ),
+                            if (widget.onHeaderGuide != null)
+                              AnimatedBuilder(
+                                animation: _content,
+                                builder: (_, __) => Opacity(
+                                  opacity: _content.value,
+                                  child: Padding(
+                                    padding: const EdgeInsets.only(right: 8),
+                                    child: _HeaderActionButton(
+                                      label: widget.headerGuideLabel ?? 'Flujo',
+                                      icon: Icons.account_tree_rounded,
+                                      onTap: () async =>
+                                          widget.onHeaderGuide!(),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             AnimatedBuilder(
                               animation: _content,
                               builder: (_, __) => Opacity(
@@ -217,6 +240,7 @@ class _ServicesShellState extends State<ServicesShell>
                       onGoToProduction: widget.onGoToProduction,
                       onGoToServices: widget.onGoToServices,
                       onGoToWeighings: widget.onGoToWeighings,
+                      onGoToMaintenance: widget.onGoToMaintenance,
                       onNavigate: () {
                         if (!mounted) return;
                         setState(() => _menuOverlayOpen = false);
@@ -910,6 +934,7 @@ class _ServicesSideMenu extends StatelessWidget {
   final Future<void> Function()? onGoToProduction;
   final Future<void> Function()? onGoToServices;
   final Future<void> Function()? onGoToWeighings;
+  final Future<void> Function()? onGoToMaintenance;
   final VoidCallback onNavigate;
 
   const _ServicesSideMenu({
@@ -919,6 +944,7 @@ class _ServicesSideMenu extends StatelessWidget {
     required this.onGoToProduction,
     required this.onGoToServices,
     required this.onGoToWeighings,
+    required this.onGoToMaintenance,
     required this.onNavigate,
   });
 

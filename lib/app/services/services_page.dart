@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/auth_gate.dart';
 import '../dashboard/dashboard_page.dart';
+import '../maintenance/maintenance_page.dart';
 import 'inventory_page.dart';
 import 'weighings_page.dart';
 import 'services_shell.dart'; // ajusta el path si lo guardaste en /ui/ o /app/
@@ -1303,6 +1304,17 @@ class _ServicesPageState extends State<ServicesPage>
     Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const WeighingsPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToMaintenance() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const MaintenancePage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
@@ -3747,6 +3759,7 @@ class _ServicesPageState extends State<ServicesPage>
       onGoToProduction: _goToProduction,
       onGoToServices: () async {},
       onGoToWeighings: _goToWeighings,
+      onGoToMaintenance: _goToMaintenance,
       onGoToCatalogs: null,
       topContent: _loadingCats || _loadingRows
           ? null

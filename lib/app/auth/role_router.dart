@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../maintenance/maintenance_page.dart';
 import '../services/services_page.dart';
 import '../dashboard/dashboard_page.dart';
 
@@ -63,6 +64,7 @@ class _RoleRouterState extends State<RoleRouter> {
 
     // ✅ Routing por rol
     if (role == 'services') return const ServicesPage();
+    if (role == 'maintenance') return const MaintenancePage();
     if (role == 'ops_manager' || role == 'admin') return const DashboardPage();
 
     // viewer / fleet / fuel (por ahora) -> dashboard

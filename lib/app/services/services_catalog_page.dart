@@ -135,40 +135,26 @@ class _CatalogPickerOption<T> {
 
 ButtonStyle _catalogPrimaryActionStyle() {
   return FilledButton.styleFrom(
-    foregroundColor: const Color(0xFF0B2B2B),
-    backgroundColor: Colors.white.withOpacity(0.34),
-    side: BorderSide(color: Colors.white.withOpacity(0.72)),
-    surfaceTintColor: Colors.transparent,
-    shadowColor: Colors.black.withOpacity(0.30),
-  ).copyWith(
-    overlayColor: WidgetStateProperty.all(Colors.transparent),
-    elevation: WidgetStateProperty.resolveWith((states) {
-      if (states.contains(WidgetState.disabled)) return 0;
-      if (states.contains(WidgetState.pressed)) return 2;
-      if (states.contains(WidgetState.hovered)) return 7;
-      return 0;
-    }),
+    backgroundColor: const Color(0xFF4F8E8C),
+    foregroundColor: Colors.white,
+    side: BorderSide(color: const Color(0xFF4F8E8C).withOpacity(0.45)),
+    textStyle: const TextStyle(fontWeight: FontWeight.w700),
   );
 }
 
 ButtonStyle _catalogSecondaryActionStyle() {
   return OutlinedButton.styleFrom(
-    foregroundColor: const Color(0xFF2D4A49),
-    backgroundColor: Colors.white.withOpacity(0.08),
-    side: BorderSide(color: Colors.white.withOpacity(0.38)),
-    surfaceTintColor: Colors.transparent,
-    shadowColor: Colors.transparent,
-  ).copyWith(
-    overlayColor: WidgetStateProperty.all(
-      const Color(0xFF2A9D8F).withOpacity(0.08),
-    ),
+    foregroundColor: const Color(0xFF0B2B2B),
+    side: BorderSide(color: Colors.white.withOpacity(0.52)),
+    backgroundColor: Colors.white.withOpacity(0.18),
+    textStyle: const TextStyle(fontWeight: FontWeight.w700),
   );
 }
 
-const Color _kCatalogTableGlassMenuBg = Color(0xE6F2F7F6);
+const Color _kCatalogTableGlassMenuBg = Color(0xE6EAF2F9);
 const Color _kCatalogTableFilterAccent = Color(0xFF4F8E8C);
 const Color _kCatalogTableFilterAccentSoft = Color(0xFFE2EEEC);
-const Color _kCatalogTableSelectionAccent = Color(0xFF00A3FF);
+const Color _kCatalogTableSelectionAccent = Color(0xFF153B66);
 
 InputDecoration _catalogContractGlassFieldDecoration({String? hintText}) {
   final border = OutlineInputBorder(
@@ -1126,13 +1112,19 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   Future<List<Map<String, dynamic>>> _loadInactiveVehicles() async {
     final rows = await supa
         .from('vehicles')
-        .select('id,code,status')
+        .select('id,code,serial_number,status')
         .eq('status', 'fuera_servicio')
         .order('code');
     return _sortCatalogRowsByName(
       (rows as List)
           .cast<Map<String, dynamic>>()
-          .map((e) => <String, dynamic>{'id': e['id'], 'name': e['code']})
+          .map(
+            (e) => <String, dynamic>{
+              'id': e['id'],
+              'name': e['code'],
+              'serial_number': e['serial_number'],
+            },
+          )
           .toList(),
     );
   }
@@ -1280,7 +1272,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
             .order('full_name'),
         supa
             .from('vehicles')
-            .select('id,code,status')
+            .select('id,code,serial_number,status')
             .eq('status', 'activo')
             .order('code'),
         supa
@@ -1317,7 +1309,13 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
       final vehicles = _sortCatalogRowsByName(
         (res[4] as List)
             .cast<Map<String, dynamic>>()
-            .map((e) => <String, dynamic>{'id': e['id'], 'name': e['code']})
+            .map(
+              (e) => <String, dynamic>{
+                'id': e['id'],
+                'name': e['code'],
+                'serial_number': e['serial_number'],
+              },
+            )
             .toList(),
       );
       final commercialMaterials = _sortCatalogRowsByName(
@@ -1531,9 +1529,16 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
 
   Future<void> _addVehicleFromValue(
     String raw, {
+    String? serialNumber,
     bool clearInput = false,
   }) async {
-    final normalized = _normalizeName(raw);
+    final parts = raw.split('|');
+    final rawCode = parts.first;
+    final inlineSerial = parts.length > 1 ? parts.sublist(1).join('|') : '';
+    final normalized = _normalizeName(rawCode);
+    final resolvedSerial = _normalizeName(
+      (serialNumber ?? '').trim().isEmpty ? inlineSerial : (serialNumber ?? ''),
+    );
     if (normalized.isEmpty) {
       _toast('Escribe el código de la unidad');
       return;
@@ -1547,6 +1552,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     try {
       await supa.from('vehicles').insert({
         'code': normalized,
+        'serial_number': resolvedSerial.isEmpty ? null : resolvedSerial,
         'status': 'activo',
       });
       if (clearInput) _vehicleCodeC.clear();
@@ -1993,39 +1999,73 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   Future<void> _editVehicle(Map<String, dynamic> row) async {
     final id = row['id']?.toString();
     if (id == null) return;
-    final input = TextEditingController(
+    final codeC = TextEditingController(
       text: _normalizeName('${row['name'] ?? ''}'),
     );
-    final result = await showDialog<String>(
+    final serialC = TextEditingController(
+      text: _normalizeName('${row['serial_number'] ?? ''}'),
+    );
+    final result = await showDialog<Map<String, String>>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Editar Unidad'),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          inputFormatters: [
-            FilteringTextInputFormatter.singleLineFormatter,
-            _NameInputFormatter(),
+      builder: (dialogContext) => _catalogGlassDialogScaffold(
+        title: 'Editar Unidad',
+        maxWidth: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: codeC,
+              autofocus: true,
+              inputFormatters: [
+                FilteringTextInputFormatter.singleLineFormatter,
+                _NameInputFormatter(),
+              ],
+              decoration: _catalogEditDialogFieldDecoration(
+                labelText: 'Código',
+                hintText: 'Código',
+                alwaysFloatLabel: true,
+              ),
+            ),
+            const SizedBox(height: 10),
+            TextField(
+              controller: serialC,
+              inputFormatters: [
+                FilteringTextInputFormatter.singleLineFormatter,
+                _NameInputFormatter(),
+              ],
+              decoration: _catalogEditDialogFieldDecoration(
+                labelText: 'Serie',
+                hintText: 'Número de serie (opcional)',
+                alwaysFloatLabel: true,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton(
+                  style: _catalogSecondaryActionStyle(),
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancelar'),
+                ),
+                const SizedBox(width: 8),
+                FilledButton(
+                  style: _catalogPrimaryActionStyle(),
+                  onPressed: () => Navigator.pop(dialogContext, {
+                    'code': _normalizeName(codeC.text),
+                    'serial_number': _normalizeName(serialC.text),
+                  }),
+                  child: const Text('Guardar'),
+                ),
+              ],
+            ),
           ],
-          decoration: const InputDecoration(hintText: 'Código'),
-          onSubmitted: (_) =>
-              Navigator.pop(dialogContext, _normalizeName(input.text)),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, _normalizeName(input.text)),
-            child: const Text('Guardar'),
-          ),
-        ],
       ),
     );
     if (result == null) return;
-    final newCode = result;
+    final newCode = (result['code'] ?? '').trim();
+    final newSerial = (result['serial_number'] ?? '').trim();
     if (newCode.isEmpty) {
       _toast('El código no puede estar vacío');
       return;
@@ -2036,7 +2076,13 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     }
 
     try {
-      await supa.from('vehicles').update({'code': newCode}).eq('id', id);
+      await supa
+          .from('vehicles')
+          .update({
+            'code': newCode,
+            'serial_number': newSerial.isEmpty ? null : newSerial,
+          })
+          .eq('id', id);
       _changed = true;
       _toast('Unidad actualizada');
       await _loadData();
@@ -2951,6 +2997,8 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     Future<void> Function(List<Map<String, dynamic>> rows)? onDeleteMany,
     String deleteTooltip = 'Desactivar',
     required InputDecoration fieldDecoration,
+    String? secondaryColumnHeader,
+    String Function(Map<String, dynamic> row)? secondaryColumnValueOf,
   }) {
     return _GlassCard(
       title: title,
@@ -2976,6 +3024,8 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
               insertHintText: hintText,
               onDeleteMany: onDeleteMany,
               deleteTooltip: deleteTooltip,
+              secondaryColumnHeader: secondaryColumnHeader,
+              secondaryColumnValueOf: secondaryColumnValueOf,
             ),
           ),
         ],
@@ -3057,7 +3107,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
             child: _buildCatalogModuleCard(
               title: 'Unidades',
               controller: _vehicleCodeC,
-              hintText: 'Código de la unidad',
+              hintText: 'Código de la unidad (opcional: CODIGO | SERIE)',
               onAdd: _addVehicle,
               saving: _savingVehicle,
               addIcon: Icons.local_shipping,
@@ -3071,7 +3121,10 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
               inactiveLabel: 'Fuera de servicio',
               rows: _vehicles,
               emptyText: 'Sin unidades',
-              subtitleOf: (_) => null,
+              subtitleOf: (row) {
+                final serial = (row['serial_number'] ?? '').toString().trim();
+                return serial.isEmpty ? null : 'Serie: $serial';
+              },
               onEdit: _editVehicle,
               onInlineEdit: _updateVehicleCodeInline,
               onDelete: _deleteVehicle,
@@ -3079,6 +3132,9 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
               onDeleteMany: _deleteVehiclesBulk,
               deleteTooltip: 'Enviar a fuera de servicio',
               fieldDecoration: fieldDecoration,
+              secondaryColumnHeader: 'SERIE',
+              secondaryColumnValueOf: (row) =>
+                  (row['serial_number'] ?? '').toString(),
             ),
           ),
         ];
@@ -3275,7 +3331,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
               _buildCatalogModuleCard(
                 title: 'Unidades',
                 controller: _vehicleCodeC,
-                hintText: 'Código de la unidad',
+                hintText: 'Código de la unidad (opcional: CODIGO | SERIE)',
                 onAdd: _addVehicle,
                 saving: _savingVehicle,
                 addIcon: Icons.local_shipping,
@@ -3289,7 +3345,10 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                 inactiveLabel: 'Fuera de servicio',
                 rows: _vehicles,
                 emptyText: 'Sin unidades',
-                subtitleOf: (_) => null,
+                subtitleOf: (row) {
+                  final serial = (row['serial_number'] ?? '').toString().trim();
+                  return serial.isEmpty ? null : 'Serie: $serial';
+                },
                 onEdit: _editVehicle,
                 onInlineEdit: _updateVehicleCodeInline,
                 onDelete: _deleteVehicle,
@@ -3297,6 +3356,9 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                 onDeleteMany: _deleteVehiclesBulk,
                 deleteTooltip: 'Enviar a fuera de servicio',
                 fieldDecoration: fieldDecoration,
+                secondaryColumnHeader: 'SERIE',
+                secondaryColumnValueOf: (row) =>
+                    (row['serial_number'] ?? '').toString(),
               ),
               _buildCommercialMaterialsTab(fieldDecoration),
               _buildOpeningTemplatesTab(fieldDecoration),
@@ -3730,6 +3792,8 @@ class _CatalogContractTable extends StatefulWidget {
   final Future<void> Function(List<Map<String, dynamic>> rows)? onDeleteMany;
   final String deleteTooltip;
   final String insertHintText;
+  final String? secondaryColumnHeader;
+  final String Function(Map<String, dynamic> row)? secondaryColumnValueOf;
 
   const _CatalogContractTable({
     required this.rows,
@@ -3742,6 +3806,8 @@ class _CatalogContractTable extends StatefulWidget {
     this.onDeleteMany,
     this.deleteTooltip = 'Desactivar',
     required this.insertHintText,
+    this.secondaryColumnHeader,
+    this.secondaryColumnValueOf,
   });
 
   @override
@@ -4599,6 +4665,10 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
   Widget build(BuildContext context) {
     final rows = _visibleRows;
     const editableCellMaxWidth = 440.0;
+    final hasSecondaryColumn =
+        widget.secondaryColumnHeader != null &&
+        widget.secondaryColumnHeader!.trim().isNotEmpty &&
+        widget.secondaryColumnValueOf != null;
     final hasNameFilterActive =
         _nameFilterC.text.trim().isNotEmpty ||
         _nameFilterSelectedNames.isNotEmpty;
@@ -4732,6 +4802,16 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                           fontWeight: FontWeight.w800,
                         ),
                       ),
+                      if (hasSecondaryColumn) ...[
+                        const SizedBox(width: 18),
+                        Text(
+                          widget.secondaryColumnHeader!,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
                       if (hasNameFilterActive) ...[
                         const SizedBox(width: 8),
                         Expanded(
@@ -5137,6 +5217,25 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                                                 ),
                                               ),
                                             ),
+                                            if (hasSecondaryColumn) ...[
+                                              const SizedBox(width: 10),
+                                              SizedBox(
+                                                width: 170,
+                                                child: Text(
+                                                  widget
+                                                      .secondaryColumnValueOf!(
+                                                    row,
+                                                  ),
+                                                  maxLines: 1,
+                                                  overflow:
+                                                      TextOverflow.ellipsis,
+                                                  style: const TextStyle(
+                                                    color: Color(0xFF0B2B2B),
+                                                    fontWeight: FontWeight.w700,
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
                                             const SizedBox(width: 8),
                                             _actionButtonForRow(i, row),
                                           ],
