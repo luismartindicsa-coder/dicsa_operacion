@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.example" "\0"
-            VALUE "FileDescription", "DISCA" "\0"
+            VALUE "FileDescription", "DICSA" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
             VALUE "InternalName", "dicsa_operacion" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.example. All rights reserved." "\0"
             VALUE "OriginalFilename", "dicsa_operacion.exe" "\0"
-            VALUE "ProductName", "DISCA" "\0"
+            VALUE "ProductName", "DICSA" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END
