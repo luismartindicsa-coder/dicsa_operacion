@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/services_shell.dart';
+import '../shared/app_error_reporter.dart';
 
 class AuthResolvedProfile {
   final String email;
@@ -79,7 +80,12 @@ class AuthAccess {
         role: normalizedRole.isEmpty ? 'viewer' : normalizedRole,
         isActive: (row?['is_active'] as bool?) ?? true,
       );
-    } catch (_) {
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage: 'No se pudo cargar el perfil actual.',
+      );
       return AuthResolvedProfile(email: email, role: 'viewer', isActive: true);
     }
   }

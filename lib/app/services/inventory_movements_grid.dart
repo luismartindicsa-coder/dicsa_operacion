@@ -897,22 +897,34 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   }
 
   Future<void> _deleteRow(String id) async {
-    await supa.from('movements').delete().eq('id', id);
-    _bulkSelectedRowIds.remove(id);
-    _toast('Eliminado');
-    await _loadRows(showLoader: false);
-    await widget.onChanged?.call();
+    try {
+      await supa.from('movements').delete().eq('id', id);
+      _bulkSelectedRowIds.remove(id);
+      _toast('Eliminado');
+      await _loadRows(showLoader: false);
+      await widget.onChanged?.call();
+    } on PostgrestException catch (e) {
+      _toast(e.message);
+    } catch (e) {
+      _toast('No se pudo eliminar movimiento: $e');
+    }
   }
 
   Future<void> _updateRow(String id, Map<String, dynamic> patch) async {
-    await supa.from('movements').update(patch).eq('id', id);
-    final idx = _rows.indexWhere((r) => r['id'] == id);
-    if (idx != -1) {
-      setState(() => _rows[idx] = {..._rows[idx], ...patch});
-    } else {
-      await _loadRows(showLoader: false);
+    try {
+      await supa.from('movements').update(patch).eq('id', id);
+      final idx = _rows.indexWhere((r) => r['id'] == id);
+      if (idx != -1) {
+        setState(() => _rows[idx] = {..._rows[idx], ...patch});
+      } else {
+        await _loadRows(showLoader: false);
+      }
+      await widget.onChanged?.call();
+    } on PostgrestException catch (e) {
+      _toast(e.message);
+    } catch (e) {
+      _toast('No se pudo actualizar movimiento: $e');
     }
-    await widget.onChanged?.call();
   }
 
   Future<void> _deleteSelectedRows() async {
@@ -932,6 +944,10 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       _toast('Eliminados ${ids.length} movimientos');
       await _loadRows(showLoader: false);
       await widget.onChanged?.call();
+    } on PostgrestException catch (e) {
+      _toast(e.message);
+    } catch (e) {
+      _toast('No se pudieron eliminar movimientos: $e');
     } finally {
       if (mounted) setState(() => _bulkDeleting = false);
     }
@@ -7548,22 +7564,34 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
   }
 
   Future<void> _deleteRow(String id) async {
-    await supa.from('production_runs').delete().eq('id', id);
-    _bulkSelectedRowIds.remove(id);
-    _toast('Eliminado');
-    await _loadRows(showLoader: false);
-    await widget.onChanged?.call();
+    try {
+      await supa.from('production_runs').delete().eq('id', id);
+      _bulkSelectedRowIds.remove(id);
+      _toast('Eliminado');
+      await _loadRows(showLoader: false);
+      await widget.onChanged?.call();
+    } on PostgrestException catch (e) {
+      _toast(e.message);
+    } catch (e) {
+      _toast('No se pudo eliminar producción: $e');
+    }
   }
 
   Future<void> _updateRow(String id, Map<String, dynamic> patch) async {
-    await supa.from('production_runs').update(patch).eq('id', id);
-    final idx = _rows.indexWhere((r) => r['id'] == id);
-    if (idx != -1) {
-      setState(() => _rows[idx] = {..._rows[idx], ...patch});
-    } else {
-      await _loadRows(showLoader: false);
+    try {
+      await supa.from('production_runs').update(patch).eq('id', id);
+      final idx = _rows.indexWhere((r) => r['id'] == id);
+      if (idx != -1) {
+        setState(() => _rows[idx] = {..._rows[idx], ...patch});
+      } else {
+        await _loadRows(showLoader: false);
+      }
+      await widget.onChanged?.call();
+    } on PostgrestException catch (e) {
+      _toast(e.message);
+    } catch (e) {
+      _toast('No se pudo actualizar producción: $e');
     }
-    await widget.onChanged?.call();
   }
 
   Future<void> _deleteSelectedRows() async {
@@ -7584,6 +7612,10 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
       _toast('Eliminados ${ids.length} registros');
       await _loadRows(showLoader: false);
       await widget.onChanged?.call();
+    } on PostgrestException catch (e) {
+      _toast(e.message);
+    } catch (e) {
+      _toast('No se pudieron eliminar registros de producción: $e');
     } finally {
       if (mounted) setState(() => _bulkDeleting = false);
     }
@@ -10944,22 +10976,34 @@ class _InventoryMaterialSeparationGridState
   }
 
   Future<void> _deleteRow(String id) async {
-    await supa.from('material_separation_runs').delete().eq('id', id);
-    _bulkSelectedRowIds.remove(id);
-    _toast('Eliminado');
-    await _loadRows(showLoader: false);
-    await widget.onChanged?.call();
+    try {
+      await supa.from('material_separation_runs').delete().eq('id', id);
+      _bulkSelectedRowIds.remove(id);
+      _toast('Eliminado');
+      await _loadRows(showLoader: false);
+      await widget.onChanged?.call();
+    } on PostgrestException catch (e) {
+      _toast(e.message);
+    } catch (e) {
+      _toast('No se pudo eliminar separación: $e');
+    }
   }
 
   Future<void> _updateRow(String id, Map<String, dynamic> patch) async {
-    await supa.from('material_separation_runs').update(patch).eq('id', id);
-    final idx = _rows.indexWhere((r) => r['id'] == id);
-    if (idx != -1) {
-      setState(() => _rows[idx] = {..._rows[idx], ...patch});
-    } else {
-      await _loadRows(showLoader: false);
+    try {
+      await supa.from('material_separation_runs').update(patch).eq('id', id);
+      final idx = _rows.indexWhere((r) => r['id'] == id);
+      if (idx != -1) {
+        setState(() => _rows[idx] = {..._rows[idx], ...patch});
+      } else {
+        await _loadRows(showLoader: false);
+      }
+      await widget.onChanged?.call();
+    } on PostgrestException catch (e) {
+      _toast(e.message);
+    } catch (e) {
+      _toast('No se pudo actualizar separación: $e');
     }
-    await widget.onChanged?.call();
   }
 
   Future<void> _deleteSelectedRows() async {
@@ -10980,6 +11024,10 @@ class _InventoryMaterialSeparationGridState
       _toast('Eliminados ${ids.length} registros');
       await _loadRows(showLoader: false);
       await widget.onChanged?.call();
+    } on PostgrestException catch (e) {
+      _toast(e.message);
+    } catch (e) {
+      _toast('No se pudieron eliminar registros de separación: $e');
     } finally {
       if (mounted) setState(() => _bulkDeleting = false);
     }

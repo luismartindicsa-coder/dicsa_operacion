@@ -18,6 +18,7 @@ import '../services/services_page.dart';
 import '../services/services_shell.dart';
 import '../services/warehouse_page.dart';
 import '../services/weighings_page.dart';
+import '../shared/app_error_reporter.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/page_routes.dart';
 
@@ -367,7 +368,12 @@ class _MaintenancePageState extends State<MaintenancePage>
           .cast<Map<String, dynamic>>()
           .map((e) => Map<String, dynamic>.from(e))
           .toList();
-    } catch (_) {
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage: 'No se pudo cargar el catalogo de vehiculos.',
+      );
       _vehicleCatalog = const [];
     }
   }
@@ -386,7 +392,12 @@ class _MaintenancePageState extends State<MaintenancePage>
       _profileRole = ((row?['role'] as String?) ?? 'viewer')
           .toLowerCase()
           .trim();
-    } catch (_) {
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage: 'No se pudo cargar el perfil de mantenimiento.',
+      );
       _profileRole = 'viewer';
     }
   }
@@ -1168,7 +1179,12 @@ class _MaintenancePageState extends State<MaintenancePage>
       try {
         final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
         logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
-      } catch (_) {
+      } catch (e, st) {
+        AppErrorReporter.report(
+          e,
+          st,
+          fallbackMessage: 'No se pudo cargar el logo para el PDF.',
+        );
         logoImage = null;
       }
       final evidencesByCategory = <String, List<String>>{

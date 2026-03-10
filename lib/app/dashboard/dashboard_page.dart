@@ -14,6 +14,7 @@ import '../services/services_page.dart';
 import '../services/warehouse_page.dart';
 import '../services/weighings_page.dart';
 import '../shared/app_shell.dart';
+import '../shared/app_error_reporter.dart';
 import '../shared/page_routes.dart';
 import '../shared/dicsa_logo_mark.dart';
 
@@ -1694,7 +1695,12 @@ class _MaintenanceSummaryCardState extends State<_MaintenanceSummaryCard> {
         _openOrders = openOrders.take(6).toList();
         _loading = false;
       });
-    } catch (_) {
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage: 'No se pudo cargar el widget de mantenimiento.',
+      );
       if (!mounted) return;
       setState(() => _loading = false);
     } finally {
@@ -1921,7 +1927,12 @@ class _WarehouseSummaryCardState extends State<_WarehouseSummaryCard> {
         _lowStockItems = lowStock.take(6).toList();
         _loading = false;
       });
-    } catch (_) {
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage: 'No se pudo cargar el widget de inventario bajo.',
+      );
       if (!mounted) return;
       setState(() => _loading = false);
     } finally {
@@ -2572,7 +2583,13 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
             onConflict: 'user_id,widget_key',
           );
       return defaults;
-    } catch (_) {
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage:
+            'No se pudieron cargar las preferencias del dashboard.',
+      );
       return _widgetPrefs.isNotEmpty ? _widgetPrefs : _defaultWidgetPrefs();
     }
   }
@@ -2617,8 +2634,13 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
             prefs.map((pref) => pref.toInsertRow(userId)).toList(),
             onConflict: 'user_id,widget_key',
           );
-    } catch (_) {
-      // Fallback local until the migration is applied remotely.
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage:
+            'No se pudieron guardar las preferencias del dashboard.',
+      );
     }
     if (!mounted) return;
     setState(() {
@@ -3073,7 +3095,12 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         _widgetPrefs = widgetPrefs;
         _loading = false;
       });
-    } catch (_) {
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage: 'No se pudo cargar la informacion del dashboard.',
+      );
       if (!mounted) return;
       setState(() => _loading = false);
     } finally {
