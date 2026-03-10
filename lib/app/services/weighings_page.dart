@@ -6,13 +6,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../auth/auth_gate.dart';
+import '../auth/auth_access.dart';
+import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
+import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
+import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/page_routes.dart';
 import 'inventory_page.dart';
 import 'services_page.dart';
 import 'services_shell.dart';
+import 'warehouse_page.dart';
 
 const double _kActionsW = 76;
 const double _kColGap = 6;
@@ -39,7 +43,6 @@ class _WeighingsPageState extends State<WeighingsPage>
   bool _loading = true;
   bool _refreshingRows = false;
   bool _bulkDeleting = false;
-  bool _gridEditMode = false;
 
   final TextEditingController _draftTicketC = TextEditingController();
   final TextEditingController _draftProviderC = TextEditingController();
@@ -72,13 +75,11 @@ class _WeighingsPageState extends State<WeighingsPage>
   int _activeInsertColumn = 0;
   static const int _insertColumnCount = 4;
   int _activeGridColumn = 0;
-  int _gridSaveSignal = 0;
-  int _gridCancelSignal = 0;
 
   DateTimeRange? _fechaFilter;
-  String _ticketFilter = '';
-  String _proveedorFilter = '';
-  String _precioFilter = '';
+  Set<String> _ticketFilter = <String>{};
+  Set<String> _proveedorFilter = <String>{};
+  Set<String> _precioFilter = <String>{};
 
   int _currentPage = 0;
   int _pageSize = 40;
@@ -102,7 +103,7 @@ class _WeighingsPageState extends State<WeighingsPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _draftDate = DateUtils.dateOnly(DateTime.now());
+    _draftDate = null;
     unawaited(_loadRows());
     _setupAutoRefresh();
   }
@@ -142,19 +143,19 @@ class _WeighingsPageState extends State<WeighingsPage>
         }
       }
 
-      if (_ticketFilter.trim().isNotEmpty) {
-        final text = (row['ticket'] ?? '').toString().toLowerCase();
-        if (!text.contains(_ticketFilter.trim().toLowerCase())) return false;
+      if (_ticketFilter.isNotEmpty) {
+        final text = (row['ticket'] ?? '').toString().trim();
+        if (!_ticketFilter.contains(text)) return false;
       }
 
-      if (_proveedorFilter.trim().isNotEmpty) {
-        final text = (row['proveedor'] ?? '').toString().toLowerCase();
-        if (!text.contains(_proveedorFilter.trim().toLowerCase())) return false;
+      if (_proveedorFilter.isNotEmpty) {
+        final text = (row['proveedor'] ?? '').toString().trim();
+        if (!_proveedorFilter.contains(text)) return false;
       }
 
-      if (_precioFilter.trim().isNotEmpty) {
-        final text = _fmtMoney(_num(row['precio']) ?? 0).toLowerCase();
-        if (!text.contains(_precioFilter.trim().toLowerCase())) return false;
+      if (_precioFilter.isNotEmpty) {
+        final text = _fmtMoney(_num(row['precio']) ?? 0);
+        if (!_precioFilter.contains(text)) return false;
       }
 
       return true;
@@ -182,16 +183,13 @@ class _WeighingsPageState extends State<WeighingsPage>
   }
 
   Set<String> _currentSelectionIds() {
-    if (_bulkSelectedRowIds.isNotEmpty) return {..._bulkSelectedRowIds};
-    if (_selectedRowId == null) return <String>{};
-    return <String>{_selectedRowId!};
+    final ids = <String>{..._bulkSelectedRowIds};
+    if (_selectedRowId != null) ids.add(_selectedRowId!);
+    return ids;
   }
 
   bool get _hasExplicitMultiSelection {
-    final primary = _selectedRowId;
-    return primary != null &&
-        _bulkSelectedRowIds.length > 1 &&
-        _bulkSelectedRowIds.contains(primary);
+    return _currentSelectionIds().length > 1;
   }
 
   bool get _hasDraftChanges {
@@ -324,7 +322,7 @@ class _WeighingsPageState extends State<WeighingsPage>
 
     _toast('Pesada agregada');
     setState(() {
-      _draftDate = DateUtils.dateOnly(DateTime.now());
+      _draftDate = null;
       _draftTicketC.clear();
       _draftProviderC.clear();
       _draftPriceC.clear();
@@ -384,11 +382,12 @@ class _WeighingsPageState extends State<WeighingsPage>
       _activeInsertColumn =
           ((value % _insertColumnCount) + _insertColumnCount) %
           _insertColumnCount;
+      _selectedRowId = null;
+      _bulkSelectedRowIds.clear();
     });
     if (!requestFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_isEditableTextFocused()) return;
       switch (_activeInsertColumn) {
         case 1:
           FocusScope.of(context).requestFocus(_draftTicketFocusNode);
@@ -423,7 +422,7 @@ class _WeighingsPageState extends State<WeighingsPage>
     setState(() {
       switch (_activeInsertColumn) {
         case 0:
-          _draftDate = DateUtils.dateOnly(DateTime.now());
+          _draftDate = null;
           return;
         case 1:
           _draftTicketC.clear();
@@ -458,8 +457,51 @@ class _WeighingsPageState extends State<WeighingsPage>
   }
 
   void _focusGridFromInsert() {
-    _ensureGridSelection();
-    _rowsFocusNode.requestFocus();
+    final firstVisibleId = _visibleRows.isEmpty
+        ? null
+        : _visibleRows.first['id'] as String;
+    setState(() {
+      _activeGridColumn = _activeInsertColumn.clamp(
+        0,
+        _gridColumnLabels.length - 1,
+      );
+      if (firstVisibleId != null) {
+        _selectedRowId = firstVisibleId;
+        _bulkSelectedRowIds.clear();
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _rowsFocusNode.requestFocus();
+      if (firstVisibleId != null) {
+        _ensureRowVisible(firstVisibleId);
+      }
+    });
+  }
+
+  void _focusInsertRowFromGrid() {
+    setState(() {
+      _activeInsertColumn = _activeGridColumn.clamp(0, _insertColumnCount - 1);
+      _selectedRowId = null;
+      _bulkSelectedRowIds.clear();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (_activeInsertColumn) {
+        case 1:
+          FocusScope.of(context).requestFocus(_draftTicketFocusNode);
+          break;
+        case 2:
+          FocusScope.of(context).requestFocus(_draftProviderFocusNode);
+          break;
+        case 3:
+          FocusScope.of(context).requestFocus(_draftPriceFocusNode);
+          break;
+        default:
+          FocusManager.instance.primaryFocus?.unfocus();
+          _insertFocusNode.requestFocus();
+      }
+    });
   }
 
   GlobalKey<_WeighingDataRowState> _rowKeyFor(String id) =>
@@ -473,12 +515,37 @@ class _WeighingsPageState extends State<WeighingsPage>
         pressed.contains(LogicalKeyboardKey.metaRight);
   }
 
+  bool _isShiftPressed() {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    return pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+  }
+
+  bool _isSelectionExtendPressed() =>
+      _isCtrlOrCmdPressed() || _isShiftPressed();
+
   bool _isEditableTextFocused() {
     final focused = FocusManager.instance.primaryFocus;
     final ctx = focused?.context;
     if (ctx == null) return false;
     if (ctx.widget is EditableText) return true;
     return ctx.findAncestorWidgetOfExactType<EditableText>() != null;
+  }
+
+  bool _caretAtStart(TextEditingController controller, FocusNode focusNode) {
+    if (!focusNode.hasFocus) return false;
+    final selection = controller.selection;
+    return selection.isValid &&
+        selection.isCollapsed &&
+        selection.baseOffset <= 0;
+  }
+
+  bool _caretAtEnd(TextEditingController controller, FocusNode focusNode) {
+    if (!focusNode.hasFocus) return false;
+    final selection = controller.selection;
+    return selection.isValid &&
+        selection.isCollapsed &&
+        selection.baseOffset >= controller.text.length;
   }
 
   double get _rowsScrollOffset =>
@@ -616,7 +683,7 @@ class _WeighingsPageState extends State<WeighingsPage>
     _marqueePointerLocal = local;
     _marqueeStartContent = _localToContent(local);
     _marqueeCurrentContent = _marqueeStartContent;
-    _marqueeAdditive = _isCtrlOrCmdPressed();
+    _marqueeAdditive = _isSelectionExtendPressed();
     _marqueeBaseSelection = _currentSelectionIds();
     _marqueeActive = false;
   }
@@ -757,11 +824,6 @@ class _WeighingsPageState extends State<WeighingsPage>
     );
   }
 
-  void _ensureGridSelection() {
-    if (_selectedRowId != null || _visibleRows.isEmpty) return;
-    _selectRow(_visibleRows.first['id'] as String, focusTable: false);
-  }
-
   List<_WeighingDataRowState> _selectedRowStates() {
     if (!_hasExplicitMultiSelection) {
       final id = _selectedRowId;
@@ -772,13 +834,10 @@ class _WeighingsPageState extends State<WeighingsPage>
     }
 
     final ids = <String>[];
-    if (_selectedRowId != null &&
-        _bulkSelectedRowIds.contains(_selectedRowId)) {
-      ids.add(_selectedRowId!);
-    }
+    if (_selectedRowId != null) ids.add(_selectedRowId!);
     for (final row in _visibleRows) {
       final id = row['id'] as String;
-      if (_bulkSelectedRowIds.contains(id) && !ids.contains(id)) ids.add(id);
+      if (_currentSelectionIds().contains(id) && !ids.contains(id)) ids.add(id);
     }
     return ids
         .map((id) => _rowKeys[id]?.currentState)
@@ -859,149 +918,39 @@ class _WeighingsPageState extends State<WeighingsPage>
 
   Future<String?> _showRowsContextMenu(Offset globalPosition) {
     final actions = _rowContextActions();
-    final mediaSize = MediaQuery.of(context).size;
-    const menuWidth = 228.0;
-    final left = globalPosition.dx.clamp(
-      8.0,
-      mediaSize.width - menuWidth - 8.0,
+    const menuTextStyle = TextStyle(
+      fontWeight: FontWeight.w800,
+      decoration: TextDecoration.none,
+      decorationColor: Colors.transparent,
+      color: Color(0xFF223D5A),
     );
-    final top = globalPosition.dy.clamp(8.0, mediaSize.height - 8.0);
+    final media = MediaQuery.of(context).size;
 
-    return showGeneralDialog<String>(
+    return showMenu<String>(
       context: context,
-      barrierLabel: 'context_menu',
-      barrierColor: Colors.transparent,
-      barrierDismissible: true,
-      transitionDuration: const Duration(milliseconds: 90),
-      pageBuilder: (dialogContext, _, __) {
-        int? hoveredIndex;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () => Navigator.of(dialogContext).pop(),
-                behavior: HitTestBehavior.translucent,
-              ),
+      color: _kGlassMenuBg,
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        media.width - globalPosition.dx,
+        media.height - globalPosition.dy,
+      ),
+      items: [
+        for (var i = 0; i < actions.length; i++) ...[
+          PopupMenuItem<String>(
+            value: actions[i].key,
+            child: Text(
+              actions[i].value,
+              style: actions[i].key == 'delete'
+                  ? menuTextStyle.copyWith(color: const Color(0xFF8A1F1F))
+                  : menuTextStyle,
             ),
-            Positioned(
-              left: left.toDouble(),
-              top: top.toDouble(),
-              child: StatefulBuilder(
-                builder: (context, setMenuState) {
-                  return Focus(
-                    autofocus: true,
-                    onKeyEvent: (_, event) {
-                      if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                      if (event.logicalKey == LogicalKeyboardKey.escape) {
-                        Navigator.of(dialogContext).pop();
-                        return KeyEventResult.handled;
-                      }
-                      if (event.logicalKey == LogicalKeyboardKey.enter ||
-                          event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-                        if (actions.isEmpty) return KeyEventResult.handled;
-                        final activeIndex = (hoveredIndex ?? 0).clamp(
-                          0,
-                          actions.length - 1,
-                        );
-                        Navigator.of(
-                          dialogContext,
-                        ).pop(actions[activeIndex].key);
-                        return KeyEventResult.handled;
-                      }
-                      return KeyEventResult.ignored;
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                        child: Container(
-                          width: menuWidth,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _kGlassMenuBg,
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.72),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.18),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (var i = 0; i < actions.length; i++) ...[
-                                MouseRegion(
-                                  onEnter: (_) =>
-                                      setMenuState(() => hoveredIndex = i),
-                                  onExit: (_) {
-                                    if (hoveredIndex == i) {
-                                      setMenuState(() => hoveredIndex = null);
-                                    }
-                                  },
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: () => Navigator.of(
-                                      dialogContext,
-                                    ).pop(actions[i].key),
-                                    child: AnimatedContainer(
-                                      duration: const Duration(
-                                        milliseconds: 80,
-                                      ),
-                                      curve: Curves.easeOutCubic,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 10,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: hoveredIndex == i
-                                            ? const Color(
-                                                0xFFA9E8CF,
-                                              ).withOpacity(0.55)
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Text(
-                                        actions[i].value,
-                                        style: TextStyle(
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.w800,
-                                          color: actions[i].key == 'delete'
-                                              ? const Color(0xFF8A1F1F)
-                                              : const Color(0xFF1C3E5D),
-                                          decoration: TextDecoration.none,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (i != actions.length - 1)
-                                  Divider(
-                                    height: 1,
-                                    thickness: 1,
-                                    color: Colors.white.withOpacity(0.44),
-                                  ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        );
-      },
+          ),
+          if (i != actions.length - 1) const PopupMenuDivider(height: 1),
+        ],
+      ],
     );
   }
 
@@ -1075,105 +1024,241 @@ class _WeighingsPageState extends State<WeighingsPage>
       'ticket' => _ticketFilter,
       'proveedor' => _proveedorFilter,
       'precio' => _precioFilter,
-      _ => '',
+      _ => <String>{},
     };
 
-    final value = await showDialog<String>(
+    final result = await showDialog<_WeighingsFilterDialogResult>(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.28),
       builder: (dialogContext) {
-        final c = TextEditingController(text: initial);
-        return Dialog(
-          backgroundColor: Colors.transparent,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 18,
-            vertical: 24,
-          ),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 420),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                  decoration: _filterDialogDecoration(),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Filtro: $label',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0B2B2B),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      TextField(
-                        controller: c,
+        final localSelected = <String>{...initial};
+        String localSearch = '';
+
+        return StatefulBuilder(
+          builder: (_, setLocalState) {
+            final options = _columnDistinctValues(
+              columnId,
+              search: localSearch,
+            );
+            final allVisibleSelected =
+                options.isNotEmpty && options.every(localSelected.contains);
+
+            void applyAndClose() {
+              Navigator.pop(
+                dialogContext,
+                _WeighingsFilterDialogResult(selectedValues: localSelected),
+              );
+            }
+
+            return Focus(
+              autofocus: true,
+              onKeyEvent: (_, event) {
+                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                final key = event.logicalKey;
+                if (key == LogicalKeyboardKey.escape) {
+                  Navigator.pop(dialogContext);
+                  return KeyEventResult.handled;
+                }
+                if (key == LogicalKeyboardKey.enter ||
+                    key == LogicalKeyboardKey.numpadEnter) {
+                  applyAndClose();
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 24,
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                    child: Container(
+                      width: 420,
+                      constraints: const BoxConstraints(maxHeight: 560),
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                      decoration: _filterDialogDecoration(),
+                      child: FocusScope(
                         autofocus: true,
-                        decoration: _glassFieldDecoration(
-                          hintText: 'Buscar...',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Filtro: $label',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF0B2B2B),
+                              ),
+                            ),
+                            const SizedBox(height: 10),
+                            TextField(
+                              onChanged: (v) =>
+                                  setLocalState(() => localSearch = v),
+                              onSubmitted: (_) => applyAndClose(),
+                              decoration: _glassFieldDecoration(
+                                hintText: 'Buscar',
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              children: [
+                                TextButton(
+                                  style: TextButton.styleFrom(
+                                    foregroundColor: const Color(0xFF2A4B49),
+                                  ),
+                                  onPressed: () {
+                                    setLocalState(() {
+                                      if (allVisibleSelected) {
+                                        localSelected.removeAll(options);
+                                      } else {
+                                        localSelected.addAll(options);
+                                      }
+                                    });
+                                  },
+                                  child: Text(
+                                    allVisibleSelected
+                                        ? 'Deseleccionar visibles'
+                                        : 'Seleccionar visibles',
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text('${localSelected.length} seleccionados'),
+                              ],
+                            ),
+                            const SizedBox(height: 6),
+                            Expanded(
+                              child: options.isEmpty
+                                  ? const Center(
+                                      child: Text('Sin valores para mostrar'),
+                                    )
+                                  : ListView.builder(
+                                      itemCount: options.length,
+                                      itemBuilder: (_, i) {
+                                        final value = options[i];
+                                        final checked = localSelected.contains(
+                                          value,
+                                        );
+                                        return CheckboxListTile(
+                                          dense: true,
+                                          value: checked,
+                                          activeColor: const Color(0xFF2D7A73),
+                                          checkColor: Colors.white,
+                                          hoverColor: const Color(
+                                            0xFFE9F7EE,
+                                          ).withValues(alpha: 0.95),
+                                          title: Text(
+                                            value,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          onChanged: (v) {
+                                            setLocalState(() {
+                                              if (v ?? false) {
+                                                localSelected.add(value);
+                                              } else {
+                                                localSelected.remove(value);
+                                              }
+                                            });
+                                          },
+                                        );
+                                      },
+                                    ),
+                            ),
+                            const SizedBox(height: 8),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                OutlinedButton(
+                                  style: _filterOutlinedButtonStyle(),
+                                  onPressed: () => Navigator.pop(dialogContext),
+                                  child: const Text('Cancelar'),
+                                ),
+                                const SizedBox(width: 8),
+                                OutlinedButton(
+                                  style: _filterOutlinedButtonStyle(),
+                                  onPressed: () => Navigator.pop(
+                                    dialogContext,
+                                    const _WeighingsFilterDialogResult(
+                                      selectedValues: <String>{},
+                                    ),
+                                  ),
+                                  child: const Text('Limpiar'),
+                                ),
+                                const SizedBox(width: 8),
+                                FilledButton(
+                                  style: _filterFilledButtonStyle(),
+                                  onPressed: applyAndClose,
+                                  child: const Text('Aplicar'),
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
-                        onSubmitted: (_) =>
-                            Navigator.pop(dialogContext, c.text),
                       ),
-                      const SizedBox(height: 12),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          OutlinedButton(
-                            style: _filterOutlinedButtonStyle(),
-                            onPressed: () => Navigator.pop(dialogContext, null),
-                            child: const Text('Cancelar'),
-                          ),
-                          const SizedBox(width: 8),
-                          OutlinedButton(
-                            style: _filterOutlinedButtonStyle(),
-                            onPressed: () => Navigator.pop(dialogContext, ''),
-                            child: const Text('Limpiar'),
-                          ),
-                          const SizedBox(width: 8),
-                          FilledButton(
-                            style: _filterFilledButtonStyle(),
-                            onPressed: () =>
-                                Navigator.pop(dialogContext, c.text),
-                            child: const Text('Aplicar'),
-                          ),
-                        ],
-                      ),
-                    ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
+            );
+          },
         );
       },
     );
 
-    if (!mounted || value == null) return;
+    if (!mounted || result == null) return;
     setState(() {
       switch (columnId) {
         case 'ticket':
-          _ticketFilter = value;
+          _ticketFilter = result.selectedValues;
+          break;
         case 'proveedor':
-          _proveedorFilter = value;
+          _proveedorFilter = result.selectedValues;
+          break;
         case 'precio':
-          _precioFilter = value;
+          _precioFilter = result.selectedValues;
+          break;
+        default:
+          break;
       }
       _currentPage = 0;
+      final visibleIds = _filteredRows.map((r) => r['id'] as String).toSet();
+      _bulkSelectedRowIds.removeWhere((id) => !visibleIds.contains(id));
+      if (!visibleIds.contains(_selectedRowId)) {
+        _selectedRowId = null;
+      }
     });
+  }
+
+  List<String> _columnDistinctValues(String columnId, {String search = ''}) {
+    final normalizedSearch = search.trim().toLowerCase();
+    final values = <String>{};
+    for (final row in _rows) {
+      final raw = switch (columnId) {
+        'ticket' => (row['ticket'] ?? '').toString().trim(),
+        'proveedor' => (row['proveedor'] ?? '').toString().trim(),
+        'precio' => _fmtMoney(_num(row['precio']) ?? 0),
+        _ => '',
+      };
+      if (raw.isEmpty) continue;
+      if (normalizedSearch.isNotEmpty &&
+          !raw.toLowerCase().contains(normalizedSearch)) {
+        continue;
+      }
+      values.add(raw);
+    }
+    final sorted = values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return sorted;
   }
 
   bool _hasActiveFilter(String columnId) {
     return switch (columnId) {
       'fecha' => _fechaFilter != null,
-      'ticket' => _ticketFilter.trim().isNotEmpty,
-      'proveedor' => _proveedorFilter.trim().isNotEmpty,
-      'precio' => _precioFilter.trim().isNotEmpty,
+      'ticket' => _ticketFilter.isNotEmpty,
+      'proveedor' => _proveedorFilter.isNotEmpty,
+      'precio' => _precioFilter.isNotEmpty,
       _ => false,
     };
   }
@@ -1202,18 +1287,13 @@ class _WeighingsPageState extends State<WeighingsPage>
       confirmText: 'Cerrar sesión',
     );
     if (ok != true) return;
-    await _supa.auth.signOut();
     if (!mounted) return;
-    Navigator.of(
-      context,
-    ).pushAndRemoveUntil(appPageRoute(page: const AuthGate()), (_) => false);
+    await signOutAndRouteToLogin(context);
   }
 
   Future<void> _goToDashboard() async {
-    final user = _supa.auth.currentUser;
-    final email = user?.email?.toLowerCase();
-    final allowed = {'operacion@dicsamx.com', 'administracion@dicsamx.com'};
-    if (email == null || !allowed.contains(email)) {
+    final profile = await AuthAccess.resolveCurrentProfile();
+    if (!AuthAccess.canAccessDashboard(profile)) {
       _toast('Acceso no autorizado');
       return;
     }
@@ -1239,6 +1319,24 @@ class _WeighingsPageState extends State<WeighingsPage>
     );
   }
 
+  Future<void> _goToGeneralDashboard() async {
+    final profile = await AuthAccess.resolveCurrentProfile();
+    if (!AuthAccess.canAccessGeneralDashboard(profile)) {
+      _toast('Acceso no autorizado');
+      return;
+    }
+
+    if (!mounted) return;
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pushReplacement(
+        appPageRoute(page: const GeneralDashboardPage(instantOpen: true)),
+      );
+      return;
+    }
+    nav.push(appPageRoute(page: const GeneralDashboardPage(instantOpen: true)));
+  }
+
   Future<void> _goToEntriesAndOutputs() async {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -1261,6 +1359,17 @@ class _WeighingsPageState extends State<WeighingsPage>
     );
   }
 
+  Future<void> _goToInventory() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const InventoryStockPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   Future<void> _goToServices() async {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -1277,6 +1386,17 @@ class _WeighingsPageState extends State<WeighingsPage>
     Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const MaintenancePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToWarehouse() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const WarehousePage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
@@ -1308,143 +1428,103 @@ class _WeighingsPageState extends State<WeighingsPage>
       headerTitle: 'Pesadas',
       activeOverlayModule: ServicesOverlayNavModule.pesadas,
       onLogout: _logout,
+      onGoToGeneralDashboard: _goToGeneralDashboard,
       onGoToOperacion: _goToDashboard,
       onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
       onGoToProduction: _goToProduction,
+      onGoToInventory: _goToInventory,
       onGoToServices: _goToServices,
       onGoToWeighings: () async {},
       onGoToMaintenance: _goToMaintenance,
+      onGoToWarehouse: _goToWarehouse,
       topContent: Padding(
         padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
-        child: Card(
-          elevation: 0,
-          color: Colors.white.withOpacity(0.34),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final actions = FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Row(
-                    children: [
-                      OutlinedButton.icon(
-                        style: _actionOutlinedButtonStyle(),
-                        onPressed: _exportCsvToClipboard,
-                        icon: const Icon(Icons.download_rounded),
-                        label: const Text('Descargar CSV'),
-                      ),
+        child: OperationalGlassToolbarPanel(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final actions = FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    OutlinedButton.icon(
+                      style: _actionOutlinedButtonStyle(),
+                      onPressed: _exportCsvToClipboard,
+                      icon: const Icon(Icons.download_rounded),
+                      label: const Text('Descargar CSV'),
+                    ),
+                    if (_selectedCount > 0) ...[
                       const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        style: _actionOutlinedButtonStyle(),
-                        onPressed: () => setState(() {
-                          _gridEditMode = !_gridEditMode;
-                          if (_gridEditMode) {
-                            _activeGridColumn = 0;
-                            _ensureGridSelection();
-                          } else {
-                            _gridCancelSignal++;
-                          }
-                        }),
-                        icon: Icon(
-                          _gridEditMode
-                              ? Icons.grid_off
-                              : Icons.grid_view_rounded,
-                        ),
+                      FilledButton.icon(
+                        style: _actionFilledButtonStyle(),
+                        onPressed: _bulkDeleting ? null : _deleteSelectedRows,
+                        icon: const Icon(Icons.delete_outline),
                         label: Text(
-                          _gridEditMode
-                              ? 'Salir de cuadrícula'
-                              : 'Edición cuadrícula',
+                          'Eliminar (${_fmtCountInt(_selectedCount)})',
                         ),
                       ),
-                      if (_gridEditMode) ...[
-                        const SizedBox(width: 8),
-                        FilledButton.icon(
-                          style: _actionFilledButtonStyle(),
-                          onPressed: () => setState(() {
-                            _gridSaveSignal++;
-                            _gridEditMode = false;
-                          }),
-                          icon: const Icon(Icons.save_outlined),
-                          label: const Text('Guardar'),
-                        ),
-                      ],
-                      if (_selectedCount > 0) ...[
-                        const SizedBox(width: 8),
-                        FilledButton.icon(
-                          style: _actionFilledButtonStyle(),
-                          onPressed: _bulkDeleting ? null : _deleteSelectedRows,
-                          icon: const Icon(Icons.delete_outline),
-                          label: Text(
-                            'Eliminar (${_fmtCountInt(_selectedCount)})',
-                          ),
-                        ),
-                      ],
                     ],
+                  ],
+                ),
+              );
+
+              final info = Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${_fmtCountInt(_selectedCount)} seleccionadas',
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
-                );
-
-                final info = Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
+                  if (_selectedCount > 0)
                     Text(
-                      '${_fmtCountInt(_selectedCount)} seleccionadas',
+                      'Suma: ${_fmtMoney(selectedTotal)} · Promedio: ${_fmtMoney(selectedAvg)}',
                       style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF2A4B49),
                       ),
                     ),
-                    if (_selectedCount > 0)
-                      Text(
-                        'Suma: ${_fmtMoney(selectedTotal)} · Promedio: ${_fmtMoney(selectedAvg)}',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF2A4B49),
-                        ),
+                  if (_selectedRowState()?.isEditing ?? false)
+                    Text(
+                      'Celda: ${_gridColumnLabels[_activeGridColumn]} · Space',
+                      style: const TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF2A4B49),
                       ),
-                    if (_gridEditMode ||
-                        (_selectedRowState()?.isEditing ?? false))
-                      Text(
-                        'Celda: ${_gridColumnLabels[_activeGridColumn]} · Space',
-                        style: const TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF2A4B49),
-                        ),
-                      ),
-                  ],
-                );
+                    ),
+                ],
+              );
 
-                if (constraints.maxWidth < 980) {
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Align(alignment: Alignment.centerLeft, child: actions),
-                      const SizedBox(height: 6),
-                      Align(alignment: Alignment.centerRight, child: info),
-                    ],
-                  );
-                }
-
-                return Row(
+              if (constraints.maxWidth < 980) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Expanded(
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: actions,
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    info,
+                    Align(alignment: Alignment.centerLeft, child: actions),
+                    const SizedBox(height: 6),
+                    Align(alignment: Alignment.centerRight, child: info),
                   ],
                 );
-              },
-            ),
+              }
+
+              return Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: actions,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  info,
+                ],
+              );
+            },
           ),
         ),
       ),
@@ -1473,10 +1553,10 @@ class _WeighingsPageState extends State<WeighingsPage>
                       }
                       final key = event.logicalKey;
                       final editingText = _isEditableTextFocused();
-                      final ctrlOrCmd = _isCtrlOrCmdPressed();
+                      final extendSelection = _isSelectionExtendPressed();
                       final editingAnyRow =
                           _selectedRowState()?.isEditing ?? false;
-                      final keyboardCellMode = _gridEditMode || editingAnyRow;
+                      final keyboardCellMode = editingAnyRow;
 
                       if (editingText) {
                         if (key == LogicalKeyboardKey.enter ||
@@ -1500,8 +1580,13 @@ class _WeighingsPageState extends State<WeighingsPage>
                       }
 
                       if (key == LogicalKeyboardKey.arrowUp) {
-                        if (ctrlOrCmd) {
+                        if (extendSelection) {
                           _extendSelectionWithArrow(-1);
+                        } else if (!_hasExplicitMultiSelection &&
+                            _selectedRowId != null &&
+                            _visibleRows.isNotEmpty &&
+                            _selectedRowId == _visibleRows.first['id']) {
+                          _focusInsertRowFromGrid();
                         } else if (keyboardCellMode) {
                           _moveSelectedRow(-1);
                         } else {
@@ -1510,7 +1595,7 @@ class _WeighingsPageState extends State<WeighingsPage>
                         return KeyEventResult.handled;
                       }
                       if (key == LogicalKeyboardKey.arrowDown) {
-                        if (ctrlOrCmd) {
+                        if (extendSelection) {
                           _extendSelectionWithArrow(1);
                         } else if (keyboardCellMode) {
                           _moveSelectedRow(1);
@@ -1616,9 +1701,6 @@ class _WeighingsPageState extends State<WeighingsPage>
                                             isSelected: _selectedRowId == rowId,
                                             isChecked: _bulkSelectedRowIds
                                                 .contains(rowId),
-                                            gridEditMode: _gridEditMode,
-                                            gridSaveSignal: _gridSaveSignal,
-                                            gridCancelSignal: _gridCancelSignal,
                                             activeGridColumn: _activeGridColumn,
                                             showRowActions: true,
                                             onOpenContextMenu: (position) =>
@@ -1682,7 +1764,9 @@ class _WeighingsPageState extends State<WeighingsPage>
       color: const Color(0xFFE7F1F8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: const Color(0xFF3C8DCC).withOpacity(0.55)),
+        side: BorderSide(
+          color: const Color(0xFF3C8DCC).withValues(alpha: 0.55),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -1696,7 +1780,7 @@ class _WeighingsPageState extends State<WeighingsPage>
                   borderRadius: BorderRadius.circular(10),
                   border: Border.all(
                     color: active
-                        ? const Color(0xFF0B72FF).withOpacity(0.80)
+                        ? const Color(0xFF0B72FF).withValues(alpha: 0.80)
                         : Colors.transparent,
                     width: active ? 1.15 : 1.0,
                   ),
@@ -1710,27 +1794,51 @@ class _WeighingsPageState extends State<WeighingsPage>
               autofocus: false,
               onKeyEvent: (_, event) {
                 if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                if (_isEditableTextFocused()) {
-                  final key = event.logicalKey;
-                  if (key == LogicalKeyboardKey.delete ||
-                      key == LogicalKeyboardKey.backspace ||
-                      key == LogicalKeyboardKey.arrowLeft ||
-                      key == LogicalKeyboardKey.arrowRight ||
-                      key == LogicalKeyboardKey.arrowUp ||
-                      key == LogicalKeyboardKey.arrowDown ||
-                      key == LogicalKeyboardKey.space ||
-                      key == LogicalKeyboardKey.enter ||
-                      key == LogicalKeyboardKey.numpadEnter) {
-                    return KeyEventResult.ignored;
-                  }
-                }
                 final key = event.logicalKey;
+                final editingText = _isEditableTextFocused();
                 if (key == LogicalKeyboardKey.arrowLeft) {
+                  if (editingText) {
+                    if (_draftTicketFocusNode.hasFocus &&
+                        !_caretAtStart(_draftTicketC, _draftTicketFocusNode)) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (_draftProviderFocusNode.hasFocus &&
+                        !_caretAtStart(
+                          _draftProviderC,
+                          _draftProviderFocusNode,
+                        )) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (_draftPriceFocusNode.hasFocus &&
+                        !_caretAtStart(_draftPriceC, _draftPriceFocusNode)) {
+                      return KeyEventResult.ignored;
+                    }
+                  }
                   _moveInsertColumn(-1);
                   return KeyEventResult.handled;
                 }
                 if (key == LogicalKeyboardKey.arrowRight) {
+                  if (editingText) {
+                    if (_draftTicketFocusNode.hasFocus &&
+                        !_caretAtEnd(_draftTicketC, _draftTicketFocusNode)) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (_draftProviderFocusNode.hasFocus &&
+                        !_caretAtEnd(
+                          _draftProviderC,
+                          _draftProviderFocusNode,
+                        )) {
+                      return KeyEventResult.ignored;
+                    }
+                    if (_draftPriceFocusNode.hasFocus &&
+                        !_caretAtEnd(_draftPriceC, _draftPriceFocusNode)) {
+                      return KeyEventResult.ignored;
+                    }
+                  }
                   _moveInsertColumn(1);
+                  return KeyEventResult.handled;
+                }
+                if (key == LogicalKeyboardKey.arrowUp) {
                   return KeyEventResult.handled;
                 }
                 if (key == LogicalKeyboardKey.arrowDown) {
@@ -1738,16 +1846,24 @@ class _WeighingsPageState extends State<WeighingsPage>
                   return KeyEventResult.handled;
                 }
                 if (key == LogicalKeyboardKey.space) {
+                  if (editingText) return KeyEventResult.ignored;
                   unawaited(_activateInsertCellFromKeyboard());
                   return KeyEventResult.handled;
                 }
                 if (key == LogicalKeyboardKey.delete ||
                     key == LogicalKeyboardKey.backspace) {
+                  if (editingText) return KeyEventResult.ignored;
                   _clearActiveInsertCell();
+                  return KeyEventResult.handled;
+                }
+                if (key == LogicalKeyboardKey.escape) {
+                  FocusManager.instance.primaryFocus?.unfocus();
+                  _insertFocusNode.requestFocus();
                   return KeyEventResult.handled;
                 }
                 if (key == LogicalKeyboardKey.enter ||
                     key == LogicalKeyboardKey.numpadEnter) {
+                  if (editingText) return KeyEventResult.ignored;
                   unawaited(_insertDraft());
                   return KeyEventResult.handled;
                 }
@@ -1861,10 +1977,10 @@ class _WeighingsPageState extends State<WeighingsPage>
                               decoration: BoxDecoration(
                                 color: const Color(
                                   0xFF19C37D,
-                                ).withOpacity(0.92),
+                                ).withValues(alpha: 0.92),
                                 borderRadius: BorderRadius.circular(10),
                                 border: Border.all(
-                                  color: Colors.white.withOpacity(0.52),
+                                  color: Colors.white.withValues(alpha: 0.52),
                                 ),
                               ),
                               child: const Icon(
@@ -1890,7 +2006,7 @@ class _WeighingsPageState extends State<WeighingsPage>
   Widget _buildPager() {
     return Card(
       elevation: 0,
-      color: Colors.white.withOpacity(0.30),
+      color: Colors.white.withValues(alpha: 0.30),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1922,7 +2038,7 @@ class _WeighingsPageState extends State<WeighingsPage>
             SizedBox(
               width: 90,
               child: DropdownButtonFormField<int>(
-                value: _pageSize,
+                initialValue: _pageSize,
                 isDense: true,
                 decoration: _glassFieldDecoration(),
                 items: const [40, 80, 120]
@@ -1959,7 +2075,7 @@ class _HeaderRow extends StatelessWidget {
     const TextStyle s = TextStyle(fontSize: 12, fontWeight: FontWeight.w800);
     return Card(
       elevation: 0,
-      color: Colors.black.withOpacity(0.03),
+      color: Colors.black.withValues(alpha: 0.03),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -2061,12 +2177,12 @@ class _HCellExpand extends StatelessWidget {
             decoration: BoxDecoration(
               color: active
                   ? _kFilterAccent
-                  : _kFilterAccentSoft.withOpacity(0.35),
+                  : _kFilterAccentSoft.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: active
-                    ? _kFilterAccent.withOpacity(0.55)
-                    : const Color(0xFF0B2B2B).withOpacity(0.15),
+                    ? _kFilterAccent.withValues(alpha: 0.55)
+                    : const Color(0xFF0B2B2B).withValues(alpha: 0.15),
               ),
             ),
             child: Icon(
@@ -2094,9 +2210,6 @@ class _WeighingDataRow extends StatefulWidget {
   final Future<void> Function(String id, Map<String, dynamic> patch) onUpdate;
   final bool isSelected;
   final bool isChecked;
-  final bool gridEditMode;
-  final int gridSaveSignal;
-  final int gridCancelSignal;
   final int activeGridColumn;
   final bool showRowActions;
   final ValueChanged<Offset>? onOpenContextMenu;
@@ -2113,9 +2226,6 @@ class _WeighingDataRow extends StatefulWidget {
     required this.onUpdate,
     required this.isSelected,
     required this.isChecked,
-    required this.gridEditMode,
-    required this.gridSaveSignal,
-    required this.gridCancelSignal,
     required this.activeGridColumn,
     required this.showRowActions,
     this.onOpenContextMenu,
@@ -2152,29 +2262,6 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
   }
 
   @override
-  void didUpdateWidget(covariant _WeighingDataRow oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.gridEditMode != oldWidget.gridEditMode) {
-      if (widget.gridEditMode) {
-        _setEditing(true);
-      } else {
-        _setEditing(false);
-      }
-    }
-    if (widget.gridSaveSignal != oldWidget.gridSaveSignal) {
-      unawaited(_save(keepEditing: false));
-    }
-    if (widget.gridCancelSignal != oldWidget.gridCancelSignal) {
-      setState(() {
-        _ticket.dispose();
-        _proveedor.dispose();
-        _precio.dispose();
-        _syncFromRow();
-      });
-    }
-  }
-
-  @override
   void dispose() {
     _ticket.dispose();
     _proveedor.dispose();
@@ -2198,7 +2285,6 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
     _precio = TextEditingController(
       text: (_num(widget.row['precio']) ?? 0).toStringAsFixed(2),
     );
-    _editing = widget.gridEditMode;
   }
 
   void _setEditing(bool v) => setState(() => _editing = v);
@@ -2305,6 +2391,8 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
     final pressed = HardwareKeyboard.instance.logicalKeysPressed;
     return pressed.contains(LogicalKeyboardKey.controlLeft) ||
         pressed.contains(LogicalKeyboardKey.controlRight) ||
+        pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight) ||
         pressed.contains(LogicalKeyboardKey.metaLeft) ||
         pressed.contains(LogicalKeyboardKey.metaRight);
   }
@@ -2317,9 +2405,11 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
     final hoverOnly = _hovering && !hasSelection;
     final highlighted = hasSelection || _hovering;
     final rowBg = _editing
-        ? const Color(0xFFCBEFE2)
+        ? const Color(0xFFDCEAF7).withValues(alpha: 0.82)
         : hasSelection
-        ? const Color(0xFF00A3FF).withOpacity(isPrimarySelected ? 0.16 : 0.13)
+        ? const Color(
+            0xFF00A3FF,
+          ).withValues(alpha: isPrimarySelected ? 0.16 : 0.13)
         : hoverOnly
         ? const Color(0xFFE9F7EE)
         : Colors.white;
@@ -2335,7 +2425,7 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: const Color(0xFF0B72FF).withOpacity(0.85),
+            color: const Color(0xFF0B72FF).withValues(alpha: 0.85),
             width: 1.2,
           ),
         ),
@@ -2371,11 +2461,11 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
     Widget previewEditableCell({required int col, required Widget child}) {
       final hovered = !_editing && _hoveredEditableColumn == col;
       final top = hasSelection
-          ? const Color(0xFFD9EBFB).withOpacity(0.64)
-          : const Color(0xFFDDEFE6).withOpacity(0.84);
+          ? const Color(0xFFD9E8F6).withValues(alpha: 0.78)
+          : const Color(0xFFE5F2EC).withValues(alpha: 0.78);
       final bottom = hasSelection
-          ? const Color(0xFFCCE5FA).withOpacity(0.42)
-          : const Color(0xFFCFE8DD).withOpacity(0.56);
+          ? const Color(0xFFCCE0F2).withValues(alpha: 0.64)
+          : const Color(0xFFD4E7DE).withValues(alpha: 0.64);
       return MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) {
@@ -2404,8 +2494,8 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
             boxShadow: hovered
                 ? [
                     BoxShadow(
-                      color: const Color(0xFF7FCBAA).withOpacity(0.22),
-                      blurRadius: 9,
+                      color: const Color(0xFF8FB4D6).withValues(alpha: 0.20),
+                      blurRadius: 10,
                       offset: const Offset(0, 3),
                     ),
                   ]
@@ -2443,7 +2533,7 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
               child: Container(
                 width: 1,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFC9D5E2).withOpacity(0.90),
+                  color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -2485,8 +2575,8 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
                 borderRadius: BorderRadius.circular(14),
                 side: BorderSide(
                   color: widget.isSelected
-                      ? const Color(0xFF00A3FF).withOpacity(0.65)
-                      : Colors.white.withOpacity(0.0),
+                      ? const Color(0xFF00A3FF).withValues(alpha: 0.65)
+                      : Colors.white.withValues(alpha: _hovering ? 0.44 : 0.0),
                   width: 1.0,
                 ),
               ),
@@ -2650,20 +2740,24 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
                                         height: 32,
                                         decoration: BoxDecoration(
                                           color: _hoverActionsButton
-                                              ? Colors.white.withOpacity(0.62)
-                                              : Colors.white.withOpacity(0.42),
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.62,
+                                                )
+                                              : Colors.white.withValues(
+                                                  alpha: 0.42,
+                                                ),
                                           borderRadius: BorderRadius.circular(
                                             999,
                                           ),
                                           border: Border.all(
-                                            color: Colors.white.withOpacity(
-                                              0.72,
+                                            color: Colors.white.withValues(
+                                              alpha: 0.72,
                                             ),
                                           ),
                                           boxShadow: [
                                             BoxShadow(
-                                              color: Colors.black.withOpacity(
-                                                _hoverActionsButton
+                                              color: Colors.black.withValues(
+                                                alpha: _hoverActionsButton
                                                     ? 0.15
                                                     : 0.08,
                                               ),
@@ -2732,9 +2826,10 @@ class _MarqueeSelectionPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (rect.isEmpty) return;
-    final fill = Paint()..color = const Color(0xFF4B8DBD).withOpacity(0.18);
+    final fill = Paint()
+      ..color = const Color(0xFF4B8DBD).withValues(alpha: 0.18);
     final stroke = Paint()
-      ..color = const Color(0xFF3C7FB0).withOpacity(0.80)
+      ..color = const Color(0xFF3C7FB0).withValues(alpha: 0.80)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
     canvas.drawRect(rect, fill);
@@ -2766,6 +2861,11 @@ class _DateFilterDialogResult {
   const _DateFilterDialogResult({this.range, this.clear = false});
 }
 
+class _WeighingsFilterDialogResult {
+  final Set<String> selectedValues;
+  const _WeighingsFilterDialogResult({required this.selectedValues});
+}
+
 String _monthNameEs(int month) {
   const months = <String>[
     'enero',
@@ -2795,7 +2895,7 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
 }) {
   return showDialog<_DateFilterDialogResult>(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.28),
+    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       DateTime displayMonth = DateTime(
         (initialRange?.start ?? DateTime.now()).year,
@@ -2964,7 +3064,9 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                                       final bgColor = active
                                           ? _kFilterAccent
                                           : inRange
-                                          ? _kFilterAccentSoft.withOpacity(0.8)
+                                          ? _kFilterAccentSoft.withValues(
+                                              alpha: 0.8,
+                                            )
                                           : Colors.transparent;
 
                                       final txtColor = active
@@ -3022,7 +3124,9 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                                                 border: inRange && !active
                                                     ? Border.all(
                                                         color: _kFilterAccent
-                                                            .withOpacity(0.35),
+                                                            .withValues(
+                                                              alpha: 0.35,
+                                                            ),
                                                       )
                                                     : null,
                                               ),
@@ -3137,7 +3241,7 @@ Future<DateTime?> _showGlassDatePickerDialog(
 
   return showDialog<DateTime>(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.28),
+    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       return StatefulBuilder(
         builder: (innerContext, setInnerState) {
@@ -3188,11 +3292,13 @@ Future<DateTime?> _showGlassDatePickerDialog(
                   ),
                 ),
                 child: AlertDialog(
-                  backgroundColor: const Color(0xFFEAF2F9).withOpacity(0.98),
+                  backgroundColor: const Color(
+                    0xFFEAF2F9,
+                  ).withValues(alpha: 0.98),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                     side: BorderSide(
-                      color: const Color(0xFF8AA9C2).withOpacity(0.42),
+                      color: const Color(0xFF8AA9C2).withValues(alpha: 0.42),
                     ),
                   ),
                   title: const Text('Selecciona fecha'),
@@ -3242,20 +3348,23 @@ Future<DateTime?> _showGlassDatePickerDialog(
 InputDecoration _glassFieldDecoration({String? hintText}) {
   final border = OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Colors.white.withOpacity(0.58), width: 1),
+    borderSide: BorderSide(
+      color: Colors.white.withValues(alpha: 0.58),
+      width: 1,
+    ),
   );
 
   return InputDecoration(
     hintText: hintText,
     isDense: true,
     filled: true,
-    fillColor: Colors.white.withOpacity(0.45),
+    fillColor: Colors.white.withValues(alpha: 0.45),
     contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
     border: border,
     enabledBorder: border,
     focusedBorder: border.copyWith(
       borderSide: BorderSide(
-        color: const Color(0xFF00A3FF).withOpacity(0.8),
+        color: const Color(0xFF00A3FF).withValues(alpha: 0.8),
         width: 1.2,
       ),
     ),
@@ -3264,17 +3373,17 @@ InputDecoration _glassFieldDecoration({String? hintText}) {
 
 BoxDecoration _filterDialogDecoration() {
   return BoxDecoration(
-    color: Colors.white.withOpacity(0.62),
+    color: Colors.white.withValues(alpha: 0.62),
     borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: Colors.white.withOpacity(0.68)),
+    border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
   );
 }
 
 ButtonStyle _filterOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF2A4B49),
-    side: BorderSide(color: const Color(0xFF2A4B49).withOpacity(0.25)),
-    backgroundColor: Colors.white.withOpacity(0.40),
+    side: BorderSide(color: const Color(0xFF2A4B49).withValues(alpha: 0.25)),
+    backgroundColor: Colors.white.withValues(alpha: 0.40),
   );
 }
 
@@ -3288,10 +3397,10 @@ ButtonStyle _filterFilledButtonStyle() {
 ButtonStyle _actionOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF0B2B2B),
-    backgroundColor: Colors.white.withOpacity(0.34),
-    side: BorderSide(color: Colors.white.withOpacity(0.72)),
+    backgroundColor: Colors.white.withValues(alpha: 0.34),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.72)),
     surfaceTintColor: Colors.transparent,
-    shadowColor: Colors.black.withOpacity(0.28),
+    shadowColor: Colors.black.withValues(alpha: 0.28),
   ).copyWith(
     overlayColor: WidgetStateProperty.all(Colors.transparent),
     elevation: WidgetStateProperty.resolveWith((states) {
@@ -3306,7 +3415,7 @@ ButtonStyle _actionOutlinedButtonStyle() {
 ButtonStyle _actionFilledButtonStyle() {
   return FilledButton.styleFrom(
     surfaceTintColor: Colors.transparent,
-    shadowColor: Colors.black.withOpacity(0.30),
+    shadowColor: Colors.black.withValues(alpha: 0.30),
   ).copyWith(
     overlayColor: WidgetStateProperty.all(Colors.transparent),
     elevation: WidgetStateProperty.resolveWith((states) {
@@ -3326,7 +3435,7 @@ Future<bool?> _showGlassConfirmDialog(
 }) {
   return showDialog<bool>(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.28),
+    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) => Focus(
       autofocus: true,
       onKeyEvent: (_, event) {
@@ -3353,12 +3462,14 @@ Future<bool?> _showGlassConfirmDialog(
               filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
               child: Container(
                 decoration: BoxDecoration(
-                  color: Colors.white.withOpacity(0.72),
+                  color: Colors.white.withValues(alpha: 0.72),
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: Colors.white.withOpacity(0.84)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.84),
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.14),
+                      color: Colors.black.withValues(alpha: 0.14),
                       blurRadius: 24,
                       offset: const Offset(0, 12),
                     ),
@@ -3394,9 +3505,13 @@ Future<bool?> _showGlassConfirmDialog(
                           style: OutlinedButton.styleFrom(
                             foregroundColor: const Color(0xFF2A4B49),
                             side: BorderSide(
-                              color: const Color(0xFF2A4B49).withOpacity(0.25),
+                              color: const Color(
+                                0xFF2A4B49,
+                              ).withValues(alpha: 0.25),
                             ),
-                            backgroundColor: Colors.white.withOpacity(0.36),
+                            backgroundColor: Colors.white.withValues(
+                              alpha: 0.36,
+                            ),
                           ),
                           onPressed: () =>
                               Navigator.of(dialogContext).pop(false),

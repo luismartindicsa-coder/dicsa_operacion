@@ -119,7 +119,7 @@ class _AppShellState extends State<AppShell>
               widget.animateBody
                   ? AnimatedBuilder(
                       animation: _content,
-                      builder: (_, __) => Opacity(
+                      builder: (context, child) => Opacity(
                         opacity: _content.value,
                         child: Transform.translate(
                           offset: Offset(0, (1 - _content.value) * 10),
@@ -134,7 +134,7 @@ class _AppShellState extends State<AppShell>
               child: widget.animateBody
                   ? AnimatedBuilder(
                       animation: _content,
-                      builder: (_, __) => Opacity(
+                      builder: (context, child) => Opacity(
                         opacity: _content.value,
                         child: Transform.translate(
                           offset: Offset(0, (1 - _content.value) * 14),
@@ -199,14 +199,14 @@ class _GlassCard extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.62),
+            color: Colors.white.withValues(alpha: 0.62),
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withOpacity(0.55)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
             boxShadow: [
               BoxShadow(
                 blurRadius: 26,
                 spreadRadius: 2,
-                color: Colors.black.withOpacity(0.06),
+                color: Colors.black.withValues(alpha: 0.06),
                 offset: const Offset(0, 12),
               ),
             ],

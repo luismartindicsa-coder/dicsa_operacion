@@ -108,19 +108,22 @@ class InventoryGridTopBar extends StatelessWidget {
           icon: const Icon(Icons.download_rounded),
           label: Text(data.exportingCsv ? 'Exportando...' : 'Descargar CSV'),
         ),
-        OutlinedButton.icon(
-          style: _invActionOutlinedButtonStyle(),
-          onPressed: data.canToggleGridEdit ? data.onToggleGridEdit : null,
-          icon: Icon(
-            data.gridEditMode
-                ? Icons.grid_off_rounded
-                : Icons.edit_note_rounded,
+        if (data.onToggleGridEdit != null)
+          OutlinedButton.icon(
+            style: _invActionOutlinedButtonStyle(),
+            onPressed: data.canToggleGridEdit ? data.onToggleGridEdit : null,
+            icon: Icon(
+              data.gridEditMode
+                  ? Icons.grid_off_rounded
+                  : Icons.edit_note_rounded,
+            ),
+            label: Text(
+              data.gridEditMode ? 'Salir edición' : 'Edición cuadricula',
+            ),
           ),
-          label: Text(
-            data.gridEditMode ? 'Salir edición' : 'Edición cuadricula',
-          ),
-        ),
-        if (data.gridEditMode) ...[
+        if (data.gridEditMode &&
+            data.onSaveGridEdit != null &&
+            data.onCancelGridEdit != null) ...[
           FilledButton.icon(
             style: _invActionFilledButtonStyle(),
             onPressed: data.onSaveGridEdit,
@@ -317,7 +320,6 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   bool _insertRowActive = false;
   bool _hoverInsertExtrasButton = false;
   bool _hoverInsertAddButton = false;
-  bool _gridEditMode = false;
   bool _marqueeActive = false;
   Offset? _marqueeStartLocal;
   Offset? _marqueePointerLocal;
@@ -340,8 +342,6 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   final Set<String> _bulkSelectedRowIds = <String>{};
   int _activeInsertColumn = 0;
   int _activeGridColumn = 0;
-  int _gridSaveSignal = 0;
-  int _gridCancelSignal = 0;
   int _currentPage = 0;
   int _pageSize = 40;
   bool _topBarSyncScheduled = false;
@@ -369,13 +369,6 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
 
   bool get _isIn => widget.flow == 'IN';
   String get _counterpartyLabel => _isIn ? 'PROVEEDOR' : 'CLIENTE';
-  bool get _canInsert =>
-      _draft.opDate != null &&
-      _draft.materialId != null &&
-      (_draftReferenceC.text.trim().isNotEmpty) &&
-      _draft.counterpartySiteId != null &&
-      (_draft.netKg ?? 0) > 0 &&
-      (_draft.commercialMaterialCode?.trim().isNotEmpty ?? false);
 
   @override
   void initState() {
@@ -531,7 +524,6 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       _inserting ||
       _bulkDeleting ||
       _insertRowActive ||
-      _gridEditMode ||
       (_selectedRowState()?.isEditing ?? false) ||
       _hasDraftChanges ||
       _isEditableTextFocused();
@@ -708,6 +700,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
           .from('movements')
           .select('*')
           .eq('flow', widget.flow)
+          .eq('movement_origin', 'MANUAL')
           .order('op_date', ascending: false)
           .order('created_at', ascending: false);
 
@@ -762,8 +755,9 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     final missingFields = <String>[];
     if (_draft.opDate == null) missingFields.add('Fecha');
     if (_draft.materialId == null) missingFields.add('Material general');
-    if (_draftReferenceC.text.trim().isEmpty)
+    if (_draftReferenceC.text.trim().isEmpty) {
       missingFields.add('Ticket / folio');
+    }
     if (_draft.counterpartySiteId == null) {
       missingFields.add(
         _counterpartyLabel == 'PROVEEDOR' ? 'Proveedor' : 'Cliente',
@@ -816,6 +810,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       await supa.from('movements').insert({
         'op_date': _fmtDbDate(_draft.opDate!),
         'flow': widget.flow,
+        'movement_origin': 'MANUAL',
         'material_id': _draft.materialId,
         'material': invCode,
         'weight_kg': netKg,
@@ -877,10 +872,12 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
           return KeyEventResult.ignored;
         },
         child: AlertDialog(
-          backgroundColor: const Color(0xFFEAF2F9).withOpacity(0.98),
+          backgroundColor: const Color(0xFFEAF2F9).withValues(alpha: 0.98),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(16),
-            side: BorderSide(color: const Color(0xFF8AA9C2).withOpacity(0.42)),
+            side: BorderSide(
+              color: const Color(0xFF8AA9C2).withValues(alpha: 0.42),
+            ),
           ),
           title: const Text('No se puede agregar'),
           content: Text('Completa estos campos antes de agregar:\n\n$details'),
@@ -958,6 +955,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       final data = await supa
           .from('movements')
           .select('*')
+          .eq('movement_origin', 'MANUAL')
           .eq('flow', widget.flow)
           .order('op_date')
           .order('created_at');
@@ -1373,7 +1371,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         final localSelected = <String>{...initialSelected};
         String localSearch = '';
         return StatefulBuilder(
-          builder: (_, setLocalState) {
+          builder: (context, setLocalState) {
             final options = _columnDistinctValues(
               columnId,
               search: localSearch,
@@ -1455,7 +1453,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                       checkColor: Colors.white,
                                       hoverColor: const Color(
                                         0xFFE9F7EE,
-                                      ).withOpacity(0.95),
+                                      ).withValues(alpha: 0.95),
                                       title: Text(
                                         value,
                                         overflow: TextOverflow.ellipsis,
@@ -1534,6 +1532,9 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       _activeInsertColumn =
           ((value % _insertColumnCount) + _insertColumnCount) %
           _insertColumnCount;
+      _selectedRowId = null;
+      _selectionAnchorRowId = null;
+      _bulkSelectedRowIds.clear();
     });
     if (!requestFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1724,6 +1725,9 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   void _focusInsertFromGrid() {
     setState(() {
       _activeInsertColumn = _activeGridColumn > 13 ? 13 : _activeGridColumn;
+      _selectedRowId = null;
+      _selectionAnchorRowId = null;
+      _bulkSelectedRowIds.clear();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _setActiveInsertColumn(_activeInsertColumn);
@@ -1888,8 +1892,6 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     return ids;
   }
 
-  bool get _hasExplicitMultiSelection => _currentSelectionIds().length > 1;
-
   double get _rowsScrollOffset =>
       _rowsScrollController.hasClients ? _rowsScrollController.offset : 0.0;
 
@@ -2043,7 +2045,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   }
 
   void _onRowsPointerDown(PointerDownEvent event) {
-    if (_anyRowEditing || _gridEditMode) return;
+    if (_anyRowEditing) return;
     if (_visibleRows.isEmpty) return;
     if (event.kind != PointerDeviceKind.mouse) return;
     if ((event.buttons & kPrimaryMouseButton) == 0) return;
@@ -2117,11 +2119,14 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         pressed.contains(LogicalKeyboardKey.metaRight);
   }
 
-  bool _isSelectionExtendPressed() {
+  bool _isShiftPressed() {
     final pressed = HardwareKeyboard.instance.logicalKeysPressed;
-    return _isCtrlOrCmdPressed() ||
-        pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+    return pressed.contains(LogicalKeyboardKey.shiftLeft) ||
         pressed.contains(LogicalKeyboardKey.shiftRight);
+  }
+
+  bool _isSelectionExtendPressed() {
+    return _isCtrlOrCmdPressed() || _isShiftPressed();
   }
 
   _MovementDataRowState? _selectedRowState() {
@@ -2221,8 +2226,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   }
 
   InventoryGridTopBarData _buildTopBarData() {
-    final activeCell =
-        (_gridEditMode || (_selectedRowState()?.isEditing ?? false))
+    final activeCell = (_selectedRowState()?.isEditing ?? false)
         ? _activeGridColumnLabel
         : null;
     return InventoryGridTopBarData(
@@ -2232,7 +2236,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       metricSubtitle:
           'Filtrado (${_fmtInvInt(_filteredRows.length)} registros)',
       exportingCsv: _exportingCsv,
-      gridEditMode: _gridEditMode,
+      gridEditMode: false,
       canToggleGridEdit: _visibleRows.isNotEmpty,
       canDeleteSelection: _bulkSelectedRowIds.isNotEmpty,
       deletingSelection: _bulkDeleting,
@@ -2245,28 +2249,9 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
           : null,
       activeCellLabel: activeCell,
       onExportCsv: _exportingCsv ? null : _exportCsv,
-      onToggleGridEdit: _visibleRows.isNotEmpty
-          ? () {
-              setState(() {
-                _gridEditMode = !_gridEditMode;
-                if (_gridEditMode) {
-                  _selectedRowId ??= _visibleRows.first['id'] as String;
-                }
-              });
-            }
-          : null,
-      onSaveGridEdit: () {
-        setState(() {
-          _gridSaveSignal++;
-          _gridEditMode = false;
-        });
-      },
-      onCancelGridEdit: () {
-        setState(() {
-          _gridCancelSignal++;
-          _gridEditMode = false;
-        });
-      },
+      onToggleGridEdit: null,
+      onSaveGridEdit: null,
+      onCancelGridEdit: null,
       onDeleteSelection: _bulkDeleting ? null : _deleteSelectedRows,
     );
   }
@@ -2348,101 +2333,6 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     _requestRowsFocus();
   }
 
-  Future<void> _openRowsContextMenuAt(Offset globalPosition) async {
-    final selectedStates = _selectedRowStates();
-    final anyEditing = selectedStates.any((s) => s.isEditing);
-    final multiContext = _hasExplicitMultiSelection;
-    const menuTextStyle = TextStyle(
-      fontWeight: FontWeight.w800,
-      decoration: TextDecoration.none,
-      decorationColor: Colors.transparent,
-      color: Color(0xFF223D5A),
-    );
-    final media = MediaQuery.of(context).size;
-    final action = await showMenu<String>(
-      context: context,
-      color: _kInvGlassMenuBg,
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-      position: RelativeRect.fromLTRB(
-        globalPosition.dx,
-        globalPosition.dy,
-        media.width - globalPosition.dx,
-        media.height - globalPosition.dy,
-      ),
-      items: [
-        if (multiContext && !anyEditing)
-          const PopupMenuItem(
-            value: 'multi_edit',
-            child: Text('EDITAR SELECCIÓN', style: menuTextStyle),
-          ),
-        if (multiContext && anyEditing)
-          const PopupMenuItem(
-            value: 'multi_save',
-            child: Text('GUARDAR SELECCIÓN', style: menuTextStyle),
-          ),
-        if (multiContext && anyEditing)
-          const PopupMenuItem(
-            value: 'multi_cancel',
-            child: Text('CANCELAR EDICIÓN', style: menuTextStyle),
-          ),
-        if (!multiContext && !anyEditing)
-          const PopupMenuItem(
-            value: 'edit',
-            child: Text('EDITAR', style: menuTextStyle),
-          ),
-        if (!multiContext && anyEditing)
-          const PopupMenuItem(
-            value: 'save',
-            child: Text('GUARDAR', style: menuTextStyle),
-          ),
-        if (!multiContext && anyEditing)
-          const PopupMenuItem(
-            value: 'cancel',
-            child: Text('CANCELAR', style: menuTextStyle),
-          ),
-        const PopupMenuDivider(),
-        if (multiContext)
-          const PopupMenuItem(
-            value: 'multi_delete',
-            child: Text('ELIMINAR SELECCIÓN', style: menuTextStyle),
-          ),
-        if (!multiContext)
-          const PopupMenuItem(
-            value: 'delete',
-            child: Text('ELIMINAR', style: menuTextStyle),
-          ),
-      ],
-    );
-    if (!mounted || action == null) return;
-    switch (action) {
-      case 'edit':
-        _handleEnterOnSelectedRow();
-        break;
-      case 'save':
-        await _saveSelectedRows();
-        break;
-      case 'cancel':
-        _cancelSelectedRowsEditing();
-        break;
-      case 'delete':
-        _handleDeleteOnSelectedRow();
-        break;
-      case 'multi_edit':
-        _startEditingSelectedRows();
-        break;
-      case 'multi_save':
-        await _saveSelectedRows();
-        break;
-      case 'multi_cancel':
-        _cancelSelectedRowsEditing();
-        break;
-      case 'multi_delete':
-        await _deleteSelectedRows();
-        break;
-    }
-  }
-
   void _moveGridColumn(int delta) {
     setState(() {
       _activeGridColumn =
@@ -2514,7 +2404,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                 final extendSelection = _isSelectionExtendPressed();
                 final selectedState = _selectedRowState();
                 final editingAnyRow = _anyRowEditing;
-                final keyboardCellMode = _gridEditMode || editingAnyRow;
+                final keyboardCellMode = editingAnyRow;
                 final inTextEditing =
                     selectedState?.isTextCellFocused(_activeGridColumn) ??
                     false;
@@ -2569,25 +2459,11 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                   }
                   if (key == LogicalKeyboardKey.enter ||
                       key == LogicalKeyboardKey.numpadEnter) {
-                    if (_gridEditMode) {
-                      setState(() {
-                        _gridSaveSignal++;
-                        _gridEditMode = false;
-                      });
-                    } else {
-                      _handleEnterOnSelectedRow();
-                    }
+                    _handleEnterOnSelectedRow();
                     return KeyEventResult.handled;
                   }
                   if (key == LogicalKeyboardKey.escape) {
-                    if (_gridEditMode) {
-                      setState(() {
-                        _gridCancelSignal++;
-                        _gridEditMode = false;
-                      });
-                    } else {
-                      _handleEscapeOnSelectedRow();
-                    }
+                    _handleEscapeOnSelectedRow();
                     return KeyEventResult.handled;
                   }
                   if (key == LogicalKeyboardKey.delete ||
@@ -2681,9 +2557,6 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                         ),
                                         selectedCount: _selectedCount,
                                         anySelectedEditing: anySelectedEditing,
-                                        gridEditMode: _gridEditMode,
-                                        gridSaveSignal: _gridSaveSignal,
-                                        gridCancelSignal: _gridCancelSignal,
                                         activeGridColumn: _activeGridColumn,
                                         onDelete: _deleteRow,
                                         onUpdate: _updateRow,
@@ -2751,7 +2624,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
             padding: const EdgeInsets.only(top: 8),
             child: Card(
               elevation: 0,
-              color: Colors.white.withOpacity(0.30),
+              color: Colors.white.withValues(alpha: 0.30),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -2788,7 +2661,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                     SizedBox(
                       width: 90,
                       child: DropdownButtonFormField<int>(
-                        value: _pageSize,
+                        initialValue: _pageSize,
                         isDense: true,
                         decoration: _invGlassFieldDecoration(),
                         items: const [40, 80, 120]
@@ -2829,7 +2702,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         boxShadow: _insertRowActive
             ? [
                 BoxShadow(
-                  color: const Color(0xFF7FAFD3).withOpacity(0.28),
+                  color: const Color(0xFF7FAFD3).withValues(alpha: 0.28),
                   blurRadius: 12,
                   offset: const Offset(0, 2),
                 ),
@@ -2846,8 +2719,8 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
           borderRadius: BorderRadius.circular(16),
           side: BorderSide(
             color: _insertRowActive
-                ? const Color(0xFF4E86B5).withOpacity(0.70)
-                : const Color(0xFF6F93B3).withOpacity(0.55),
+                ? const Color(0xFF4E86B5).withValues(alpha: 0.70)
+                : const Color(0xFF6F93B3).withValues(alpha: 0.55),
           ),
         ),
         child: Padding(
@@ -2861,7 +2734,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
                     color: active
-                        ? const Color(0xFFDCEAF7).withOpacity(0.72)
+                        ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
                         : Colors.transparent,
                   ),
                   child: DecoratedBox(
@@ -2870,7 +2743,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                       borderRadius: BorderRadius.circular(10),
                       border: Border.all(
                         color: active
-                            ? const Color(0xFF0B72FF).withOpacity(0.86)
+                            ? const Color(0xFF0B72FF).withValues(alpha: 0.86)
                             : Colors.transparent,
                         width: active ? 1.1 : 1.0,
                       ),
@@ -2954,8 +2827,9 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                     _moveInsertColumn(1);
                     return KeyEventResult.handled;
                   }
-                  if (key == LogicalKeyboardKey.arrowUp)
+                  if (key == LogicalKeyboardKey.arrowUp) {
                     return KeyEventResult.handled;
+                  }
                   if (key == LogicalKeyboardKey.arrowDown) {
                     _focusGridFromInsert();
                     return KeyEventResult.handled;
@@ -3360,23 +3234,25 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                             color: _draftHasExtras
                                                 ? const Color(
                                                     0xFFD7F2E6,
-                                                  ).withOpacity(0.88)
-                                                : Colors.white.withOpacity(
-                                                    0.40,
+                                                  ).withValues(alpha: 0.88)
+                                                : Colors.white.withValues(
+                                                    alpha: 0.40,
                                                   ),
                                             borderRadius: BorderRadius.circular(
                                               10,
                                             ),
                                             border: Border.all(
-                                              color: Colors.white.withOpacity(
-                                                0.62,
+                                              color: Colors.white.withValues(
+                                                alpha: 0.62,
                                               ),
                                             ),
                                             boxShadow: _hoverInsertExtrasButton
                                                 ? [
                                                     BoxShadow(
                                                       color: Colors.black
-                                                          .withOpacity(0.16),
+                                                          .withValues(
+                                                            alpha: 0.16,
+                                                          ),
                                                       blurRadius: 14,
                                                       offset: const Offset(
                                                         0,
@@ -3387,7 +3263,9 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                                 : [
                                                     BoxShadow(
                                                       color: Colors.black
-                                                          .withOpacity(0.08),
+                                                          .withValues(
+                                                            alpha: 0.08,
+                                                          ),
                                                       blurRadius: 8,
                                                       offset: const Offset(
                                                         0,
@@ -3435,16 +3313,18 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                           height: 34,
                                           decoration: BoxDecoration(
                                             color: _inserting
-                                                ? Colors.white.withOpacity(0.35)
+                                                ? Colors.white.withValues(
+                                                    alpha: 0.35,
+                                                  )
                                                 : const Color(
                                                     0xFF19C37D,
-                                                  ).withOpacity(0.92),
+                                                  ).withValues(alpha: 0.92),
                                             borderRadius: BorderRadius.circular(
                                               10,
                                             ),
                                             border: Border.all(
-                                              color: Colors.white.withOpacity(
-                                                0.52,
+                                              color: Colors.white.withValues(
+                                                alpha: 0.52,
                                               ),
                                             ),
                                             boxShadow:
@@ -3453,7 +3333,9 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                                 ? [
                                                     BoxShadow(
                                                       color: Colors.black
-                                                          .withOpacity(0.16),
+                                                          .withValues(
+                                                            alpha: 0.16,
+                                                          ),
                                                       blurRadius: 14,
                                                       offset: const Offset(
                                                         0,
@@ -3464,7 +3346,9 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                                 : [
                                                     BoxShadow(
                                                       color: Colors.black
-                                                          .withOpacity(0.08),
+                                                          .withValues(
+                                                            alpha: 0.08,
+                                                          ),
                                                       blurRadius: 8,
                                                       offset: const Offset(
                                                         0,
@@ -3524,7 +3408,7 @@ class _InvHeaderRow extends StatelessWidget {
     const s = TextStyle(fontSize: 12, fontWeight: FontWeight.w800);
     return Card(
       elevation: 0,
-      color: Colors.black.withOpacity(0.03),
+      color: Colors.black.withValues(alpha: 0.03),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -3696,12 +3580,12 @@ class _InvHCellExpand extends StatelessWidget {
             decoration: BoxDecoration(
               color: active
                   ? _kInvFilterAccent
-                  : _kInvFilterAccentSoft.withOpacity(0.35),
+                  : _kInvFilterAccentSoft.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: active
-                    ? _kInvFilterAccent.withOpacity(0.55)
-                    : const Color(0xFF0B2B2B).withOpacity(0.15),
+                    ? _kInvFilterAccent.withValues(alpha: 0.55)
+                    : const Color(0xFF0B2B2B).withValues(alpha: 0.15),
               ),
             ),
             child: Icon(
@@ -3728,9 +3612,10 @@ class _MarqueeSelectionPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (rect.isEmpty) return;
-    final fill = Paint()..color = const Color(0xFF4B8DBD).withOpacity(0.18);
+    final fill = Paint()
+      ..color = const Color(0xFF4B8DBD).withValues(alpha: 0.18);
     final stroke = Paint()
-      ..color = const Color(0xFF3C7FB0).withOpacity(0.8)
+      ..color = const Color(0xFF3C7FB0).withValues(alpha: 0.8)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
     canvas.drawRect(rect, fill);
@@ -3757,9 +3642,6 @@ class _MovementDataRow extends StatefulWidget {
   final bool isChecked;
   final int selectedCount;
   final bool anySelectedEditing;
-  final bool gridEditMode;
-  final int gridSaveSignal;
-  final int gridCancelSignal;
   final int activeGridColumn;
   final Future<void> Function(String id) onDelete;
   final Future<void> Function(String id, Map<String, dynamic> patch) onUpdate;
@@ -3787,9 +3669,6 @@ class _MovementDataRow extends StatefulWidget {
     required this.isChecked,
     required this.selectedCount,
     required this.anySelectedEditing,
-    required this.gridEditMode,
-    required this.gridSaveSignal,
-    required this.gridCancelSignal,
     required this.activeGridColumn,
     required this.onDelete,
     required this.onUpdate,
@@ -3852,16 +3731,6 @@ class _MovementDataRowState extends State<_MovementDataRow> {
   @override
   void didUpdateWidget(covariant _MovementDataRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.gridEditMode != oldWidget.gridEditMode) {
-      _editing = widget.gridEditMode;
-    }
-    if (widget.gridSaveSignal != oldWidget.gridSaveSignal) {
-      unawaited(_save(keepEditing: false));
-    }
-    if (widget.gridCancelSignal != oldWidget.gridCancelSignal) {
-      _syncFromRow();
-      setState(() => _editing = false);
-    }
     if (widget.row != oldWidget.row && !_editing) {
       _syncFromRow();
     }
@@ -3915,7 +3784,6 @@ class _MovementDataRowState extends State<_MovementDataRow> {
     _referenceC.text = (r['reference'] ?? '').toString();
     _notesC.text = (r['notes'] ?? '').toString();
     _scaleTicketC.text = (r['scale_ticket'] ?? '').toString();
-    _editing = widget.gridEditMode;
   }
 
   DateTime _parseDate(dynamic v) {
@@ -3956,6 +3824,8 @@ class _MovementDataRowState extends State<_MovementDataRow> {
     final pressed = HardwareKeyboard.instance.logicalKeysPressed;
     return pressed.contains(LogicalKeyboardKey.controlLeft) ||
         pressed.contains(LogicalKeyboardKey.controlRight) ||
+        pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight) ||
         pressed.contains(LogicalKeyboardKey.metaLeft) ||
         pressed.contains(LogicalKeyboardKey.metaRight);
   }
@@ -4276,7 +4146,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
       barrierColor: Colors.transparent,
       barrierDismissible: true,
       transitionDuration: const Duration(milliseconds: 90),
-      pageBuilder: (dialogContext, _, __) {
+      pageBuilder: (dialogContext, _, _) {
         int? hoveredIndex;
         return Stack(
           children: [
@@ -4324,19 +4194,23 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                             colors: [
-                              const Color(0xFF9FC8E7).withOpacity(0.78),
-                              const Color(0xFFB9CCE8).withOpacity(0.72),
-                              const Color(0xFF9ED7D6).withOpacity(0.70),
+                              const Color(0xFF9FC8E7).withValues(alpha: 0.78),
+                              const Color(0xFFB9CCE8).withValues(alpha: 0.72),
+                              const Color(0xFF9ED7D6).withValues(alpha: 0.70),
                             ],
                           ),
                           borderRadius: BorderRadius.circular(20),
                           border: Border.all(
-                            color: const Color(0xFFE5F1FB).withOpacity(0.78),
+                            color: const Color(
+                              0xFFE5F1FB,
+                            ).withValues(alpha: 0.78),
                             width: 1.4,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: const Color(0xFF76A6C2).withOpacity(0.22),
+                              color: const Color(
+                                0xFF76A6C2,
+                              ).withValues(alpha: 0.22),
                               blurRadius: 24,
                               offset: const Offset(0, 10),
                             ),
@@ -4358,7 +4232,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                       (actions[i].key == 'delete'
                                               ? const Color(0xFF87AFC9)
                                               : const Color(0xFFE5F1FB))
-                                          .withOpacity(0.62),
+                                          .withValues(alpha: 0.62),
                                 ),
                               MouseRegion(
                                 onEnter: (_) =>
@@ -4386,13 +4260,13 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                       color: hoveredIndex == i
                                           ? const Color(
                                               0xFFE9F7EE,
-                                            ).withOpacity(0.95)
+                                            ).withValues(alpha: 0.95)
                                           : Colors.transparent,
                                       border: hoveredIndex == i
                                           ? Border.all(
                                               color: const Color(
                                                 0xFFBFD8D3,
-                                              ).withOpacity(0.62),
+                                              ).withValues(alpha: 0.62),
                                             )
                                           : null,
                                       boxShadow: hoveredIndex == i
@@ -4400,7 +4274,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                               BoxShadow(
                                                 color: const Color(
                                                   0xFFBFD8D3,
-                                                ).withOpacity(0.48),
+                                                ).withValues(alpha: 0.48),
                                                 blurRadius: 8,
                                                 offset: const Offset(0, 2),
                                               ),
@@ -4626,7 +4500,9 @@ class _MovementDataRowState extends State<_MovementDataRow> {
     final rowBg = _editing
         ? const Color(0xFFDCECF9)
         : hasSelection
-        ? const Color(0xFF00A3FF).withOpacity(widget.isSelected ? 0.16 : 0.13)
+        ? const Color(
+            0xFF00A3FF,
+          ).withValues(alpha: widget.isSelected ? 0.16 : 0.13)
         : hoverOnly
         ? const Color(0xFFE9F7EE)
         : Colors.white;
@@ -4646,11 +4522,11 @@ class _MovementDataRowState extends State<_MovementDataRow> {
           _editing && widget.isSelected && widget.activeGridColumn == col;
       final hoveredEditable = !_editing && _hoveredEditableColumn == col;
       final hoverTop = hasSelection
-          ? const Color(0xFFD9E8F6).withOpacity(0.78)
-          : const Color(0xFFE5F2EC).withOpacity(0.80);
+          ? const Color(0xFFD9E8F6).withValues(alpha: 0.78)
+          : const Color(0xFFE5F2EC).withValues(alpha: 0.80);
       final hoverBottom = hasSelection
-          ? const Color(0xFFCCE0F2).withOpacity(0.62)
-          : const Color(0xFFD4E7DE).withOpacity(0.66);
+          ? const Color(0xFFCCE0F2).withValues(alpha: 0.62)
+          : const Color(0xFFD4E7DE).withValues(alpha: 0.66);
       return DecoratedBox(
         position: DecorationPosition.background,
         decoration: BoxDecoration(
@@ -4663,11 +4539,11 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                 )
               : null,
           color: active
-              ? const Color(0xFFDCEAF7).withOpacity(0.72)
+              ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
               : Colors.transparent,
           border: Border.all(
             color: active
-                ? const Color(0xFF0B72FF).withOpacity(0.84)
+                ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
                 : Colors.transparent,
             width: active ? 1.05 : 1.0,
           ),
@@ -4678,13 +4554,13 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                         (hasSelection
                                 ? const Color(0xFF6A8FAE)
                                 : const Color(0xFF6C8F84))
-                            .withOpacity(0.18),
+                            .withValues(alpha: 0.18),
                     blurRadius: 2.2,
                     spreadRadius: -3.0,
                     offset: const Offset(0, 0.8),
                   ),
                   BoxShadow(
-                    color: Colors.white.withOpacity(0.22),
+                    color: Colors.white.withValues(alpha: 0.22),
                     blurRadius: 1.1,
                     spreadRadius: -3.1,
                     offset: const Offset(0, -0.5),
@@ -4698,7 +4574,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: active
-                  ? const Color(0xFF0B72FF).withOpacity(0.84)
+                  ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
                   : Colors.transparent,
               width: active ? 1.05 : 1.0,
             ),
@@ -4750,7 +4626,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                 height: 30,
                 margin: const EdgeInsets.only(left: 8, right: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFC9D5E2).withOpacity(0.90),
+                  color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -4788,8 +4664,8 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                 borderRadius: BorderRadius.circular(14),
                 side: BorderSide(
                   color: widget.isSelected
-                      ? const Color(0xFF00A3FF).withOpacity(0.65)
-                      : Colors.white.withOpacity(0.0),
+                      ? const Color(0xFF00A3FF).withValues(alpha: 0.65)
+                      : Colors.white.withValues(alpha: 0.0),
                 ),
               ),
               child: Padding(
@@ -5342,10 +5218,12 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                                   decoration: BoxDecoration(
                                                     color: _hoverActionsButton
                                                         ? Colors.white
-                                                              .withOpacity(0.62)
+                                                              .withValues(
+                                                                alpha: 0.62,
+                                                              )
                                                         : Colors.white
-                                                              .withOpacity(
-                                                                0.42,
+                                                              .withValues(
+                                                                alpha: 0.42,
                                                               ),
                                                     borderRadius:
                                                         BorderRadius.circular(
@@ -5353,13 +5231,16 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                                         ),
                                                     border: Border.all(
                                                       color: Colors.white
-                                                          .withOpacity(0.72),
+                                                          .withValues(
+                                                            alpha: 0.72,
+                                                          ),
                                                     ),
                                                     boxShadow: [
                                                       BoxShadow(
                                                         color: Colors.black
-                                                            .withOpacity(
-                                                              _hoverActionsButton
+                                                            .withValues(
+                                                              alpha:
+                                                                  _hoverActionsButton
                                                                   ? 0.15
                                                                   : 0.08,
                                                             ),
@@ -5514,11 +5395,11 @@ class _InvDropOptInline extends StatelessWidget {
 }
 
 class _InvDropStrInline extends StatelessWidget {
-  final String value;
+  final String? value;
   final List<String> items;
   final String Function(String?) format;
   final VoidCallback? onTapStart;
-  final ValueChanged<String> onChanged;
+  final ValueChanged<String?> onChanged;
 
   const _InvDropStrInline({
     required this.value,
@@ -5530,7 +5411,7 @@ class _InvDropStrInline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final safe = items.contains(value) ? value : items.first;
+    final safe = value != null && items.contains(value) ? value : null;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 2),
       child: InkWell(
@@ -5559,7 +5440,7 @@ class _InvDropStrInline extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  format(safe),
+                  safe == null ? '—' : format(safe),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -5679,6 +5560,40 @@ class _InvFitText extends StatelessWidget {
   }
 }
 
+class _InvTextInline extends StatelessWidget {
+  final TextEditingController controller;
+  final FocusNode focusNode;
+  final String hint;
+  final VoidCallback? onTapStart;
+  final TextInputType? keyboardType;
+
+  const _InvTextInline({
+    required this.controller,
+    required this.focusNode,
+    required this.hint,
+    this.onTapStart,
+    this.keyboardType,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        keyboardType: keyboardType,
+        onTap: onTapStart,
+        decoration: _invGlassFieldDecoration(
+          hintText: hint,
+          suppressFocusedBorder: true,
+          hideBorder: true,
+        ),
+      ),
+    );
+  }
+}
+
 class _InvOpt {
   final String id;
   final String label;
@@ -5784,11 +5699,11 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
     context: context,
     builder: (dialogContext) => StatefulBuilder(
       builder: (context, setLocalState) {
-        double _sanitize(double? v) => (v == null || v < 0) ? 0 : v;
+        double sanitize(double? v) => (v == null || v < 0) ? 0 : v;
         final effectiveNetKg = (netKg != null && netKg > 0)
             ? netKg
             : (grossKg != null && grossKg > 0)
-            ? math.max(0, grossKg - _sanitize(tareKg)).toDouble()
+            ? math.max(0, grossKg - sanitize(tareKg)).toDouble()
             : null;
         final totalAmountKg = effectiveNetKg == null
             ? null
@@ -5796,9 +5711,8 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
                   .max(
                     0,
                     effectiveNetKg -
-                        (effectiveNetKg *
-                            (_sanitize(humidityPercent) / 100.0)) -
-                        _sanitize(trashKg),
+                        (effectiveNetKg * (sanitize(humidityPercent) / 100.0)) -
+                        sanitize(trashKg),
                   )
                   .toDouble();
         _MovementExtrasResult buildResult() => _MovementExtrasResult(
@@ -5836,10 +5750,10 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
                 onTap: onTap,
                 child: Container(
                   decoration: BoxDecoration(
-                    color: const Color(0xFFDCEBFA).withOpacity(0.72),
+                    color: const Color(0xFFDCEBFA).withValues(alpha: 0.72),
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: const Color(0xFF8AA9C2).withOpacity(0.62),
+                      color: const Color(0xFF8AA9C2).withValues(alpha: 0.62),
                     ),
                   ),
                   child: InputDecorator(
@@ -5892,11 +5806,11 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
             return KeyEventResult.ignored;
           },
           child: AlertDialog(
-            backgroundColor: const Color(0xFFEAF2F9).withOpacity(0.98),
+            backgroundColor: const Color(0xFFEAF2F9).withValues(alpha: 0.98),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(16),
               side: BorderSide(
-                color: const Color(0xFF8AA9C2).withOpacity(0.42),
+                color: const Color(0xFF8AA9C2).withValues(alpha: 0.42),
               ),
             ),
             title: const Text('Extras de Movimiento'),
@@ -6198,19 +6112,21 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                         colors: [
-                          const Color(0xFF9FC8E7).withOpacity(0.78),
-                          const Color(0xFFB9CCE8).withOpacity(0.72),
-                          const Color(0xFF9ED7D6).withOpacity(0.70),
+                          const Color(0xFF9FC8E7).withValues(alpha: 0.78),
+                          const Color(0xFFB9CCE8).withValues(alpha: 0.72),
+                          const Color(0xFF9ED7D6).withValues(alpha: 0.70),
                         ],
                       ),
                       borderRadius: BorderRadius.circular(20),
                       border: Border.all(
-                        color: const Color(0xFFE5F1FB).withOpacity(0.78),
+                        color: const Color(0xFFE5F1FB).withValues(alpha: 0.78),
                         width: 1.4,
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: const Color(0xFF76A6C2).withOpacity(0.22),
+                          color: const Color(
+                            0xFF76A6C2,
+                          ).withValues(alpha: 0.22),
                           blurRadius: 24,
                           offset: const Offset(0, 10),
                         ),
@@ -6248,7 +6164,7 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                               hintText: 'Buscar',
                               fillColorOverride: const Color(
                                 0xFFEAF3FC,
-                              ).withOpacity(0.86),
+                              ).withValues(alpha: 0.86),
                             ),
                             onChanged: (v) => setLocalState(() => q = v),
                           ),
@@ -6369,11 +6285,11 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                                                 color: focused
                                                     ? const Color(
                                                         0xFFE3F0FC,
-                                                      ).withOpacity(0.92)
+                                                      ).withValues(alpha: 0.92)
                                                     : hovered
                                                     ? const Color(
                                                         0xFFE9F7EE,
-                                                      ).withOpacity(0.98)
+                                                      ).withValues(alpha: 0.98)
                                                     : Colors.transparent,
                                                 borderRadius:
                                                     BorderRadius.circular(14),
@@ -6381,11 +6297,15 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                                                   color: focused
                                                       ? const Color(
                                                           0xFF4E92D1,
-                                                        ).withOpacity(0.88)
+                                                        ).withValues(
+                                                          alpha: 0.88,
+                                                        )
                                                       : hovered
                                                       ? const Color(
                                                           0xFFBFD8D3,
-                                                        ).withOpacity(0.62)
+                                                        ).withValues(
+                                                          alpha: 0.62,
+                                                        )
                                                       : Colors.transparent,
                                                   width: focused
                                                       ? 1.25
@@ -6396,9 +6316,12 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                                                 boxShadow: hovered
                                                     ? [
                                                         BoxShadow(
-                                                          color: const Color(
-                                                            0xFFBFD8D3,
-                                                          ).withOpacity(0.46),
+                                                          color:
+                                                              const Color(
+                                                                0xFFBFD8D3,
+                                                              ).withValues(
+                                                                alpha: 0.46,
+                                                              ),
                                                           blurRadius: 8,
                                                           offset: const Offset(
                                                             0,
@@ -6454,7 +6377,7 @@ Future<T?> _showInvSearchablePickerDialog<T>(
                                             thickness: 1,
                                             color: const Color(
                                               0xFFE5F1FB,
-                                            ).withOpacity(0.56),
+                                            ).withValues(alpha: 0.56),
                                           ),
                                       ],
                                     );
@@ -6482,7 +6405,7 @@ Future<_InvDateFilterDialogResult?> _showInvDateRangeFilterDialog(
 }) {
   return showDialog<_InvDateFilterDialogResult>(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.28),
+    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       DateTime displayMonth = DateTime(
         (initialRange?.start ?? DateTime.now()).year,
@@ -6646,8 +6569,8 @@ Future<_InvDateFilterDialogResult?> _showInvDateRangeFilterDialog(
                                       final bgColor = active
                                           ? _kInvFilterAccent
                                           : inRange
-                                          ? _kInvFilterAccentSoft.withOpacity(
-                                              0.8,
+                                          ? _kInvFilterAccentSoft.withValues(
+                                              alpha: 0.8,
                                             )
                                           : Colors.transparent;
 
@@ -6706,7 +6629,9 @@ Future<_InvDateFilterDialogResult?> _showInvDateRangeFilterDialog(
                                                 border: inRange && !active
                                                     ? Border.all(
                                                         color: _kInvFilterAccent
-                                                            .withOpacity(0.35),
+                                                            .withValues(
+                                                              alpha: 0.35,
+                                                            ),
                                                       )
                                                     : null,
                                               ),
@@ -6893,11 +6818,13 @@ Future<DateTime?> _showInvKeyboardDatePickerDialog({
                   ),
                 ),
                 child: AlertDialog(
-                  backgroundColor: const Color(0xFFEAF2F9).withOpacity(0.98),
+                  backgroundColor: const Color(
+                    0xFFEAF2F9,
+                  ).withValues(alpha: 0.98),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                     side: BorderSide(
-                      color: const Color(0xFF8AA9C2).withOpacity(0.42),
+                      color: const Color(0xFF8AA9C2).withValues(alpha: 0.42),
                     ),
                   ),
                   title: const Text('Selecciona fecha'),
@@ -6994,7 +6921,10 @@ InputDecoration _invGlassFieldDecoration({
 }) {
   final baseSide = hideBorder
       ? BorderSide(color: Colors.transparent, width: 0.9)
-      : BorderSide(color: const Color(0xFF90AFC8).withOpacity(0.55), width: 1);
+      : BorderSide(
+          color: const Color(0xFF90AFC8).withValues(alpha: 0.55),
+          width: 1,
+        );
   final border = OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
     borderSide: baseSide,
@@ -7003,7 +6933,7 @@ InputDecoration _invGlassFieldDecoration({
       ? border
       : border.copyWith(
           borderSide: BorderSide(
-            color: const Color(0xFF00A3FF).withOpacity(0.8),
+            color: const Color(0xFF00A3FF).withValues(alpha: 0.8),
             width: 1.2,
           ),
         );
@@ -7012,12 +6942,13 @@ InputDecoration _invGlassFieldDecoration({
     hintText: hintText,
     labelText: labelText,
     hintStyle: TextStyle(
-      color: const Color(0xFF0B2B2B).withOpacity(0.42),
+      color: const Color(0xFF0B2B2B).withValues(alpha: 0.42),
       fontWeight: FontWeight.w400,
     ),
     isDense: true,
     filled: true,
-    fillColor: fillColorOverride ?? const Color(0xFFEAF2F9).withOpacity(0.90),
+    fillColor:
+        fillColorOverride ?? const Color(0xFFEAF2F9).withValues(alpha: 0.90),
     border: border,
     enabledBorder: border,
     focusedBorder: focused,
@@ -7027,17 +6958,17 @@ InputDecoration _invGlassFieldDecoration({
 
 BoxDecoration _invFilterDialogDecoration() {
   return BoxDecoration(
-    color: const Color(0xFFE8F0F7).withOpacity(0.92),
+    color: const Color(0xFFE8F0F7).withValues(alpha: 0.92),
     borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: const Color(0xFF92ABC1).withOpacity(0.50)),
+    border: Border.all(color: const Color(0xFF92ABC1).withValues(alpha: 0.50)),
   );
 }
 
 ButtonStyle _invFilterOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF1E3C5A),
-    side: BorderSide(color: const Color(0xFF6E8CAA).withOpacity(0.35)),
-    backgroundColor: const Color(0xFFDDE9F4).withOpacity(0.70),
+    side: BorderSide(color: const Color(0xFF6E8CAA).withValues(alpha: 0.35)),
+    backgroundColor: const Color(0xFFDDE9F4).withValues(alpha: 0.70),
   );
 }
 
@@ -7051,16 +6982,16 @@ ButtonStyle _invFilterFilledButtonStyle() {
 ButtonStyle _invActionOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF0B2B2B),
-    side: BorderSide(color: Colors.white.withOpacity(0.7)),
-    backgroundColor: Colors.white.withOpacity(0.26),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
+    backgroundColor: Colors.white.withValues(alpha: 0.26),
   );
 }
 
 ButtonStyle _invActionFilledButtonStyle() {
   return FilledButton.styleFrom(
     foregroundColor: const Color(0xFF0B2B2B),
-    backgroundColor: Colors.white.withOpacity(0.36),
-    side: BorderSide(color: Colors.white.withOpacity(0.74)),
+    backgroundColor: Colors.white.withValues(alpha: 0.36),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.74)),
   );
 }
 
@@ -7093,9 +7024,12 @@ class _InvTopMetricCard extends StatelessWidget {
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
       decoration: BoxDecoration(
-        color: const Color(0xFFBFD8D3).withOpacity(0.52),
+        color: const Color(0xFFBFD8D3).withValues(alpha: 0.52),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.74), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.74),
+          width: 1,
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,
@@ -7104,10 +7038,10 @@ class _InvTopMetricCard extends StatelessWidget {
             width: 32,
             height: 32,
             decoration: BoxDecoration(
-              color: _kInvFilterAccent.withOpacity(0.20),
+              color: _kInvFilterAccent.withValues(alpha: 0.20),
               borderRadius: BorderRadius.circular(9),
               border: Border.all(
-                color: _kInvFilterAccent.withOpacity(0.34),
+                color: _kInvFilterAccent.withValues(alpha: 0.34),
                 width: 1,
               ),
             ),
@@ -7177,9 +7111,12 @@ class _InvToolbarPanel extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.24),
+        color: Colors.white.withValues(alpha: 0.24),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.64), width: 1),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.64),
+          width: 1,
+        ),
       ),
       child: child,
     );
@@ -7210,91 +7147,6 @@ String _fmtInvCount(double value, {int decimals = 2}) {
   return negative ? '-$whole.$fraction' : '$whole.$fraction';
 }
 
-String _normalizeCatalogMaterialName(String value) {
-  final upper = value.trim().toUpperCase();
-  const replacements = <String, String>{
-    'Á': 'A',
-    'É': 'E',
-    'Í': 'I',
-    'Ó': 'O',
-    'Ú': 'U',
-    'Ü': 'U',
-  };
-  final sb = StringBuffer();
-  for (final rune in upper.runes) {
-    final ch = String.fromCharCode(rune);
-    sb.write(replacements[ch] ?? ch);
-  }
-  return sb
-      .toString()
-      .replaceAll(RegExp(r'[^A-Z0-9]+'), ' ')
-      .replaceAll(RegExp(r'\s+'), ' ')
-      .trim();
-}
-
-String? _invMaterialCodeFromCatalogName(String name) {
-  final n = _normalizeCatalogMaterialName(name);
-  switch (n) {
-    case 'CARTON NACIONAL':
-    case 'CARTON CELANESE':
-    case 'GRANEL NACIONAL':
-      return 'CARDBOARD_BULK_NATIONAL';
-    case 'CARTON AMERICANO':
-    case 'GRANEL AMERICANO':
-      return 'CARDBOARD_BULK_AMERICAN';
-    case 'CHATARRA':
-    case 'SCRAP':
-    case 'MIXTO':
-      return 'SCRAP';
-    case 'PACA NACIONAL':
-    case 'BALE NATIONAL':
-      return 'BALE_NATIONAL';
-    case 'PACA AMERICANA':
-    case 'BALE AMERICAN':
-      return 'BALE_AMERICAN';
-    case 'PACA LIMPIA':
-    case 'BALE CLEAN':
-      return 'BALE_CLEAN';
-    case 'PACA BASURA':
-    case 'BALE TRASH':
-      return 'BALE_TRASH';
-  }
-  if (n.contains('COBRE')) return 'METAL';
-  if (n.contains('BRONCE') || n.contains('LATON')) return 'METAL';
-  if (n.contains('ALUMINIO')) return 'METAL';
-  if (n.contains('PAPEL') ||
-      n.contains('ARCHIVO') ||
-      n.contains('FOLLETO') ||
-      n.contains('LIBRO') ||
-      n.contains('MAGAZINE')) {
-    return 'PAPER';
-  }
-  if (n.contains('PLASTICO') ||
-      n.contains('PLASTICO DURO') ||
-      n.contains('UNICEL') ||
-      n.contains('GARRAFA') ||
-      n.contains('SPRAY')) {
-    return 'PLASTIC';
-  }
-  if (n.contains('MADERA') ||
-      n.contains('LENA') ||
-      n.contains('LEÑA') ||
-      n.contains('TARIMA')) {
-    return 'WOOD';
-  }
-  if (n.contains('ACERO') ||
-      n.contains('FIERRO') ||
-      n.contains('TUBO') ||
-      n.contains('PERFIL') ||
-      n.contains('PLACA') ||
-      n.contains('RIN') ||
-      n.contains('BOTE') ||
-      n.contains('REBABA')) {
-    return 'METAL';
-  }
-  return null;
-}
-
 String _invMaterialLabel(String? material) {
   switch (material) {
     case 'CARDBOARD_BULK_NATIONAL':
@@ -7309,6 +7161,8 @@ String _invMaterialLabel(String? material) {
       return 'Paca limpia';
     case 'BALE_TRASH':
       return 'Paca basura';
+    case 'CAPLE':
+      return 'Caple';
     case 'SCRAP':
       return 'Chatarra';
     case 'METAL':
@@ -7390,7 +7244,6 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
   bool _exportingCsv = false;
   bool _insertRowActive = false;
   bool _hoverInsertAddButton = false;
-  bool _gridEditMode = false;
   bool _marqueeActive = false;
   Offset? _marqueeStartLocal;
   Offset? _marqueePointerLocal;
@@ -7407,8 +7260,6 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
   final Set<String> _bulkSelectedRowIds = <String>{};
   int _activeInsertColumn = 0;
   int _activeGridColumn = 0;
-  int _gridSaveSignal = 0;
-  int _gridCancelSignal = 0;
   int _currentPage = 0;
   int _pageSize = 40;
   bool _topBarSyncScheduled = false;
@@ -7482,15 +7333,15 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
 
   void _initDraftDefaults() {
     _draft = _ProductionDraft(
-      opDate: DateUtils.dateOnly(DateTime.now()),
-      shift: 'DAY',
-      baleMaterial: 'BALE_NATIONAL',
+      opDate: null,
+      shift: null,
+      baleMaterial: null,
       baleCount: null,
-      avgBaleWeightKg: 850,
+      avgBaleWeightKg: null,
       notes: '',
     );
     _draftCountC.clear();
-    _draftAvgC.text = '850';
+    _draftAvgC.clear();
     _draftNotesC.clear();
     _activeInsertColumn = 0;
   }
@@ -7541,7 +7392,6 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
         _inserting ||
         _bulkDeleting ||
         _insertRowActive ||
-        _gridEditMode ||
         (_selectedRowState()?.isEditing ?? false) ||
         _isEditableTextFocused()) {
       _pendingReload = true;
@@ -7620,12 +7470,15 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     }
     final count = int.tryParse(_draftCountC.text.trim())!;
     final avg = _toDouble(_draftAvgC.text)!;
+    final sourceBulk = _sourceBulkForBaleMaterial(_draft.baleMaterial);
     setState(() => _inserting = true);
     try {
       await supa.from('production_runs').insert({
         'op_date': _fmtDbDate(_draft.opDate!),
         'shift': _draft.shift,
+        'site': 'DICSA_CELAYA',
         'bale_material': _draft.baleMaterial,
+        'source_bulk': sourceBulk,
         'bale_count': count,
         'avg_bale_weight_kg': avg,
         'notes': _draftNotesC.text.trim().isEmpty
@@ -7667,10 +7520,12 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        backgroundColor: const Color(0xFFEAF2F9).withOpacity(0.98),
+        backgroundColor: const Color(0xFFEAF2F9).withValues(alpha: 0.98),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: const Color(0xFF8AA9C2).withOpacity(0.42)),
+          side: BorderSide(
+            color: const Color(0xFF8AA9C2).withValues(alpha: 0.42),
+          ),
         ),
         title: const Text('No se puede agregar'),
         content: Text(
@@ -7820,9 +7675,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
   }
 
   String? _sourceBulkForBaleMaterial(String? baleMaterial) {
-    if (baleMaterial == null) return null;
-    if (baleMaterial == 'BALE_AMERICAN') return 'CARDBOARD_BULK_AMERICAN';
-    return 'CARDBOARD_BULK_NATIONAL';
+    return _productionSourceBulkForBaleMaterial(baleMaterial);
   }
 
   String _cellTextForColumn(Map<String, dynamic> row, String columnId) {
@@ -7832,7 +7685,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
       case 'turno':
         return _prodShiftLabel(row['shift']?.toString());
       case 'bale_material':
-        return _invMaterialLabel(row['bale_material']?.toString());
+        return _prodBaleMaterialLabel(row['bale_material']?.toString());
       case 'pacas':
         return (row['bale_count'] ?? '').toString();
       case 'prom_kg':
@@ -7864,8 +7717,9 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     }
     for (final entry in _columnValueFilters.entries) {
       if (entry.key == excludeColumn || entry.value.isEmpty) continue;
-      if (!entry.value.contains(_cellTextForColumn(row, entry.key)))
+      if (!entry.value.contains(_cellTextForColumn(row, entry.key))) {
         return false;
+      }
     }
     return true;
   }
@@ -7962,7 +7816,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
         final localSelected = <String>{...initialSelected};
         String localSearch = '';
         return StatefulBuilder(
-          builder: (_, setLocalState) {
+          builder: (context, setLocalState) {
             final options = _columnDistinctValues(
               columnId,
               search: localSearch,
@@ -8032,7 +7886,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                 )
                               : ListView.builder(
                                   itemCount: options.length,
-                                  itemBuilder: (_, i) {
+                                  itemBuilder: (context, i) {
                                     final value = options[i];
                                     final checked = localSelected.contains(
                                       value,
@@ -8044,7 +7898,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                       checkColor: Colors.white,
                                       hoverColor: const Color(
                                         0xFFE9F7EE,
-                                      ).withOpacity(0.95),
+                                      ).withValues(alpha: 0.95),
                                       title: Text(
                                         value,
                                         overflow: TextOverflow.ellipsis,
@@ -8140,12 +7994,16 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     return DateUtils.dateOnly(DateTime.now());
   }
 
-  void _setActiveInsertColumn(int value) {
+  void _setActiveInsertColumn(int value, {bool requestFocus = true}) {
     setState(() {
       _activeInsertColumn =
           ((value % _insertColumnCount) + _insertColumnCount) %
           _insertColumnCount;
+      _selectedRowId = null;
+      _selectionAnchorRowId = null;
+      _bulkSelectedRowIds.clear();
     });
+    if (!requestFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       switch (_activeInsertColumn) {
@@ -8196,10 +8054,11 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
           firstDate: DateTime(2024, 1, 1),
           lastDate: DateTime(2035, 12, 31),
         );
-        if (d != null && mounted)
+        if (d != null && mounted) {
           setState(
             () => _draft = _draft.copyWith(opDate: DateUtils.dateOnly(d)),
           );
+        }
         return;
       case 1:
         final shift = await _showInvSearchablePickerDialog<String>(
@@ -8211,8 +8070,9 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
             _InvPickerOption<String>(value: 'NIGHT', label: 'Noche'),
           ],
         );
-        if (shift != null && mounted)
+        if (shift != null && mounted) {
           setState(() => _draft = _draft.copyWith(shift: shift));
+        }
         return;
       case 2:
         final material = await _showInvSearchablePickerDialog<String>(
@@ -8230,10 +8090,12 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
             ),
             _InvPickerOption<String>(value: 'BALE_CLEAN', label: 'Paca limpia'),
             _InvPickerOption<String>(value: 'BALE_TRASH', label: 'Paca basura'),
+            _InvPickerOption<String>(value: 'CAPLE', label: 'Paca caple'),
           ],
         );
-        if (material != null && mounted)
+        if (material != null && mounted) {
           setState(() => _draft = _draft.copyWith(baleMaterial: material));
+        }
         return;
       case 7:
         await _insertDraft();
@@ -8249,7 +8111,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
         setState(() => _draft = _draft.copyWith(opDate: null));
         return;
       case 1:
-        setState(() => _draft = _draft.copyWith(shift: 'DAY'));
+        setState(() => _draft = _draft.copyWith(shift: null));
         return;
       case 2:
         setState(() => _draft = _draft.copyWith(baleMaterial: null));
@@ -8297,9 +8159,12 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
   }
 
   void _focusInsertFromGrid() {
-    setState(
-      () => _activeInsertColumn = _activeGridColumn > 7 ? 7 : _activeGridColumn,
-    );
+    setState(() {
+      _activeInsertColumn = _activeGridColumn > 7 ? 7 : _activeGridColumn;
+      _selectedRowId = null;
+      _selectionAnchorRowId = null;
+      _bulkSelectedRowIds.clear();
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _setActiveInsertColumn(_activeInsertColumn);
     });
@@ -8314,10 +8179,11 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
       if (additive) {
         if (_bulkSelectedRowIds.contains(id)) {
           _bulkSelectedRowIds.remove(id);
-          if (_selectedRowId == id)
+          if (_selectedRowId == id) {
             _selectedRowId = _bulkSelectedRowIds.isEmpty
                 ? null
                 : _bulkSelectedRowIds.last;
+          }
         } else {
           if (_selectedRowId != null) _bulkSelectedRowIds.add(_selectedRowId!);
           _bulkSelectedRowIds.add(id);
@@ -8394,6 +8260,16 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
         pressed.contains(LogicalKeyboardKey.controlRight) ||
         pressed.contains(LogicalKeyboardKey.metaLeft) ||
         pressed.contains(LogicalKeyboardKey.metaRight);
+  }
+
+  bool _isShiftPressed() {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    return pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+  }
+
+  bool _isSelectionExtendPressed() {
+    return _isCtrlOrCmdPressed() || _isShiftPressed();
   }
 
   _ProductionDataRowState? _selectedRowState() {
@@ -8596,7 +8472,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
   }
 
   void _prodOnRowsPointerDown(PointerDownEvent event) {
-    if (_prodAnyRowEditing || _gridEditMode) return;
+    if (_prodAnyRowEditing) return;
     if (_visibleRows.isEmpty) return;
     if (event.kind != PointerDeviceKind.mouse) return;
     if ((event.buttons & kPrimaryMouseButton) == 0) return;
@@ -8607,7 +8483,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     _marqueePointerLocal = local;
     _marqueeStartContent = _prodLocalToContent(local);
     _marqueeCurrentContent = _marqueeStartContent;
-    _marqueeAdditive = _isCtrlOrCmdPressed();
+    _marqueeAdditive = _isSelectionExtendPressed();
     _marqueeBaseSelection = _prodCurrentSelectionIds();
     _marqueeActive = false;
   }
@@ -8824,8 +8700,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
   }
 
   InventoryGridTopBarData _buildTopBarData() {
-    final activeCell =
-        (_gridEditMode || (_selectedRowState()?.isEditing ?? false))
+    final activeCell = (_selectedRowState()?.isEditing ?? false)
         ? _activeGridColumnLabel
         : null;
     final selectedStats = _selectedProducedStats();
@@ -8836,7 +8711,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
       metricSubtitle:
           'Filtrado (${_fmtInvInt(_filteredRows.length)} registros)',
       exportingCsv: _exportingCsv,
-      gridEditMode: _gridEditMode,
+      gridEditMode: false,
       canToggleGridEdit: _visibleRows.isNotEmpty,
       canDeleteSelection: _bulkSelectedRowIds.isNotEmpty,
       deletingSelection: _bulkDeleting,
@@ -8849,22 +8724,9 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
           : null,
       activeCellLabel: activeCell,
       onExportCsv: _exportingCsv ? null : _exportCsv,
-      onToggleGridEdit: _visibleRows.isEmpty
-          ? null
-          : () => setState(() {
-              _gridEditMode = !_gridEditMode;
-              if (_gridEditMode) {
-                _selectedRowId ??= _visibleRows.first['id'] as String;
-              }
-            }),
-      onSaveGridEdit: () => setState(() {
-        _gridSaveSignal++;
-        _gridEditMode = false;
-      }),
-      onCancelGridEdit: () => setState(() {
-        _gridCancelSignal++;
-        _gridEditMode = false;
-      }),
+      onToggleGridEdit: null,
+      onSaveGridEdit: null,
+      onCancelGridEdit: null,
       onDeleteSelection: _bulkDeleting ? null : _deleteSelectedRows,
     );
   }
@@ -8874,7 +8736,9 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     if (states.isEmpty) return;
     if (states.any((s) => !s.isEditing)) {
       setState(() => _activeGridColumn = 0);
-      for (final s in states) s.startEditingFromKeyboard();
+      for (final s in states) {
+        s.startEditingFromKeyboard();
+      }
       return;
     }
     unawaited(Future.wait(states.map((s) => s.saveFromKeyboard())));
@@ -8883,7 +8747,9 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
   void _handleEscapeOnSelectedRow() {
     final states = _selectedRowStates();
     if (states.any((s) => s.isEditing)) {
-      for (final s in states) s.cancelEditingFromKeyboard();
+      for (final s in states) {
+        s.cancelEditingFromKeyboard();
+      }
       return;
     }
     setState(() {
@@ -8963,7 +8829,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                 }
                 final key = event.logicalKey;
                 final selectedState = _selectedRowState();
-                final keyboardCellMode = _gridEditMode || _prodAnyRowEditing;
+                final keyboardCellMode = _prodAnyRowEditing;
                 final inTextEditing =
                     selectedState?.isTextCellFocused(_activeGridColumn) ??
                     false;
@@ -8992,7 +8858,10 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                     return KeyEventResult.handled;
                   }
                   if (key == LogicalKeyboardKey.arrowDown) {
-                    _moveGridRow(1, extendSelection: _isCtrlOrCmdPressed());
+                    _moveGridRow(
+                      1,
+                      extendSelection: _isSelectionExtendPressed(),
+                    );
                     return KeyEventResult.handled;
                   }
                   if (key == LogicalKeyboardKey.arrowUp) {
@@ -9001,12 +8870,15 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                         : null;
                     if (firstVisible != null &&
                         _selectedRowId == firstVisible) {
-                      if (_isCtrlOrCmdPressed()) {
+                      if (_isSelectionExtendPressed()) {
                         return KeyEventResult.handled;
                       }
                       _focusInsertFromGrid();
                     } else {
-                      _moveGridRow(-1, extendSelection: _isCtrlOrCmdPressed());
+                      _moveGridRow(
+                        -1,
+                        extendSelection: _isSelectionExtendPressed(),
+                      );
                     }
                     return KeyEventResult.handled;
                   }
@@ -9017,25 +8889,11 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                   }
                   if (key == LogicalKeyboardKey.enter ||
                       key == LogicalKeyboardKey.numpadEnter) {
-                    if (_gridEditMode) {
-                      setState(() {
-                        _gridSaveSignal++;
-                        _gridEditMode = false;
-                      });
-                    } else {
-                      _handleEnterOnSelectedRow();
-                    }
+                    _handleEnterOnSelectedRow();
                     return KeyEventResult.handled;
                   }
                   if (key == LogicalKeyboardKey.escape) {
-                    if (_gridEditMode) {
-                      setState(() {
-                        _gridCancelSignal++;
-                        _gridEditMode = false;
-                      });
-                    } else {
-                      _handleEscapeOnSelectedRow();
-                    }
+                    _handleEscapeOnSelectedRow();
                     return KeyEventResult.handled;
                   }
                   if (key == LogicalKeyboardKey.delete ||
@@ -9046,7 +8904,10 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                   }
                 }
                 if (key == LogicalKeyboardKey.arrowDown) {
-                  _moveSelectedRow(1, extendSelection: _isCtrlOrCmdPressed());
+                  _moveSelectedRow(
+                    1,
+                    extendSelection: _isSelectionExtendPressed(),
+                  );
                   return KeyEventResult.handled;
                 }
                 if (key == LogicalKeyboardKey.arrowUp) {
@@ -9056,12 +8917,14 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                   if (firstVisible == null ||
                       _selectedRowId == null ||
                       _selectedRowId == firstVisible) {
-                    if (_isCtrlOrCmdPressed()) return KeyEventResult.handled;
+                    if (_isSelectionExtendPressed()) {
+                      return KeyEventResult.handled;
+                    }
                     _focusInsertFromGrid();
                   } else {
                     _moveSelectedRow(
                       -1,
-                      extendSelection: _isCtrlOrCmdPressed(),
+                      extendSelection: _isSelectionExtendPressed(),
                     );
                   }
                   return KeyEventResult.handled;
@@ -9114,9 +8977,6 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                     isSelected: _selectedRowId == id,
                                     isChecked: _bulkSelectedRowIds.contains(id),
                                     selectedCount: _selectedCount,
-                                    gridEditMode: _gridEditMode,
-                                    gridSaveSignal: _gridSaveSignal,
-                                    gridCancelSignal: _gridCancelSignal,
                                     activeGridColumn: _activeGridColumn,
                                     onDelete: _deleteRow,
                                     onUpdate: _updateRow,
@@ -9169,7 +9029,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
             padding: const EdgeInsets.only(top: 8),
             child: Card(
               elevation: 0,
-              color: Colors.white.withOpacity(0.30),
+              color: Colors.white.withValues(alpha: 0.30),
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -9206,7 +9066,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                     SizedBox(
                       width: 90,
                       child: DropdownButtonFormField<int>(
-                        value: _pageSize,
+                        initialValue: _pageSize,
                         isDense: true,
                         decoration: _invGlassFieldDecoration(),
                         items: const [40, 80, 120]
@@ -9252,7 +9112,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
           color: _insertRowActive
-              ? const Color(0xFF3C8DCC).withOpacity(0.55)
+              ? const Color(0xFF3C8DCC).withValues(alpha: 0.55)
               : Colors.transparent,
         ),
       ),
@@ -9262,17 +9122,27 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
           builder: (context, constraints) {
             Widget frame(int col, Widget child) {
               final active = _activeInsertColumn == col;
-              if (!active) return child;
               return DecoratedBox(
-                position: DecorationPosition.foreground,
+                position: DecorationPosition.background,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: const Color(0xFF0B72FF).withOpacity(0.80),
-                    width: 1.15,
-                  ),
+                  color: active
+                      ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
+                      : Colors.transparent,
                 ),
-                child: child,
+                child: DecoratedBox(
+                  position: DecorationPosition.foreground,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: active
+                          ? const Color(0xFF0B72FF).withValues(alpha: 0.80)
+                          : Colors.transparent,
+                      width: active ? 1.15 : 1.0,
+                    ),
+                  ),
+                  child: child,
+                ),
               );
             }
 
@@ -9282,38 +9152,45 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
 
             return Focus(
               focusNode: _insertFocusNode,
-              autofocus: true,
+              autofocus: false,
               onKeyEvent: (_, event) {
                 if (event is! KeyDownEvent) return KeyEventResult.ignored;
                 final key = event.logicalKey;
                 if (key == LogicalKeyboardKey.arrowLeft) {
                   if (_insertCountFocusNode.hasFocus &&
-                      !_caretAtStart(_draftCountC, _insertCountFocusNode))
+                      !_caretAtStart(_draftCountC, _insertCountFocusNode)) {
                     return KeyEventResult.ignored;
+                  }
                   if (_insertAvgFocusNode.hasFocus &&
-                      !_caretAtStart(_draftAvgC, _insertAvgFocusNode))
+                      !_caretAtStart(_draftAvgC, _insertAvgFocusNode)) {
                     return KeyEventResult.ignored;
+                  }
                   if (_insertNotesFocusNode.hasFocus &&
-                      !_caretAtStart(_draftNotesC, _insertNotesFocusNode))
+                      !_caretAtStart(_draftNotesC, _insertNotesFocusNode)) {
                     return KeyEventResult.ignored;
+                  }
                   _moveInsertColumn(-1);
                   return KeyEventResult.handled;
                 }
                 if (key == LogicalKeyboardKey.arrowRight) {
                   if (_insertCountFocusNode.hasFocus &&
-                      !_caretAtEnd(_draftCountC, _insertCountFocusNode))
+                      !_caretAtEnd(_draftCountC, _insertCountFocusNode)) {
                     return KeyEventResult.ignored;
+                  }
                   if (_insertAvgFocusNode.hasFocus &&
-                      !_caretAtEnd(_draftAvgC, _insertAvgFocusNode))
+                      !_caretAtEnd(_draftAvgC, _insertAvgFocusNode)) {
                     return KeyEventResult.ignored;
+                  }
                   if (_insertNotesFocusNode.hasFocus &&
-                      !_caretAtEnd(_draftNotesC, _insertNotesFocusNode))
+                      !_caretAtEnd(_draftNotesC, _insertNotesFocusNode)) {
                     return KeyEventResult.ignored;
+                  }
                   _moveInsertColumn(1);
                   return KeyEventResult.handled;
                 }
-                if (key == LogicalKeyboardKey.arrowUp)
+                if (key == LogicalKeyboardKey.arrowUp) {
                   return KeyEventResult.handled;
+                }
                 if (key == LogicalKeyboardKey.arrowDown) {
                   _focusGridFromInsert();
                   return KeyEventResult.handled;
@@ -9374,12 +9251,13 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                         firstDate: DateTime(2024, 1, 1),
                                         lastDate: DateTime(2035, 12, 31),
                                       );
-                                  if (d != null && mounted)
+                                  if (d != null && mounted) {
                                     setState(
                                       () => _draft = _draft.copyWith(
                                         opDate: DateUtils.dateOnly(d),
                                       ),
                                     );
+                                  }
                                 },
                                 child: InputDecorator(
                                   decoration: _invGlassFieldDecoration(),
@@ -9409,7 +9287,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                             width: _kProdShiftColW,
                             child: control(
                               _InvDropStrInline(
-                                value: _draft.shift ?? 'DAY',
+                                value: _draft.shift,
                                 items: const ['DAY', 'NIGHT'],
                                 format: (v) => _prodShiftLabel(v),
                                 onTapStart: () => _setActiveInsertColumn(1),
@@ -9426,14 +9304,9 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                             width: _kProdBaleTypeColW,
                             child: control(
                               _InvDropStrInline(
-                                value: _draft.baleMaterial ?? 'BALE_NATIONAL',
-                                items: const [
-                                  'BALE_NATIONAL',
-                                  'BALE_AMERICAN',
-                                  'BALE_CLEAN',
-                                  'BALE_TRASH',
-                                ],
-                                format: (v) => _invMaterialLabel(v),
+                                value: _draft.baleMaterial,
+                                items: _kProductionBaleMaterials,
+                                format: (v) => _prodBaleMaterialLabel(v),
                                 onTapStart: () => _setActiveInsertColumn(2),
                                 onChanged: (v) => setState(
                                   () =>
@@ -9455,7 +9328,10 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                 decoration: _invGlassFieldDecoration(
                                   hintText: 'Pacas',
                                 ),
-                                onTap: () => _setActiveInsertColumn(3),
+                                onTap: () => _setActiveInsertColumn(
+                                  3,
+                                  requestFocus: false,
+                                ),
                                 onChanged: (t) => setState(
                                   () => _draft = _draft.copyWith(
                                     baleCount: int.tryParse(t.trim()),
@@ -9480,7 +9356,10 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                 decoration: _invGlassFieldDecoration(
                                   hintText: 'Prom kg',
                                 ),
-                                onTap: () => _setActiveInsertColumn(4),
+                                onTap: () => _setActiveInsertColumn(
+                                  4,
+                                  requestFocus: false,
+                                ),
                                 onChanged: (t) => setState(
                                   () => _draft = _draft.copyWith(
                                     avgBaleWeightKg: _toDouble(t),
@@ -9498,11 +9377,13 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                               InputDecorator(
                                 decoration: _invGlassFieldDecoration(),
                                 child: _InvFitText(
-                                  _invMaterialLabel(
-                                    _sourceBulkForBaleMaterial(
-                                      _draft.baleMaterial,
-                                    ),
-                                  ),
+                                  _draft.baleMaterial == null
+                                      ? '—'
+                                      : _invMaterialLabel(
+                                          _sourceBulkForBaleMaterial(
+                                            _draft.baleMaterial,
+                                          ),
+                                        ),
                                 ),
                               ),
                             ),
@@ -9519,7 +9400,10 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                 decoration: _invGlassFieldDecoration(
                                   hintText: 'Comentario',
                                 ),
-                                onTap: () => _setActiveInsertColumn(6),
+                                onTap: () => _setActiveInsertColumn(
+                                  6,
+                                  requestFocus: false,
+                                ),
                                 onChanged: (t) => setState(
                                   () => _draft = _draft.copyWith(notes: t),
                                 ),
@@ -9541,7 +9425,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                     vertical: 6,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.42),
+                                    color: Colors.white.withValues(alpha: 0.42),
                                     borderRadius: BorderRadius.circular(999),
                                   ),
                                   child: Text(
@@ -9574,16 +9458,18 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                         height: 34,
                                         decoration: BoxDecoration(
                                           color: _inserting
-                                              ? Colors.white.withOpacity(0.35)
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.35,
+                                                )
                                               : const Color(
                                                   0xFF19C37D,
-                                                ).withOpacity(0.92),
+                                                ).withValues(alpha: 0.92),
                                           borderRadius: BorderRadius.circular(
                                             10,
                                           ),
                                           border: Border.all(
-                                            color: Colors.white.withOpacity(
-                                              0.52,
+                                            color: Colors.white.withValues(
+                                              alpha: 0.52,
                                             ),
                                           ),
                                           boxShadow:
@@ -9592,7 +9478,9 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                               ? [
                                                   BoxShadow(
                                                     color: Colors.black
-                                                        .withOpacity(0.20),
+                                                        .withValues(
+                                                          alpha: 0.20,
+                                                        ),
                                                     blurRadius: 16,
                                                     offset: const Offset(0, 8),
                                                   ),
@@ -9600,7 +9488,9 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                               : [
                                                   BoxShadow(
                                                     color: Colors.black
-                                                        .withOpacity(0.10),
+                                                        .withValues(
+                                                          alpha: 0.10,
+                                                        ),
                                                     blurRadius: 8,
                                                     offset: const Offset(0, 4),
                                                   ),
@@ -9659,6 +9549,31 @@ const double _kProdFixedColsW =
     10 +
     _kProdActionsW;
 
+const List<String> _kProductionBaleMaterials = <String>[
+  'BALE_NATIONAL',
+  'BALE_AMERICAN',
+  'BALE_CLEAN',
+  'BALE_TRASH',
+  'CAPLE',
+];
+
+String _productionSourceBulkForBaleMaterial(String? baleMaterial) {
+  if (baleMaterial == null) return 'CARDBOARD_BULK_NATIONAL';
+  switch (baleMaterial.trim().toUpperCase()) {
+    case 'BALE_AMERICAN':
+      return 'CARDBOARD_BULK_AMERICAN';
+    case 'CAPLE':
+      return 'CAPLE';
+    default:
+      return 'CARDBOARD_BULK_NATIONAL';
+  }
+}
+
+String _prodBaleMaterialLabel(String? material) {
+  if ((material ?? '').trim().toUpperCase() == 'CAPLE') return 'Paca caple';
+  return _invMaterialLabel(material);
+}
+
 double _prodCommentColW(double availableWidth) =>
     math.max(_kProdMinCommentColW, availableWidth - _kProdFixedColsW);
 
@@ -9678,7 +9593,7 @@ class _ProductionHeaderRow extends StatelessWidget {
     const s = TextStyle(fontSize: 12, fontWeight: FontWeight.w800);
     return Card(
       elevation: 0,
-      color: Colors.black.withOpacity(0.03),
+      color: Colors.black.withValues(alpha: 0.03),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -9765,9 +9680,6 @@ class _ProductionDataRow extends StatefulWidget {
   final bool isSelected;
   final bool isChecked;
   final int selectedCount;
-  final bool gridEditMode;
-  final int gridSaveSignal;
-  final int gridCancelSignal;
   final int activeGridColumn;
   final Future<void> Function(String id) onDelete;
   final Future<void> Function(String id, Map<String, dynamic> patch) onUpdate;
@@ -9782,9 +9694,6 @@ class _ProductionDataRow extends StatefulWidget {
     required this.isSelected,
     required this.isChecked,
     required this.selectedCount,
-    required this.gridEditMode,
-    required this.gridSaveSignal,
-    required this.gridCancelSignal,
     required this.activeGridColumn,
     required this.onDelete,
     required this.onUpdate,
@@ -9826,14 +9735,6 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
   @override
   void didUpdateWidget(covariant _ProductionDataRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.gridEditMode != oldWidget.gridEditMode)
-      _editing = widget.gridEditMode;
-    if (widget.gridSaveSignal != oldWidget.gridSaveSignal)
-      unawaited(_save(keepEditing: false));
-    if (widget.gridCancelSignal != oldWidget.gridCancelSignal) {
-      _syncFromRow();
-      setState(() => _editing = false);
-    }
     if (widget.row != oldWidget.row && !_editing) _syncFromRow();
   }
 
@@ -9857,7 +9758,6 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
         _toDouble(widget.row['avg_bale_weight_kg'])?.toStringAsFixed(2) ??
         '850';
     _notesC.text = (widget.row['notes'] ?? '').toString();
-    _editing = widget.gridEditMode;
   }
 
   DateTime _parseDate(dynamic v) {
@@ -10012,6 +9912,7 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
             ),
             _InvPickerOption<String>(value: 'BALE_CLEAN', label: 'Paca limpia'),
             _InvPickerOption<String>(value: 'BALE_TRASH', label: 'Paca basura'),
+            _InvPickerOption<String>(value: 'CAPLE', label: 'Paca caple'),
           ],
         );
         if (mat != null) setState(() => _baleMaterial = mat);
@@ -10065,10 +9966,12 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
     final count = int.tryParse(_countC.text.trim());
     final avg = _toDouble(_avgC.text);
     if (count == null || count <= 0 || avg == null || avg <= 0) return;
+    final sourceBulk = _productionSourceBulkForBaleMaterial(_baleMaterial);
     final patch = <String, dynamic>{
       'op_date': _fmtDbDate(_opDate),
       'shift': _shift,
       'bale_material': _baleMaterial,
+      'source_bulk': sourceBulk,
       'bale_count': count,
       'avg_bale_weight_kg': avg,
       'notes': _notesC.text.trim().isEmpty ? null : _notesC.text.trim(),
@@ -10084,7 +9987,9 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
     final rowBg = _editing
         ? const Color(0xFFE2EEF8)
         : hasSelection
-        ? const Color(0xFF00A3FF).withOpacity(widget.isSelected ? 0.16 : 0.13)
+        ? const Color(
+            0xFF00A3FF,
+          ).withValues(alpha: widget.isSelected ? 0.16 : 0.13)
         : hoverOnly
         ? const Color(0xFFE9F7EE)
         : Colors.white;
@@ -10114,20 +10019,20 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                     (hasSelection
                             ? const Color(0xFFD9E8F6)
                             : const Color(0xFFE5F2EC))
-                        .withOpacity(0.78),
+                        .withValues(alpha: 0.78),
                     (hasSelection
                             ? const Color(0xFFCCE0F2)
                             : const Color(0xFFD4E7DE))
-                        .withOpacity(0.64),
+                        .withValues(alpha: 0.64),
                   ],
                 )
               : null,
           color: active
-              ? const Color(0xFFDCEAF7).withOpacity(0.72)
+              ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
               : Colors.transparent,
           border: Border.all(
             color: active
-                ? const Color(0xFF0B72FF).withOpacity(0.84)
+                ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
                 : Colors.transparent,
             width: active ? 1.05 : 1.0,
           ),
@@ -10138,7 +10043,7 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                         (hasSelection
                                 ? const Color(0xFF6A8FAE)
                                 : const Color(0xFF6C8F84))
-                            .withOpacity(0.18),
+                            .withValues(alpha: 0.18),
                     blurRadius: 2.2,
                     spreadRadius: -3.0,
                     offset: const Offset(0, 0.8),
@@ -10152,7 +10057,7 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: active
-                  ? const Color(0xFF0B72FF).withOpacity(0.84)
+                  ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
                   : Colors.transparent,
               width: active ? 1.05 : 1.0,
             ),
@@ -10204,7 +10109,7 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                 height: 30,
                 margin: const EdgeInsets.only(left: 8, right: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFC9D5E2).withOpacity(0.90),
+                  color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -10213,9 +10118,7 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
       );
     }
 
-    final sourceBulk = _baleMaterial == 'BALE_AMERICAN'
-        ? 'CARDBOARD_BULK_AMERICAN'
-        : 'CARDBOARD_BULK_NATIONAL';
+    final sourceBulk = _productionSourceBulkForBaleMaterial(_baleMaterial);
     final producedWeight =
         ((int.tryParse(_countC.text.trim()) ?? 0) *
         (_toDouble(_avgC.text) ?? 0));
@@ -10254,8 +10157,8 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                 borderRadius: BorderRadius.circular(14),
                 side: BorderSide(
                   color: widget.isSelected
-                      ? const Color(0xFF00A3FF).withOpacity(0.65)
-                      : Colors.white.withOpacity(0.0),
+                      ? const Color(0xFF00A3FF).withValues(alpha: 0.65)
+                      : Colors.white.withValues(alpha: 0.0),
                 ),
               ),
               child: Padding(
@@ -10310,8 +10213,10 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                                           format: (v) => _prodShiftLabel(v),
                                           onTapStart: () =>
                                               widget.onActivateColumn(1),
-                                          onChanged: (v) =>
-                                              setState(() => _shift = v),
+                                          onChanged: (v) {
+                                            if (v == null) return;
+                                            setState(() => _shift = v);
+                                          },
                                         )
                                       : previewEditableCell(
                                           col: 1,
@@ -10344,26 +10249,25 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                                   child: _editing
                                       ? _InvDropStrInline(
                                           value: _baleMaterial,
-                                          items: const [
-                                            'BALE_NATIONAL',
-                                            'BALE_AMERICAN',
-                                            'BALE_CLEAN',
-                                            'BALE_TRASH',
-                                          ],
-                                          format: (v) => _invMaterialLabel(v),
+                                          items: _kProductionBaleMaterials,
+                                          format: (v) =>
+                                              _prodBaleMaterialLabel(v),
                                           onTapStart: () =>
                                               widget.onActivateColumn(2),
-                                          onChanged: (v) =>
-                                              setState(() => _baleMaterial = v),
+                                          onChanged: (v) {
+                                            if (v == null) return;
+                                            setState(() => _baleMaterial = v);
+                                          },
                                         )
                                       : previewEditableCell(
                                           col: 2,
                                           child: readonlyCell(
                                             child: Builder(
                                               builder: (_) {
-                                                final label = _invMaterialLabel(
-                                                  _baleMaterial,
-                                                );
+                                                final label =
+                                                    _prodBaleMaterialLabel(
+                                                      _baleMaterial,
+                                                    );
                                                 final palette =
                                                     _prodBaleChipColors(
                                                       _baleMaterial,
@@ -10484,7 +10388,9 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                                           vertical: 6,
                                         ),
                                         decoration: BoxDecoration(
-                                          color: Colors.white.withOpacity(0.42),
+                                          color: Colors.white.withValues(
+                                            alpha: 0.42,
+                                          ),
                                           borderRadius: BorderRadius.circular(
                                             999,
                                           ),
@@ -10526,23 +10432,24 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                                               height: 32,
                                               decoration: BoxDecoration(
                                                 color: _hoverActionsButton
-                                                    ? Colors.white.withOpacity(
-                                                        0.62,
+                                                    ? Colors.white.withValues(
+                                                        alpha: 0.62,
                                                       )
-                                                    : Colors.white.withOpacity(
-                                                        0.42,
+                                                    : Colors.white.withValues(
+                                                        alpha: 0.42,
                                                       ),
                                                 borderRadius:
                                                     BorderRadius.circular(999),
                                                 border: Border.all(
                                                   color: Colors.white
-                                                      .withOpacity(0.72),
+                                                      .withValues(alpha: 0.72),
                                                 ),
                                                 boxShadow: [
                                                   BoxShadow(
                                                     color: Colors.black
-                                                        .withOpacity(
-                                                          _hoverActionsButton
+                                                        .withValues(
+                                                          alpha:
+                                                              _hoverActionsButton
                                                               ? 0.15
                                                               : 0.08,
                                                         ),
@@ -10665,7 +10572,2749 @@ String _prodShiftLabel(String? shift) {
       return (bg: const Color(0xFFE6F2CF), fg: const Color(0xFF3F5A17));
     case 'BALE_TRASH':
       return (bg: const Color(0xFFEBD7E8), fg: const Color(0xFF6B2F63));
+    case 'CAPLE':
+      return (bg: const Color(0xFFE8F4FF), fg: const Color(0xFF1B5B9C));
     default:
       return (bg: const Color(0xFFE2E8F2), fg: const Color(0xFF31475F));
   }
+}
+
+const double _kSepDateColW = 118;
+const double _kSepShiftColW = 108;
+const double _kSepModeColW = 132;
+const double _kSepCommercialColW = 240;
+const double _kSepKgColW = 130;
+const double _kSepNotesColW = 240;
+const double _kSepActionsColW = 112;
+
+double _sepTableContentWFor(double availableWidth) {
+  final base =
+      _kSepDateColW +
+      _kSepShiftColW +
+      _kSepModeColW +
+      _kSepCommercialColW +
+      _kSepKgColW +
+      _kSepNotesColW +
+      _kSepActionsColW +
+      10;
+  return math.max(base, availableWidth);
+}
+
+class InventoryMaterialSeparationGrid extends StatefulWidget {
+  final String sourceMaterial;
+  final Future<void> Function()? onChanged;
+  final bool showTopBarChrome;
+  final ValueChanged<InventoryGridTopBarData>? onTopBarChanged;
+
+  const InventoryMaterialSeparationGrid({
+    super.key,
+    required this.sourceMaterial,
+    this.onChanged,
+    this.showTopBarChrome = true,
+    this.onTopBarChanged,
+  });
+
+  @override
+  State<InventoryMaterialSeparationGrid> createState() =>
+      _InventoryMaterialSeparationGridState();
+}
+
+class _InventoryMaterialSeparationGridState
+    extends State<InventoryMaterialSeparationGrid>
+    with WidgetsBindingObserver {
+  final supa = Supabase.instance.client;
+
+  final FocusNode _insertFocusNode = FocusNode(
+    debugLabel: 'sep_insert_row_focus',
+  );
+  final FocusNode _rowsFocusNode = FocusNode(debugLabel: 'sep_rows_focus');
+  final FocusNode _insertKgFocusNode = FocusNode(debugLabel: 'sep_insert_kg');
+  final FocusNode _insertNotesFocusNode = FocusNode(
+    debugLabel: 'sep_insert_notes',
+  );
+
+  final TextEditingController _draftKgC = TextEditingController();
+  final TextEditingController _draftNotesC = TextEditingController();
+
+  final Map<String, GlobalKey<_SeparationDataRowState>> _rowKeys =
+      <String, GlobalKey<_SeparationDataRowState>>{};
+  final Map<String, Set<String>> _columnValueFilters = <String, Set<String>>{};
+  final Map<String, DateTimeRange> _columnDateRangeFilters =
+      <String, DateTimeRange>{};
+  final ScrollController _rowsScrollController = ScrollController();
+
+  Timer? _autoRefreshTimer;
+  RealtimeChannel? _realtimeChannel;
+
+  bool _loadingRows = true;
+  bool _loadingCommercials = true;
+  bool _refreshingRows = false;
+  bool _pendingReload = false;
+  bool _inserting = false;
+  bool _bulkDeleting = false;
+  bool _exportingCsv = false;
+  bool _insertRowActive = false;
+  bool _hoverInsertAddButton = false;
+  final bool _gridEditMode = false;
+  bool _topBarSyncScheduled = false;
+
+  List<Map<String, dynamic>> _rows = [];
+  List<_SeparationCommercialOption> _commercialOptions =
+      <_SeparationCommercialOption>[];
+  String? _selectedRowId;
+  String? _selectionAnchorRowId;
+  final Set<String> _bulkSelectedRowIds = <String>{};
+  int _activeInsertColumn = 0;
+  int _activeGridColumn = 0;
+  final int _gridSaveSignal = 0;
+  final int _gridCancelSignal = 0;
+  int _currentPage = 0;
+  final int _pageSize = 40;
+
+  static const int _insertColumnCount = 7;
+  static const int _gridColumnCount = 7;
+  static const List<String> _gridColumnLabels = <String>[
+    'FECHA',
+    'TURNO',
+    'ORIGEN',
+    'MATERIAL COMERCIAL',
+    'KG',
+    'COMENTARIO',
+    'ACCIONES',
+  ];
+
+  late _SeparationDraft _draft;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _insertFocusNode.addListener(_syncInsertRowFocusState);
+    _insertKgFocusNode.addListener(_syncInsertRowFocusState);
+    _insertNotesFocusNode.addListener(_syncInsertRowFocusState);
+    _initDraftDefaults();
+    unawaited(_loadInitialData());
+    _setupAutoRefresh();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _notifyTopBarChanged());
+  }
+
+  @override
+  void setState(VoidCallback fn) {
+    super.setState(fn);
+    _scheduleTopBarSync();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefreshTimer?.cancel();
+    _realtimeChannel?.unsubscribe();
+    _insertFocusNode.removeListener(_syncInsertRowFocusState);
+    _insertKgFocusNode.removeListener(_syncInsertRowFocusState);
+    _insertNotesFocusNode.removeListener(_syncInsertRowFocusState);
+    _insertFocusNode.dispose();
+    _rowsFocusNode.dispose();
+    _insertKgFocusNode.dispose();
+    _insertNotesFocusNode.dispose();
+    _draftKgC.dispose();
+    _draftNotesC.dispose();
+    _rowsScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _requestReload();
+  }
+
+  String get _sourceMaterial => widget.sourceMaterial.toUpperCase();
+  bool get _isScrap => _sourceMaterial == 'SCRAP';
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  Future<void> _loadInitialData() async {
+    await Future.wait([_loadCommercialOptions(), _loadRows()]);
+  }
+
+  void _initDraftDefaults() {
+    _draft = _SeparationDraft(
+      opDate: DateUtils.dateOnly(DateTime.now()),
+      shift: 'DAY',
+      sourceMode: 'MIXED',
+      commercialMaterialCode: null,
+      weightKg: null,
+      notes: '',
+    );
+    _draftKgC.clear();
+    _draftNotesC.clear();
+    _activeInsertColumn = 0;
+  }
+
+  bool get _canInsert {
+    final kg = _toDouble(_draftKgC.text);
+    return _draft.opDate != null &&
+        _draft.shift != null &&
+        _draft.sourceMode != null &&
+        (_draft.commercialMaterialCode ?? '').trim().isNotEmpty &&
+        kg != null &&
+        kg > 0;
+  }
+
+  Future<void> _loadCommercialOptions() async {
+    setState(() => _loadingCommercials = true);
+    try {
+      final rows = await supa
+          .from('commercial_material_catalog')
+          .select('code,name,inventory_material')
+          .eq('active', true)
+          .eq('inventory_material', _sourceMaterial)
+          .order('name');
+      final options =
+          (rows as List)
+              .cast<Map<String, dynamic>>()
+              .map(
+                (row) => _SeparationCommercialOption(
+                  code: (row['code'] ?? '').toString().trim(),
+                  name: (row['name'] ?? '').toString().trim(),
+                ),
+              )
+              .where((row) => row.code.isNotEmpty && row.name.isNotEmpty)
+              .toList()
+            ..sort(
+              (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+            );
+      if (!mounted) return;
+      setState(() {
+        _commercialOptions = options;
+        _loadingCommercials = false;
+      });
+    } catch (e) {
+      _toast('No se pudo cargar materiales comerciales: $e');
+      if (mounted) setState(() => _loadingCommercials = false);
+    }
+  }
+
+  void _syncInsertRowFocusState() {
+    final next =
+        _insertFocusNode.hasFocus ||
+        _insertKgFocusNode.hasFocus ||
+        _insertNotesFocusNode.hasFocus;
+    if (_insertRowActive == next || !mounted) return;
+    setState(() => _insertRowActive = next);
+  }
+
+  void _setupAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      _requestReload();
+    });
+    _realtimeChannel?.unsubscribe();
+    _realtimeChannel = supa
+        .channel(
+          'inventory-material-separation-grid-${_sourceMaterial.toLowerCase()}',
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'material_separation_runs',
+          callback: (_) => _requestReload(),
+        )
+        .subscribe();
+  }
+
+  void _requestReload() {
+    if (!mounted) return;
+    if (_refreshingRows ||
+        _loadingRows ||
+        _inserting ||
+        _bulkDeleting ||
+        _insertRowActive ||
+        _gridEditMode ||
+        (_selectedRowState()?.isEditing ?? false) ||
+        _isEditableTextFocused()) {
+      _pendingReload = true;
+      return;
+    }
+    unawaited(_refreshRowsIfIdle());
+  }
+
+  bool _isEditableTextFocused() {
+    final primary = FocusManager.instance.primaryFocus;
+    final ctx = primary?.context;
+    if (ctx == null) return false;
+    if (ctx.widget is EditableText) return true;
+    return ctx.findAncestorWidgetOfExactType<EditableText>() != null;
+  }
+
+  Future<void> _refreshRowsIfIdle() async {
+    if (!mounted || _refreshingRows) return;
+    _refreshingRows = true;
+    try {
+      await _loadRows(showLoader: false);
+    } finally {
+      _refreshingRows = false;
+      if (_pendingReload) {
+        _pendingReload = false;
+        _requestReload();
+      }
+    }
+  }
+
+  Future<void> _loadRows({bool showLoader = true}) async {
+    if (showLoader && mounted) setState(() => _loadingRows = true);
+    try {
+      final data = await supa
+          .from('material_separation_runs')
+          .select('*')
+          .eq('source_material', _sourceMaterial)
+          .order('op_date', ascending: false)
+          .order('created_at', ascending: false);
+      final nextRows = (data as List).cast<Map<String, dynamic>>();
+      final ids = nextRows.map((r) => r['id'] as String).toSet();
+      final visibleIds = nextRows
+          .where((r) => _matchesFilters(r))
+          .map((r) => r['id'] as String)
+          .toSet();
+      final nextSelected =
+          ids.contains(_selectedRowId) && visibleIds.contains(_selectedRowId)
+          ? _selectedRowId
+          : null;
+      _rowKeys.removeWhere((id, _) => !ids.contains(id));
+      if (!mounted) return;
+      setState(() {
+        _rows = nextRows;
+        _selectedRowId = nextSelected;
+        _bulkSelectedRowIds.removeWhere((id) => !ids.contains(id));
+        _clampCurrentPage();
+        if (showLoader) _loadingRows = false;
+      });
+      if (_selectedRowId == null) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _activeInsertColumn = 0;
+          _insertFocusNode.requestFocus();
+        });
+      }
+    } catch (e) {
+      _toast('No se pudo cargar separaciones: $e');
+      if (mounted && showLoader) setState(() => _loadingRows = false);
+    }
+  }
+
+  Future<void> _insertDraft() async {
+    if (_inserting) return;
+    if (!_canInsert) {
+      _toast('Completa fecha, turno, origen, material comercial y kg.');
+      return;
+    }
+    final kg = _toDouble(_draftKgC.text)!;
+    setState(() => _inserting = true);
+    try {
+      await supa.from('material_separation_runs').insert({
+        'op_date': _fmtDbDate(_draft.opDate!),
+        'shift': _draft.shift,
+        'site': 'DICSA_CELAYA',
+        'source_material': _sourceMaterial,
+        'source_mode': _draft.sourceMode,
+        'commercial_material_code': _draft.commercialMaterialCode,
+        'weight_kg': kg,
+        'notes': _draftNotesC.text.trim().isEmpty
+            ? null
+            : _draftNotesC.text.trim(),
+      });
+      _toast('${_sourceMaterial == 'SCRAP' ? 'Chatarra' : 'Papel'} agregado');
+      _initDraftDefaults();
+      await _loadRows(showLoader: false);
+      await widget.onChanged?.call();
+      if (!mounted) return;
+      setState(() {});
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _insertFocusNode.requestFocus();
+      });
+    } on PostgrestException catch (e) {
+      _toast(e.message);
+    } catch (e) {
+      _toast('No se pudo insertar separación: $e');
+    } finally {
+      if (mounted) setState(() => _inserting = false);
+    }
+  }
+
+  Future<void> _deleteRow(String id) async {
+    await supa.from('material_separation_runs').delete().eq('id', id);
+    _bulkSelectedRowIds.remove(id);
+    _toast('Eliminado');
+    await _loadRows(showLoader: false);
+    await widget.onChanged?.call();
+  }
+
+  Future<void> _updateRow(String id, Map<String, dynamic> patch) async {
+    await supa.from('material_separation_runs').update(patch).eq('id', id);
+    final idx = _rows.indexWhere((r) => r['id'] == id);
+    if (idx != -1) {
+      setState(() => _rows[idx] = {..._rows[idx], ...patch});
+    } else {
+      await _loadRows(showLoader: false);
+    }
+    await widget.onChanged?.call();
+  }
+
+  Future<void> _deleteSelectedRows() async {
+    if (_bulkSelectedRowIds.isEmpty || _bulkDeleting) return;
+    final ok = await _showConfirmDialog(
+      context,
+      title: 'Eliminar seleccionados',
+      content:
+          '¿Eliminar ${_bulkSelectedRowIds.length} registro(s) de separación?',
+      confirmText: 'Eliminar',
+    );
+    if (ok != true) return;
+    setState(() => _bulkDeleting = true);
+    try {
+      final ids = _bulkSelectedRowIds.toList();
+      await supa.from('material_separation_runs').delete().inFilter('id', ids);
+      _bulkSelectedRowIds.clear();
+      _toast('Eliminados ${ids.length} registros');
+      await _loadRows(showLoader: false);
+      await widget.onChanged?.call();
+    } finally {
+      if (mounted) setState(() => _bulkDeleting = false);
+    }
+  }
+
+  Future<void> _exportCsv() async {
+    if (_exportingCsv) return;
+    setState(() => _exportingCsv = true);
+    try {
+      final data = await supa
+          .from('material_separation_runs')
+          .select('*')
+          .eq('source_material', _sourceMaterial)
+          .order('op_date')
+          .order('created_at');
+      final rows = (data as List).cast<Map<String, dynamic>>();
+      const headers = <String>[
+        'id',
+        'created_at',
+        'op_date',
+        'shift',
+        'source_material',
+        'source_mode',
+        'commercial_material_code',
+        'weight_kg',
+        'notes',
+      ];
+      final sb = StringBuffer()
+        ..write('\uFEFF')
+        ..writeln(headers.join(','));
+      for (final r in rows) {
+        sb.writeln(headers.map((h) => _csvEscape(r[h])).join(','));
+      }
+      final now = DateTime.now();
+      final stamp =
+          '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+      final fileName =
+          'material_separation_${_sourceMaterial.toLowerCase()}_$stamp.csv';
+      final path = await _writeDownloadsFile(fileName, sb.toString());
+      _toast(
+        path == null
+            ? 'No se pudo guardar CSV en Descargas'
+            : 'CSV exportado en: $path',
+      );
+    } catch (e) {
+      _toast('No se pudo exportar CSV: $e');
+    } finally {
+      if (mounted) setState(() => _exportingCsv = false);
+    }
+  }
+
+  Future<String?> _writeDownloadsFile(String fileName, String content) async {
+    final env = Platform.environment;
+    final dirs = <Directory>[];
+    final home = env['HOME'];
+    if (home != null && home.isNotEmpty) {
+      dirs.add(Directory('$home/Downloads'));
+      dirs.add(Directory('$home/Descargas'));
+    }
+    for (final dir in dirs) {
+      try {
+        if (!dir.existsSync()) dir.createSync(recursive: true);
+        final file = File('${dir.path}/$fileName');
+        await file.writeAsString(content, encoding: utf8);
+        return file.path;
+      } catch (_) {}
+    }
+    return null;
+  }
+
+  String _csvEscape(dynamic value) {
+    if (value == null) return '';
+    final text = value.toString();
+    final escaped = text.replaceAll('"', '""');
+    final needsQuotes =
+        escaped.contains(',') ||
+        escaped.contains('\n') ||
+        escaped.contains('"');
+    return needsQuotes ? '"$escaped"' : escaped;
+  }
+
+  String _commercialLabel(String? code) {
+    final normalized = (code ?? '').trim();
+    if (normalized.isEmpty) return '';
+    final match = _commercialOptions.where((o) => o.code == normalized);
+    if (match.isEmpty) return normalized;
+    return match.first.name;
+  }
+
+  String _cellTextForColumn(Map<String, dynamic> row, String columnId) {
+    switch (columnId) {
+      case 'fecha':
+        return _fmtUiDate(_parseDate(row['op_date']));
+      case 'turno':
+        return _prodShiftLabel(row['shift']?.toString());
+      case 'origen':
+        return _separationSourceModeLabel(row['source_mode']?.toString());
+      case 'commercial':
+        return _commercialLabel(row['commercial_material_code']?.toString());
+      case 'kg':
+        final n = _toDouble(row['weight_kg']);
+        return n == null ? '' : n.toStringAsFixed(2);
+      case 'notes':
+        return (row['notes'] ?? '').toString().trim();
+      default:
+        return '';
+    }
+  }
+
+  DateTime? _dateValueForColumn(Map<String, dynamic> row, String columnId) {
+    if (columnId != 'fecha') return null;
+    return _parseDate(row['op_date']);
+  }
+
+  bool _matchesFilters(Map<String, dynamic> row, {String? excludeColumn}) {
+    for (final entry in _columnDateRangeFilters.entries) {
+      if (entry.key == excludeColumn) continue;
+      final value = _dateValueForColumn(row, entry.key);
+      if (value == null) return false;
+      final d = DateUtils.dateOnly(value);
+      final s = DateUtils.dateOnly(entry.value.start);
+      final e = DateUtils.dateOnly(entry.value.end);
+      if (d.isBefore(s) || d.isAfter(e)) return false;
+    }
+    for (final entry in _columnValueFilters.entries) {
+      if (entry.key == excludeColumn || entry.value.isEmpty) continue;
+      if (!entry.value.contains(_cellTextForColumn(row, entry.key))) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  List<Map<String, dynamic>> get _filteredRows =>
+      _rows.where((r) => _matchesFilters(r)).toList();
+
+  List<Map<String, dynamic>> get _visibleRows {
+    final filtered = _filteredRows;
+    final start = _currentPage * _pageSize;
+    if (start >= filtered.length) return <Map<String, dynamic>>[];
+    final end = math.min(start + _pageSize, filtered.length);
+    return filtered.sublist(start, end);
+  }
+
+  int get _totalPages {
+    final total = _filteredRows.length;
+    if (total == 0) return 1;
+    return ((total - 1) ~/ _pageSize) + 1;
+  }
+
+  void _clampCurrentPage() {
+    final maxPage = _totalPages - 1;
+    if (_currentPage > maxPage) _currentPage = maxPage;
+    if (_currentPage < 0) _currentPage = 0;
+  }
+
+  bool _hasActiveFilter(String c) =>
+      (_columnValueFilters[c]?.isNotEmpty ?? false) ||
+      _columnDateRangeFilters.containsKey(c);
+
+  bool _isDateFilterColumn(String c) => c == 'fecha';
+
+  DateTimeRange _dateBoundsForColumn(String c) {
+    DateTime? minDate;
+    DateTime? maxDate;
+    for (final row in _rows) {
+      final d = _dateValueForColumn(row, c);
+      if (d == null) continue;
+      final x = DateUtils.dateOnly(d);
+      if (minDate == null || x.isBefore(minDate)) minDate = x;
+      if (maxDate == null || x.isAfter(maxDate)) maxDate = x;
+    }
+    final now = DateUtils.dateOnly(DateTime.now());
+    return DateTimeRange(
+      start: minDate ?? DateTime(now.year - 3, 1, 1),
+      end: maxDate ?? DateTime(now.year + 3, 12, 31),
+    );
+  }
+
+  List<String> _columnDistinctValues(String c, {String search = ''}) {
+    final q = search.toLowerCase().trim();
+    final values = <String>{};
+    for (final row in _rows) {
+      if (!_matchesFilters(row, excludeColumn: c)) continue;
+      final v = _cellTextForColumn(row, c);
+      if (v.isEmpty) continue;
+      if (q.isNotEmpty && !v.toLowerCase().contains(q)) continue;
+      values.add(v);
+    }
+    final list = values.toList()
+      ..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+    return list;
+  }
+
+  Future<void> _openColumnFilter(String columnId, String label) async {
+    if (_isDateFilterColumn(columnId)) {
+      final result = await _showInvDateRangeFilterDialog(
+        context,
+        label: label,
+        bounds: _dateBoundsForColumn(columnId),
+        initialRange: _columnDateRangeFilters[columnId],
+      );
+      if (!mounted || result == null) return;
+      setState(() {
+        if (result.clear) {
+          _columnDateRangeFilters.remove(columnId);
+        } else if (result.range != null) {
+          _columnDateRangeFilters[columnId] = DateTimeRange(
+            start: DateUtils.dateOnly(result.range!.start),
+            end: DateUtils.dateOnly(result.range!.end),
+          );
+        }
+        _columnValueFilters.remove(columnId);
+        _clampCurrentPage();
+      });
+      return;
+    }
+
+    final initialSelected = {...(_columnValueFilters[columnId] ?? <String>{})};
+    final result = await showDialog<_InvFilterDialogResult>(
+      context: context,
+      builder: (dialogContext) {
+        final localSelected = <String>{...initialSelected};
+        String localSearch = '';
+        return StatefulBuilder(
+          builder: (_, setLocalState) {
+            final options = _columnDistinctValues(
+              columnId,
+              search: localSearch,
+            );
+            final allVisibleSelected =
+                options.isNotEmpty && options.every(localSelected.contains);
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                  child: Container(
+                    width: 420,
+                    constraints: const BoxConstraints(maxHeight: 560),
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                    decoration: _invFilterDialogDecoration(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Filtro: $label',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0B2B2B),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          onChanged: (v) =>
+                              setLocalState(() => localSearch = v),
+                          decoration: _invGlassFieldDecoration(
+                            hintText: 'Buscar',
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            TextButton(
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xFF2A4B49),
+                              ),
+                              onPressed: () {
+                                setLocalState(() {
+                                  if (allVisibleSelected) {
+                                    localSelected.removeAll(options);
+                                  } else {
+                                    localSelected.addAll(options);
+                                  }
+                                });
+                              },
+                              child: Text(
+                                allVisibleSelected
+                                    ? 'Deseleccionar visibles'
+                                    : 'Seleccionar visibles',
+                              ),
+                            ),
+                            const Spacer(),
+                            Text('${localSelected.length} seleccionados'),
+                          ],
+                        ),
+                        Expanded(
+                          child: options.isEmpty
+                              ? const Center(
+                                  child: Text('Sin valores para mostrar'),
+                                )
+                              : ListView.builder(
+                                  itemCount: options.length,
+                                  itemBuilder: (_, i) {
+                                    final value = options[i];
+                                    final checked = localSelected.contains(
+                                      value,
+                                    );
+                                    return CheckboxListTile(
+                                      dense: true,
+                                      value: checked,
+                                      activeColor: const Color(0xFF2D7A73),
+                                      checkColor: Colors.white,
+                                      hoverColor: const Color(
+                                        0xFFE9F7EE,
+                                      ).withValues(alpha: 0.95),
+                                      title: Text(
+                                        value,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      onChanged: (v) {
+                                        setLocalState(() {
+                                          if (v ?? false) {
+                                            localSelected.add(value);
+                                          } else {
+                                            localSelected.remove(value);
+                                          }
+                                        });
+                                      },
+                                    );
+                                  },
+                                ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            OutlinedButton(
+                              style: _invFilterOutlinedButtonStyle(),
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: const Text('Cancelar'),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton(
+                              style: _invFilterOutlinedButtonStyle(),
+                              onPressed: () => Navigator.pop(
+                                dialogContext,
+                                const _InvFilterDialogResult(
+                                  selectedValues: <String>{},
+                                ),
+                              ),
+                              child: const Text('Limpiar'),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              style: _invFilterFilledButtonStyle(),
+                              onPressed: () => Navigator.pop(
+                                dialogContext,
+                                _InvFilterDialogResult(
+                                  selectedValues: localSelected,
+                                ),
+                              ),
+                              child: const Text('Aplicar'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (result == null) return;
+    setState(() {
+      if (result.selectedValues.isEmpty) {
+        _columnValueFilters.remove(columnId);
+      } else {
+        _columnValueFilters[columnId] = result.selectedValues;
+      }
+      _columnDateRangeFilters.remove(columnId);
+      _clampCurrentPage();
+    });
+  }
+
+  String _fmtUiDate(DateTime d) {
+    final yy = (d.year % 100).toString().padLeft(2, '0');
+    final mm = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    return '$dd/$mm/$yy';
+  }
+
+  String _fmtDbDate(DateTime d) {
+    final mm = d.month.toString().padLeft(2, '0');
+    final dd = d.day.toString().padLeft(2, '0');
+    return '${d.year}-$mm-$dd';
+  }
+
+  DateTime _parseDate(dynamic v) {
+    if (v is String && v.length >= 10) {
+      final y = int.tryParse(v.substring(0, 4));
+      final m = int.tryParse(v.substring(5, 7));
+      final d = int.tryParse(v.substring(8, 10));
+      if (y != null && m != null && d != null) return DateTime(y, m, d);
+    }
+    return DateUtils.dateOnly(DateTime.now());
+  }
+
+  void _setActiveInsertColumn(int value, {bool requestFocus = true}) {
+    setState(() {
+      _activeInsertColumn =
+          ((value % _insertColumnCount) + _insertColumnCount) %
+          _insertColumnCount;
+      _selectedRowId = null;
+      _selectionAnchorRowId = null;
+      _bulkSelectedRowIds.clear();
+    });
+    if (!requestFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      switch (_activeInsertColumn) {
+        case 4:
+          FocusScope.of(context).requestFocus(_insertKgFocusNode);
+          break;
+        case 5:
+          FocusScope.of(context).requestFocus(_insertNotesFocusNode);
+          break;
+        default:
+          FocusManager.instance.primaryFocus?.unfocus();
+          _insertFocusNode.requestFocus();
+      }
+    });
+  }
+
+  void _moveInsertColumn(int delta) =>
+      _setActiveInsertColumn(_activeInsertColumn + delta);
+
+  bool _caretAtStart(TextEditingController c, FocusNode f) {
+    if (!f.hasFocus) return false;
+    final s = c.selection;
+    return s.isValid &&
+        s.isCollapsed &&
+        s.baseOffset == 0 &&
+        s.extentOffset == 0;
+  }
+
+  bool _caretAtEnd(TextEditingController c, FocusNode f) {
+    if (!f.hasFocus) return false;
+    final s = c.selection;
+    final end = c.text.length;
+    return s.isValid &&
+        s.isCollapsed &&
+        s.baseOffset == end &&
+        s.extentOffset == end;
+  }
+
+  Future<void> _activateInsertCellFromKeyboard() async {
+    switch (_activeInsertColumn) {
+      case 0:
+        final d = await _showInvKeyboardDatePickerDialog(
+          context: context,
+          initialDate: _draft.opDate ?? DateTime.now(),
+          firstDate: DateTime(2024, 1, 1),
+          lastDate: DateTime(2035, 12, 31),
+        );
+        if (d != null && mounted) {
+          setState(
+            () => _draft = _draft.copyWith(opDate: DateUtils.dateOnly(d)),
+          );
+        }
+        return;
+      case 1:
+        final shift = await _showInvSearchablePickerDialog<String>(
+          context,
+          title: 'Turno',
+          initialValue: _draft.shift,
+          options: const [
+            _InvPickerOption<String>(value: 'DAY', label: 'Día'),
+            _InvPickerOption<String>(value: 'NIGHT', label: 'Noche'),
+          ],
+        );
+        if (shift != null && mounted) {
+          setState(() => _draft = _draft.copyWith(shift: shift));
+        }
+        return;
+      case 2:
+        final mode = await _showInvSearchablePickerDialog<String>(
+          context,
+          title: 'Origen',
+          initialValue: _draft.sourceMode,
+          options: const [
+            _InvPickerOption<String>(value: 'MIXED', label: 'Compra revuelta'),
+            _InvPickerOption<String>(
+              value: 'DIRECT',
+              label: 'Compra clasificada',
+            ),
+          ],
+        );
+        if (mode != null && mounted) {
+          setState(() => _draft = _draft.copyWith(sourceMode: mode));
+        }
+        return;
+      case 3:
+        await _pickCommercialMaterialForDraft();
+        return;
+      case 6:
+        await _insertDraft();
+        return;
+      default:
+        return;
+    }
+  }
+
+  Future<void> _pickCommercialMaterialForDraft() async {
+    final selected = await _showInvSearchablePickerDialog<String>(
+      context,
+      title: _isScrap
+          ? 'Material comercial de chatarra'
+          : 'Material comercial de papel',
+      initialValue: _draft.commercialMaterialCode,
+      options: _commercialOptions
+          .map(
+            (option) => _InvPickerOption<String>(
+              value: option.code,
+              label: option.name,
+            ),
+          )
+          .toList(),
+    );
+    if (selected != null && mounted) {
+      setState(
+        () => _draft = _draft.copyWith(commercialMaterialCode: selected),
+      );
+    }
+  }
+
+  void _clearActiveInsertCell() {
+    switch (_activeInsertColumn) {
+      case 0:
+        setState(() => _draft = _draft.copyWith(opDate: null));
+        return;
+      case 1:
+        setState(() => _draft = _draft.copyWith(shift: 'DAY'));
+        return;
+      case 2:
+        setState(() => _draft = _draft.copyWith(sourceMode: 'MIXED'));
+        return;
+      case 3:
+        setState(() => _draft = _draft.copyWith(commercialMaterialCode: null));
+        return;
+      case 4:
+        _draftKgC.clear();
+        setState(() => _draft = _draft.copyWith(weightKg: null));
+        return;
+      case 5:
+        _draftNotesC.clear();
+        setState(() => _draft = _draft.copyWith(notes: ''));
+        return;
+      default:
+        return;
+    }
+  }
+
+  void _focusGridFromInsert() {
+    final firstVisibleId = _visibleRows.isEmpty
+        ? null
+        : _visibleRows.first['id'] as String;
+    setState(() {
+      _activeGridColumn = _activeInsertColumn > 6 ? 6 : _activeInsertColumn;
+      if (firstVisibleId != null) {
+        _selectedRowId = firstVisibleId;
+        _selectionAnchorRowId = firstVisibleId;
+        _bulkSelectedRowIds.clear();
+      }
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _rowsFocusNode.requestFocus();
+    });
+  }
+
+  void _focusInsertFromGrid() {
+    setState(() {
+      _activeInsertColumn = _activeGridColumn > 6 ? 6 : _activeGridColumn;
+      _selectedRowId = null;
+      _selectionAnchorRowId = null;
+      _bulkSelectedRowIds.clear();
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _setActiveInsertColumn(_activeInsertColumn);
+    });
+  }
+
+  void _selectRow(
+    String id, {
+    bool additive = false,
+    bool allowToggle = false,
+  }) {
+    setState(() {
+      if (additive) {
+        if (_bulkSelectedRowIds.contains(id)) {
+          _bulkSelectedRowIds.remove(id);
+          if (_selectedRowId == id) {
+            _selectedRowId = _bulkSelectedRowIds.isEmpty
+                ? null
+                : _bulkSelectedRowIds.last;
+          }
+        } else {
+          if (_selectedRowId != null) _bulkSelectedRowIds.add(_selectedRowId!);
+          _bulkSelectedRowIds.add(id);
+          _selectedRowId = id;
+          _selectionAnchorRowId ??= id;
+        }
+        return;
+      }
+      if (allowToggle && _selectedRowId == id) {
+        _selectedRowId = null;
+        _bulkSelectedRowIds.clear();
+        return;
+      }
+      _selectedRowId = id;
+      _selectionAnchorRowId = id;
+      _bulkSelectedRowIds.clear();
+    });
+  }
+
+  void _moveSelectedRow(int delta, {bool extendSelection = false}) {
+    final rows = _visibleRows;
+    if (rows.isEmpty) return;
+    final currentIndex = _selectedRowId == null
+        ? -1
+        : rows.indexWhere((r) => r['id'] == _selectedRowId);
+    final nextIndex = currentIndex == -1
+        ? (delta >= 0 ? 0 : rows.length - 1)
+        : (((currentIndex + delta) % rows.length) + rows.length) % rows.length;
+    final id = rows[nextIndex]['id'] as String;
+    _selectRow(id, additive: extendSelection);
+    if (_rowsScrollController.hasClients) {
+      _rowsScrollController.animateTo(
+        (nextIndex * 78.0)
+            .clamp(0.0, _rowsScrollController.position.maxScrollExtent)
+            .toDouble(),
+        duration: const Duration(milliseconds: 120),
+        curve: Curves.easeOutCubic,
+      );
+    }
+  }
+
+  bool _isShiftPressed() {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    return pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+  }
+
+  _SeparationDataRowState? _selectedRowState() {
+    final id = _selectedRowId;
+    if (id == null) return null;
+    return _rowKeys[id]?.currentState;
+  }
+
+  List<_SeparationDataRowState> _selectedRowStates() {
+    if (_bulkSelectedRowIds.isEmpty) {
+      final s = _selectedRowState();
+      return s == null ? const [] : [s];
+    }
+    final ids = <String>[];
+    if (_selectedRowId != null) ids.add(_selectedRowId!);
+    for (final id in _bulkSelectedRowIds) {
+      if (!ids.contains(id)) ids.add(id);
+    }
+    return ids
+        .map((id) => _rowKeys[id]?.currentState)
+        .whereType<_SeparationDataRowState>()
+        .toList();
+  }
+
+  int get _selectedCount {
+    final ids = <String>{..._bulkSelectedRowIds};
+    if (_selectedRowId != null) ids.add(_selectedRowId!);
+    return ids.length;
+  }
+
+  Set<String> _currentSelectionIds() {
+    final ids = <String>{..._bulkSelectedRowIds};
+    if (_selectedRowId != null) ids.add(_selectedRowId!);
+    return ids;
+  }
+
+  double get _filteredKgTotal {
+    double total = 0;
+    for (final row in _filteredRows) {
+      total += _toDouble(row['weight_kg']) ?? 0;
+    }
+    return total;
+  }
+
+  ({double sum, double avg}) _selectedKgStats() {
+    final ids = _currentSelectionIds();
+    if (ids.isEmpty) return (sum: 0, avg: 0);
+    final byId = <String, Map<String, dynamic>>{
+      for (final row in _visibleRows) row['id'] as String: row,
+    };
+    double sum = 0;
+    var count = 0;
+    for (final id in ids) {
+      final row = byId[id];
+      if (row == null) continue;
+      sum += _toDouble(row['weight_kg']) ?? 0;
+      count++;
+    }
+    final avg = count == 0 ? 0.0 : sum / count;
+    return (sum: sum, avg: avg);
+  }
+
+  void _scheduleTopBarSync() {
+    if (_topBarSyncScheduled || widget.onTopBarChanged == null) return;
+    _topBarSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _topBarSyncScheduled = false;
+      _notifyTopBarChanged();
+    });
+  }
+
+  void _notifyTopBarChanged() {
+    if (!mounted || widget.onTopBarChanged == null) return;
+    widget.onTopBarChanged!(_buildTopBarData());
+  }
+
+  InventoryGridTopBarData _buildTopBarData() {
+    final activeCell =
+        (_gridEditMode || (_selectedRowState()?.isEditing ?? false))
+        ? _gridColumnLabels[_activeGridColumn]
+        : null;
+    final selectedStats = _selectedKgStats();
+    return InventoryGridTopBarData(
+      metricIcon: _isScrap
+          ? Icons.construction_rounded
+          : Icons.description_rounded,
+      metricLabel: _isScrap
+          ? 'KG CHATARRA CLASIFICADA'
+          : 'KG PAPEL CLASIFICADO',
+      metricValue: _fmtInvCount(_filteredKgTotal, decimals: 2),
+      metricSubtitle:
+          'Filtrado (${_fmtInvInt(_filteredRows.length)} registros)',
+      exportingCsv: _exportingCsv,
+      gridEditMode: _gridEditMode,
+      canToggleGridEdit: _visibleRows.isNotEmpty,
+      canDeleteSelection: _bulkSelectedRowIds.isNotEmpty,
+      deletingSelection: _bulkDeleting,
+      selectedCount: _selectedCount,
+      selectedKgSumLabel: _selectedCount > 0
+          ? '${_fmtInvCount(selectedStats.sum, decimals: 2)} kg'
+          : null,
+      selectedKgAvgLabel: _selectedCount > 0
+          ? '${_fmtInvCount(selectedStats.avg, decimals: 2)} kg'
+          : null,
+      activeCellLabel: activeCell,
+      onExportCsv: _exportingCsv ? null : _exportCsv,
+      onToggleGridEdit: null,
+      onSaveGridEdit: null,
+      onCancelGridEdit: null,
+      onDeleteSelection: _bulkDeleting ? null : _deleteSelectedRows,
+    );
+  }
+
+  void _handleEnterOnSelectedRow() {
+    final states = _selectedRowStates();
+    if (states.isEmpty) return;
+    if (states.any((s) => !s.isEditing)) {
+      setState(() => _activeGridColumn = 0);
+      for (final s in states) {
+        s.startEditingFromKeyboard();
+      }
+      return;
+    }
+    unawaited(Future.wait(states.map((s) => s.saveFromKeyboard())));
+  }
+
+  void _handleEscapeOnSelectedRow() {
+    final states = _selectedRowStates();
+    if (states.any((s) => s.isEditing)) {
+      for (final s in states) {
+        s.cancelEditingFromKeyboard();
+      }
+      return;
+    }
+    setState(() {
+      _selectedRowId = null;
+      _selectionAnchorRowId = null;
+      _bulkSelectedRowIds.clear();
+    });
+  }
+
+  void _handleDeleteOnSelectedRow() {
+    if (_bulkSelectedRowIds.length > 1) {
+      unawaited(_deleteSelectedRows());
+      return;
+    }
+    final s = _selectedRowState();
+    if (s != null) unawaited(s.deleteWithConfirmation());
+  }
+
+  void _moveGridColumn(int delta) {
+    setState(() {
+      _activeGridColumn =
+          ((_activeGridColumn + delta) % _gridColumnCount + _gridColumnCount) %
+          _gridColumnCount;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _selectedRowState()?.focusTextIfNeeded(_activeGridColumn);
+    });
+  }
+
+  void _moveGridRow(int delta, {bool extendSelection = false}) {
+    _moveSelectedRow(delta, extendSelection: extendSelection);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _selectedRowState()?.focusTextIfNeeded(_activeGridColumn);
+    });
+  }
+
+  void _activateGridCellFromKeyboard() {
+    final s = _selectedRowState();
+    if (s == null) return;
+    if (!s.isEditing) s.startEditingFromKeyboard();
+    unawaited(s.activateGridCell(_activeGridColumn));
+  }
+
+  Future<void> _openRowsContextMenuAt(Offset globalPosition) async {
+    final selectedStates = _selectedRowStates();
+    final anyEditing = selectedStates.any((s) => s.isEditing);
+    final multiContext = _currentSelectionIds().length > 1;
+    const menuTextStyle = TextStyle(
+      fontWeight: FontWeight.w800,
+      decoration: TextDecoration.none,
+      decorationColor: Colors.transparent,
+      color: Color(0xFF223D5A),
+    );
+    final media = MediaQuery.of(context).size;
+    final action = await showMenu<String>(
+      context: context,
+      color: _kInvGlassMenuBg,
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        media.width - globalPosition.dx,
+        media.height - globalPosition.dy,
+      ),
+      items: [
+        if (multiContext && !anyEditing)
+          const PopupMenuItem(
+            value: 'multi_edit',
+            child: Text('EDITAR SELECCIÓN', style: menuTextStyle),
+          ),
+        if (multiContext && anyEditing)
+          const PopupMenuItem(
+            value: 'multi_save',
+            child: Text('GUARDAR SELECCIÓN', style: menuTextStyle),
+          ),
+        if (multiContext && anyEditing)
+          const PopupMenuItem(
+            value: 'multi_cancel',
+            child: Text('CANCELAR EDICIÓN', style: menuTextStyle),
+          ),
+        if (!multiContext && !anyEditing)
+          const PopupMenuItem(
+            value: 'edit',
+            child: Text('EDITAR', style: menuTextStyle),
+          ),
+        if (!multiContext && anyEditing)
+          const PopupMenuItem(
+            value: 'save',
+            child: Text('GUARDAR', style: menuTextStyle),
+          ),
+        if (!multiContext && anyEditing)
+          const PopupMenuItem(
+            value: 'cancel',
+            child: Text('CANCELAR', style: menuTextStyle),
+          ),
+        const PopupMenuDivider(),
+        if (multiContext)
+          const PopupMenuItem(
+            value: 'multi_delete',
+            child: Text('ELIMINAR SELECCIÓN', style: menuTextStyle),
+          ),
+        if (!multiContext)
+          const PopupMenuItem(
+            value: 'delete',
+            child: Text('ELIMINAR', style: menuTextStyle),
+          ),
+      ],
+    );
+    if (!mounted || action == null) return;
+    switch (action) {
+      case 'edit':
+        _handleEnterOnSelectedRow();
+        break;
+      case 'save':
+        await Future.wait(
+          _selectedRowStates().map((s) => s.saveFromKeyboard()),
+        );
+        break;
+      case 'cancel':
+        for (final s in _selectedRowStates()) {
+          s.cancelEditingFromKeyboard();
+        }
+        break;
+      case 'delete':
+        _handleDeleteOnSelectedRow();
+        break;
+      case 'multi_edit':
+        for (final s in _selectedRowStates()) {
+          s.startEditingFromKeyboard();
+        }
+        break;
+      case 'multi_save':
+        await Future.wait(
+          _selectedRowStates().map((s) => s.saveFromKeyboard()),
+        );
+        break;
+      case 'multi_cancel':
+        for (final s in _selectedRowStates()) {
+          s.cancelEditingFromKeyboard();
+        }
+        break;
+      case 'multi_delete':
+        await _deleteSelectedRows();
+        break;
+    }
+  }
+
+  Widget _buildInlineInsertRow() {
+    final commercialItems = _commercialOptions.map((o) => o.code).toList();
+    final draftKg = _toDouble(_draftKgC.text) ?? 0;
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        Widget frame(int colIndex, Widget child) {
+          final active = _activeInsertColumn == colIndex;
+          return DecoratedBox(
+            position: DecorationPosition.background,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(10),
+              color: active
+                  ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
+                  : Colors.transparent,
+            ),
+            child: DecoratedBox(
+              position: DecorationPosition.foreground,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: active
+                      ? const Color(0xFF0B72FF).withValues(alpha: 0.80)
+                      : Colors.transparent,
+                  width: active ? 1.15 : 1.0,
+                ),
+              ),
+              child: child,
+            ),
+          );
+        }
+
+        Widget control(Widget child) => SizedBox(height: 34, child: child);
+
+        return Focus(
+          focusNode: _insertFocusNode,
+          autofocus: false,
+          onKeyEvent: (_, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            final key = event.logicalKey;
+            if (key == LogicalKeyboardKey.arrowLeft) {
+              if (_insertKgFocusNode.hasFocus &&
+                  !_caretAtStart(_draftKgC, _insertKgFocusNode)) {
+                return KeyEventResult.ignored;
+              }
+              if (_insertNotesFocusNode.hasFocus &&
+                  !_caretAtStart(_draftNotesC, _insertNotesFocusNode)) {
+                return KeyEventResult.ignored;
+              }
+              _moveInsertColumn(-1);
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.arrowRight) {
+              if (_insertKgFocusNode.hasFocus &&
+                  !_caretAtEnd(_draftKgC, _insertKgFocusNode)) {
+                return KeyEventResult.ignored;
+              }
+              if (_insertNotesFocusNode.hasFocus &&
+                  !_caretAtEnd(_draftNotesC, _insertNotesFocusNode)) {
+                return KeyEventResult.ignored;
+              }
+              _moveInsertColumn(1);
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.arrowUp) {
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.arrowDown) {
+              _focusGridFromInsert();
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.space) {
+              if (_insertKgFocusNode.hasFocus ||
+                  _insertNotesFocusNode.hasFocus) {
+                return KeyEventResult.ignored;
+              }
+              unawaited(_activateInsertCellFromKeyboard());
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.delete ||
+                key == LogicalKeyboardKey.backspace) {
+              if (_insertKgFocusNode.hasFocus ||
+                  _insertNotesFocusNode.hasFocus) {
+                return KeyEventResult.ignored;
+              }
+              _clearActiveInsertCell();
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.escape) {
+              FocusManager.instance.primaryFocus?.unfocus();
+              _insertFocusNode.requestFocus();
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.enter ||
+                key == LogicalKeyboardKey.numpadEnter) {
+              unawaited(_insertDraft());
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: Card(
+            elevation: 0.4,
+            color: _insertRowActive
+                ? const Color(0xFFD9ECFA)
+                : const Color(0xFFE7F1F8),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+              side: BorderSide(
+                color: _insertRowActive
+                    ? const Color(0xFF3C8DCC).withValues(alpha: 0.55)
+                    : Colors.transparent,
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: SizedBox(
+                width: constraints.maxWidth,
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: _sepTableContentWFor(constraints.maxWidth),
+                    child: Row(
+                      children: [
+                        frame(
+                          0,
+                          SizedBox(
+                            width: _kSepDateColW,
+                            child: control(
+                              InkWell(
+                                borderRadius: BorderRadius.circular(12),
+                                onTap: () async {
+                                  _setActiveInsertColumn(0);
+                                  final d =
+                                      await _showInvKeyboardDatePickerDialog(
+                                        context: context,
+                                        initialDate:
+                                            _draft.opDate ?? DateTime.now(),
+                                        firstDate: DateTime(2024, 1, 1),
+                                        lastDate: DateTime(2035, 12, 31),
+                                      );
+                                  if (d != null && mounted) {
+                                    setState(
+                                      () => _draft = _draft.copyWith(
+                                        opDate: DateUtils.dateOnly(d),
+                                      ),
+                                    );
+                                  }
+                                },
+                                child: InputDecorator(
+                                  decoration: _invGlassFieldDecoration(),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: _InvFitText(
+                                          _draft.opDate == null
+                                              ? '—'
+                                              : _fmtUiDate(_draft.opDate!),
+                                        ),
+                                      ),
+                                      const Icon(
+                                        Icons.calendar_month,
+                                        size: 16,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          1,
+                          SizedBox(
+                            width: _kSepShiftColW,
+                            child: control(
+                              _InvDropStrInline(
+                                value: _draft.shift ?? 'DAY',
+                                items: const ['DAY', 'NIGHT'],
+                                format: _prodShiftLabel,
+                                onTapStart: () => _setActiveInsertColumn(1),
+                                onChanged: (v) => setState(
+                                  () => _draft = _draft.copyWith(shift: v),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          2,
+                          SizedBox(
+                            width: _kSepModeColW,
+                            child: control(
+                              _InvDropStrInline(
+                                value: _draft.sourceMode ?? 'MIXED',
+                                items: const ['MIXED', 'DIRECT'],
+                                format: _separationSourceModeLabel,
+                                onTapStart: () => _setActiveInsertColumn(2),
+                                onChanged: (v) => setState(
+                                  () => _draft = _draft.copyWith(sourceMode: v),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          3,
+                          SizedBox(
+                            width: _kSepCommercialColW,
+                            child: control(
+                              commercialItems.isEmpty
+                                  ? InputDecorator(
+                                      decoration: _invGlassFieldDecoration(
+                                        hintText: 'Material comercial',
+                                      ),
+                                      child: const _InvFitText('Sin opciones'),
+                                    )
+                                  : _InvDropStrInline(
+                                      value:
+                                          (_draft.commercialMaterialCode !=
+                                                  null &&
+                                              commercialItems.contains(
+                                                _draft.commercialMaterialCode,
+                                              ))
+                                          ? _draft.commercialMaterialCode!
+                                          : commercialItems.first,
+                                      items: commercialItems,
+                                      format: _commercialLabel,
+                                      onTapStart: () =>
+                                          _setActiveInsertColumn(3),
+                                      onChanged: (v) => setState(
+                                        () => _draft = _draft.copyWith(
+                                          commercialMaterialCode: v,
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          4,
+                          SizedBox(
+                            width: _kSepKgColW,
+                            child: control(
+                              TextField(
+                                controller: _draftKgC,
+                                focusNode: _insertKgFocusNode,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: _invGlassFieldDecoration(
+                                  hintText: 'Kg',
+                                ),
+                                onTap: () => _setActiveInsertColumn(
+                                  4,
+                                  requestFocus: false,
+                                ),
+                                onChanged: (_) => setState(
+                                  () => _draft = _draft.copyWith(
+                                    weightKg: _toDouble(_draftKgC.text),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          5,
+                          SizedBox(
+                            width: _kSepNotesColW,
+                            child: control(
+                              TextField(
+                                controller: _draftNotesC,
+                                focusNode: _insertNotesFocusNode,
+                                decoration: _invGlassFieldDecoration(
+                                  hintText: 'Comentario',
+                                ),
+                                onTap: () => _setActiveInsertColumn(
+                                  5,
+                                  requestFocus: false,
+                                ),
+                                onChanged: (_) => setState(
+                                  () => _draft = _draft.copyWith(
+                                    notes: _draftNotesC.text,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        frame(
+                          6,
+                          SizedBox(
+                            width: _kSepActionsColW,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.42),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                  child: Text(
+                                    '${_fmtInvCount(draftKg, decimals: 1)} kg',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 6),
+                                Tooltip(
+                                  message: 'AGREGAR',
+                                  child: MouseRegion(
+                                    onEnter: (_) => setState(
+                                      () => _hoverInsertAddButton = true,
+                                    ),
+                                    onExit: (_) => setState(
+                                      () => _hoverInsertAddButton = false,
+                                    ),
+                                    child: InkWell(
+                                      borderRadius: BorderRadius.circular(10),
+                                      onTap: _inserting ? null : _insertDraft,
+                                      child: AnimatedContainer(
+                                        duration: const Duration(
+                                          milliseconds: 120,
+                                        ),
+                                        curve: Curves.easeOutCubic,
+                                        width: 34,
+                                        height: 34,
+                                        decoration: BoxDecoration(
+                                          color: _inserting
+                                              ? Colors.white.withValues(
+                                                  alpha: 0.35,
+                                                )
+                                              : const Color(
+                                                  0xFF19C37D,
+                                                ).withValues(alpha: 0.92),
+                                          borderRadius: BorderRadius.circular(
+                                            10,
+                                          ),
+                                          border: Border.all(
+                                            color: Colors.white.withValues(
+                                              alpha: 0.52,
+                                            ),
+                                          ),
+                                          boxShadow:
+                                              _hoverInsertAddButton &&
+                                                  !_inserting
+                                              ? [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withValues(
+                                                          alpha: 0.20,
+                                                        ),
+                                                    blurRadius: 16,
+                                                    offset: const Offset(0, 8),
+                                                  ),
+                                                ]
+                                              : [
+                                                  BoxShadow(
+                                                    color: Colors.black
+                                                        .withValues(
+                                                          alpha: 0.10,
+                                                        ),
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 4),
+                                                  ),
+                                                ],
+                                        ),
+                                        child: _inserting
+                                            ? const Padding(
+                                                padding: EdgeInsets.all(8),
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                      color: Colors.white,
+                                                    ),
+                                              )
+                                            : const Icon(
+                                                Icons.add,
+                                                size: 18,
+                                                color: Colors.white,
+                                              ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loadingRows || _loadingCommercials) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (widget.showTopBarChrome)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(2, 0, 2, 10),
+            child: InventoryGridTopBar(data: _buildTopBarData()),
+          ),
+        _SeparationHeaderRow(
+          hasActiveFilter: _hasActiveFilter,
+          onOpenFilter: _openColumnFilter,
+        ),
+        const SizedBox(height: 8),
+        _buildInlineInsertRow(),
+        const SizedBox(height: 8),
+        Expanded(
+          child: Focus(
+            focusNode: _rowsFocusNode,
+            onKeyEvent: (_, event) {
+              if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+                return KeyEventResult.ignored;
+              }
+              final key = event.logicalKey;
+              final selectedState = _selectedRowState();
+              final inTextEditing =
+                  selectedState?.isTextCellFocused(_activeGridColumn) ?? false;
+              if (key == LogicalKeyboardKey.arrowDown) {
+                if (_isShiftPressed()) {
+                  _moveGridRow(1, extendSelection: true);
+                } else {
+                  _moveGridRow(1);
+                }
+                return KeyEventResult.handled;
+              }
+              if (key == LogicalKeyboardKey.arrowUp) {
+                if (_isShiftPressed()) {
+                  _moveGridRow(-1, extendSelection: true);
+                } else {
+                  _moveGridRow(-1);
+                }
+                return KeyEventResult.handled;
+              }
+              if (key == LogicalKeyboardKey.arrowRight) {
+                if (inTextEditing &&
+                    !selectedState!.activeTextCaretAtEnd(_activeGridColumn)) {
+                  return KeyEventResult.ignored;
+                }
+                _moveGridColumn(1);
+                return KeyEventResult.handled;
+              }
+              if (key == LogicalKeyboardKey.arrowLeft) {
+                if (inTextEditing &&
+                    !selectedState!.activeTextCaretAtStart(_activeGridColumn)) {
+                  return KeyEventResult.ignored;
+                }
+                _moveGridColumn(-1);
+                return KeyEventResult.handled;
+              }
+              if (key == LogicalKeyboardKey.enter ||
+                  key == LogicalKeyboardKey.numpadEnter) {
+                _handleEnterOnSelectedRow();
+                return KeyEventResult.handled;
+              }
+              if (key == LogicalKeyboardKey.space) {
+                _activateGridCellFromKeyboard();
+                return KeyEventResult.handled;
+              }
+              if (key == LogicalKeyboardKey.escape) {
+                _handleEscapeOnSelectedRow();
+                return KeyEventResult.handled;
+              }
+              if ((key == LogicalKeyboardKey.delete ||
+                      key == LogicalKeyboardKey.backspace) &&
+                  !inTextEditing) {
+                _handleDeleteOnSelectedRow();
+                return KeyEventResult.handled;
+              }
+              if (key == LogicalKeyboardKey.tab && event is KeyDownEvent) {
+                _focusInsertFromGrid();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: _visibleRows.isEmpty
+                ? const Center(child: Text('Sin registros'))
+                : ListView.separated(
+                    controller: _rowsScrollController,
+                    itemCount: _visibleRows.length,
+                    separatorBuilder: (context, index) =>
+                        const SizedBox(height: 8),
+                    itemBuilder: (context, i) {
+                      final row = _visibleRows[i];
+                      final id = row['id'] as String;
+                      final key = _rowKeys.putIfAbsent(
+                        id,
+                        () => GlobalKey<_SeparationDataRowState>(
+                          debugLabel: 'sep_row_$id',
+                        ),
+                      );
+                      return _SeparationDataRow(
+                        key: key,
+                        row: row,
+                        commercialOptions: _commercialOptions,
+                        selectedCount: _selectedCount,
+                        isSelected: _selectedRowId == id,
+                        isChecked: _bulkSelectedRowIds.contains(id),
+                        activeGridColumn: _activeGridColumn,
+                        gridSaveSignal: _gridSaveSignal,
+                        gridCancelSignal: _gridCancelSignal,
+                        onActivateColumn: (col) =>
+                            setState(() => _activeGridColumn = col),
+                        onSelect: (additive) =>
+                            _selectRow(id, additive: additive),
+                        onOpenContextMenu: (position) {
+                          unawaited(_openRowsContextMenuAt(position));
+                        },
+                        onDelete: _deleteRow,
+                        onUpdate: _updateRow,
+                        onMultiEdit: () {
+                          for (final state in _selectedRowStates()) {
+                            state.startEditingFromKeyboard();
+                          }
+                        },
+                      );
+                    },
+                  ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Text(
+              'Página ${_currentPage + 1} de $_totalPages',
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
+            const Spacer(),
+            OutlinedButton(
+              onPressed: _currentPage <= 0
+                  ? null
+                  : () => setState(() => _currentPage--),
+              child: const Text('Anterior'),
+            ),
+            const SizedBox(width: 8),
+            OutlinedButton(
+              onPressed: _currentPage >= _totalPages - 1
+                  ? null
+                  : () => setState(() => _currentPage++),
+              child: const Text('Siguiente'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SeparationHeaderRow extends StatelessWidget {
+  final bool Function(String columnId) hasActiveFilter;
+  final Future<void> Function(String columnId, String label) onOpenFilter;
+
+  const _SeparationHeaderRow({
+    required this.hasActiveFilter,
+    required this.onOpenFilter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    const style = TextStyle(fontSize: 12, fontWeight: FontWeight.w800);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return Card(
+          elevation: 0,
+          color: Colors.black.withValues(alpha: 0.03),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: SizedBox(
+                width: _sepTableContentWFor(constraints.maxWidth),
+                child: Row(
+                  children: [
+                    _InvHCell(
+                      'FECHA',
+                      _kSepDateColW,
+                      style,
+                      active: hasActiveFilter('fecha'),
+                      onFilter: () => onOpenFilter('fecha', 'FECHA'),
+                    ),
+                    _InvHCell(
+                      'TURNO',
+                      _kSepShiftColW,
+                      style,
+                      active: hasActiveFilter('turno'),
+                      onFilter: () => onOpenFilter('turno', 'TURNO'),
+                    ),
+                    _InvHCell(
+                      'ORIGEN',
+                      _kSepModeColW,
+                      style,
+                      active: hasActiveFilter('origen'),
+                      onFilter: () => onOpenFilter('origen', 'ORIGEN'),
+                    ),
+                    _InvHCell(
+                      'MATERIAL COMERCIAL',
+                      _kSepCommercialColW,
+                      style,
+                      active: hasActiveFilter('commercial'),
+                      onFilter: () =>
+                          onOpenFilter('commercial', 'MATERIAL COMERCIAL'),
+                    ),
+                    _InvHCell(
+                      'KG',
+                      _kSepKgColW,
+                      style,
+                      active: hasActiveFilter('kg'),
+                      onFilter: () => onOpenFilter('kg', 'KG'),
+                    ),
+                    SizedBox(
+                      width: _kSepNotesColW,
+                      child: _InvHCellExpand(
+                        'COMENTARIO',
+                        style,
+                        active: hasActiveFilter('notes'),
+                        onFilter: () => onOpenFilter('notes', 'COMENTARIO'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    const SizedBox(width: _kSepActionsColW),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _SeparationDataRow extends StatefulWidget {
+  final Map<String, dynamic> row;
+  final List<_SeparationCommercialOption> commercialOptions;
+  final bool isSelected;
+  final bool isChecked;
+  final int selectedCount;
+  final int activeGridColumn;
+  final int gridSaveSignal;
+  final int gridCancelSignal;
+  final void Function(int col) onActivateColumn;
+  final void Function(bool additive) onSelect;
+  final Future<void> Function(String id) onDelete;
+  final Future<void> Function(String id, Map<String, dynamic> patch) onUpdate;
+  final void Function(Offset globalPosition) onOpenContextMenu;
+  final VoidCallback onMultiEdit;
+
+  const _SeparationDataRow({
+    super.key,
+    required this.row,
+    required this.commercialOptions,
+    required this.isSelected,
+    required this.isChecked,
+    required this.selectedCount,
+    required this.activeGridColumn,
+    required this.gridSaveSignal,
+    required this.gridCancelSignal,
+    required this.onActivateColumn,
+    required this.onSelect,
+    required this.onDelete,
+    required this.onUpdate,
+    required this.onOpenContextMenu,
+    required this.onMultiEdit,
+  });
+
+  @override
+  State<_SeparationDataRow> createState() => _SeparationDataRowState();
+}
+
+class _SeparationDataRowState extends State<_SeparationDataRow> {
+  late DateTime _opDate;
+  late String? _shift;
+  late String? _sourceMode;
+  late String? _commercialMaterialCode;
+  final TextEditingController _kgC = TextEditingController();
+  final TextEditingController _notesC = TextEditingController();
+  final FocusNode _kgFocusNode = FocusNode(debugLabel: 'sep_row_kg');
+  final FocusNode _notesFocusNode = FocusNode(debugLabel: 'sep_row_notes');
+  bool _editing = false;
+  bool _hovering = false;
+  int? _hoveredEditableColumn;
+  int _lastGridSaveSignal = 0;
+  int _lastGridCancelSignal = 0;
+
+  String get id => widget.row['id'] as String;
+  bool get isEditing => _editing;
+  bool get isAnyEditableTextFocused => _isEditableTextFocused();
+
+  @override
+  void initState() {
+    super.initState();
+    _hydrateFromRow();
+    _lastGridSaveSignal = widget.gridSaveSignal;
+    _lastGridCancelSignal = widget.gridCancelSignal;
+  }
+
+  @override
+  void didUpdateWidget(covariant _SeparationDataRow oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.row != widget.row && !_editing) {
+      _hydrateFromRow();
+    }
+    if (widget.gridSaveSignal != _lastGridSaveSignal) {
+      _lastGridSaveSignal = widget.gridSaveSignal;
+      unawaited(saveFromKeyboard());
+    }
+    if (widget.gridCancelSignal != _lastGridCancelSignal) {
+      _lastGridCancelSignal = widget.gridCancelSignal;
+      cancelEditingFromKeyboard();
+    }
+  }
+
+  @override
+  void dispose() {
+    _kgC.dispose();
+    _notesC.dispose();
+    _kgFocusNode.dispose();
+    _notesFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _hydrateFromRow() {
+    _opDate = _sepParseDate(widget.row['op_date']);
+    _shift = widget.row['shift']?.toString();
+    _sourceMode = widget.row['source_mode']?.toString();
+    _commercialMaterialCode = widget.row['commercial_material_code']
+        ?.toString();
+    _kgC.text = ((_toDouble(widget.row['weight_kg']) ?? 0) == 0)
+        ? ''
+        : (_toDouble(widget.row['weight_kg']) ?? 0).toStringAsFixed(2);
+    _notesC.text = (widget.row['notes'] ?? '').toString();
+  }
+
+  bool isTextCellFocused(int col) => switch (col) {
+    4 => _kgFocusNode.hasFocus,
+    5 => _notesFocusNode.hasFocus,
+    _ => false,
+  };
+
+  bool activeTextCaretAtStart(int col) => switch (col) {
+    4 => _caretAtStart(_kgC, _kgFocusNode),
+    5 => _caretAtStart(_notesC, _notesFocusNode),
+    _ => true,
+  };
+
+  bool activeTextCaretAtEnd(int col) => switch (col) {
+    4 => _caretAtEnd(_kgC, _kgFocusNode),
+    5 => _caretAtEnd(_notesC, _notesFocusNode),
+    _ => true,
+  };
+
+  bool _caretAtStart(TextEditingController c, FocusNode f) {
+    if (!f.hasFocus) return false;
+    final s = c.selection;
+    return s.isValid &&
+        s.isCollapsed &&
+        s.baseOffset == 0 &&
+        s.extentOffset == 0;
+  }
+
+  bool _caretAtEnd(TextEditingController c, FocusNode f) {
+    if (!f.hasFocus) return false;
+    final s = c.selection;
+    final e = c.text.length;
+    return s.isValid &&
+        s.isCollapsed &&
+        s.baseOffset == e &&
+        s.extentOffset == e;
+  }
+
+  bool _isEditableTextFocused() {
+    final primary = FocusManager.instance.primaryFocus;
+    final ctx = primary?.context;
+    if (ctx == null) return false;
+    if (ctx.widget is EditableText) return true;
+    return ctx.findAncestorWidgetOfExactType<EditableText>() != null;
+  }
+
+  void focusTextIfNeeded(int col) {
+    if (!_editing) return;
+    switch (col) {
+      case 4:
+        FocusScope.of(context).requestFocus(_kgFocusNode);
+        return;
+      case 5:
+        FocusScope.of(context).requestFocus(_notesFocusNode);
+        return;
+    }
+  }
+
+  void startEditingFromKeyboard() {
+    if (!_editing) setState(() => _editing = true);
+  }
+
+  void cancelEditingFromKeyboard() {
+    _hydrateFromRow();
+    if (mounted) setState(() => _editing = false);
+  }
+
+  Future<void> deleteWithConfirmation() async {
+    final ok = await _showConfirmDialog(
+      context,
+      title: 'Eliminar registro',
+      content: '¿Eliminar este registro de separación?',
+      confirmText: 'Eliminar',
+    );
+    if (ok == true) await widget.onDelete(id);
+  }
+
+  Future<void> activateGridCell(int col) async {
+    if (!_editing) return;
+    switch (col) {
+      case 0:
+        final d = await _showInvKeyboardDatePickerDialog(
+          context: context,
+          initialDate: _opDate,
+          firstDate: DateTime(2024, 1, 1),
+          lastDate: DateTime(2035, 12, 31),
+        );
+        if (d != null) setState(() => _opDate = DateUtils.dateOnly(d));
+        return;
+      case 1:
+        final shift = await _showInvSearchablePickerDialog<String>(
+          context,
+          title: 'Turno',
+          initialValue: _shift,
+          options: const [
+            _InvPickerOption<String>(value: 'DAY', label: 'Día'),
+            _InvPickerOption<String>(value: 'NIGHT', label: 'Noche'),
+          ],
+        );
+        if (shift != null) setState(() => _shift = shift);
+        return;
+      case 2:
+        final mode = await _showInvSearchablePickerDialog<String>(
+          context,
+          title: 'Origen',
+          initialValue: _sourceMode,
+          options: const [
+            _InvPickerOption<String>(value: 'MIXED', label: 'Compra revuelta'),
+            _InvPickerOption<String>(
+              value: 'DIRECT',
+              label: 'Compra clasificada',
+            ),
+          ],
+        );
+        if (mode != null) setState(() => _sourceMode = mode);
+        return;
+      case 3:
+        final selected = await _showInvSearchablePickerDialog<String>(
+          context,
+          title: 'Material comercial',
+          initialValue: _commercialMaterialCode,
+          options: widget.commercialOptions
+              .map(
+                (option) => _InvPickerOption<String>(
+                  value: option.code,
+                  label: option.name,
+                ),
+              )
+              .toList(),
+        );
+        if (selected != null) {
+          setState(() => _commercialMaterialCode = selected);
+        }
+        return;
+      case 4:
+        FocusScope.of(context).requestFocus(_kgFocusNode);
+        return;
+      case 5:
+        FocusScope.of(context).requestFocus(_notesFocusNode);
+        return;
+      default:
+        return;
+    }
+  }
+
+  void _enterEditingFromPointer(int col) {
+    if (_isAdditiveSelectionPressed()) {
+      widget.onSelect(true);
+      return;
+    }
+    final multiContext =
+        widget.selectedCount > 1 && (widget.isSelected || widget.isChecked);
+    if (multiContext) {
+      widget.onMultiEdit();
+      return;
+    }
+    widget.onSelect(false);
+    widget.onActivateColumn(col);
+    if (!_editing) setState(() => _editing = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(activateGridCell(col));
+    });
+  }
+
+  void _previewEditableCellTap(int col) {
+    if (_isAdditiveSelectionPressed()) {
+      widget.onSelect(true);
+      return;
+    }
+    widget.onSelect(false);
+    widget.onActivateColumn(col);
+  }
+
+  bool _isAdditiveSelectionPressed() {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    return pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight);
+  }
+
+  Future<void> saveFromKeyboard() async {
+    final kg = _toDouble(_kgC.text);
+    if ((_commercialMaterialCode ?? '').trim().isEmpty ||
+        kg == null ||
+        kg <= 0) {
+      return;
+    }
+    await widget.onUpdate(id, {
+      'op_date': _sepFmtDbDate(_opDate),
+      'shift': _shift,
+      'source_mode': _sourceMode,
+      'commercial_material_code': _commercialMaterialCode,
+      'weight_kg': kg,
+      'notes': _notesC.text.trim().isEmpty ? null : _notesC.text.trim(),
+    });
+    if (mounted) setState(() => _editing = false);
+  }
+
+  String _commercialLabel(String? code) {
+    final normalized = (code ?? '').trim();
+    if (normalized.isEmpty) return '';
+    for (final option in widget.commercialOptions) {
+      if (option.code == normalized) return option.name;
+    }
+    return normalized;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasSelection = widget.isSelected || widget.isChecked;
+    final hoverOnly = _hovering && !hasSelection;
+    final rowBg = _editing
+        ? const Color(0xFFE2EEF8)
+        : hasSelection
+        ? const Color(
+            0xFF00A3FF,
+          ).withValues(alpha: widget.isSelected ? 0.16 : 0.13)
+        : hoverOnly
+        ? const Color(0xFFE9F7EE)
+        : Colors.white;
+
+    Widget frame(int col, Widget child) {
+      final active =
+          _editing && widget.isSelected && widget.activeGridColumn == col;
+      return DecoratedBox(
+        position: DecorationPosition.background,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          gradient: !_editing && _hoveredEditableColumn == col
+              ? LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    (hasSelection
+                            ? const Color(0xFFD9E8F6)
+                            : const Color(0xFFE5F2EC))
+                        .withValues(alpha: 0.78),
+                    (hasSelection
+                            ? const Color(0xFFCCE0F2)
+                            : const Color(0xFFD4E7DE))
+                        .withValues(alpha: 0.64),
+                  ],
+                )
+              : null,
+          color: active
+              ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
+              : Colors.transparent,
+          border: Border.all(
+            color: active
+                ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
+                : Colors.transparent,
+          ),
+        ),
+        child: child,
+      );
+    }
+
+    Widget previewEditableCell({required int col, required Widget child}) {
+      return MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) {
+          if (_editing) return;
+          if (_hoveredEditableColumn != col) {
+            setState(() => _hoveredEditableColumn = col);
+          }
+        },
+        onExit: (_) {
+          if (_hoveredEditableColumn == col) {
+            setState(() => _hoveredEditableColumn = null);
+          }
+        },
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (_) => _previewEditableCellTap(col),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onDoubleTap: () => _enterEditingFromPointer(col),
+            child: child,
+          ),
+        ),
+      );
+    }
+
+    Widget readonlyCell({
+      required Widget child,
+      bool showDivider = true,
+      EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: 4),
+    }) {
+      return Padding(
+        padding: padding,
+        child: Row(
+          children: [
+            Expanded(child: child),
+            if (showDivider)
+              Container(
+                width: 1,
+                height: 30,
+                margin: const EdgeInsets.only(left: 8, right: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+              ),
+          ],
+        ),
+      );
+    }
+
+    return TapRegion(
+      onTapOutside: (_) {
+        if (_editing) cancelEditingFromKeyboard();
+      },
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapDown: (_) {
+            if (_editing) return;
+            widget.onSelect(_isAdditiveSelectionPressed());
+          },
+          onDoubleTap: () => _enterEditingFromPointer(0),
+          onSecondaryTapDown: (details) {
+            if (!hasSelection) widget.onSelect(false);
+            widget.onOpenContextMenu(details.globalPosition);
+          },
+          child: Card(
+            elevation: hasSelection
+                ? 3.2
+                : _hovering
+                ? 2.7
+                : 0.5,
+            color: rowBg,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(14),
+              side: BorderSide(
+                color: widget.isSelected
+                    ? const Color(0xFF00A3FF).withValues(alpha: 0.65)
+                    : Colors.white.withValues(alpha: 0.0),
+              ),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  return SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: SizedBox(
+                      width: _sepTableContentWFor(constraints.maxWidth),
+                      child: Row(
+                        children: [
+                          frame(
+                            0,
+                            SizedBox(
+                              width: _kSepDateColW,
+                              child: _editing
+                                  ? InkWell(
+                                      onTap: () {
+                                        widget.onActivateColumn(0);
+                                        activateGridCell(0);
+                                      },
+                                      child: _InvCellBox(
+                                        text: _sepFmtUiDate(_opDate),
+                                        icon: Icons.calendar_month,
+                                      ),
+                                    )
+                                  : previewEditableCell(
+                                      col: 0,
+                                      child: readonlyCell(
+                                        child: _InvFitText(
+                                          _sepFmtUiDate(_opDate),
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          frame(
+                            1,
+                            SizedBox(
+                              width: _kSepShiftColW,
+                              child: _editing
+                                  ? _InvDropStrInline(
+                                      value: _shift ?? 'DAY',
+                                      items: const ['DAY', 'NIGHT'],
+                                      format: _prodShiftLabel,
+                                      onTapStart: () =>
+                                          widget.onActivateColumn(1),
+                                      onChanged: (v) =>
+                                          setState(() => _shift = v),
+                                    )
+                                  : previewEditableCell(
+                                      col: 1,
+                                      child: readonlyCell(
+                                        child: _InvPillTag(
+                                          label: _prodShiftLabel(_shift),
+                                          background: _prodShiftChipColors(
+                                            _shift,
+                                          ).bg,
+                                          foreground: _prodShiftChipColors(
+                                            _shift,
+                                          ).fg,
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          frame(
+                            2,
+                            SizedBox(
+                              width: _kSepModeColW,
+                              child: _editing
+                                  ? _InvDropStrInline(
+                                      value: _sourceMode ?? 'MIXED',
+                                      items: const ['MIXED', 'DIRECT'],
+                                      format: _separationSourceModeLabel,
+                                      onTapStart: () =>
+                                          widget.onActivateColumn(2),
+                                      onChanged: (v) =>
+                                          setState(() => _sourceMode = v),
+                                    )
+                                  : previewEditableCell(
+                                      col: 2,
+                                      child: readonlyCell(
+                                        child: _InvPillTag(
+                                          label: _separationSourceModeLabel(
+                                            _sourceMode,
+                                          ),
+                                          background:
+                                              _separationSourceModeColors(
+                                                _sourceMode,
+                                              ).bg,
+                                          foreground:
+                                              _separationSourceModeColors(
+                                                _sourceMode,
+                                              ).fg,
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          frame(
+                            3,
+                            SizedBox(
+                              width: _kSepCommercialColW,
+                              child: _editing
+                                  ? InkWell(
+                                      onTap: () {
+                                        widget.onActivateColumn(3);
+                                        activateGridCell(3);
+                                      },
+                                      child: _InvCellBox(
+                                        text: _commercialLabel(
+                                          _commercialMaterialCode,
+                                        ),
+                                        icon: Icons.category_rounded,
+                                      ),
+                                    )
+                                  : previewEditableCell(
+                                      col: 3,
+                                      child: readonlyCell(
+                                        child: _InvFitText(
+                                          _commercialLabel(
+                                            _commercialMaterialCode,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          frame(
+                            4,
+                            SizedBox(
+                              width: _kSepKgColW,
+                              child: _editing
+                                  ? _InvTextInline(
+                                      controller: _kgC,
+                                      focusNode: _kgFocusNode,
+                                      hint: 'Kg',
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      onTapStart: () =>
+                                          widget.onActivateColumn(4),
+                                    )
+                                  : previewEditableCell(
+                                      col: 4,
+                                      child: readonlyCell(
+                                        child: Align(
+                                          alignment: Alignment.centerRight,
+                                          child: _InvFitText(
+                                            _kgC.text.isEmpty
+                                                ? '0.00'
+                                                : _kgC.text,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          frame(
+                            5,
+                            SizedBox(
+                              width: _kSepNotesColW,
+                              child: _editing
+                                  ? _InvTextInline(
+                                      controller: _notesC,
+                                      focusNode: _notesFocusNode,
+                                      hint: 'Comentario',
+                                      onTapStart: () =>
+                                          widget.onActivateColumn(5),
+                                    )
+                                  : previewEditableCell(
+                                      col: 5,
+                                      child: readonlyCell(
+                                        showDivider: false,
+                                        child: _InvFitText(
+                                          _notesC.text.trim().isEmpty
+                                              ? '—'
+                                              : _notesC.text.trim(),
+                                        ),
+                                      ),
+                                    ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          SizedBox(
+                            width: _kSepActionsColW,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                IconButton(
+                                  tooltip: _editing ? 'Guardar' : 'Editar',
+                                  onPressed: _editing
+                                      ? saveFromKeyboard
+                                      : () => _enterEditingFromPointer(0),
+                                  icon: Icon(
+                                    _editing
+                                        ? Icons.save_rounded
+                                        : Icons.more_horiz_rounded,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SeparationDraft {
+  static const Object _unset = Object();
+  final DateTime? opDate;
+  final String? shift;
+  final String? sourceMode;
+  final String? commercialMaterialCode;
+  final double? weightKg;
+  final String notes;
+
+  const _SeparationDraft({
+    required this.opDate,
+    required this.shift,
+    required this.sourceMode,
+    required this.commercialMaterialCode,
+    required this.weightKg,
+    required this.notes,
+  });
+
+  _SeparationDraft copyWith({
+    Object? opDate = _unset,
+    Object? shift = _unset,
+    Object? sourceMode = _unset,
+    Object? commercialMaterialCode = _unset,
+    Object? weightKg = _unset,
+    String? notes,
+  }) {
+    return _SeparationDraft(
+      opDate: identical(opDate, _unset) ? this.opDate : opDate as DateTime?,
+      shift: identical(shift, _unset) ? this.shift : shift as String?,
+      sourceMode: identical(sourceMode, _unset)
+          ? this.sourceMode
+          : sourceMode as String?,
+      commercialMaterialCode: identical(commercialMaterialCode, _unset)
+          ? this.commercialMaterialCode
+          : commercialMaterialCode as String?,
+      weightKg: identical(weightKg, _unset)
+          ? this.weightKg
+          : weightKg as double?,
+      notes: notes ?? this.notes,
+    );
+  }
+}
+
+class _SeparationCommercialOption {
+  final String code;
+  final String name;
+
+  const _SeparationCommercialOption({required this.code, required this.name});
+}
+
+String _separationSourceModeLabel(String? mode) {
+  switch ((mode ?? '').toUpperCase()) {
+    case 'MIXED':
+      return 'Compra revuelta';
+    case 'DIRECT':
+      return 'Compra clasificada';
+    default:
+      return mode ?? '—';
+  }
+}
+
+({Color bg, Color fg}) _separationSourceModeColors(String? mode) {
+  switch ((mode ?? '').toUpperCase()) {
+    case 'MIXED':
+      return (bg: const Color(0xFFF5E5D5), fg: const Color(0xFF7A4A21));
+    case 'DIRECT':
+      return (bg: const Color(0xFFD8EEF6), fg: const Color(0xFF22536B));
+    default:
+      return (bg: const Color(0xFFE2E8F2), fg: const Color(0xFF31475F));
+  }
+}
+
+String _sepFmtUiDate(DateTime d) {
+  final yy = (d.year % 100).toString().padLeft(2, '0');
+  final mm = d.month.toString().padLeft(2, '0');
+  final dd = d.day.toString().padLeft(2, '0');
+  return '$dd/$mm/$yy';
+}
+
+String _sepFmtDbDate(DateTime d) {
+  final mm = d.month.toString().padLeft(2, '0');
+  final dd = d.day.toString().padLeft(2, '0');
+  return '${d.year}-$mm-$dd';
+}
+
+DateTime _sepParseDate(dynamic v) {
+  if (v is String && v.length >= 10) {
+    final y = int.tryParse(v.substring(0, 4));
+    final m = int.tryParse(v.substring(5, 7));
+    final d = int.tryParse(v.substring(8, 10));
+    if (y != null && m != null && d != null) return DateTime(y, m, d);
+  }
+  return DateUtils.dateOnly(DateTime.now());
 }

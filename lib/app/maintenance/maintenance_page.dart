@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -10,13 +9,16 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../auth/auth_gate.dart';
+import '../auth/auth_access.dart';
+import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
+import '../dashboard/general_dashboard_page.dart';
 import '../services/inventory_page.dart';
 import '../services/services_page.dart';
 import '../services/services_shell.dart';
+import '../services/warehouse_page.dart';
 import '../services/weighings_page.dart';
-import '../shared/operational_ui/operational_widgets.dart';
+import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/page_routes.dart';
 
 const List<String> _kStatusFlow = [
@@ -148,9 +150,12 @@ class MaintenancePage extends StatefulWidget {
   State<MaintenancePage> createState() => _MaintenancePageState();
 }
 
-class _MaintenancePageState extends State<MaintenancePage> {
+class _MaintenancePageState extends State<MaintenancePage>
+    with WidgetsBindingObserver {
   final SupabaseClient _supa = Supabase.instance.client;
   Timer? _autoRefreshTimer;
+  Timer? _deferredAutoRefreshTimer;
+  RealtimeChannel? _maintenanceRealtimeChannel;
   final FocusNode _ordersListFocusNode = FocusNode(
     debugLabel: 'maintenance-orders-list',
   );
@@ -159,6 +164,11 @@ class _MaintenancePageState extends State<MaintenancePage> {
   bool _saving = false;
   bool _creating = false;
   bool _exportingPdf = false;
+  bool _autoReloading = false;
+  bool _pendingAutoReload = false;
+  DateTime? _lastBackgroundRefreshAt;
+  static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
+  static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
 
   List<Map<String, dynamic>> _orders = const [];
   final Map<String, int> _evidenceCountByOt = <String, int>{};
@@ -198,16 +208,17 @@ class _MaintenancePageState extends State<MaintenancePage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_bootstrap());
-    _autoRefreshTimer = Timer.periodic(
-      const Duration(seconds: 25),
-      (_) => unawaited(_loadOrdersSilently()),
-    );
+    _setupAutoRefresh();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _autoRefreshTimer?.cancel();
+    _deferredAutoRefreshTimer?.cancel();
+    _maintenanceRealtimeChannel?.unsubscribe();
     _ordersListFocusNode.dispose();
     _areaC.dispose();
     _equipmentC.dispose();
@@ -220,6 +231,13 @@ class _MaintenancePageState extends State<MaintenancePage> {
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _requestAutoReload(force: true);
+    }
+  }
+
   Future<void> _bootstrap() async {
     await _loadProfile();
     await _loadVehicleCatalog();
@@ -228,9 +246,114 @@ class _MaintenancePageState extends State<MaintenancePage> {
     setState(() => _loading = false);
   }
 
-  Future<void> _loadOrdersSilently() async {
-    if (!mounted || _loading || _saving || _creating) return;
-    await _loadOrders(refreshSelectedDetails: false);
+  void _setupAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(
+      const Duration(seconds: 25),
+      (_) => _requestAutoReload(),
+    );
+
+    _maintenanceRealtimeChannel?.unsubscribe();
+    _maintenanceRealtimeChannel = _supa
+        .channel('maintenance-auto-refresh')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_orders',
+          callback: (_) => _requestAutoReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_tasks',
+          callback: (_) => _requestAutoReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_materials',
+          callback: (_) => _requestAutoReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_time_logs',
+          callback: (_) => _requestAutoReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_evidence',
+          callback: (_) => _requestAutoReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_approvals',
+          callback: (_) => _requestAutoReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_status_log',
+          callback: (_) => _requestAutoReload(),
+        )
+        .subscribe();
+  }
+
+  bool get _shouldDeferBackgroundRefresh =>
+      _loading || _saving || _creating || _exportingPdf || _isEditableFocused();
+
+  void _queueDeferredAutoReload([Duration? delay]) {
+    if (!mounted) return;
+    _pendingAutoReload = true;
+    _deferredAutoRefreshTimer?.cancel();
+    _deferredAutoRefreshTimer = Timer(
+      delay ?? _backgroundRefreshRetryDelay,
+      () {
+        _deferredAutoRefreshTimer = null;
+        _requestAutoReload();
+      },
+    );
+  }
+
+  void _requestAutoReload({bool force = false}) {
+    if (!mounted) return;
+    if (!force && (_autoReloading || _shouldDeferBackgroundRefresh)) {
+      _queueDeferredAutoReload();
+      return;
+    }
+    if (!force && _lastBackgroundRefreshAt != null) {
+      final elapsed = DateTime.now().difference(_lastBackgroundRefreshAt!);
+      if (elapsed < _backgroundRefreshMinGap) {
+        _queueDeferredAutoReload(_backgroundRefreshMinGap - elapsed);
+        return;
+      }
+    }
+    if (_autoReloading) {
+      _queueDeferredAutoReload();
+      return;
+    }
+    unawaited(_refreshSilentlyIfIdle(force: force));
+  }
+
+  Future<void> _refreshSilentlyIfIdle({bool force = false}) async {
+    if (!mounted || _autoReloading) return;
+    _autoReloading = true;
+    try {
+      await _loadOrders(refreshSelectedDetails: _selectedOrderId != null);
+      _lastBackgroundRefreshAt = DateTime.now();
+    } finally {
+      _autoReloading = false;
+      if (_pendingAutoReload && mounted) {
+        if (force || !_shouldDeferBackgroundRefresh) {
+          _pendingAutoReload = false;
+          _requestAutoReload();
+        } else {
+          _queueDeferredAutoReload();
+        }
+      }
+    }
   }
 
   Future<void> _loadVehicleCatalog() async {
@@ -563,149 +686,39 @@ class _MaintenancePageState extends State<MaintenancePage> {
 
   Future<String?> _showOrderContextMenu(Offset globalPosition) {
     final actions = _orderContextActions();
-    final mediaSize = MediaQuery.of(context).size;
-    const menuWidth = 228.0;
-    final left = globalPosition.dx.clamp(
-      8.0,
-      mediaSize.width - menuWidth - 8.0,
+    const menuTextStyle = TextStyle(
+      fontSize: 13.5,
+      fontWeight: FontWeight.w800,
+      decoration: TextDecoration.none,
+      decorationColor: Colors.transparent,
+      color: Color(0xFF1C3E5D),
     );
-    final top = globalPosition.dy.clamp(8.0, mediaSize.height - 8.0);
-
-    return showGeneralDialog<String>(
+    final mediaSize = MediaQuery.of(context).size;
+    return showMenu<String>(
       context: context,
-      barrierLabel: 'context_menu',
-      barrierColor: Colors.transparent,
-      barrierDismissible: true,
-      transitionDuration: const Duration(milliseconds: 90),
-      pageBuilder: (dialogContext, _, __) {
-        int? hoveredIndex;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () => Navigator.of(dialogContext).pop(),
-                behavior: HitTestBehavior.translucent,
-              ),
+      color: const Color(0xE6EAF2F9),
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        mediaSize.width - globalPosition.dx,
+        mediaSize.height - globalPosition.dy,
+      ),
+      items: [
+        for (var i = 0; i < actions.length; i++) ...[
+          PopupMenuItem<String>(
+            value: actions[i].key,
+            child: Text(
+              actions[i].value,
+              style: actions[i].key == 'delete'
+                  ? menuTextStyle.copyWith(color: const Color(0xFF8A1F1F))
+                  : menuTextStyle,
             ),
-            Positioned(
-              left: left.toDouble(),
-              top: top.toDouble(),
-              child: StatefulBuilder(
-                builder: (context, setMenuState) {
-                  return Focus(
-                    autofocus: true,
-                    onKeyEvent: (_, event) {
-                      if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                      if (event.logicalKey == LogicalKeyboardKey.escape) {
-                        Navigator.of(dialogContext).pop();
-                        return KeyEventResult.handled;
-                      }
-                      return KeyEventResult.ignored;
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                        child: Container(
-                          width: menuWidth,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xE6EAF2F9),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.72),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.18),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (var i = 0; i < actions.length; i++) ...[
-                                MouseRegion(
-                                  onEnter: (_) =>
-                                      setMenuState(() => hoveredIndex = i),
-                                  onExit: (_) {
-                                    if (hoveredIndex == i) {
-                                      setMenuState(() => hoveredIndex = null);
-                                    }
-                                  },
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: () => Navigator.of(
-                                      dialogContext,
-                                    ).pop(actions[i].key),
-                                    child: AnimatedContainer(
-                                      duration: const Duration(
-                                        milliseconds: 80,
-                                      ),
-                                      curve: Curves.easeOutCubic,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 10,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: hoveredIndex == i
-                                            ? const Color(
-                                                0xFFA9E8CF,
-                                              ).withOpacity(0.55)
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(12),
-                                        boxShadow: hoveredIndex == i
-                                            ? [
-                                                BoxShadow(
-                                                  color: const Color(
-                                                    0xFF75C8A5,
-                                                  ).withOpacity(0.30),
-                                                  blurRadius: 10,
-                                                  offset: const Offset(0, 4),
-                                                ),
-                                              ]
-                                            : const [],
-                                      ),
-                                      child: Text(
-                                        actions[i].value,
-                                        style: TextStyle(
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.w800,
-                                          color: actions[i].key == 'delete'
-                                              ? const Color(0xFF8A1F1F)
-                                              : const Color(0xFF1C3E5D),
-                                          decoration: TextDecoration.none,
-                                          decorationColor: Colors.transparent,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (i != actions.length - 1)
-                                  Divider(
-                                    height: 1,
-                                    thickness: 1,
-                                    color: Colors.white.withOpacity(0.44),
-                                  ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        );
-      },
+          ),
+          if (i != actions.length - 1) const PopupMenuDivider(height: 1),
+        ],
+      ],
     );
   }
 
@@ -953,7 +966,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
-                      value: next,
+                      initialValue: next,
                       isExpanded: true,
                       menuMaxHeight: 320,
                       borderRadius: BorderRadius.circular(12),
@@ -1139,44 +1152,86 @@ class _MaintenancePageState extends State<MaintenancePage> {
         0,
         (sum, e) => sum + (_toDouble(e['cost_actual']) ?? 0),
       );
+      final requestedAt = DateTime.tryParse(
+        (order['requested_at'] ?? '').toString(),
+      );
+      final requestedDate = requestedAt == null
+          ? '-'
+          : '${requestedAt.year.toString().padLeft(4, '0')}-${requestedAt.month.toString().padLeft(2, '0')}-${requestedAt.day.toString().padLeft(2, '0')}';
+      final requestedTime = requestedAt == null
+          ? '-'
+          : '${requestedAt.hour.toString().padLeft(2, '0')}:${requestedAt.minute.toString().padLeft(2, '0')}';
+      final statusLabel =
+          _kStatusLabel[(order['status'] ?? '').toString()] ??
+          (order['status'] ?? '-').toString();
+      pw.MemoryImage? logoImage;
+      try {
+        final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+        logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+      } catch (_) {
+        logoImage = null;
+      }
+      final evidencesByCategory = <String, List<String>>{
+        for (final key in _kEvidenceCategoryLabel.keys) key: <String>[],
+      };
+      for (final ev in _evidences) {
+        final key = (ev['category'] ?? 'otros').toString();
+        final note = (ev['comment'] ?? '').toString().trim();
+        final path = (ev['storage_path'] ?? '').toString().trim();
+        final url = (ev['file_url'] ?? '').toString().trim();
+        final name = path.isNotEmpty
+            ? path.split('/').last
+            : (url.isNotEmpty ? url.split('/').last : 'archivo');
+        final line = note.isEmpty ? name : '$name - $note';
+        (evidencesByCategory[key] ?? evidencesByCategory['otros']!).add(line);
+      }
 
       doc.addPage(
         pw.MultiPage(
           pageFormat: PdfPageFormat.a4,
           margin: const pw.EdgeInsets.all(24),
           build: (context) => [
-            pw.Text(
-              'ORDEN DE TRABAJO $folio',
-              style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 18),
+            _pdfHeaderCard(
+              folio: folio,
+              site: 'Celaya',
+              date: requestedDate,
+              time: requestedTime,
+              status: statusLabel.toUpperCase(),
+              logoImage: logoImage,
             ),
-            pw.SizedBox(height: 8),
-            _pdfSection('Datos generales', [
-              'Estado: ${_kStatusLabel[(order['status'] ?? '').toString()] ?? order['status']}',
-              'Área: ${(order['area_label'] ?? '-').toString()}',
+            _pdfSection('DATOS GENERALES', [
+              'Area: ${(order['area_label'] ?? '-').toString()}',
               'Equipo: ${(order['equipment_label'] ?? '-').toString()}',
               'Serie: ${(order['equipment_serial'] ?? '-').toString()}',
               'Solicitante: ${(order['requester_name'] ?? '-').toString()}',
+              'Responsable: ${(order['assigned_to_name'] ?? '-').toString()}',
               'Fecha solicitud: ${_fmtDateTimeNullable(order['requested_at'])}',
             ]),
-            _pdfSection('Clasificación', [
+            _pdfSection('CLASIFICACION', [
               'Tipo: ${_kTypeLabel[(order['type'] ?? '').toString()] ?? order['type']}',
               'Prioridad: ${_kPriorityLabel[(order['priority'] ?? '').toString()] ?? order['priority']}',
-              'Categoría: ${_kCategoryLabel[(order['category'] ?? '').toString()] ?? order['category']}',
+              'Categoria: ${_kCategoryLabel[(order['category'] ?? '').toString()] ?? order['category']}',
               'Impacto: ${_kImpactLabel[(order['impact'] ?? '').toString()] ?? order['impact']}',
             ]),
-            _pdfSection('Descripción', [
+            _pdfSection('DESCRIPCION DEL PROBLEMA', [
               (order['problem_description'] ?? '').toString().trim().isEmpty
                   ? '-'
                   : (order['problem_description'] ?? '').toString(),
             ]),
-            _pdfSection('Diagnóstico', [
+            _pdfSection('DIAGNOSTICO', [
               (order['diagnosis'] ?? '').toString().trim().isEmpty
                   ? '-'
                   : (order['diagnosis'] ?? '').toString(),
             ]),
             _pdfTable(
-              title: 'Actividades',
-              headers: const ['Actividad', 'Unidad', 'Cantidad', 'Hecho'],
+              title: 'ACTIVIDADES A REALIZAR',
+              headers: const [
+                'Actividad/Item',
+                'Unidad',
+                'Cantidad',
+                'Hecho',
+                'Notas',
+              ],
               rows: _tasks
                   .map(
                     (e) => [
@@ -1184,13 +1239,21 @@ class _MaintenancePageState extends State<MaintenancePage> {
                       (e['unit'] ?? '').toString(),
                       (e['qty'] ?? '').toString(),
                       e['is_done'] == true ? 'Sí' : 'No',
+                      (e['notes'] ?? '').toString(),
                     ],
                   )
                   .toList(),
             ),
             _pdfTable(
-              title: 'Materiales / Refacciones / Mano de obra',
-              headers: const ['Material', 'Cant.', 'Fuente', 'Est.', 'Real'],
+              title: 'MATERIALES / REFACCIONES',
+              headers: const [
+                'Material',
+                'Cantidad',
+                'Fuente',
+                r'$ Est.',
+                r'$ Real',
+                'Nota/Archivo',
+              ],
               rows: _materials
                   .map(
                     (e) => [
@@ -1199,17 +1262,18 @@ class _MaintenancePageState extends State<MaintenancePage> {
                       _materialSourceLabel((e['source'] ?? '').toString()),
                       _fmtMoney(_toDouble(e['cost_estimated']) ?? 0),
                       _fmtMoney(_toDouble(e['cost_actual']) ?? 0),
+                      (e['notes'] ?? '').toString(),
                     ],
                   )
                   .toList(),
             ),
-            _pdfSection('Totales', [
+            _pdfSection('TOTALES', [
               'Estimado: ${_fmtMoney(estTotal)}',
               'Real: ${_fmtMoney(realTotal)}',
             ]),
             _pdfTable(
-              title: 'Registro de tiempo',
-              headers: const ['Técnico', 'Inicio', 'Fin', 'Minutos'],
+              title: 'TIEMPOS',
+              headers: const ['Inicio', 'Fin', 'Horas', 'Tecnico', 'Nota'],
               rows: _timeLogs.map((e) {
                 final start = DateTime.tryParse(
                   (e['start_at'] ?? '').toString(),
@@ -1218,17 +1282,32 @@ class _MaintenancePageState extends State<MaintenancePage> {
                 final mins = start != null && end != null
                     ? end.difference(start).inMinutes.clamp(0, 100000)
                     : 0;
+                final hours = (mins / 60).toStringAsFixed(2);
                 return [
-                  (e['tech_name'] ?? '').toString(),
                   start == null ? '-' : _fmtDateTime(start),
                   end == null ? '-' : _fmtDateTime(end),
-                  '$mins',
+                  hours,
+                  (e['tech_name'] ?? '').toString(),
+                  (e['note'] ?? '').toString(),
                 ];
               }).toList(),
             ),
+            _pdfSection('EVIDENCIAS', [
+              'Antes: ${(evidencesByCategory['antes'] ?? const []).join(', ').trim().isEmpty ? 'Sin evidencias' : (evidencesByCategory['antes'] ?? const []).join(', ')}',
+              'Durante: ${(evidencesByCategory['durante'] ?? const []).join(', ').trim().isEmpty ? 'Sin evidencias' : (evidencesByCategory['durante'] ?? const []).join(', ')}',
+              'Despues: ${(evidencesByCategory['despues'] ?? const []).join(', ').trim().isEmpty ? 'Sin evidencias' : (evidencesByCategory['despues'] ?? const []).join(', ')}',
+              'Facturas: ${(evidencesByCategory['facturas'] ?? const []).join(', ').trim().isEmpty ? 'Sin evidencias' : (evidencesByCategory['facturas'] ?? const []).join(', ')}',
+              'Otros: ${(evidencesByCategory['otros'] ?? const []).join(', ').trim().isEmpty ? 'Sin evidencias' : (evidencesByCategory['otros'] ?? const []).join(', ')}',
+            ]),
             _pdfTable(
-              title: 'Aprobaciones',
-              headers: const ['Paso', 'Estado', 'Usuario', 'Fecha'],
+              title: 'APROBACIONES',
+              headers: const [
+                'Paso',
+                'Estado',
+                'Usuario',
+                'Fecha',
+                'Comentario',
+              ],
               rows: _approvals
                   .map(
                     (e) => [
@@ -1237,21 +1316,11 @@ class _MaintenancePageState extends State<MaintenancePage> {
                       (e['status'] ?? '').toString(),
                       (e['by_user_name'] ?? '-').toString(),
                       _fmtDateTimeNullable(e['at']),
+                      (e['comment'] ?? '').toString(),
                     ],
                   )
                   .toList(),
             ),
-            _pdfSection('Evidencias', [
-              ..._evidences.map((e) {
-                final cat =
-                    _kEvidenceCategoryLabel[(e['category'] ?? '').toString()] ??
-                    (e['category'] ?? '').toString();
-                final note = (e['comment'] ?? '').toString();
-                final url = (e['file_url'] ?? '').toString();
-                return '$cat: ${note.isEmpty ? url : '$note ($url)'}';
-              }),
-              if (_evidences.isEmpty) 'Sin evidencias',
-            ]),
           ],
         ),
       );
@@ -1286,26 +1355,133 @@ class _MaintenancePageState extends State<MaintenancePage> {
     }
   }
 
+  pw.Widget _pdfHeaderCard({
+    required String folio,
+    required String site,
+    required String date,
+    required String time,
+    required String status,
+    pw.MemoryImage? logoImage,
+  }) {
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(bottom: 10),
+      padding: const pw.EdgeInsets.all(10),
+      decoration: pw.BoxDecoration(
+        color: const PdfColor.fromInt(0xFFE8F7F4),
+        border: pw.Border.all(
+          color: const PdfColor.fromInt(0xFF1C3E5D),
+          width: 1,
+        ),
+      ),
+      child: pw.Column(
+        children: [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.center,
+            children: [
+              pw.Container(
+                width: 114,
+                height: 40,
+                alignment: pw.Alignment.centerLeft,
+                child: logoImage == null
+                    ? pw.Text(
+                        'DICSA',
+                        style: pw.TextStyle(
+                          fontWeight: pw.FontWeight.bold,
+                          fontSize: 15,
+                          color: const PdfColor.fromInt(0xFF1C3E5D),
+                        ),
+                      )
+                    : pw.Image(logoImage, fit: pw.BoxFit.contain),
+              ),
+              pw.Text(
+                'ORDEN DE TRABAJO: $folio',
+                style: pw.TextStyle(
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 13,
+                  color: const PdfColor.fromInt(0xFF1C3E5D),
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 6),
+          pw.Container(height: 1.2, color: const PdfColor.fromInt(0xFF13D183)),
+          pw.SizedBox(height: 6),
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            children: [
+              pw.Text(
+                'Sitio: $site',
+                style: const pw.TextStyle(
+                  fontSize: 10,
+                  color: PdfColor.fromInt(0xFF1C3E5D),
+                ),
+              ),
+              pw.Text(
+                'Fecha: $date',
+                style: const pw.TextStyle(
+                  fontSize: 10,
+                  color: PdfColor.fromInt(0xFF1C3E5D),
+                ),
+              ),
+              pw.Text(
+                'Hora: $time',
+                style: const pw.TextStyle(
+                  fontSize: 10,
+                  color: PdfColor.fromInt(0xFF1C3E5D),
+                ),
+              ),
+              pw.Text(
+                'Estado: $status',
+                style: const pw.TextStyle(
+                  fontSize: 10,
+                  color: PdfColor.fromInt(0xFF1C3E5D),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
   pw.Widget _pdfSection(String title, List<String> lines) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 10),
-      padding: const pw.EdgeInsets.all(8),
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.blueGrey100),
-        borderRadius: pw.BorderRadius.circular(4),
+        border: pw.Border.all(color: PdfColors.black, width: 1),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text(
-            title,
-            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12),
+          pw.Container(
+            width: double.infinity,
+            color: const PdfColor.fromInt(0xFFDDF3EE),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            child: pw.Text(
+              title,
+              style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 11,
+                color: const PdfColor.fromInt(0xFF1C3E5D),
+              ),
+            ),
           ),
-          pw.SizedBox(height: 4),
-          ...lines.map(
-            (line) => pw.Padding(
-              padding: const pw.EdgeInsets.only(bottom: 2),
-              child: pw.Text(line, style: const pw.TextStyle(fontSize: 10.5)),
+          pw.Padding(
+            padding: const pw.EdgeInsets.fromLTRB(8, 7, 8, 7),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: lines
+                  .map(
+                    (line) => pw.Padding(
+                      padding: const pw.EdgeInsets.only(bottom: 3),
+                      child: pw.Text(
+                        line,
+                        style: const pw.TextStyle(fontSize: 10),
+                      ),
+                    ),
+                  )
+                  .toList(),
             ),
           ),
         ],
@@ -1320,27 +1496,41 @@ class _MaintenancePageState extends State<MaintenancePage> {
   }) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 10),
+      decoration: pw.BoxDecoration(
+        border: pw.Border.all(color: PdfColors.black, width: 1),
+      ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
-          pw.Text(
-            title,
-            style: pw.TextStyle(fontWeight: pw.FontWeight.bold, fontSize: 12),
+          pw.Container(
+            width: double.infinity,
+            color: const PdfColor.fromInt(0xFFDDF3EE),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            child: pw.Text(
+              title,
+              style: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 11,
+                color: const PdfColor.fromInt(0xFF1C3E5D),
+              ),
+            ),
           ),
-          pw.SizedBox(height: 4),
-          pw.TableHelper.fromTextArray(
-            headers: headers,
-            data: rows.isEmpty ? [List.filled(headers.length, '-')] : rows,
-            headerStyle: pw.TextStyle(
-              fontWeight: pw.FontWeight.bold,
-              fontSize: 10,
+          pw.Padding(
+            padding: const pw.EdgeInsets.all(6),
+            child: pw.TableHelper.fromTextArray(
+              headers: headers,
+              data: rows.isEmpty ? [List.filled(headers.length, '-')] : rows,
+              headerStyle: pw.TextStyle(
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 9.5,
+              ),
+              cellStyle: const pw.TextStyle(fontSize: 9),
+              border: pw.TableBorder.all(color: PdfColors.blueGrey300),
+              headerDecoration: const pw.BoxDecoration(
+                color: PdfColor.fromInt(0xFFEAF7F4),
+              ),
+              cellPadding: const pw.EdgeInsets.all(4),
             ),
-            cellStyle: const pw.TextStyle(fontSize: 9.5),
-            border: pw.TableBorder.all(color: PdfColors.blueGrey100),
-            headerDecoration: const pw.BoxDecoration(
-              color: PdfColor.fromInt(0xFFEAF2F9),
-            ),
-            cellPadding: const pw.EdgeInsets.all(4),
           ),
         ],
       ),
@@ -1456,7 +1646,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                       : ListView.separated(
                           shrinkWrap: true,
                           itemCount: _evidences.length,
-                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          separatorBuilder: (_, _) => const Divider(height: 1),
                           itemBuilder: (context, index) {
                             final row = _evidences[index];
                             final url = (row['file_url'] ?? '').toString();
@@ -1484,12 +1674,14 @@ class _MaintenancePageState extends State<MaintenancePage> {
                                                 alignment: Alignment.center,
                                                 decoration: BoxDecoration(
                                                   color: Colors.white
-                                                      .withOpacity(0.55),
+                                                      .withValues(alpha: 0.55),
                                                   borderRadius:
                                                       BorderRadius.circular(8),
                                                   border: Border.all(
                                                     color: Colors.blueGrey
-                                                        .withOpacity(0.25),
+                                                        .withValues(
+                                                          alpha: 0.25,
+                                                        ),
                                                   ),
                                                 ),
                                                 child: const Icon(
@@ -1563,7 +1755,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     DropdownButtonFormField<String>(
-                      value: category,
+                      initialValue: category,
                       isExpanded: true,
                       menuMaxHeight: 320,
                       borderRadius: BorderRadius.circular(12),
@@ -1989,7 +2181,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: DropdownButtonFormField<String>(
-                            value: source,
+                            initialValue: source,
                             isExpanded: true,
                             menuMaxHeight: 320,
                             borderRadius: BorderRadius.circular(12),
@@ -2158,6 +2350,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                           lastDate: DateTime(2100),
                         );
                         if (date == null) return;
+                        if (!dialogContext.mounted) return;
                         final time = await _showMaintenanceTimePicker(
                           dialogContext,
                           initialTime: TimeOfDay.fromDateTime(start),
@@ -2191,6 +2384,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                           lastDate: DateTime(2100),
                         );
                         if (date == null) return;
+                        if (!dialogContext.mounted) return;
                         final time = await _showMaintenanceTimePicker(
                           dialogContext,
                           initialTime: TimeOfDay.fromDateTime(end),
@@ -2267,7 +2461,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     DropdownButtonFormField<String>(
-                      value: step,
+                      initialValue: step,
                       isExpanded: true,
                       menuMaxHeight: 320,
                       borderRadius: BorderRadius.circular(12),
@@ -2308,7 +2502,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                     ),
                     const SizedBox(height: 10),
                     DropdownButtonFormField<String>(
-                      value: status,
+                      initialValue: status,
                       isExpanded: true,
                       menuMaxHeight: 320,
                       borderRadius: BorderRadius.circular(12),
@@ -2387,18 +2581,22 @@ class _MaintenancePageState extends State<MaintenancePage> {
   }
 
   Future<void> _logout() async {
-    await _supa.auth.signOut();
-    if (!mounted) return;
-    Navigator.of(context).pushAndRemoveUntil(
-      appPageRoute(page: const AuthGate()),
-      (route) => false,
-    );
+    await signOutAndRouteToLogin(context);
   }
 
   Future<void> _goToDashboard() async {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       appPageRoute(page: const DashboardPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _goToGeneralDashboard() async {
+    final profile = await AuthAccess.resolveCurrentProfile();
+    if (!AuthAccess.canAccessGeneralDashboard(profile)) return;
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(page: const GeneralDashboardPage(instantOpen: true)),
     );
   }
 
@@ -2416,6 +2614,13 @@ class _MaintenancePageState extends State<MaintenancePage> {
     ).pushReplacement(appPageRoute(page: const InventoryProductionPage()));
   }
 
+  Future<void> _goToInventory() async {
+    if (!mounted) return;
+    Navigator.of(
+      context,
+    ).pushReplacement(appPageRoute(page: const InventoryStockPage()));
+  }
+
   Future<void> _goToServices() async {
     if (!mounted) return;
     Navigator.of(
@@ -2430,21 +2635,30 @@ class _MaintenancePageState extends State<MaintenancePage> {
     ).pushReplacement(appPageRoute(page: const WeighingsPage()));
   }
 
+  Future<void> _goToWarehouse() async {
+    if (!mounted) return;
+    Navigator.of(
+      context,
+    ).pushReplacement(appPageRoute(page: const WarehousePage()));
+  }
+
   @override
   Widget build(BuildContext context) {
     return ServicesShell(
       headerTitle: 'Mantenimiento',
       activeOverlayModule: ServicesOverlayNavModule.mantenimiento,
-      onRefresh: null,
       onHeaderGuide: _showOtFlowGuide,
       headerGuideLabel: 'Flujo OT',
       onLogout: _logout,
+      onGoToGeneralDashboard: _goToGeneralDashboard,
       onGoToOperacion: _goToDashboard,
       onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
       onGoToProduction: _goToProduction,
+      onGoToInventory: _goToInventory,
       onGoToServices: _goToServices,
       onGoToWeighings: _goToWeighings,
       onGoToMaintenance: () async {},
+      onGoToWarehouse: _goToWarehouse,
       topContent: _buildTopActions(),
       child: _loading
           ? const Center(child: CircularProgressIndicator())
@@ -2517,11 +2731,15 @@ class _MaintenancePageState extends State<MaintenancePage> {
         return AlertDialog(
           title: const Text('Flujo OT y proceso de llenado'),
           content: SizedBox(
-            width: 860,
+            width: 920,
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  const Text(
+                    'Este modulo administra la OT completa: aviso, diagnostico, ejecucion, evidencia, aprobaciones y cierre. No es solo una lista de tickets.',
+                  ),
+                  const SizedBox(height: 14),
                   const Text(
                     'Secuencia de estados',
                     style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
@@ -2542,35 +2760,49 @@ class _MaintenancePageState extends State<MaintenancePage> {
                     icon: Icons.post_add_rounded,
                     title: '1) Crear OT',
                     body:
-                        'Captura datos generales, clasificación y descripción del problema.',
+                        'Crea la orden cuando existe una falla, solicitud o trabajo programado que debe quedar trazado. Aqui se captura el equipo, area, clasificacion y descripcion del problema.',
                   ),
                   const SizedBox(height: 10),
                   _guideBlock(
                     icon: Icons.fact_check_rounded,
-                    title: '2) Completar hoja técnica',
+                    title: '2) Diagnosticar y documentar',
                     body:
-                        'Llenar diagnóstico, actividades, materiales y tiempos.',
+                        'Antes de cerrar, la OT debe tener diagnostico claro, actividades realizadas, materiales usados y tiempos registrados. Eso convierte la OT en evidencia operativa, no solo administrativa.',
                   ),
                   const SizedBox(height: 10),
                   _guideBlock(
                     icon: Icons.photo_library_rounded,
                     title: '3) Evidencias',
                     body:
-                        'Subir fotos Antes/Durante/Después en la hoja o desde el botón de evidencias en la tabla OT.',
+                        'Sube fotos Antes, Durante y Despues cuando aplique. Las evidencias respaldan el trabajo realizado y ayudan a supervision o autorizacion.',
                   ),
                   const SizedBox(height: 10),
                   _guideBlock(
-                    icon: Icons.rule_rounded,
-                    title: '4) Reglas de cierre',
+                    icon: Icons.timeline_rounded,
+                    title: '4) Cuando mover el estado',
                     body:
-                        'No cerrar sin diagnóstico, actividades y al menos una evidencia de Después.',
+                        'El estado debe cambiar conforme avanza el trabajo real: aviso, revision, reporte, cotizacion, autorizacion, recoleccion de material, programacion, ejecucion, supervision y cierre. No se usa como semaforo decorativo.',
                   ),
                   const SizedBox(height: 10),
                   _guideBlock(
                     icon: Icons.more_horiz_rounded,
                     title: '5) Acciones por OT',
                     body:
-                        'Click derecho o botón ...: Guardar hoja, Editar estado, Evidencias, Eliminar.',
+                        'Click derecho o boton ...: Guardar hoja, Editar estado, Descargar PDF, Evidencias o Eliminar. Guardar hoja persiste cambios del detalle; editar estado solo mueve la OT en el flujo.',
+                  ),
+                  const SizedBox(height: 10),
+                  _guideBlock(
+                    icon: Icons.rule_rounded,
+                    title: '6) Reglas de cierre',
+                    body:
+                        'No cierres una OT sin diagnostico, actividades capturadas y evidencia final cuando el trabajo lo requiera. Si faltan materiales o aprobaciones, la OT debe quedarse en el estado operativo correspondiente.',
+                  ),
+                  const SizedBox(height: 10),
+                  _guideBlock(
+                    icon: Icons.checklist_rounded,
+                    title: '7) Secuencia recomendada',
+                    body:
+                        '1. Crear OT. 2. Seleccionar equipo y describir falla. 3. Diagnosticar. 4. Capturar actividades, materiales y tiempos. 5. Subir evidencias. 6. Mover estado segun avance real. 7. Cerrar solo cuando el trabajo este concluido y documentado.',
                   ),
                 ],
               ),
@@ -2592,9 +2824,11 @@ class _MaintenancePageState extends State<MaintenancePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: Colors.white.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF6BA8FF).withOpacity(0.32)),
+        border: Border.all(
+          color: const Color(0xFF6BA8FF).withValues(alpha: 0.32),
+        ),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
@@ -2604,7 +2838,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
             height: 20,
             alignment: Alignment.center,
             decoration: BoxDecoration(
-              color: const Color(0xFF0B72FF).withOpacity(0.85),
+              color: const Color(0xFF0B72FF).withValues(alpha: 0.85),
               borderRadius: BorderRadius.circular(99),
             ),
             child: Text(
@@ -2635,9 +2869,11 @@ class _MaintenancePageState extends State<MaintenancePage> {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.78),
+        color: Colors.white.withValues(alpha: 0.78),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFF6BA8FF).withOpacity(0.28)),
+        border: Border.all(
+          color: const Color(0xFF6BA8FF).withValues(alpha: 0.28),
+        ),
       ),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2713,9 +2949,9 @@ class _MaintenancePageState extends State<MaintenancePage> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.75),
+        color: Colors.white.withValues(alpha: 0.75),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.62)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.62)),
       ),
       child: Column(
         children: [
@@ -2764,7 +3000,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: DropdownButtonFormField<String>(
-                        value: _statusFilter ?? 'all',
+                        initialValue: _statusFilter ?? 'all',
                         isExpanded: true,
                         isDense: true,
                         menuMaxHeight: 360,
@@ -2826,7 +3062,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                         final pendingApprovals = _pendingApprovalsByOt[id] ?? 0;
 
                         final rowBg = selected
-                            ? const Color(0xFF00A3FF).withOpacity(0.15)
+                            ? const Color(0xFF00A3FF).withValues(alpha: 0.15)
                             : hovering
                             ? const Color(0xFFE9F7EE)
                             : Colors.white;
@@ -2864,8 +3100,8 @@ class _MaintenancePageState extends State<MaintenancePage> {
                                       color: selected
                                           ? const Color(
                                               0xFF00A3FF,
-                                            ).withOpacity(0.58)
-                                          : Colors.white.withOpacity(0),
+                                            ).withValues(alpha: 0.58)
+                                          : Colors.white.withValues(alpha: 0),
                                     ),
                                   ),
                                   child: Padding(
@@ -2944,14 +3180,18 @@ class _MaintenancePageState extends State<MaintenancePage> {
                                                   height: 34,
                                                   decoration: BoxDecoration(
                                                     color: Colors.white
-                                                        .withOpacity(0.40),
+                                                        .withValues(
+                                                          alpha: 0.40,
+                                                        ),
                                                     borderRadius:
                                                         BorderRadius.circular(
                                                           10,
                                                         ),
                                                     border: Border.all(
                                                       color: Colors.white
-                                                          .withOpacity(0.58),
+                                                          .withValues(
+                                                            alpha: 0.58,
+                                                          ),
                                                     ),
                                                   ),
                                                   child: IconButton(
@@ -3022,9 +3262,9 @@ class _MaintenancePageState extends State<MaintenancePage> {
     if (order == null) {
       return Container(
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.72),
+          color: Colors.white.withValues(alpha: 0.72),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.6)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.6)),
         ),
         alignment: Alignment.center,
         child: const Text('Selecciona una OT o crea una nueva'),
@@ -3035,9 +3275,9 @@ class _MaintenancePageState extends State<MaintenancePage> {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.77),
+        color: Colors.white.withValues(alpha: 0.77),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.66)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.66)),
       ),
       child: Scrollbar(
         thumbVisibility: true,
@@ -3349,9 +3589,9 @@ class _MaintenancePageState extends State<MaintenancePage> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.12),
+        color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: color.withOpacity(0.4)),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
       ),
       child: Text(
         _kStatusLabel[status] ?? status,
@@ -3379,9 +3619,9 @@ class _MaintenancePageState extends State<MaintenancePage> {
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.82),
+        color: Colors.white.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.blueGrey.withOpacity(0.2)),
+        border: Border.all(color: Colors.blueGrey.withValues(alpha: 0.2)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -3415,10 +3655,10 @@ class _MaintenancePageState extends State<MaintenancePage> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.50),
+              color: Colors.white.withValues(alpha: 0.50),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: const Color(0xFF6BA8FF).withOpacity(0.35),
+                color: const Color(0xFF6BA8FF).withValues(alpha: 0.35),
               ),
             ),
             child: Text(
@@ -3432,10 +3672,10 @@ class _MaintenancePageState extends State<MaintenancePage> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.50),
+              color: Colors.white.withValues(alpha: 0.50),
               borderRadius: BorderRadius.circular(10),
               border: Border.all(
-                color: const Color(0xFF6BA8FF).withOpacity(0.35),
+                color: const Color(0xFF6BA8FF).withValues(alpha: 0.35),
               ),
             ),
             child: Text(
@@ -3480,7 +3720,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
           children: [
             Expanded(
               child: DropdownButtonFormField<String>(
-                value: selectedArea,
+                initialValue: selectedArea,
                 isExpanded: true,
                 menuMaxHeight: 360,
                 borderRadius: BorderRadius.circular(12),
@@ -3500,7 +3740,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
             const SizedBox(width: 8),
             Expanded(
               child: DropdownButtonFormField<String>(
-                value: _selectedVehicleId,
+                initialValue: _selectedVehicleId,
                 isExpanded: true,
                 menuMaxHeight: 360,
                 borderRadius: BorderRadius.circular(12),
@@ -3576,7 +3816,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
         _classificationRow(
           'Tipo',
           DropdownButtonFormField<String>(
-            value: _type,
+            initialValue: _type,
             isExpanded: true,
             menuMaxHeight: 360,
             borderRadius: BorderRadius.circular(12),
@@ -3597,7 +3837,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
         _classificationRow(
           'Prioridad',
           DropdownButtonFormField<String>(
-            value: _priority,
+            initialValue: _priority,
             isExpanded: true,
             menuMaxHeight: 360,
             borderRadius: BorderRadius.circular(12),
@@ -3618,7 +3858,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
         _classificationRow(
           'Categoria',
           DropdownButtonFormField<String>(
-            value: _category,
+            initialValue: _category,
             isExpanded: true,
             menuMaxHeight: 360,
             borderRadius: BorderRadius.circular(12),
@@ -3639,7 +3879,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
         _classificationRow(
           'Impacto',
           DropdownButtonFormField<String>(
-            value: _impact,
+            initialValue: _impact,
             isExpanded: true,
             menuMaxHeight: 360,
             borderRadius: BorderRadius.circular(12),
@@ -3865,7 +4105,7 @@ class _MaintenancePageState extends State<MaintenancePage> {
                     : (row['tech_name'] ?? '').toString(),
               ),
               subtitle: Text(
-                '${start == null ? '-' : _fmtDateTime(start)} -> ${end == null ? '-' : _fmtDateTime(end)} · ${mins} min',
+                '${start == null ? '-' : _fmtDateTime(start)} -> ${end == null ? '-' : _fmtDateTime(end)} · $mins min',
               ),
               trailing: Wrap(
                 spacing: 2,
@@ -3993,7 +4233,7 @@ Future<T?> _showMaintenanceDialog<T>({
 }) {
   return showDialog<T>(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.28),
+    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       return Theme(
         data: Theme.of(dialogContext).copyWith(
@@ -4001,13 +4241,13 @@ Future<T?> _showMaintenanceDialog<T>({
             backgroundColor: const Color(0xFFF4FAF8),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(22),
-              side: BorderSide(color: Colors.white.withOpacity(0.72)),
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.72)),
             ),
           ),
           inputDecorationTheme: InputDecorationTheme(
             isDense: true,
             filled: true,
-            fillColor: Colors.white.withOpacity(0.92),
+            fillColor: Colors.white.withValues(alpha: 0.92),
             contentPadding: const EdgeInsets.symmetric(
               horizontal: 12,
               vertical: 11,
@@ -4015,19 +4255,19 @@ Future<T?> _showMaintenanceDialog<T>({
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(
-                color: const Color(0xFF6BA8FF).withOpacity(0.34),
+                color: const Color(0xFF6BA8FF).withValues(alpha: 0.34),
               ),
             ),
             enabledBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(
-                color: const Color(0xFF6BA8FF).withOpacity(0.34),
+                color: const Color(0xFF6BA8FF).withValues(alpha: 0.34),
               ),
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
               borderSide: BorderSide(
-                color: const Color(0xFF0B72FF).withOpacity(0.84),
+                color: const Color(0xFF0B72FF).withValues(alpha: 0.84),
                 width: 1.2,
               ),
             ),
@@ -4099,7 +4339,7 @@ Future<TimeOfDay?> _showMaintenanceTimePicker(
             backgroundColor: const Color(0xFFF4FAF8),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(22),
-              side: BorderSide(color: Colors.white.withOpacity(0.72)),
+              side: BorderSide(color: Colors.white.withValues(alpha: 0.72)),
             ),
           ),
         ),
@@ -4121,20 +4361,24 @@ InputDecoration _maintenanceInputDecoration({
     prefixIcon: prefixIcon,
     isDense: isDense,
     filled: true,
-    fillColor: Colors.white.withOpacity(0.34),
+    fillColor: Colors.white.withValues(alpha: 0.34),
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: const Color(0xFF6BA8FF).withOpacity(0.45)),
+      borderSide: BorderSide(
+        color: const Color(0xFF6BA8FF).withValues(alpha: 0.45),
+      ),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
-      borderSide: BorderSide(color: const Color(0xFF6BA8FF).withOpacity(0.45)),
+      borderSide: BorderSide(
+        color: const Color(0xFF6BA8FF).withValues(alpha: 0.45),
+      ),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(12),
       borderSide: BorderSide(
-        color: const Color(0xFF0B72FF).withOpacity(0.84),
+        color: const Color(0xFF0B72FF).withValues(alpha: 0.84),
         width: 1.2,
       ),
     ),
@@ -4158,8 +4402,8 @@ ButtonStyle _maintenanceDialogFilledButtonStyle() {
 ButtonStyle _maintenanceDialogOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF2A4B49),
-    side: BorderSide(color: const Color(0xFF2A4B49).withOpacity(0.25)),
-    backgroundColor: Colors.white.withOpacity(0.40),
+    side: BorderSide(color: const Color(0xFF2A4B49).withValues(alpha: 0.25)),
+    backgroundColor: Colors.white.withValues(alpha: 0.40),
   );
 }
 

@@ -8,13 +8,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../auth/auth_gate.dart';
+import '../auth/auth_access.dart';
+import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
+import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../shared/page_routes.dart';
-import '../shared/operational_ui/operational_widgets.dart';
+import '../shared/app_ui/app_ui_widgets.dart';
 import 'inventory_movements_grid.dart';
 import 'services_page.dart';
+import 'warehouse_page.dart';
 import 'weighings_page.dart';
 import 'services_shell.dart';
 
@@ -48,36 +51,7 @@ const List<_MaterialOption> _kInventorySummaryMaterials = [
   _MaterialOption('PLASTIC', 'Plástico'),
 ];
 
-const List<_MaterialOption> _kInputMaterials = [
-  _MaterialOption('CARDBOARD_BULK_NATIONAL', 'Granel nacional'),
-  _MaterialOption('CARDBOARD_BULK_AMERICAN', 'Granel americano'),
-  _MaterialOption('SCRAP', 'Chatarra'),
-];
-
-const List<_MaterialOption> _kOutputMaterials = [
-  _MaterialOption('BALE_NATIONAL', 'Paca nacional'),
-  _MaterialOption('BALE_AMERICAN', 'Paca americana'),
-  _MaterialOption('BALE_CLEAN', 'Paca limpia'),
-  _MaterialOption('BALE_TRASH', 'Paca basura'),
-  _MaterialOption('SCRAP', 'Chatarra'),
-];
-
-const List<_MaterialOption> _kBaleMaterials = [
-  _MaterialOption('BALE_NATIONAL', 'Paca nacional'),
-  _MaterialOption('BALE_AMERICAN', 'Paca americana'),
-  _MaterialOption('BALE_CLEAN', 'Paca limpia'),
-  _MaterialOption('BALE_TRASH', 'Paca basura'),
-];
-
-const List<_ShiftOption> _kShifts = [
-  _ShiftOption('DAY', 'Día'),
-  _ShiftOption('NIGHT', 'Noche'),
-];
-
-Future<void> _inventoryLogoutFlow(
-  BuildContext context,
-  SupabaseClient supa,
-) async {
+Future<void> _inventoryLogoutFlow(BuildContext context) async {
   final ok = await showDialog<bool>(
     context: context,
     builder: (dialogContext) => AlertDialog(
@@ -96,22 +70,16 @@ Future<void> _inventoryLogoutFlow(
     ),
   );
   if (ok != true) return;
-
-  await supa.auth.signOut();
   if (!context.mounted) return;
-  Navigator.of(
-    context,
-  ).pushAndRemoveUntil(appPageRoute(page: const AuthGate()), (_) => false);
+  await signOutAndRouteToLogin(context);
 }
 
 Future<void> _inventoryGoToDashboardFlow(
   BuildContext context,
   SupabaseClient supa,
 ) async {
-  final user = supa.auth.currentUser;
-  final email = user?.email?.toLowerCase();
-  final allowed = {'operacion@dicsamx.com', 'administracion@dicsamx.com'};
-  if (email == null || !allowed.contains(email)) {
+  final profile = await AuthAccess.resolveCurrentProfile();
+  if (!AuthAccess.canAccessDashboard(profile)) {
     if (context.mounted) {
       ScaffoldMessenger.of(
         context,
@@ -135,6 +103,38 @@ Future<void> _inventoryGoToDashboardFlow(
   nav.push(
     appPageRoute(
       page: const DashboardPage(instantOpen: true),
+      duration: const Duration(milliseconds: 420),
+      reverseDuration: const Duration(milliseconds: 360),
+    ),
+  );
+}
+
+Future<void> _inventoryGoToGeneralDashboardFlow(BuildContext context) async {
+  final profile = await AuthAccess.resolveCurrentProfile();
+  if (!AuthAccess.canAccessGeneralDashboard(profile)) {
+    if (context.mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Acceso no autorizado')));
+    }
+    return;
+  }
+
+  if (!context.mounted) return;
+  final nav = Navigator.of(context);
+  if (nav.canPop()) {
+    nav.pushReplacement(
+      appPageRoute(
+        page: const GeneralDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+    return;
+  }
+  nav.push(
+    appPageRoute(
+      page: const GeneralDashboardPage(instantOpen: true),
       duration: const Duration(milliseconds: 420),
       reverseDuration: const Duration(milliseconds: 360),
     ),
@@ -167,8 +167,6 @@ class _InventoryPageState extends State<InventoryPage>
   static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
   static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
 
-  Map<String, dynamic>? _widgetRow;
-  List<Map<String, dynamic>> _inventoryRows = [];
   InventoryGridTopBarData? _inputsTopBar;
   InventoryGridTopBarData? _outputsTopBar;
 
@@ -317,8 +315,6 @@ class _InventoryPageState extends State<InventoryPage>
       }
       if (!mounted) return false;
       setState(() {
-        _widgetRow = widgetRow;
-        _inventoryRows = nextRows;
         _summarySnapshotSignature = nextSignature;
       });
       return true;
@@ -341,11 +337,15 @@ class _InventoryPageState extends State<InventoryPage>
   }
 
   Future<void> _logout() async {
-    await _inventoryLogoutFlow(context, supa);
+    await _inventoryLogoutFlow(context);
   }
 
   Future<void> _goToDashboard() async {
     await _inventoryGoToDashboardFlow(context, supa);
+  }
+
+  Future<void> _goToGeneralDashboard() async {
+    await _inventoryGoToGeneralDashboardFlow(context);
   }
 
   Future<void> _goToServices() async {
@@ -364,6 +364,17 @@ class _InventoryPageState extends State<InventoryPage>
     Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const InventoryProductionPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToInventory() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const InventoryStockPage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
@@ -392,6 +403,17 @@ class _InventoryPageState extends State<InventoryPage>
     );
   }
 
+  Future<void> _goToWarehouse() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const WarehousePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return DefaultTabController(
@@ -400,23 +422,39 @@ class _InventoryPageState extends State<InventoryPage>
         headerTitle: 'Entradas y Salidas',
         activeOverlayModule: ServicesOverlayNavModule.entradasSalidas,
         onLogout: _logout,
+        onGoToGeneralDashboard: _goToGeneralDashboard,
         onGoToOperacion: _goToDashboard,
+        onGoToEntriesAndOutputs: () async {},
+        onGoToInventory: _goToInventory,
         onGoToServices: _goToServices,
         onGoToProduction: _goToProduction,
         onGoToWeighings: _goToWeighings,
         onGoToMaintenance: _goToMaintenance,
+        onGoToWarehouse: _goToWarehouse,
         onGoToCatalogs: null,
+        topContent: Builder(
+          builder: (context) {
+            final tc = DefaultTabController.of(context);
+            final activeData = tc.index == 0 ? _inputsTopBar : _outputsTopBar;
+            if (activeData == null) return const SizedBox.shrink();
+            return AnimatedBuilder(
+              animation: tc.animation!,
+              builder: (context, child) {
+                final current = tc.index == 0 ? _inputsTopBar : _outputsTopBar;
+                if (current == null) return const SizedBox.shrink();
+                return InventoryGridTopBar(data: current, showMetric: false);
+              },
+            );
+          },
+        ),
         child: _loading
             ? const Center(child: CircularProgressIndicator())
             : Builder(
                 builder: (tabContext) {
                   final tabController = DefaultTabController.of(tabContext);
-                  if (tabController == null) {
-                    return const SizedBox.shrink();
-                  }
                   return AnimatedBuilder(
                     animation: tabController.animation!,
-                    builder: (_, __) {
+                    builder: (context, child) {
                       final currentData = tabController.index == 0
                           ? _inputsTopBar
                           : _outputsTopBar;
@@ -490,22 +528,6 @@ class _InventoryPageState extends State<InventoryPage>
                   );
                 },
               ),
-        topContent: Builder(
-          builder: (context) {
-            final tc = DefaultTabController.of(context);
-            if (tc == null) return const SizedBox.shrink();
-            final activeData = tc.index == 0 ? _inputsTopBar : _outputsTopBar;
-            if (activeData == null) return const SizedBox.shrink();
-            return AnimatedBuilder(
-              animation: tc.animation!,
-              builder: (_, __) {
-                final current = tc.index == 0 ? _inputsTopBar : _outputsTopBar;
-                if (current == null) return const SizedBox.shrink();
-                return InventoryGridTopBar(data: current, showMetric: false);
-              },
-            );
-          },
-        ),
       ),
     );
   }
@@ -527,122 +549,6 @@ class _InventoryPageState extends State<InventoryPage>
       onChanged: () => _loadAll(showRefreshing: true),
     );
   }
-
-  Widget _buildProductionTab() {
-    return InventoryProductionGrid(
-      onChanged: () => _loadAll(showRefreshing: true),
-    );
-  }
-
-  Widget _buildInventoryTab() {
-    final avgBaleWeight = _parseDouble(_inventoryAvgBaleWeightC.text) ?? 850;
-    final bulkKg = _pickNum(_widgetRow, const [
-      'total_bulk_kg',
-      'bulk_kg',
-      'total_granel_kg',
-      'granel_kg',
-    ]);
-    final balesKg = _pickNum(_widgetRow, const [
-      'total_bales_kg',
-      'bales_kg',
-      'total_pacas_kg',
-      'pacas_kg',
-    ]);
-    final cardboardKg = _pickNum(_widgetRow, const [
-      'total_cardboard_kg',
-      'cardboard_kg',
-      'total_carton_kg',
-      'carton_kg',
-    ]);
-    final scrapKg = _pickNum(_widgetRow, const ['total_scrap_kg', 'scrap_kg']);
-    final estimatedBales = avgBaleWeight > 0 ? (balesKg / avgBaleWeight) : 0;
-
-    return ListView(
-      padding: EdgeInsets.zero,
-      children: [
-        _SectionCard(
-          title: 'Inventario actual',
-          subtitle:
-              'Basado en `opening_balances` + `movements` + `production_runs` (kg)',
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  _MetricCard(
-                    label: 'Granel total',
-                    value: _formatKg(bulkKg),
-                    icon: Icons.grain_rounded,
-                  ),
-                  _MetricCard(
-                    label: 'Pacas total',
-                    value: _formatKg(balesKg),
-                    icon: Icons.inventory_2_rounded,
-                  ),
-                  _MetricCard(
-                    label: 'Cartón total',
-                    value: _formatKg(cardboardKg),
-                    icon: Icons.scale_rounded,
-                  ),
-                  _MetricCard(
-                    label: 'Chatarra',
-                    value: _formatKg(scrapKg),
-                    icon: Icons.auto_delete_rounded,
-                  ),
-                  _MetricCard(
-                    label: 'Pacas estimadas',
-                    value: estimatedBales.toStringAsFixed(1),
-                    caption:
-                        'Asume ${avgBaleWeight.toStringAsFixed(0)} kg/paca',
-                    icon: Icons.calculate_rounded,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  _TextFieldBox(
-                    label: 'Promedio para estimar pacas',
-                    controller: _inventoryAvgBaleWeightC,
-                    hint: '850',
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    width: 260,
-                    onChanged: (_) => setState(() {}),
-                  ),
-                  const _InlineTip(
-                    text:
-                        'El inventario oficial sigue en kg. Esta caja solo afecta el cálculo visual de pacas estimadas.',
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        _SectionCard(
-          title: 'Detalles',
-          subtitle: '',
-          child: _InventorySummaryTable(rows: _inventoryRows),
-        ),
-        const SizedBox(height: 12),
-        const _SectionCard(
-          title: 'Corte inicial',
-          subtitle: 'Recordatorio operativo',
-          child: _InlineTip(
-            text:
-                'Para que el dashboard muestre todo correctamente, registra `opening_balances` para todos los materiales (aunque sea 0 kg).',
-          ),
-        ),
-      ],
-    );
-  }
 }
 
 class _InventoryFolderTabs extends StatelessWidget {
@@ -658,7 +564,7 @@ class _InventoryFolderTabs extends StatelessWidget {
       required String label,
     }) {
       final selected = controller.index == index;
-      final railFill = Colors.white.withOpacity(0.22);
+      final railFill = Colors.white.withValues(alpha: 0.22);
       final activeFill = const Color(0x55FFFFFF);
 
       return Expanded(
@@ -686,7 +592,7 @@ class _InventoryFolderTabs extends StatelessWidget {
                       ),
                       border: Border.all(
                         color: selected
-                            ? Colors.white.withOpacity(0.44)
+                            ? Colors.white.withValues(alpha: 0.44)
                             : Colors.transparent,
                       ),
                     ),
@@ -740,8 +646,8 @@ class _InventoryFolderTabs extends StatelessWidget {
 
     return AnimatedBuilder(
       animation: controller.animation!,
-      builder: (_, __) {
-        final railFill = Colors.white.withOpacity(0.22);
+      builder: (context, child) {
+        final railFill = Colors.white.withValues(alpha: 0.22);
         return SizedBox(
           height: 64,
           child: Stack(
@@ -786,7 +692,6 @@ class _InventoryStockTabs extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final controller = DefaultTabController.of(context);
-    if (controller == null) return const SizedBox.shrink();
     return Align(
       alignment: Alignment.centerLeft,
       child: SizedBox(
@@ -818,13 +723,47 @@ class InventoryProductionPage extends StatefulWidget {
       _InventoryProductionPageState();
 }
 
-class _InventoryProductionPageState extends State<InventoryProductionPage> {
+class _InventoryProductionPageState extends State<InventoryProductionPage>
+    with SingleTickerProviderStateMixin {
   final SupabaseClient supa = Supabase.instance.client;
-  InventoryGridTopBarData? _topBarData;
+  late final TabController _tabController;
+  final Map<int, InventoryGridTopBarData?> _topBarDataByTab =
+      <int, InventoryGridTopBarData?>{};
 
-  Future<void> _logout() => _inventoryLogoutFlow(context, supa);
+  InventoryGridTopBarData? get _currentTopBarData =>
+      _topBarDataByTab[_tabController.index];
+
+  void _handleTopBarChanged(int tabIndex, InventoryGridTopBarData data) {
+    if (!mounted) return;
+    setState(() => _topBarDataByTab[tabIndex] = data);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 3, vsync: this)
+      ..addListener(_handleTabIndexChanged);
+  }
+
+  void _handleTabIndexChanged() {
+    if (!mounted || _tabController.indexIsChanging) return;
+    setState(() {});
+  }
+
+  @override
+  void dispose() {
+    _tabController
+      ..removeListener(_handleTabIndexChanged)
+      ..dispose();
+    super.dispose();
+  }
+
+  Future<void> _logout() => _inventoryLogoutFlow(context);
 
   Future<void> _goToDashboard() => _inventoryGoToDashboardFlow(context, supa);
+
+  Future<void> _goToGeneralDashboard() =>
+      _inventoryGoToGeneralDashboardFlow(context);
 
   Future<void> _goToEntriesAndOutputs() async {
     if (!mounted) return;
@@ -842,6 +781,17 @@ class _InventoryProductionPageState extends State<InventoryProductionPage> {
     Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const ServicesPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToInventory() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const InventoryStockPage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
@@ -870,41 +820,92 @@ class _InventoryProductionPageState extends State<InventoryProductionPage> {
     );
   }
 
+  Future<void> _goToWarehouse() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const WarehousePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ServicesShell(
       headerTitle: 'Producción',
       activeOverlayModule: ServicesOverlayNavModule.produccion,
       onLogout: _logout,
+      onGoToGeneralDashboard: _goToGeneralDashboard,
       onGoToOperacion: _goToDashboard,
       onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
+      onGoToInventory: _goToInventory,
       onGoToServices: _goToServices,
       onGoToWeighings: _goToWeighings,
       onGoToMaintenance: _goToMaintenance,
+      onGoToWarehouse: _goToWarehouse,
       onGoToCatalogs: null,
-      topContent: _topBarData == null
+      topContent: _currentTopBarData == null
           ? null
-          : InventoryGridTopBar(data: _topBarData!, showMetric: false),
+          : InventoryGridTopBar(data: _currentTopBarData!, showMetric: false),
       child: Padding(
         padding: const EdgeInsets.only(top: 8),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            if (_topBarData != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: SizedBox(
+                width: 520,
+                child: OperationalFolderTabs(
+                  controller: _tabController,
+                  maxWidth: 520,
+                  items: const [
+                    OperationalFolderTabItem(
+                      label: 'Cartón y caple',
+                      icon: Icons.view_in_ar_rounded,
+                    ),
+                    OperationalFolderTabItem(
+                      label: 'Chatarra',
+                      icon: Icons.construction_rounded,
+                    ),
+                    OperationalFolderTabItem(
+                      label: 'Papel',
+                      icon: Icons.description_rounded,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            if (_currentTopBarData != null)
               Padding(
                 padding: const EdgeInsets.only(bottom: 8),
                 child: InventoryGridTopBar(
-                  data: _topBarData!,
+                  data: _currentTopBarData!,
                   showActions: false,
                 ),
               ),
             Expanded(
-              child: InventoryProductionGrid(
-                showTopBarChrome: false,
-                onTopBarChanged: (data) {
-                  if (!mounted) return;
-                  setState(() => _topBarData = data);
-                },
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  InventoryProductionGrid(
+                    showTopBarChrome: false,
+                    onTopBarChanged: (data) => _handleTopBarChanged(0, data),
+                  ),
+                  InventoryMaterialSeparationGrid(
+                    sourceMaterial: 'SCRAP',
+                    showTopBarChrome: false,
+                    onTopBarChanged: (data) => _handleTopBarChanged(1, data),
+                  ),
+                  InventoryMaterialSeparationGrid(
+                    sourceMaterial: 'PAPER',
+                    showTopBarChrome: false,
+                    onTopBarChanged: (data) => _handleTopBarChanged(2, data),
+                  ),
+                ],
               ),
             ),
           ],
@@ -1139,9 +1140,12 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     }
   }
 
-  Future<void> _logout() => _inventoryLogoutFlow(context, supa);
+  Future<void> _logout() => _inventoryLogoutFlow(context);
 
   Future<void> _goToDashboard() => _inventoryGoToDashboardFlow(context, supa);
+
+  Future<void> _goToGeneralDashboard() =>
+      _inventoryGoToGeneralDashboardFlow(context);
 
   Future<void> _goToEntriesAndOutputs() async {
     if (!mounted) return;
@@ -1194,6 +1198,110 @@ class _InventoryStockPageState extends State<InventoryStockPage>
         page: const MaintenancePage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToWarehouse() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const WarehousePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _showInventoryUsageGuide() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Instructivo de uso - Inventario'),
+        content: const SizedBox(
+          width: 620,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  '1) Para que sirve este modulo',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Este modulo no captura entradas ni salidas del dia. Aqui se consulta el inventario consolidado por periodo y se define la apertura mensual con la que arranca cada material.',
+                ),
+                SizedBox(height: 10),
+                Text(
+                  '2) Cuando se usa',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Se usa principalmente al inicio de mes para revisar o capturar aperturas, y durante el mes para validar existencias acumuladas entre una fecha inicial y una fecha de corte.',
+                ),
+                SizedBox(height: 10),
+                Text(
+                  '3) Como leer la pestaña Detalles',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'La pestaña Detalles muestra el inventario resultante del periodo seleccionado: apertura del mes + movimientos netos + entradas/salidas de producción = existencia final.',
+                ),
+                Text(
+                  'Si cambias el rango de fechas, cambias el corte del reporte, no el inventario guardado en base.',
+                ),
+                SizedBox(height: 10),
+                Text(
+                  '4) Como usar Opening balances',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Opening balances sirve para dejar fijo con que inventario arranca el mes por material. Esa captura debe hacerse una vez por periodo, normalmente con base en cierre del mes anterior o conteo validado.',
+                ),
+                Text(
+                  'Modificar una apertura cambia el punto de partida del inventario del mes; no sustituye movimientos diarios ya registrados.',
+                ),
+                SizedBox(height: 10),
+                Text(
+                  '5) Secuencia recomendada',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 4),
+                Text('1. Selecciona mes y fecha de corte.'),
+                Text(
+                  '2. Revisa Detalles para validar comportamiento por material.',
+                ),
+                Text(
+                  '3. En Opening balances captura o corrige aperturas del periodo si hace falta.',
+                ),
+                Text('4. Exporta CSV si necesitas conciliacion o respaldo.'),
+                SizedBox(height: 10),
+                Text(
+                  '6) Reglas importantes',
+                  style: TextStyle(fontWeight: FontWeight.w800),
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'No uses este modulo para ajustar consumo diario; eso se corrige en Entradas y Salidas, Produccion o Almacen, segun el origen.',
+                ),
+                Text(
+                  'Si una apertura se cambia a mitad de mes, el inventario consolidado del periodo tambien cambia.',
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Entendido'),
+          ),
+        ],
       ),
     );
   }
@@ -1398,17 +1506,12 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     } catch (e) {
       _toast('No se pudo cargar inventarios: $e');
     } finally {
-      if (!mounted) return;
-      setState(() {
-        _loading = false;
-      });
+      if (mounted) {
+        setState(() {
+          _loading = false;
+        });
+      }
     }
-  }
-
-  Future<Map<String, dynamic>?> _loadWidgetRow() async {
-    final rows = await supa.from('v_cardboard_widget').select();
-    if (rows.isNotEmpty) return rows.first;
-    return null;
   }
 
   Future<void> _ensureSitesLoaded() async {
@@ -1610,25 +1713,6 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     return false;
   }
 
-  Future<void> _pickPeriodMonth() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedPeriodMonth,
-      firstDate: DateTime(2020, 1, 1),
-      lastDate: DateTime(_today.year + 2, 12, 31),
-    );
-    if (picked == null || !mounted) return;
-    final nextPeriod = DateTime(picked.year, picked.month, 1);
-    final nextAsOf = _selectedAsOfDate.isBefore(nextPeriod)
-        ? nextPeriod
-        : _selectedAsOfDate;
-    setState(() {
-      _selectedPeriodMonth = nextPeriod;
-      _selectedAsOfDate = DateUtils.dateOnly(nextAsOf);
-    });
-    await _loadAll(showRefreshing: true);
-  }
-
   Future<void> _setPeriodMonth(DateTime nextPeriod) async {
     final normalized = DateTime(nextPeriod.year, nextPeriod.month, 1);
     final nextAsOf = _selectedAsOfDate.isBefore(normalized)
@@ -1638,20 +1722,6 @@ class _InventoryStockPageState extends State<InventoryStockPage>
       _selectedPeriodMonth = normalized;
       _selectedAsOfDate = DateUtils.dateOnly(nextAsOf);
     });
-    await _loadAll(showRefreshing: true);
-  }
-
-  Future<void> _pickAsOfDate() async {
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: _selectedAsOfDate.isBefore(_selectedPeriodMonth)
-          ? _selectedPeriodMonth
-          : _selectedAsOfDate,
-      firstDate: _selectedPeriodMonth,
-      lastDate: DateTime(_today.year + 2, 12, 31),
-    );
-    if (picked == null || !mounted) return;
-    setState(() => _selectedAsOfDate = DateUtils.dateOnly(picked));
     await _loadAll(showRefreshing: true);
   }
 
@@ -2169,7 +2239,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
   Widget _buildStockTopToolbar(TabController controller) {
     return AnimatedBuilder(
       animation: controller.animation!,
-      builder: (_, __) {
+      builder: (context, child) {
         final inventoryTab = controller.index == 0;
         final rowCount = inventoryTab
             ? _inventoryRows.length
@@ -2217,21 +2287,24 @@ class _InventoryStockPageState extends State<InventoryStockPage>
       child: ServicesShell(
         headerTitle: 'Inventario',
         activeOverlayModule: ServicesOverlayNavModule.inventario,
-        onRefresh: () => _loadAll(showRefreshing: true),
         onLogout: _logout,
+        onGoToGeneralDashboard: _goToGeneralDashboard,
         onGoToOperacion: _goToDashboard,
         onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
         onGoToProduction: _goToProduction,
+        onGoToInventory: () async {},
         onGoToServices: _goToServices,
         onGoToWeighings: _goToWeighings,
         onGoToMaintenance: _goToMaintenance,
+        onGoToWarehouse: _goToWarehouse,
+        onHeaderGuide: _showInventoryUsageGuide,
+        headerGuideLabel: 'Instructivo',
         onGoToCatalogs: null,
         topContent: _loading
             ? null
             : Builder(
                 builder: (context) {
                   final controller = DefaultTabController.of(context);
-                  if (controller == null) return const SizedBox.shrink();
                   return _buildStockTopToolbar(controller);
                 },
               ),
@@ -2673,10 +2746,12 @@ class _InventoryMonthlyCutBody extends StatelessWidget {
     required bool isLocked,
   }) async {
     var dialogRows = openingBalanceRows;
-    while (context.mounted) {
+    if (!context.mounted) return;
+    while (true) {
+      if (!context.mounted) break;
       final action = await showDialog<_OpeningDialogAction>(
         context: context,
-        barrierColor: Colors.black.withOpacity(0.22),
+        barrierColor: Colors.black.withValues(alpha: 0.22),
         builder: (dialogContext) {
           final commercialLabelsByCode = <String, String>{
             for (final item in commercialMaterials) item.code: item.name,
@@ -2753,60 +2828,6 @@ class _InventoryMonthlyCutBody extends StatelessWidget {
   }
 }
 
-class _InventoryHero extends StatelessWidget {
-  const _InventoryHero();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: _glassCardDecoration(),
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      child: Row(
-        children: [
-          Container(
-            width: 54,
-            height: 54,
-            decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.24),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withOpacity(0.48)),
-            ),
-            child: const Icon(
-              Icons.inventory_2_rounded,
-              color: Color(0xFF0B2B2B),
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 12),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Inventario de Cartón / Pacas',
-                  style: TextStyle(
-                    fontSize: 19,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF0B2B2B),
-                  ),
-                ),
-                SizedBox(height: 2),
-                Text(
-                  'Balance de masa en kg: entradas, producción, salidas e inventario actual',
-                  style: TextStyle(
-                    color: Color(0xCC0B2B2B),
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _OpeningBalancesFloatingDialog extends StatefulWidget {
   final List<Map<String, dynamic>> rows;
   final Map<String, String> commercialLabelsByCode;
@@ -2856,7 +2877,6 @@ class _OpeningBalancesFloatingDialogState
   final ScrollController _tableVerticalScroll = ScrollController();
   final ScrollController _tableHorizontalScroll = ScrollController();
   int _activeRowIndex = 0;
-  int _activeColumnIndex = 0;
   int _activeInsertColumn = 0;
   int? _selectionAnchorRowIndex;
   bool _insertRowActive = true;
@@ -2952,7 +2972,19 @@ class _OpeningBalancesFloatingDialogState
     if (!widget.editable) return;
     _gridFocusNode.unfocus();
     _insertFocusNode.requestFocus();
-    setState(() => _activeInsertColumn = 0);
+    setState(() {
+      _activeInsertColumn = 0;
+      _selectedIds.clear();
+      _selectionAnchorRowIndex = null;
+    });
+  }
+
+  void _clearGridSelectionForInsertRow() {
+    if (_selectedIds.isEmpty && _selectionAnchorRowIndex == null) return;
+    setState(() {
+      _selectedIds.clear();
+      _selectionAnchorRowIndex = null;
+    });
   }
 
   @override
@@ -3125,8 +3157,9 @@ class _OpeningBalancesFloatingDialogState
       if (materialQ.isNotEmpty) {
         final label = _materialLabel(row['material']?.toString()).toLowerCase();
         final raw = (row['material'] ?? '').toString().toLowerCase();
-        if (!label.contains(materialQ) && !raw.contains(materialQ))
+        if (!label.contains(materialQ) && !raw.contains(materialQ)) {
           return false;
+        }
       }
       if (commercialQ.isNotEmpty) {
         final code = (row['commercial_material_code'] ?? '').toString().trim();
@@ -3207,21 +3240,6 @@ class _OpeningBalancesFloatingDialogState
     }
   }
 
-  void _setHeaderFilters({
-    String? material,
-    String? commercial,
-    String? kg,
-    String? source,
-  }) {
-    setState(() {
-      if (material != null) _materialFilter = material;
-      if (commercial != null) _commercialFilter = commercial;
-      if (kg != null) _kgFilter = kg;
-      if (source != null) _sourceFilter = source;
-      _syncStateToVisibleRows();
-    });
-  }
-
   bool _hasOpeningActiveFilter(String key) {
     return (_openingColumnValueFilters[key]?.isNotEmpty ?? false) ||
         switch (key) {
@@ -3239,7 +3257,7 @@ class _OpeningBalancesFloatingDialogState
     };
     final result = await showDialog<Set<String>?>(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.22),
+      barrierColor: Colors.black.withValues(alpha: 0.22),
       builder: (dialogContext) {
         final localSelected = <String>{...initialSelected};
         String localSearch = '';
@@ -3488,7 +3506,7 @@ class _OpeningBalancesFloatingDialogState
   }) async {
     return showDialog<T>(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.22),
+      barrierColor: Colors.black.withValues(alpha: 0.22),
       builder: (dialogContext) {
         String localSearch = '';
         return StatefulBuilder(
@@ -3554,7 +3572,7 @@ class _OpeningBalancesFloatingDialogState
                                   borderRadius: BorderRadius.circular(12),
                                   hoverColor: const Color(
                                     0xFF0B72FF,
-                                  ).withOpacity(0.06),
+                                  ).withValues(alpha: 0.06),
                                   onTap: () =>
                                       Navigator.pop(dialogContext, item),
                                   child: Container(
@@ -4077,7 +4095,7 @@ class _OpeningBalancesFloatingDialogState
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: const Color(0xFF0B72FF).withOpacity(0.80),
+            color: const Color(0xFF0B72FF).withValues(alpha: 0.80),
             width: 1.15,
           ),
         ),
@@ -4101,6 +4119,7 @@ class _OpeningBalancesFloatingDialogState
             borderRadius: BorderRadius.circular(10),
             onTap: widget.editable
                 ? () {
+                    _clearGridSelectionForInsertRow();
                     _insertFocusNode.requestFocus();
                     setState(() => _activeInsertColumn = col);
                     onTap();
@@ -4110,9 +4129,9 @@ class _OpeningBalancesFloatingDialogState
               height: 34,
               padding: const EdgeInsets.symmetric(horizontal: 8),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.62),
+                color: Colors.white.withValues(alpha: 0.62),
                 borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: Colors.white.withOpacity(0.62)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.62)),
               ),
               child: Row(
                 children: [
@@ -4149,7 +4168,7 @@ class _OpeningBalancesFloatingDialogState
         borderRadius: BorderRadius.circular(14),
         side: BorderSide(
           color: _insertRowActive
-              ? const Color(0xFF3C8DCC).withOpacity(0.55)
+              ? const Color(0xFF3C8DCC).withValues(alpha: 0.55)
               : Colors.transparent,
         ),
       ),
@@ -4224,6 +4243,7 @@ class _OpeningBalancesFloatingDialogState
                       ),
                       decoration: _openingInlineFieldDecoration(hintText: '0'),
                       onTap: () {
+                        _clearGridSelectionForInsertRow();
                         if (!_insertKgFocusNode.hasFocus) {
                           _insertKgFocusNode.requestFocus();
                         }
@@ -4268,11 +4288,13 @@ class _OpeningBalancesFloatingDialogState
                             height: 34,
                             decoration: BoxDecoration(
                               color: canInsert
-                                  ? const Color(0xFF19C37D).withOpacity(0.92)
-                                  : Colors.white.withOpacity(0.35),
+                                  ? const Color(
+                                      0xFF19C37D,
+                                    ).withValues(alpha: 0.92)
+                                  : Colors.white.withValues(alpha: 0.35),
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.52),
+                                color: Colors.white.withValues(alpha: 0.52),
                               ),
                             ),
                             child: Icon(
@@ -4290,122 +4312,6 @@ class _OpeningBalancesFloatingDialogState
                 ),
               ],
             ),
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildOpeningHeaderFiltersRow() {
-    return Card(
-      margin: EdgeInsets.zero,
-      elevation: 0,
-      color: const Color(0xD7E8F6F5),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: SizedBox(
-        height: 50,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-          child: Row(
-            children: [
-              SizedBox(
-                width: _kOpeningTableMaterialColW,
-                child: TextField(
-                  controller: _materialFilterC,
-                  decoration: _openingHeaderFilterDecoration(
-                    hintText: 'Filtrar material',
-                  ),
-                  onChanged: (v) => _setHeaderFilters(material: v),
-                ),
-              ),
-              SizedBox(
-                width: _kOpeningTableCommercialColW,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: TextField(
-                    controller: _commercialFilterC,
-                    decoration: _openingHeaderFilterDecoration(
-                      hintText: 'Filtrar comercial',
-                    ),
-                    onChanged: (v) => _setHeaderFilters(commercial: v),
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: _kOpeningTableKgColW,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: TextField(
-                    controller: _kgFilterC,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
-                    ),
-                    decoration: _openingHeaderFilterDecoration(
-                      hintText: 'Filtrar kg',
-                    ),
-                    onChanged: (v) => _setHeaderFilters(kg: v),
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: _kOpeningTableSourceColW,
-                child: Padding(
-                  padding: const EdgeInsets.only(left: 4),
-                  child: TextField(
-                    controller: _sourceFilterC,
-                    decoration: _openingHeaderFilterDecoration(
-                      hintText: 'Filtrar origen',
-                    ),
-                    onChanged: (v) => _setHeaderFilters(source: v),
-                  ),
-                ),
-              ),
-              SizedBox(
-                width: _kOpeningTableLockedColW,
-                child: const Padding(
-                  padding: EdgeInsets.only(left: 4),
-                  child: SizedBox.shrink(),
-                ),
-              ),
-              const SizedBox(width: 10),
-              SizedBox(
-                width: _kOpeningTableActionsColW,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: InkWell(
-                    borderRadius: BorderRadius.circular(10),
-                    onTap: () {
-                      _materialFilterC.clear();
-                      _commercialFilterC.clear();
-                      _kgFilterC.clear();
-                      _sourceFilterC.clear();
-                      _setHeaderFilters(
-                        material: '',
-                        commercial: '',
-                        kg: '',
-                        source: '',
-                      );
-                    },
-                    child: Container(
-                      width: 34,
-                      height: 34,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.55),
-                        borderRadius: BorderRadius.circular(10),
-                        border: Border.all(
-                          color: Colors.white.withOpacity(0.65),
-                        ),
-                      ),
-                      child: const Icon(
-                        Icons.filter_alt_off_rounded,
-                        size: 18,
-                        color: Color(0xFF0B2B2B),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
           ),
         ),
       ),
@@ -4524,10 +4430,14 @@ class _OpeningBalancesFloatingDialogState
                           vertical: 10,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFFFF3D6).withOpacity(0.82),
+                          color: const Color(
+                            0xFFFFF3D6,
+                          ).withValues(alpha: 0.82),
                           borderRadius: BorderRadius.circular(12),
                           border: Border.all(
-                            color: const Color(0xFFE4BE72).withOpacity(0.7),
+                            color: const Color(
+                              0xFFE4BE72,
+                            ).withValues(alpha: 0.7),
                           ),
                         ),
                         child: Row(
@@ -4660,16 +4570,12 @@ class _OpeningDialogAction {
   _OpeningDialogAction.add([Map<String, dynamic>? payload])
     : this._(_OpeningDialogActionKind.add, payload: payload);
   const _OpeningDialogAction.close() : this._(_OpeningDialogActionKind.close);
-  _OpeningDialogAction.edit(Map<String, dynamic> row)
-    : this._(_OpeningDialogActionKind.edit, row: row);
   _OpeningDialogAction.inlineSave(
     Map<String, dynamic> row,
     Map<String, dynamic> payload,
   ) : this._(_OpeningDialogActionKind.inlineSave, row: row, payload: payload);
   _OpeningDialogAction.delete(Map<String, dynamic> row)
     : this._(_OpeningDialogActionKind.delete, row: row);
-  _OpeningDialogAction.bulkEdit(List<Map<String, dynamic>> rows)
-    : this._(_OpeningDialogActionKind.bulkEdit, rows: rows);
   _OpeningDialogAction.bulkDelete(List<Map<String, dynamic>> rows)
     : this._(_OpeningDialogActionKind.bulkDelete, rows: rows);
 }
@@ -4763,14 +4669,18 @@ class _TextFieldBox extends StatelessWidget {
               hintText: hint,
               isDense: true,
               filled: true,
-              fillColor: Colors.white.withOpacity(0.64),
+              fillColor: Colors.white.withValues(alpha: 0.64),
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.8)),
+                borderSide: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.8),
+                ),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.72)),
+                borderSide: BorderSide(
+                  color: Colors.white.withValues(alpha: 0.72),
+                ),
               ),
               focusedBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(12),
@@ -4778,66 +4688,6 @@ class _TextFieldBox extends StatelessWidget {
                   color: Color(0xFF0B72FF),
                   width: 1.2,
                 ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _DateField extends StatelessWidget {
-  final String label;
-  final DateTime value;
-  final VoidCallback onTap;
-
-  const _DateField({
-    required this.label,
-    required this.value,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 180,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF0B2B2B),
-            ),
-          ),
-          const SizedBox(height: 6),
-          InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: onTap,
-            child: Container(
-              height: 46,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.64),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.72)),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.event_rounded,
-                    size: 18,
-                    color: Color(0xFF0B2B2B),
-                  ),
-                  const SizedBox(width: 8),
-                  Text(
-                    _formatDate(value),
-                    style: const TextStyle(fontWeight: FontWeight.w700),
-                  ),
-                ],
               ),
             ),
           ),
@@ -4885,7 +4735,7 @@ class _MonthDropdownField extends StatelessWidget {
               BoxShadow(
                 blurRadius: 10,
                 offset: const Offset(0, 4),
-                color: Colors.black.withOpacity(0.10),
+                color: Colors.black.withValues(alpha: 0.10),
               ),
             ],
           ),
@@ -4965,7 +4815,7 @@ class _DateRangeField extends StatelessWidget {
               BoxShadow(
                 blurRadius: 10,
                 offset: const Offset(0, 4),
-                color: Colors.black.withOpacity(0.10),
+                color: Colors.black.withValues(alpha: 0.10),
               ),
             ],
           ),
@@ -5003,101 +4853,6 @@ class _DateRangeField extends StatelessWidget {
   }
 }
 
-class _DropdownField<T> extends StatelessWidget {
-  final String label;
-  final T value;
-  final List<DropdownMenuItem<T>> items;
-  final ValueChanged<T?> onChanged;
-
-  const _DropdownField({
-    required this.label,
-    required this.value,
-    required this.items,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: 230,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF0B2B2B),
-            ),
-          ),
-          const SizedBox(height: 6),
-          DropdownButtonFormField<T>(
-            value: value,
-            items: items,
-            onChanged: onChanged,
-            decoration: InputDecoration(
-              isDense: true,
-              filled: true,
-              fillColor: Colors.white.withOpacity(0.64),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.8)),
-              ),
-              enabledBorder: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(12),
-                borderSide: BorderSide(color: Colors.white.withOpacity(0.72)),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _ComputedBadge extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _ComputedBadge({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 250,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.36),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.48)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Color(0xCC0B2B2B),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF0B2B2B),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _MetricCard extends StatelessWidget {
   final String label;
   final String value;
@@ -5121,132 +4876,6 @@ class _MetricCard extends StatelessWidget {
       width: 220,
       height: caption == null ? 64 : 70,
       margin: EdgeInsets.zero,
-    );
-  }
-}
-
-class _InlineTip extends StatelessWidget {
-  final String text;
-
-  const _InlineTip({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(maxWidth: 700),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.30),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.42)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Padding(
-            padding: EdgeInsets.only(top: 1),
-            child: Icon(Icons.info_outline_rounded, size: 18),
-          ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                color: Color(0xFF0B2B2B),
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MovementTable extends StatelessWidget {
-  final List<Map<String, dynamic>> rows;
-  const _MovementTable({required this.rows});
-
-  @override
-  Widget build(BuildContext context) {
-    if (rows.isEmpty) {
-      return const _EmptyState(message: 'Sin movimientos registrados');
-    }
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        headingRowHeight: 42,
-        dataRowMinHeight: 42,
-        dataRowMaxHeight: 52,
-        columns: const [
-          DataColumn(label: Text('Fecha')),
-          DataColumn(label: Text('Material')),
-          DataColumn(label: Text('Kg')),
-          DataColumn(label: Text('Contraparte')),
-          DataColumn(label: Text('Referencia')),
-        ],
-        rows: rows
-            .map(
-              (r) => DataRow(
-                cells: [
-                  DataCell(Text(_formatDateFromAny(r['op_date']))),
-                  DataCell(Text(_materialLabel(r['material']?.toString()))),
-                  DataCell(Text(_formatKg(_num(r['weight_kg'])))),
-                  DataCell(Text((r['counterparty'] ?? '').toString())),
-                  DataCell(Text((r['reference'] ?? '').toString())),
-                ],
-              ),
-            )
-            .toList(),
-      ),
-    );
-  }
-}
-
-class _ProductionTable extends StatelessWidget {
-  final List<Map<String, dynamic>> rows;
-  const _ProductionTable({required this.rows});
-
-  @override
-  Widget build(BuildContext context) {
-    if (rows.isEmpty) {
-      return const _EmptyState(message: 'Sin producción registrada');
-    }
-
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: DataTable(
-        headingRowHeight: 42,
-        dataRowMinHeight: 42,
-        dataRowMaxHeight: 56,
-        columns: const [
-          DataColumn(label: Text('Fecha')),
-          DataColumn(label: Text('Turno')),
-          DataColumn(label: Text('Paca')),
-          DataColumn(label: Text('Pacas')),
-          DataColumn(label: Text('Prom. kg')),
-          DataColumn(label: Text('Producido kg')),
-          DataColumn(label: Text('Granel origen')),
-        ],
-        rows: rows
-            .map(
-              (r) => DataRow(
-                cells: [
-                  DataCell(Text(_formatDateFromAny(r['op_date']))),
-                  DataCell(Text(_shiftLabel(r['shift']?.toString()))),
-                  DataCell(
-                    Text(_materialLabel(r['bale_material']?.toString())),
-                  ),
-                  DataCell(Text('${r['bale_count'] ?? ''}')),
-                  DataCell(Text(_formatKg(_num(r['avg_bale_weight_kg'])))),
-                  DataCell(Text(_formatKg(_num(r['produced_weight_kg'])))),
-                  DataCell(Text(_materialLabel(r['source_bulk']?.toString()))),
-                ],
-              ),
-            )
-            .toList(),
-      ),
     );
   }
 }
@@ -5323,7 +4952,6 @@ const double _kOpeningTableOuterHorizontalPadding = 16;
 const double _kOpeningTableScrollPaddingTop = 8;
 const double _kOpeningTableHeaderGap = 8;
 const double _kOpeningTableMetaRowGap = 6;
-const double _kOpeningTableFilterRowHeight = 50;
 const double _kOpeningTableInsertRowHeight = 54;
 const double _kOpeningTableRowGap = 6;
 const double _kOpeningTableRowVisualHeight = 56;
@@ -5344,14 +4972,6 @@ const Color _kFilterAccent = Color(0xFF5A9C9A);
 const Color _kFilterAccentSoft = Color(0xFFD6E6E6);
 const double _kOpeningTableRowExtent =
     _kOpeningTableRowVisualHeight + _kOpeningTableRowGap;
-const List<String> _kOpeningColumnLabels = <String>[
-  'MATERIAL',
-  'MATERIAL COMERCIAL',
-  'APERTURA KG',
-  'ORIGEN',
-  'BLOQUEADO',
-  'ACCIONES',
-];
 
 class _OpeningBalancesTable extends StatelessWidget {
   final List<Map<String, dynamic>> rows;
@@ -5414,9 +5034,9 @@ class _OpeningBalancesTable extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.10),
+        color: Colors.white.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.22)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
       ),
       child: LayoutBuilder(
         builder: (context, constraints) {
@@ -5552,7 +5172,7 @@ class _OpeningBalancesHeaderRow extends StatelessWidget {
     return Card(
       margin: EdgeInsets.zero,
       elevation: 0,
-      color: Colors.black.withOpacity(0.03),
+      color: Colors.black.withValues(alpha: 0.03),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: SizedBox(
         height: _kOpeningTableHeaderHeight,
@@ -5661,12 +5281,12 @@ class _OpeningHeaderCell extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: active
                       ? _kFilterAccent
-                      : _kFilterAccentSoft.withOpacity(0.35),
+                      : _kFilterAccentSoft.withValues(alpha: 0.35),
                   borderRadius: BorderRadius.circular(8),
                   border: Border.all(
                     color: active
-                        ? _kFilterAccent.withOpacity(0.55)
-                        : const Color(0xFF0B2B2B).withOpacity(0.15),
+                        ? _kFilterAccent.withValues(alpha: 0.55)
+                        : const Color(0xFF0B2B2B).withValues(alpha: 0.15),
                   ),
                 ),
                 child: Icon(
@@ -5742,7 +5362,6 @@ class _OpeningBalancesDataRow extends StatefulWidget {
 class _OpeningBalancesDataRowState extends State<_OpeningBalancesDataRow> {
   bool _hovering = false;
   bool _editing = false;
-  int _activeInlineCell = 0; // only KG editable
   late final TextEditingController _weightC;
   final FocusNode _weightFocusNode = FocusNode(debugLabel: 'open_weight');
 
@@ -5767,7 +5386,6 @@ class _OpeningBalancesDataRowState extends State<_OpeningBalancesDataRow> {
     _weightC.text = weight == null ? '' : weight.toStringAsFixed(2);
     setState(() {
       _editing = true;
-      _activeInlineCell = 0;
     });
     if (requestFocus) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -5837,7 +5455,9 @@ class _OpeningBalancesDataRowState extends State<_OpeningBalancesDataRow> {
     final row = widget.row;
     final highlighted = widget.isSelected || _hovering;
     final rowBg = widget.isSelected
-        ? const Color(0xFF00A3FF).withOpacity(widget.isActiveRow ? 0.16 : 0.12)
+        ? const Color(
+            0xFF00A3FF,
+          ).withValues(alpha: widget.isActiveRow ? 0.16 : 0.12)
         : _hovering
         ? const Color(0xFFE9F7EE)
         : Colors.white;
@@ -5854,7 +5474,7 @@ class _OpeningBalancesDataRowState extends State<_OpeningBalancesDataRow> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: const Color(0xFF0B72FF).withOpacity(0.85),
+            color: const Color(0xFF0B72FF).withValues(alpha: 0.85),
             width: 1.15,
           ),
         ),
@@ -5877,13 +5497,13 @@ class _OpeningBalancesDataRowState extends State<_OpeningBalancesDataRow> {
           child: InkWell(
             borderRadius: BorderRadius.circular(10),
             hoverColor: editableHover
-                ? const Color(0xFF0B72FF).withOpacity(0.08)
+                ? const Color(0xFF0B72FF).withValues(alpha: 0.08)
                 : Colors.transparent,
             splashColor: editableHover
-                ? const Color(0xFF0B72FF).withOpacity(0.10)
+                ? const Color(0xFF0B72FF).withValues(alpha: 0.10)
                 : Colors.transparent,
             highlightColor: editableHover
-                ? const Color(0xFF0B72FF).withOpacity(0.06)
+                ? const Color(0xFF0B72FF).withValues(alpha: 0.06)
                 : Colors.transparent,
             onTap: widget.onCellTap == null
                 ? null
@@ -5933,8 +5553,8 @@ class _OpeningBalancesDataRowState extends State<_OpeningBalancesDataRow> {
               borderRadius: BorderRadius.circular(14),
               side: BorderSide(
                 color: widget.isSelected
-                    ? const Color(0xFF00A3FF).withOpacity(0.60)
-                    : Colors.white.withOpacity(0.0),
+                    ? const Color(0xFF00A3FF).withValues(alpha: 0.60)
+                    : Colors.white.withValues(alpha: 0.0),
               ),
             ),
             child: SizedBox(
@@ -6004,8 +5624,6 @@ class _OpeningBalancesDataRowState extends State<_OpeningBalancesDataRow> {
                                   if (isSecondaryMouseClick) return;
                                   widget.onInlineCancelSelection?.call();
                                 },
-                                onTap: () =>
-                                    setState(() => _activeInlineCell = 0),
                                 onSubmitted: (_) => submitInlineEdit(),
                               ),
                             )
@@ -6030,28 +5648,28 @@ class _OpeningBalancesDataRowState extends State<_OpeningBalancesDataRow> {
                           color: switch (sourceUiLabel) {
                             'Plantilla' => const Color(
                               0xFF6BA8FF,
-                            ).withOpacity(0.14),
+                            ).withValues(alpha: 0.14),
                             'Total generado' => const Color(
                               0xFFE7B75C,
-                            ).withOpacity(0.18),
+                            ).withValues(alpha: 0.18),
                             'Manual' => const Color(
                               0xFF3FAE9A,
-                            ).withOpacity(0.14),
-                            _ => Colors.white.withOpacity(0.30),
+                            ).withValues(alpha: 0.14),
+                            _ => Colors.white.withValues(alpha: 0.30),
                           },
                           borderRadius: BorderRadius.circular(10),
                           border: Border.all(
                             color: switch (sourceUiLabel) {
                               'Plantilla' => const Color(
                                 0xFF6BA8FF,
-                              ).withOpacity(0.35),
+                              ).withValues(alpha: 0.35),
                               'Total generado' => const Color(
                                 0xFFE7B75C,
-                              ).withOpacity(0.45),
+                              ).withValues(alpha: 0.45),
                               'Manual' => const Color(
                                 0xFF3FAE9A,
-                              ).withOpacity(0.35),
-                              _ => Colors.white.withOpacity(0.38),
+                              ).withValues(alpha: 0.35),
+                              _ => Colors.white.withValues(alpha: 0.38),
                             },
                           ),
                         ),
@@ -6156,10 +5774,10 @@ class _OpeningBalancesDataRowState extends State<_OpeningBalancesDataRow> {
                                 width: 34,
                                 height: 34,
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.40),
+                                  color: Colors.white.withValues(alpha: 0.40),
                                   borderRadius: BorderRadius.circular(10),
                                   border: Border.all(
-                                    color: Colors.white.withOpacity(0.58),
+                                    color: Colors.white.withValues(alpha: 0.58),
                                   ),
                                 ),
                                 child: const Icon(
@@ -6194,19 +5812,19 @@ InputDecoration _openingInlineFieldDecoration({String? hintText}) {
     hintText: hintText,
     contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
     filled: true,
-    fillColor: Colors.white.withOpacity(0.70),
+    fillColor: Colors.white.withValues(alpha: 0.70),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
-      borderSide: BorderSide(color: Colors.white.withOpacity(0.55)),
+      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.55)),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
-      borderSide: BorderSide(color: Colors.white.withOpacity(0.55)),
+      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.55)),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(10),
       borderSide: BorderSide(
-        color: const Color(0xFF0B72FF).withOpacity(0.75),
+        color: const Color(0xFF0B72FF).withValues(alpha: 0.75),
         width: 1.1,
       ),
     ),
@@ -6230,58 +5848,25 @@ String _openingSourceUiLabel(Map<String, dynamic> row) {
   }
 }
 
-InputDecoration _openingHeaderFilterDecoration({String? hintText}) {
-  return InputDecoration(
-    isDense: true,
-    hintText: hintText,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-    filled: true,
-    fillColor: const Color(0xFFDDF2F0).withOpacity(0.92),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(10),
-      borderSide: BorderSide(color: const Color(0xFF6FB9B3).withOpacity(0.55)),
-    ),
-    enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(10),
-      borderSide: BorderSide(color: const Color(0xFF6FB9B3).withOpacity(0.55)),
-    ),
-    focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(10),
-      borderSide: BorderSide(
-        color: const Color(0xFF0B72FF).withOpacity(0.70),
-        width: 1.1,
-      ),
-    ),
-  );
-}
-
-BoxDecoration _openingHeaderReadOnlyCellDecoration() {
-  return BoxDecoration(
-    color: const Color(0xFFE8F2F1).withOpacity(0.90),
-    borderRadius: BorderRadius.circular(10),
-    border: Border.all(color: const Color(0xFF6FB9B3).withOpacity(0.35)),
-  );
-}
-
 InputDecoration _openingFilterSearchDecoration({String? hintText}) {
   return InputDecoration(
     isDense: true,
     hintText: hintText,
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
     filled: true,
-    fillColor: const Color(0xFFDDE7EC).withOpacity(0.85),
+    fillColor: const Color(0xFFDDE7EC).withValues(alpha: 0.85),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: Colors.white.withOpacity(0.7)),
+      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
-      borderSide: BorderSide(color: Colors.white.withOpacity(0.7)),
+      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(14),
       borderSide: BorderSide(
-        color: const Color(0xFF2EA8FF).withOpacity(0.9),
+        color: const Color(0xFF2EA8FF).withValues(alpha: 0.9),
         width: 1.2,
       ),
     ),
@@ -6313,7 +5898,9 @@ class _PreviousMonthNegativeWarning extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFFFF3E0),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFFFB74D).withOpacity(0.75)),
+        border: Border.all(
+          color: const Color(0xFFFFB74D).withValues(alpha: 0.75),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -6366,16 +5953,16 @@ class _CutOpeningReportsTabs extends StatelessWidget {
             alignment: Alignment.centerLeft,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.14),
+                color: Colors.white.withValues(alpha: 0.14),
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: Colors.white.withOpacity(0.24)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.24)),
               ),
               child: TabBar(
                 isScrollable: true,
                 dividerColor: Colors.transparent,
                 indicatorPadding: const EdgeInsets.all(4),
                 indicator: BoxDecoration(
-                  color: Colors.white.withOpacity(0.20),
+                  color: Colors.white.withValues(alpha: 0.20),
                   borderRadius: BorderRadius.circular(10),
                 ),
                 labelColor: const Color(0xFF0B2B2B),
@@ -6458,9 +6045,9 @@ class _CutAdjustmentTable extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        color: Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.18)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -6575,9 +6162,9 @@ class _CutReportTable extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
+        color: Colors.white.withValues(alpha: 0.08),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.18)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -6858,7 +6445,7 @@ class _OpeningBalanceEditDialogState extends State<_OpeningBalanceEditDialog> {
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String?>(
-                value: _selectedCommercialCode,
+                initialValue: _selectedCommercialCode,
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Material comercial (opcional)',
@@ -6988,7 +6575,7 @@ class _OpeningBalanceCreateDialogState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               DropdownButtonFormField<String>(
-                value: _material,
+                initialValue: _material,
                 decoration: const InputDecoration(labelText: 'Material'),
                 items: _kInventoryMaterials
                     .map(
@@ -7011,7 +6598,7 @@ class _OpeningBalanceCreateDialogState
               ),
               const SizedBox(height: 10),
               DropdownButtonFormField<String?>(
-                value: _selectedCommercialCode,
+                initialValue: _selectedCommercialCode,
                 isExpanded: true,
                 decoration: const InputDecoration(
                   labelText: 'Material comercial (opcional)',
@@ -7148,7 +6735,7 @@ class _OpeningBalanceBulkEditDialogState
               ),
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _commercialMode,
+                initialValue: _commercialMode,
                 decoration: const InputDecoration(
                   labelText: 'Material comercial (acción)',
                 ),
@@ -7171,7 +6758,7 @@ class _OpeningBalanceBulkEditDialogState
               if (_commercialMode == 'set') ...[
                 const SizedBox(height: 10),
                 DropdownButtonFormField<String?>(
-                  value: _commercialCode,
+                  initialValue: _commercialCode,
                   isExpanded: true,
                   decoration: const InputDecoration(
                     labelText: 'Material comercial',
@@ -7192,7 +6779,7 @@ class _OpeningBalanceBulkEditDialogState
               ],
               const SizedBox(height: 12),
               DropdownButtonFormField<String>(
-                value: _notesMode,
+                initialValue: _notesMode,
                 decoration: const InputDecoration(labelText: 'Notas (acción)'),
                 items: const [
                   DropdownMenuItem(value: 'keep', child: Text('Sin cambio')),
@@ -7288,9 +6875,9 @@ class _EmptyState extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.24),
+        color: Colors.white.withValues(alpha: 0.24),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.white.withOpacity(0.34)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.34)),
       ),
       child: Text(
         message,
@@ -7307,12 +6894,6 @@ class _MaterialOption {
   final String value;
   final String label;
   const _MaterialOption(this.value, this.label);
-}
-
-class _ShiftOption {
-  final String value;
-  final String label;
-  const _ShiftOption(this.value, this.label);
 }
 
 class _CommercialMaterialOption {
@@ -7343,13 +6924,13 @@ class _GeneralMaterialOption {
 
 BoxDecoration _glassCardDecoration() {
   return BoxDecoration(
-    color: Colors.white.withOpacity(0.22),
+    color: Colors.white.withValues(alpha: 0.22),
     borderRadius: BorderRadius.circular(18),
-    border: Border.all(color: Colors.white.withOpacity(0.44)),
+    border: Border.all(color: Colors.white.withValues(alpha: 0.44)),
     boxShadow: [
       BoxShadow(
         blurRadius: 26,
-        color: Colors.black.withOpacity(0.10),
+        color: Colors.black.withValues(alpha: 0.10),
         offset: const Offset(0, 14),
       ),
     ],
@@ -7395,11 +6976,6 @@ String _formatDateFromAny(dynamic value) {
 String _dateSql(DateTime date) {
   final d = DateTime(date.year, date.month, date.day);
   return d.toIso8601String().split('T').first;
-}
-
-String? _nullIfBlank(String text) {
-  final t = text.trim();
-  return t.isEmpty ? null : t;
 }
 
 double? _parseDouble(String raw) {
@@ -7474,7 +7050,7 @@ Future<_DateFilterDialogResult?> _showInventoryDateRangeFilterDialog(
 }) {
   return showDialog<_DateFilterDialogResult>(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.28),
+    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       DateTime displayMonth = DateTime(
         (initialRange?.start ?? DateTime.now()).year,
@@ -7642,7 +7218,7 @@ Future<_DateFilterDialogResult?> _showInventoryDateRangeFilterDialog(
                                           : inRange
                                           ? const Color(
                                               0xFFE2EEEC,
-                                            ).withOpacity(0.8)
+                                            ).withValues(alpha: 0.8)
                                           : Colors.transparent;
                                       final txtColor = active
                                           ? Colors.white
@@ -7694,7 +7270,9 @@ Future<_DateFilterDialogResult?> _showInventoryDateRangeFilterDialog(
                                                       : inRange
                                                       ? const Color(
                                                           0xFF4F8E8C,
-                                                        ).withOpacity(0.20)
+                                                        ).withValues(
+                                                          alpha: 0.20,
+                                                        )
                                                       : Colors.transparent,
                                                 ),
                                               ),
@@ -7776,17 +7354,17 @@ Future<_DateFilterDialogResult?> _showInventoryDateRangeFilterDialog(
 
 BoxDecoration _inventoryFilterDialogDecoration() {
   return BoxDecoration(
-    color: Colors.white.withOpacity(0.62),
+    color: Colors.white.withValues(alpha: 0.62),
     borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: Colors.white.withOpacity(0.68)),
+    border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
   );
 }
 
 ButtonStyle _inventoryFilterOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF2A4B49),
-    side: BorderSide(color: const Color(0xFF2A4B49).withOpacity(0.25)),
-    backgroundColor: Colors.white.withOpacity(0.40),
+    side: BorderSide(color: const Color(0xFF2A4B49).withValues(alpha: 0.25)),
+    backgroundColor: Colors.white.withValues(alpha: 0.40),
   );
 }
 
@@ -7800,8 +7378,8 @@ ButtonStyle _inventoryFilterFilledButtonStyle() {
 ButtonStyle _inventoryActionOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF0B2B2B),
-    side: BorderSide(color: Colors.white.withOpacity(0.52)),
-    backgroundColor: Colors.white.withOpacity(0.18),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.52)),
+    backgroundColor: Colors.white.withValues(alpha: 0.18),
     textStyle: const TextStyle(fontWeight: FontWeight.w700),
   );
 }
@@ -7816,8 +7394,8 @@ ButtonStyle _cutFilledButtonStyle() {
 ButtonStyle _cutOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF0B2B2B),
-    side: BorderSide(color: const Color(0xFF4F8E8C).withOpacity(0.45)),
-    backgroundColor: Colors.white.withOpacity(0.22),
+    side: BorderSide(color: const Color(0xFF4F8E8C).withValues(alpha: 0.45)),
+    backgroundColor: Colors.white.withValues(alpha: 0.22),
   );
 }
 
@@ -7828,12 +7406,4 @@ String _materialLabel(String? material) {
     if (m.value == material) return m.label;
   }
   return material;
-}
-
-String _shiftLabel(String? shift) {
-  if (shift == null) return '-';
-  for (final s in _kShifts) {
-    if (s.value == shift) return s.label;
-  }
-  return shift;
 }

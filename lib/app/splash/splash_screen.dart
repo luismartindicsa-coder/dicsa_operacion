@@ -33,7 +33,7 @@ class _SplashScreenState extends State<SplashScreen>
       backgroundColor: Colors.white,
       body: AnimatedBuilder(
         animation: _c,
-        builder: (_, __) {
+        builder: (context, child) {
           return CustomPaint(
             painter: DLogoPainter(progress: _c.value),
             child: const SizedBox.expand(),

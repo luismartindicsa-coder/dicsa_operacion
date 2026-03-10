@@ -2,11 +2,16 @@ import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../auth/auth_access.dart';
+import '../auth/auth_navigation.dart';
+import '../dashboard/general_dashboard_page.dart';
 import '../services/inventory_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../services/services_catalog_page.dart';
 import '../services/services_page.dart';
+import '../services/warehouse_page.dart';
 import '../services/weighings_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/page_routes.dart';
@@ -27,9 +32,9 @@ class DashboardPage extends StatefulWidget {
 }
 
 class _DashboardPageState extends State<DashboardPage> {
+  AuthResolvedProfile? _profile;
   bool _canOpenCatalogs = false;
   bool _sideMenuCollapsed = false;
-  bool _catalogsExpanded = false;
   bool _menuOverlayOpen = false;
 
   @override
@@ -39,30 +44,12 @@ class _DashboardPageState extends State<DashboardPage> {
   }
 
   Future<void> _resolveCatalogAccess() async {
-    final supa = Supabase.instance.client;
-    final user = supa.auth.currentUser;
-    if (user == null) return;
-
-    final email = (user.email ?? '').toLowerCase().trim();
-    if (email == 'operacion@dicsamx.com') {
-      if (mounted) setState(() => _canOpenCatalogs = true);
-      return;
-    }
-
-    try {
-      final row = await supa
-          .from('profiles')
-          .select('role, is_active')
-          .eq('user_id', user.id)
-          .maybeSingle();
-      final isActive = (row?['is_active'] as bool?) ?? true;
-      final role = ((row?['role'] as String?) ?? '').toLowerCase().trim();
-      if (!mounted) return;
-      setState(() => _canOpenCatalogs = isActive && role == 'ops_manager');
-    } catch (_) {
-      if (!mounted) return;
-      setState(() => _canOpenCatalogs = false);
-    }
+    final profile = await AuthAccess.resolveCurrentProfile();
+    if (!mounted) return;
+    setState(() {
+      _profile = profile;
+      _canOpenCatalogs = AuthAccess.canOpenCatalogs(profile);
+    });
   }
 
   Future<void> _openCatalogsFleet() async {
@@ -70,7 +57,7 @@ class _DashboardPageState extends State<DashboardPage> {
     await showDialog<bool>(
       context: context,
       barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.26),
+      barrierColor: Colors.black.withValues(alpha: 0.26),
       builder: (_) =>
           const ServicesCatalogPage(module: OperationsCatalogModule.flotilla),
     );
@@ -81,7 +68,7 @@ class _DashboardPageState extends State<DashboardPage> {
     await showDialog<bool>(
       context: context,
       barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.26),
+      barrierColor: Colors.black.withValues(alpha: 0.26),
       builder: (_) =>
           const ServicesCatalogPage(module: OperationsCatalogModule.empresas),
     );
@@ -92,7 +79,7 @@ class _DashboardPageState extends State<DashboardPage> {
     await showDialog<bool>(
       context: context,
       barrierDismissible: true,
-      barrierColor: Colors.black.withOpacity(0.26),
+      barrierColor: Colors.black.withValues(alpha: 0.26),
       builder: (_) =>
           const ServicesCatalogPage(module: OperationsCatalogModule.materiales),
     );
@@ -101,6 +88,15 @@ class _DashboardPageState extends State<DashboardPage> {
   Future<void> _openInventoryMovements() async {
     if (!mounted) return;
     await Navigator.of(context).push(appPageRoute(page: const InventoryPage()));
+  }
+
+  Future<void> _openGeneralDashboard() async {
+    if (!mounted) return;
+    final profile = _profile ?? await AuthAccess.resolveCurrentProfile();
+    if (!mounted || !AuthAccess.canAccessGeneralDashboard(profile)) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const GeneralDashboardPage(instantOpen: true)),
+    );
   }
 
   Future<void> _openInventoryProduction() async {
@@ -134,6 +130,11 @@ class _DashboardPageState extends State<DashboardPage> {
     ).push(appPageRoute(page: const MaintenancePage()));
   }
 
+  Future<void> _openWarehouse() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(appPageRoute(page: const WarehousePage()));
+  }
+
   Future<void> _logout(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -153,43 +154,54 @@ class _DashboardPageState extends State<DashboardPage> {
       ),
     );
     if (ok != true) return;
-    await Supabase.instance.client.auth.signOut();
-    // AuthGate te regresa a Login
+    if (!context.mounted) return;
+    await signOutAndRouteToLogin(context);
   }
 
   @override
   Widget build(BuildContext context) {
-    return AppShell(
-      background: const _DashboardBackground(),
-      wrapBodyInGlass: false,
-      animateHeaderSlots: false,
-      animateBody: !widget.instantOpen,
-      headerBodySpacing: 6,
-      padding: const EdgeInsets.fromLTRB(28, 14, 18, 18),
-      leadingBuilder: (_, __) => Row(
-        children: [
-          _HeaderIconButton(
-            label: _menuOverlayOpen ? 'Cerrar navegación' : 'Navegación',
-            icon: _menuOverlayOpen ? Icons.close_rounded : Icons.menu_rounded,
-            onTap: () async {
-              if (!mounted) return;
-              setState(() => _menuOverlayOpen = !_menuOverlayOpen);
-            },
+    return Focus(
+      autofocus: true,
+      onKeyEvent: (_, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        if (event.logicalKey == LogicalKeyboardKey.escape && _menuOverlayOpen) {
+          setState(() => _menuOverlayOpen = false);
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: AppShell(
+        background: const _DashboardBackground(),
+        wrapBodyInGlass: false,
+        animateHeaderSlots: false,
+        animateBody: !widget.instantOpen,
+        headerBodySpacing: 6,
+        padding: const EdgeInsets.fromLTRB(28, 14, 18, 18),
+        leadingBuilder: (_, _) => Row(
+          children: [
+            _HeaderIconButton(
+              label: _menuOverlayOpen ? 'Cerrar navegación' : 'Navegación',
+              icon: _menuOverlayOpen ? Icons.close_rounded : Icons.menu_rounded,
+              onTap: () async {
+                if (!mounted) return;
+                setState(() => _menuOverlayOpen = !_menuOverlayOpen);
+              },
+            ),
+          ],
+        ),
+        centerBuilder: (_, contentAnim) =>
+            _DashboardBrand(contentAnim: contentAnim),
+        trailingBuilder: (_, _) => _HeaderIconButton(
+          label: 'Cerrar sesión',
+          icon: Icons.logout,
+          onTap: () => _logout(context),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(10, 2, 8, 8),
+          child: LayoutBuilder(
+            builder: (context, constraints) =>
+                _buildDashboardBody(constraints.maxWidth < 980),
           ),
-        ],
-      ),
-      centerBuilder: (_, contentAnim) =>
-          _DashboardBrand(contentAnim: contentAnim),
-      trailingBuilder: (_, __) => _HeaderIconButton(
-        label: 'Cerrar sesión',
-        icon: Icons.logout,
-        onTap: () => _logout(context),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(10, 2, 8, 8),
-        child: LayoutBuilder(
-          builder: (context, constraints) =>
-              _buildDashboardBody(constraints.maxWidth < 980),
         ),
       ),
     );
@@ -197,6 +209,8 @@ class _DashboardPageState extends State<DashboardPage> {
 
   Widget _buildDashboardBody(bool stacked) {
     final menu = _DashboardSideMenu(
+      showGeneralDashboard: AuthAccess.canAccessGeneralDashboard(_profile),
+      onOpenGeneralDashboard: _openGeneralDashboard,
       collapsed: _sideMenuCollapsed,
       onOpenInventoryMovements: _openInventoryMovements,
       onOpenInventoryProduction: _openInventoryProduction,
@@ -204,10 +218,7 @@ class _DashboardPageState extends State<DashboardPage> {
       onOpenServices: _openServices,
       onOpenWeighings: _openWeighings,
       onOpenMaintenance: _openMaintenance,
-      catalogsExpanded: _catalogsExpanded,
-      onToggleCatalogsExpanded: _canOpenCatalogs
-          ? () => setState(() => _catalogsExpanded = !_catalogsExpanded)
-          : null,
+      onOpenWarehouse: _openWarehouse,
       onOpenCatalogsFleet: _canOpenCatalogs ? _openCatalogsFleet : null,
       onOpenCatalogsCompanies: _canOpenCatalogs ? _openCatalogsCompanies : null,
       onOpenCatalogsMaterials: _canOpenCatalogs ? _openCatalogsMaterials : null,
@@ -228,6 +239,24 @@ class _DashboardPageState extends State<DashboardPage> {
     return Stack(
       children: [
         content,
+        Positioned.fill(
+          child: IgnorePointer(
+            ignoring: !_menuOverlayOpen,
+            child: AnimatedOpacity(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              opacity: _menuOverlayOpen ? 1 : 0,
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  if (!mounted) return;
+                  setState(() => _menuOverlayOpen = false);
+                },
+                child: Container(color: Colors.black.withValues(alpha: 0.16)),
+              ),
+            ),
+          ),
+        ),
         AnimatedPositioned(
           duration: const Duration(milliseconds: 220),
           curve: Curves.easeOutCubic,
@@ -248,11 +277,12 @@ class _DashboardPageState extends State<DashboardPage> {
     return LayoutBuilder(
       builder: (context, constraints) {
         final isWide = constraints.maxWidth >= 1240;
+        final isMedium = constraints.maxWidth >= 900;
         final servicesPanelHeight = isWide
             ? _kWidgetGiantHeight
             : (constraints.maxHeight * 0.34).clamp(300.0, 420.0).toDouble();
-        const layoutGap = 12.0;
-        const horizontalPadding = 56.0 + 2.0;
+        const layoutGap = 16.0;
+        const horizontalPadding = 40.0;
         final availableWidth = (constraints.maxWidth - horizontalPadding).clamp(
           0.0,
           constraints.maxWidth,
@@ -262,42 +292,73 @@ class _DashboardPageState extends State<DashboardPage> {
           420.0,
         );
         return SingleChildScrollView(
-          padding: const EdgeInsets.only(bottom: 8, left: 56, right: 2),
-          child: isWide
-              ? Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+          padding: const EdgeInsets.only(bottom: 16, left: 40, right: 8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (isWide)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Expanded(child: _InventoryYardPanel()),
-                        const SizedBox(width: layoutGap),
-                        SizedBox(
-                          width: resolvedServicesWidth,
-                          height: servicesPanelHeight,
-                          child: _AnimatedDashboardSummaryPanel(
-                            alignTopLeft: false,
-                            maxPanelWidth: resolvedServicesWidth,
+                    Expanded(
+                      flex: 7,
+                      child: _InventoryYardPanel(
+                        onOpenInventoryStock: _openInventoryStock,
+                        onOpenInventoryProduction: _openInventoryProduction,
+                      ),
+                    ),
+                    const SizedBox(width: layoutGap),
+                    SizedBox(
+                      width: resolvedServicesWidth,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          SizedBox(
+                            height: servicesPanelHeight,
+                            child: _AnimatedDashboardSummaryPanel(
+                              alignTopLeft: false,
+                              maxPanelWidth: resolvedServicesWidth,
+                              onOpenServices: _openServices,
+                            ),
                           ),
-                        ),
-                      ],
+                          const SizedBox(height: 16),
+                          _DashboardOpsWidgetsColumn(
+                            onOpenMaintenance: _openMaintenance,
+                            onOpenWarehouse: _openWarehouse,
+                            compact: true,
+                          ),
+                        ],
+                      ),
                     ),
                   ],
                 )
-              : Column(
+              else
+                Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const _InventoryYardPanel(),
-                    const SizedBox(height: 12),
+                    _InventoryYardPanel(
+                      onOpenInventoryStock: _openInventoryStock,
+                      onOpenInventoryProduction: _openInventoryProduction,
+                    ),
+                    const SizedBox(height: 16),
                     SizedBox(
                       height: servicesPanelHeight,
                       child: _AnimatedDashboardSummaryPanel(
                         alignTopLeft: false,
                         maxPanelWidth: constraints.maxWidth,
+                        onOpenServices: _openServices,
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    _DashboardOpsWidgetsColumn(
+                      onOpenMaintenance: _openMaintenance,
+                      onOpenWarehouse: _openWarehouse,
+                      compact: !isMedium,
                     ),
                   ],
                 ),
+            ],
+          ),
         );
       },
     );
@@ -323,15 +384,14 @@ class _DashboardBrand extends StatelessWidget {
                   width: 72,
                   height: 72,
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.24),
+                    color: Colors.white.withValues(alpha: 0.24),
                     borderRadius: BorderRadius.circular(18),
-                    border: Border.all(color: Colors.white.withOpacity(0.44)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.44),
+                    ),
                   ),
                   child: const Center(
-                    child: Hero(
-                      tag: 'dicsa_d',
-                      child: DicsaLogoD(size: 52, progress: 1.0),
-                    ),
+                    child: DicsaLogoD(size: 52, progress: 1.0),
                   ),
                 ),
                 if (showTitle) ...[
@@ -340,14 +400,14 @@ class _DashboardBrand extends StatelessWidget {
                     width: 1.5,
                     margin: const EdgeInsets.symmetric(vertical: 8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0B2B2B).withOpacity(0.28),
+                      color: const Color(0xFF0B2B2B).withValues(alpha: 0.28),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
                   const SizedBox(width: 10),
                   const Flexible(
                     child: Text(
-                      'Resumen Operativo',
+                      'Dashboard Operación',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
@@ -414,19 +474,19 @@ class _HeaderIconButtonState extends State<_HeaderIconButton> {
             transform: Matrix4.translationValues(0, highlighted ? -2 : 0, 0),
             decoration: BoxDecoration(
               color: enabled
-                  ? Colors.white.withOpacity(0.24)
-                  : Colors.white.withOpacity(0.14),
+                  ? Colors.white.withValues(alpha: 0.24)
+                  : Colors.white.withValues(alpha: 0.14),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: enabled
-                    ? Colors.white.withOpacity(0.64)
-                    : Colors.white.withOpacity(0.32),
+                    ? Colors.white.withValues(alpha: 0.64)
+                    : Colors.white.withValues(alpha: 0.32),
               ),
               boxShadow: [
                 BoxShadow(
                   blurRadius: highlighted ? 30 : 18,
-                  color: Colors.black.withOpacity(
-                    enabled ? (highlighted ? 0.24 : 0.11) : 0.05,
+                  color: Colors.black.withValues(
+                    alpha: enabled ? (highlighted ? 0.24 : 0.11) : 0.05,
                   ),
                   offset: Offset(0, highlighted ? 16 : 10),
                 ),
@@ -539,6 +599,8 @@ class _DashboardBackground extends StatelessWidget {
 }
 
 class _DashboardSideMenu extends StatelessWidget {
+  final bool showGeneralDashboard;
+  final Future<void> Function()? onOpenGeneralDashboard;
   final bool collapsed;
   final Future<void> Function() onOpenInventoryMovements;
   final Future<void> Function() onOpenInventoryProduction;
@@ -546,14 +608,15 @@ class _DashboardSideMenu extends StatelessWidget {
   final Future<void> Function() onOpenServices;
   final Future<void> Function() onOpenWeighings;
   final Future<void> Function() onOpenMaintenance;
-  final bool catalogsExpanded;
-  final VoidCallback? onToggleCatalogsExpanded;
+  final Future<void> Function() onOpenWarehouse;
   final Future<void> Function()? onOpenCatalogsFleet;
   final Future<void> Function()? onOpenCatalogsCompanies;
   final Future<void> Function()? onOpenCatalogsMaterials;
   final VoidCallback? onToggleCollapsed;
 
   const _DashboardSideMenu({
+    required this.showGeneralDashboard,
+    this.onOpenGeneralDashboard,
     required this.collapsed,
     required this.onOpenInventoryMovements,
     required this.onOpenInventoryProduction,
@@ -561,8 +624,7 @@ class _DashboardSideMenu extends StatelessWidget {
     required this.onOpenServices,
     required this.onOpenWeighings,
     required this.onOpenMaintenance,
-    required this.catalogsExpanded,
-    this.onToggleCatalogsExpanded,
+    required this.onOpenWarehouse,
     this.onOpenCatalogsFleet,
     this.onOpenCatalogsCompanies,
     this.onOpenCatalogsMaterials,
@@ -575,11 +637,11 @@ class _DashboardSideMenu extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xE40B2B2B),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.22)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
         boxShadow: [
           BoxShadow(
             blurRadius: 24,
-            color: Colors.black.withOpacity(0.20),
+            color: Colors.black.withValues(alpha: 0.20),
             offset: const Offset(0, 14),
           ),
         ],
@@ -599,31 +661,16 @@ class _DashboardSideMenu extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       const SizedBox(height: 10),
-                      const _SideMenuSectionHeader(text: 'Módulos'),
-                      const SizedBox(height: 8),
-                      _SideMenuModuleGroup(
-                        icon: Icons.factory_outlined,
-                        title: 'Operación',
+                      _DashboardSideMenuBlock(
+                        icon: Icons.scale_rounded,
+                        title: 'Báscula',
+                        initiallyExpanded: true,
                         children: [
                           _SideMenuActionItem(
                             icon: Icons.compare_arrows_rounded,
                             title: 'Entradas y Salidas',
                             subtitle: 'Captura de movimientos IN / OUT',
                             onTap: onOpenInventoryMovements,
-                          ),
-                          const SizedBox(height: 8),
-                          _SideMenuActionItem(
-                            icon: Icons.factory_outlined,
-                            title: 'Producción',
-                            subtitle: 'Turnos y pacas producidas',
-                            onTap: onOpenInventoryProduction,
-                          ),
-                          const SizedBox(height: 8),
-                          _SideMenuActionItem(
-                            icon: Icons.inventory_2_outlined,
-                            title: 'Inventario',
-                            subtitle: 'Widget y detalle por material',
-                            onTap: onOpenInventoryStock,
                           ),
                           const SizedBox(height: 8),
                           _SideMenuActionItem(
@@ -639,6 +686,34 @@ class _DashboardSideMenu extends StatelessWidget {
                             subtitle: 'Fecha, ticket, proveedor y precio',
                             onTap: onOpenWeighings,
                           ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      _DashboardSideMenuBlock(
+                        icon: Icons.factory_outlined,
+                        title: 'Operación',
+                        initiallyExpanded: true,
+                        children: [
+                          _SideMenuActionItem(
+                            icon: Icons.factory_outlined,
+                            title: 'Producción',
+                            subtitle: 'Turnos y pacas producidas',
+                            onTap: onOpenInventoryProduction,
+                          ),
+                          const SizedBox(height: 8),
+                          _SideMenuActionItem(
+                            icon: Icons.inventory_2_outlined,
+                            title: 'Inventario',
+                            subtitle: 'Widget y detalle por material',
+                            onTap: onOpenInventoryStock,
+                          ),
+                          const SizedBox(height: 8),
+                          _SideMenuActionItem(
+                            icon: Icons.warehouse_outlined,
+                            title: 'Almacen',
+                            subtitle: 'Inventario, movimientos y cortes',
+                            onTap: onOpenWarehouse,
+                          ),
                           const SizedBox(height: 8),
                           _SideMenuActionItem(
                             icon: Icons.build_circle_outlined,
@@ -646,69 +721,63 @@ class _DashboardSideMenu extends StatelessWidget {
                             subtitle: 'Ordenes de trabajo y evidencias',
                             onTap: onOpenMaintenance,
                           ),
-                          if (onOpenCatalogsFleet != null ||
-                              onOpenCatalogsCompanies != null ||
-                              onOpenCatalogsMaterials != null) ...[
-                            const SizedBox(height: 8),
-                            _SideMenuExpandableActionItem(
-                              icon: Icons.library_add_outlined,
-                              title: 'Catálogos',
-                              subtitle: 'Flotilla, empresas y materiales',
-                              expanded: catalogsExpanded,
-                              onTap: onToggleCatalogsExpanded,
-                            ),
-                            AnimatedSize(
-                              duration: const Duration(milliseconds: 180),
-                              curve: Curves.easeOutCubic,
-                              alignment: Alignment.topCenter,
-                              child: catalogsExpanded
-                                  ? Padding(
-                                      padding: const EdgeInsets.fromLTRB(
-                                        8,
-                                        8,
-                                        0,
-                                        0,
-                                      ),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          if (onOpenCatalogsFleet != null)
-                                            _SideMenuSubActionItem(
-                                              icon: Icons.badge_outlined,
-                                              title: 'Flotilla',
-                                              subtitle: 'Tabs: Chofer / Unidad',
-                                              onTap: onOpenCatalogsFleet,
-                                            ),
-                                          if (onOpenCatalogsFleet != null)
-                                            const SizedBox(height: 6),
-                                          if (onOpenCatalogsCompanies != null)
-                                            _SideMenuSubActionItem(
-                                              icon: Icons.business_outlined,
-                                              title: 'Empresas',
-                                              subtitle: 'Tab Empresa',
-                                              onTap: onOpenCatalogsCompanies,
-                                            ),
-                                          if (onOpenCatalogsCompanies != null)
-                                            const SizedBox(height: 6),
-                                          if (onOpenCatalogsMaterials != null)
-                                            _SideMenuSubActionItem(
-                                              icon: Icons.category_outlined,
-                                              title: 'Materiales',
-                                              subtitle:
-                                                  'General / Comercial / Operativo',
-                                              onTap: onOpenCatalogsMaterials,
-                                            ),
-                                          if (onOpenCatalogsMaterials != null)
-                                            const SizedBox(height: 6),
-                                        ],
-                                      ),
-                                    )
-                                  : const SizedBox.shrink(),
-                            ),
-                          ],
                         ],
                       ),
+                      const SizedBox(height: 12),
+                      if (showGeneralDashboard)
+                        _DashboardSideMenuBlock(
+                          icon: Icons.dashboard_customize_rounded,
+                          title: 'Accesos',
+                          initiallyExpanded: true,
+                          children: [
+                            if (showGeneralDashboard) ...[
+                              _SideMenuActionItem(
+                                icon: Icons.assessment_outlined,
+                                title: 'Dashboard general',
+                                subtitle: 'Vista ejecutiva para dirección',
+                                onTap: onOpenGeneralDashboard,
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                          ],
+                        ),
+                      if (onOpenCatalogsFleet != null ||
+                          onOpenCatalogsCompanies != null ||
+                          onOpenCatalogsMaterials != null) ...[
+                        const SizedBox(height: 12),
+                        _DashboardSideMenuBlock(
+                          icon: Icons.library_books_rounded,
+                          title: 'Catálogos',
+                          initiallyExpanded: true,
+                          children: [
+                            if (onOpenCatalogsFleet != null)
+                              _SideMenuSubActionItem(
+                                icon: Icons.badge_outlined,
+                                title: 'Flotilla',
+                                subtitle: 'Tabs: Chofer / Unidad',
+                                onTap: onOpenCatalogsFleet,
+                              ),
+                            if (onOpenCatalogsFleet != null)
+                              const SizedBox(height: 6),
+                            if (onOpenCatalogsCompanies != null)
+                              _SideMenuSubActionItem(
+                                icon: Icons.business_outlined,
+                                title: 'Empresas',
+                                subtitle: 'Tab Empresa',
+                                onTap: onOpenCatalogsCompanies,
+                              ),
+                            if (onOpenCatalogsCompanies != null)
+                              const SizedBox(height: 6),
+                            if (onOpenCatalogsMaterials != null)
+                              _SideMenuSubActionItem(
+                                icon: Icons.category_outlined,
+                                title: 'Materiales',
+                                subtitle: 'General / Comercial / Operativo',
+                                onTap: onOpenCatalogsMaterials,
+                              ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
           ),
@@ -718,92 +787,85 @@ class _DashboardSideMenu extends StatelessWidget {
   }
 }
 
-class _SideMenuExpandableActionItem extends StatefulWidget {
+class _DashboardSideMenuBlock extends StatefulWidget {
   final IconData icon;
   final String title;
-  final String subtitle;
-  final bool expanded;
-  final VoidCallback? onTap;
+  final bool initiallyExpanded;
+  final List<Widget> children;
 
-  const _SideMenuExpandableActionItem({
+  const _DashboardSideMenuBlock({
     required this.icon,
     required this.title,
-    required this.subtitle,
-    required this.expanded,
-    required this.onTap,
+    required this.children,
+    this.initiallyExpanded = true,
   });
 
   @override
-  State<_SideMenuExpandableActionItem> createState() =>
-      _SideMenuExpandableActionItemState();
+  State<_DashboardSideMenuBlock> createState() =>
+      _DashboardSideMenuBlockState();
 }
 
-class _SideMenuExpandableActionItemState
-    extends State<_SideMenuExpandableActionItem> {
-  bool _hovered = false;
+class _DashboardSideMenuBlockState extends State<_DashboardSideMenuBlock> {
+  late bool _expanded = widget.initiallyExpanded;
 
   @override
   Widget build(BuildContext context) {
-    final enabled = widget.onTap != null;
-    final highlighted = enabled && _hovered;
-
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: widget.onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-          decoration: BoxDecoration(
-            color: highlighted
-                ? Colors.white.withOpacity(0.14)
-                : Colors.white.withOpacity(0.08),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.18)),
-          ),
-          child: Row(
-            children: [
-              Icon(widget.icon, size: 20, color: Colors.white),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          InkWell(
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => setState(() => _expanded = !_expanded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              child: Row(
+                children: [
+                  Icon(widget.icon, size: 18, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
                       widget.title,
                       style: const TextStyle(
-                        fontWeight: FontWeight.w800,
                         color: Colors.white,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
                       ),
                     ),
-                    const SizedBox(height: 1),
-                    Text(
-                      widget.subtitle,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xCCFFFFFF),
-                      ),
+                  ),
+                  AnimatedRotation(
+                    duration: const Duration(milliseconds: 160),
+                    turns: _expanded ? 0.25 : 0.0,
+                    child: const Icon(
+                      Icons.chevron_right_rounded,
+                      size: 20,
+                      color: Colors.white,
                     ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-              const SizedBox(width: 6),
-              AnimatedRotation(
-                duration: const Duration(milliseconds: 160),
-                turns: widget.expanded ? 0.25 : 0.0,
-                child: const Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-            ],
+            ),
           ),
-        ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _expanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: widget.children,
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
       ),
     );
   }
@@ -830,9 +892,9 @@ class _SideMenuSubActionItem extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.06),
+          color: Colors.white.withValues(alpha: 0.06),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withOpacity(0.12)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
         ),
         child: Row(
           children: [
@@ -877,76 +939,6 @@ class _SideMenuSubActionItem extends StatelessWidget {
   }
 }
 
-class _SideMenuSectionHeader extends StatelessWidget {
-  final String text;
-  const _SideMenuSectionHeader({required this.text});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 6),
-      child: Text(
-        text.toUpperCase(),
-        style: const TextStyle(
-          fontSize: 11,
-          fontWeight: FontWeight.w800,
-          letterSpacing: 0.4,
-          color: Color(0xCCFFFFFF),
-        ),
-      ),
-    );
-  }
-}
-
-class _SideMenuModuleGroup extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final List<Widget> children;
-
-  const _SideMenuModuleGroup({
-    required this.icon,
-    required this.title,
-    required this.children,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.18)),
-      ),
-      child: Theme(
-        data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Icon(icon, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Text(
-                    title,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              ...children,
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _SideMenuActionItem extends StatefulWidget {
   final IconData icon;
   final String title;
@@ -984,15 +976,15 @@ class _SideMenuActionItemState extends State<_SideMenuActionItem> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           decoration: BoxDecoration(
             color: highlighted
-                ? Colors.white.withOpacity(0.14)
-                : Colors.white.withOpacity(0.08),
+                ? Colors.white.withValues(alpha: 0.14)
+                : Colors.white.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.18)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             boxShadow: highlighted
                 ? [
                     BoxShadow(
                       blurRadius: 18,
-                      color: Colors.black.withOpacity(0.08),
+                      color: Colors.black.withValues(alpha: 0.08),
                       offset: const Offset(0, 8),
                     ),
                   ]
@@ -1042,10 +1034,12 @@ class _SideMenuActionItemState extends State<_SideMenuActionItem> {
 class _AnimatedDashboardSummaryPanel extends StatelessWidget {
   final bool alignTopLeft;
   final double maxPanelWidth;
+  final Future<void> Function()? onOpenServices;
 
   const _AnimatedDashboardSummaryPanel({
     this.alignTopLeft = false,
     this.maxPanelWidth = 920,
+    this.onOpenServices,
   });
 
   @override
@@ -1055,7 +1049,10 @@ class _AnimatedDashboardSummaryPanel extends StatelessWidget {
       duration: const Duration(milliseconds: 240),
       curve: Curves.easeOutCubic,
       builder: (context, animatedMaxWidth, child) {
-        final panel = _ServicesSummaryPanel(maxWidth: animatedMaxWidth);
+        final panel = _ServicesSummaryPanel(
+          maxWidth: animatedMaxWidth,
+          onTap: onOpenServices,
+        );
         if (!alignTopLeft) return panel;
         return Align(alignment: Alignment.topLeft, child: panel);
       },
@@ -1065,8 +1062,9 @@ class _AnimatedDashboardSummaryPanel extends StatelessWidget {
 
 class _ServicesSummaryPanel extends StatefulWidget {
   final double maxWidth;
+  final Future<void> Function()? onTap;
 
-  const _ServicesSummaryPanel({this.maxWidth = 920});
+  const _ServicesSummaryPanel({this.maxWidth = 920, this.onTap});
 
   @override
   State<_ServicesSummaryPanel> createState() => _ServicesSummaryPanelState();
@@ -1301,227 +1299,305 @@ class _ServicesSummaryPanelState extends State<_ServicesSummaryPanel>
   Widget build(BuildContext context) {
     final loading = (_loadingDates || _loadingRows) && _items.isEmpty;
     return _HoverLift(
-      child: Container(
-        width: double.infinity,
-        constraints: BoxConstraints(maxWidth: widget.maxWidth),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.56),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(22),
+        child: InkWell(
           borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: Colors.white.withOpacity(0.60)),
-        ),
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-        child: ListView(
-          padding: EdgeInsets.zero,
-          children: [
-            Row(
+          onTap: widget.onTap == null ? null : () => widget.onTap!(),
+          child: Container(
+            width: double.infinity,
+            constraints: BoxConstraints(maxWidth: widget.maxWidth),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.56),
+              borderRadius: BorderRadius.circular(22),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.60)),
+            ),
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+            child: ListView(
+              padding: EdgeInsets.zero,
               children: [
-                _NavGlassButton(
-                  icon: Icons.arrow_back_ios_new_rounded,
-                  enabled: _prevDate != null,
-                  onTap: _prevDate == null ? null : () => _goToDate(_prevDate!),
+                Row(
+                  children: [
+                    _NavGlassButton(
+                      icon: Icons.arrow_back_ios_new_rounded,
+                      enabled: _prevDate != null,
+                      onTap: _prevDate == null
+                          ? null
+                          : () => _goToDate(_prevDate!),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        children: [
+                          const Text(
+                            'Resumen de Viajes y Servicios',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0B2B2B),
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _fmtDateEs(_selectedDate),
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF2A4B49),
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            '${_items.length} servicio${_items.length == 1 ? '' : 's'}',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF4B6A68),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    _NavGlassButton(
+                      icon: Icons.arrow_forward_ios_rounded,
+                      enabled: _nextDate != null,
+                      onTap: _nextDate == null
+                          ? null
+                          : () => _goToDate(_nextDate!),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.42),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
                     children: [
-                      const Text(
-                        'Resumen de Viajes y Servicios',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w800,
-                          color: Color(0xFF0B2B2B),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          'EMPRESA',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 4),
-                      Text(
-                        _fmtDateEs(_selectedDate),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFF2A4B49),
+                      Expanded(
+                        flex: 3,
+                        child: Text(
+                          'OPERADOR',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${_items.length} servicio${_items.length == 1 ? '' : 's'}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF4B6A68),
+                      Expanded(
+                        flex: 2,
+                        child: Text(
+                          'ESTADO',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                          ),
                         ),
                       ),
                     ],
                   ),
                 ),
-                const SizedBox(width: 10),
-                _NavGlassButton(
-                  icon: Icons.arrow_forward_ios_rounded,
-                  enabled: _nextDate != null,
-                  onTap: _nextDate == null ? null : () => _goToDate(_nextDate!),
-                ),
+                const SizedBox(height: 4),
+                if (loading)
+                  const SizedBox(
+                    height: 120,
+                    child: Center(child: CircularProgressIndicator()),
+                  )
+                else if (_items.isEmpty)
+                  const SizedBox(
+                    height: 120,
+                    child: Center(
+                      child: Text(
+                        'No hay servicios para esta fecha.',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF2A4B49),
+                        ),
+                      ),
+                    ),
+                  )
+                else
+                  ListView.separated(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _items.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 5),
+                    itemBuilder: (_, i) {
+                      final item = _items[i];
+                      return Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.72),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                item.company,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 3,
+                              child: Text(
+                                item.operator,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                            Expanded(
+                              flex: 2,
+                              child: _StateChip(text: item.status),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
               ],
             ),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.42),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Row(
-                children: [
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'EMPRESA',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 3,
-                    child: Text(
-                      'OPERADOR',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    flex: 2,
-                    child: Text(
-                      'ESTADO',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 4),
-            if (loading)
-              const SizedBox(
-                height: 120,
-                child: Center(child: CircularProgressIndicator()),
-              )
-            else if (_items.isEmpty)
-              const SizedBox(
-                height: 120,
-                child: Center(
-                  child: Text(
-                    'No hay servicios para esta fecha.',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
-                      color: Color(0xFF2A4B49),
-                    ),
-                  ),
-                ),
-              )
-            else
-              ListView.separated(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 5),
-                itemBuilder: (_, i) {
-                  final item = _items[i];
-                  return Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.72),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withOpacity(0.72)),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            item.company,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          flex: 3,
-                          child: Text(
-                            item.operator,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                        Expanded(flex: 2, child: _StateChip(text: item.status)),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            const SizedBox(height: 12),
-            FilledButton.icon(
-              onPressed: null,
-              style: FilledButton.styleFrom(
-                disabledBackgroundColor: Colors.white.withOpacity(0.36),
-                disabledForegroundColor: const Color(
-                  0xFF2A4B49,
-                ).withOpacity(0.72),
-                padding: const EdgeInsets.symmetric(vertical: 12),
-              ),
-              icon: const Icon(Icons.send_outlined),
-              label: const Text(
-                'Enviar (Próximamente)',
-                style: TextStyle(fontWeight: FontWeight.w700),
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
   }
 }
 
-const String _kDashboardInventorySite = 'DICSA_CELAYA';
+class _DashboardOpsWidgetsColumn extends StatelessWidget {
+  final Future<void> Function() onOpenMaintenance;
+  final Future<void> Function() onOpenWarehouse;
+  final bool compact;
 
-class _InventoryYardPanel extends StatefulWidget {
-  const _InventoryYardPanel();
+  const _DashboardOpsWidgetsColumn({
+    required this.onOpenMaintenance,
+    required this.onOpenWarehouse,
+    this.compact = false,
+  });
 
   @override
-  State<_InventoryYardPanel> createState() => _InventoryYardPanelState();
+  Widget build(BuildContext context) {
+    if (compact) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _MaintenanceSummaryCard(onTap: onOpenMaintenance),
+          const SizedBox(height: 16),
+          _WarehouseSummaryCard(onTap: onOpenWarehouse),
+        ],
+      );
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final canSplit = constraints.maxWidth >= 860;
+        if (!canSplit) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _MaintenanceSummaryCard(onTap: onOpenMaintenance),
+              const SizedBox(height: 16),
+              _WarehouseSummaryCard(onTap: onOpenWarehouse),
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: _MaintenanceSummaryCard(onTap: onOpenMaintenance)),
+            const SizedBox(width: 16),
+            Expanded(child: _WarehouseSummaryCard(onTap: onOpenWarehouse)),
+          ],
+        );
+      },
+    );
+  }
 }
 
-class _InventoryYardPanelState extends State<_InventoryYardPanel> {
-  final _supa = Supabase.instance.client;
+const List<String> _kDashboardMaintenanceFlow = <String>[
+  'aviso_falla',
+  'revision_area',
+  'reporte_mantenimiento',
+  'cotizacion',
+  'autorizacion_finanzas',
+  'material_recolectado',
+  'programado',
+  'mantenimiento_realizado',
+  'supervision',
+];
+
+const Map<String, String> _kDashboardMaintenanceStatusLabel = <String, String>{
+  'aviso_falla': 'Aviso falla',
+  'revision_area': 'Revisión área',
+  'reporte_mantenimiento': 'Reporte mantenimiento',
+  'cotizacion': 'Cotización',
+  'autorizacion_finanzas': 'Autorización finanzas',
+  'material_recolectado': 'Material recolectado',
+  'programado': 'Programado',
+  'mantenimiento_realizado': 'Mantenimiento realizado',
+  'supervision': 'Supervisión',
+  'cerrado': 'Cerrado',
+  'rechazado': 'Rechazado',
+};
+
+class _MaintenanceSummaryCard extends StatefulWidget {
+  final Future<void> Function()? onTap;
+
+  const _MaintenanceSummaryCard({this.onTap});
+
+  @override
+  State<_MaintenanceSummaryCard> createState() =>
+      _MaintenanceSummaryCardState();
+}
+
+class _MaintenanceSummaryCardState extends State<_MaintenanceSummaryCard> {
+  final SupabaseClient _supa = Supabase.instance.client;
   Timer? _timer;
   RealtimeChannel? _realtime;
   bool _loading = true;
   bool _refreshing = false;
   bool _pendingReload = false;
-  DateTime _asOfDate = DateUtils.dateOnly(DateTime.now());
-  final Map<String, double> _operationalOnHandKg = <String, double>{};
-  List<_ProductionLineSeries> _pacaProductionSeries = const [];
-  List<_InventoryCommercialBreakdownItem> _scrapBreakdown = const [];
-  List<_InventoryCommercialBreakdownItem> _metalBreakdown = const [];
-  List<_InventoryCommercialBreakdownItem> _woodBreakdown = const [];
-  List<_InventoryCommercialBreakdownItem> _plasticBreakdown = const [];
+  int _openOrdersCount = 0;
+  Map<String, int> _countByStage = const <String, int>{};
+  List<_DashboardMaintenanceOrderItem> _openOrders = const [];
 
   @override
   void initState() {
@@ -1540,13 +1616,762 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   void _setupRealtime() {
     _timer?.cancel();
     _timer = Timer.periodic(
+      const Duration(seconds: 18),
+      (_) => _requestReload(),
+    );
+
+    _realtime?.unsubscribe();
+    _realtime = _supa
+        .channel('dashboard-maintenance-summary')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_orders',
+          callback: (_) => _requestReload(),
+        )
+        .subscribe();
+  }
+
+  void _requestReload() {
+    if (!mounted) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    unawaited(_reload());
+  }
+
+  Future<void> _reload({bool showLoader = false}) async {
+    if (!mounted || _refreshing) return;
+    _refreshing = true;
+    if (showLoader) {
+      setState(() => _loading = true);
+    }
+    try {
+      final rows = await _supa
+          .from('maintenance_orders')
+          .select('id,ot_folio,status,updated_at')
+          .order('updated_at', ascending: false)
+          .limit(400);
+      final all = (rows as List).cast<Map<String, dynamic>>();
+      final open = all.where((row) {
+        final status = _normalizeStatus(row['status']);
+        return status.isNotEmpty &&
+            status != 'cerrado' &&
+            status != 'rechazado';
+      }).toList();
+
+      final byStage = <String, int>{};
+      final openOrders = <_DashboardMaintenanceOrderItem>[];
+      for (final row in open) {
+        final status = _normalizeStatus(row['status']);
+        byStage[status] = (byStage[status] ?? 0) + 1;
+        openOrders.add(
+          _DashboardMaintenanceOrderItem(
+            folio: (row['ot_folio'] ?? 'OT').toString().trim(),
+            stage: status,
+          ),
+        );
+      }
+
+      byStage.removeWhere((_, value) => value <= 0);
+      final sortedByStage = byStage.entries.toList()
+        ..sort((a, b) {
+          final aIndex = _kDashboardMaintenanceFlow.indexOf(a.key);
+          final bIndex = _kDashboardMaintenanceFlow.indexOf(b.key);
+          final left = aIndex < 0 ? 999 : aIndex;
+          final right = bIndex < 0 ? 999 : bIndex;
+          if (left != right) return left.compareTo(right);
+          return a.key.compareTo(b.key);
+        });
+
+      if (!mounted) return;
+      setState(() {
+        _openOrdersCount = open.length;
+        _countByStage = <String, int>{
+          for (final entry in sortedByStage) entry.key: entry.value,
+        };
+        _openOrders = openOrders.take(6).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    } finally {
+      _refreshing = false;
+      if (_pendingReload) {
+        _pendingReload = false;
+        _requestReload();
+      }
+    }
+  }
+
+  String _normalizeStatus(dynamic value) =>
+      (value ?? '').toString().toLowerCase().trim();
+
+  String _statusLabel(String status) {
+    final label = _kDashboardMaintenanceStatusLabel[status];
+    if (label != null) return label;
+    return status
+        .replaceAll('_', ' ')
+        .split(' ')
+        .where((w) => w.trim().isNotEmpty)
+        .map((w) => '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}')
+        .join(' ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _HoverLift(
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: widget.onTap == null ? null : () => widget.onTap!(),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SummaryCardHeader(
+                  icon: Icons.build_circle_outlined,
+                  title: 'Resumen de Mantenimiento',
+                  subtitle: '$_openOrdersCount OT abiertas',
+                ),
+                const SizedBox(height: 8),
+                if (_loading)
+                  const SizedBox(
+                    height: 72,
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.2),
+                    ),
+                  )
+                else if (_openOrdersCount == 0)
+                  const SizedBox(
+                    height: 58,
+                    child: Center(
+                      child: Text(
+                        'Sin OT abiertas.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF3B5A58),
+                        ),
+                      ),
+                    ),
+                  )
+                else ...[
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      for (final entry in _countByStage.entries)
+                        _SummaryCountPill(
+                          label: _statusLabel(entry.key),
+                          value: entry.value.toString(),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+                  for (final order in _openOrders) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            order.folio,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF173937),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: _MaintenanceStageChip(
+                            text: _statusLabel(order.stage),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (order != _openOrders.last) const SizedBox(height: 6),
+                  ],
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _WarehouseSummaryCard extends StatefulWidget {
+  final Future<void> Function()? onTap;
+
+  const _WarehouseSummaryCard({this.onTap});
+
+  @override
+  State<_WarehouseSummaryCard> createState() => _WarehouseSummaryCardState();
+}
+
+class _WarehouseSummaryCardState extends State<_WarehouseSummaryCard> {
+  final SupabaseClient _supa = Supabase.instance.client;
+  Timer? _timer;
+  RealtimeChannel? _realtime;
+  bool _loading = true;
+  bool _refreshing = false;
+  bool _pendingReload = false;
+  int _lowStockCount = 0;
+  int _noStockCount = 0;
+  List<_DashboardWarehouseStockItem> _lowStockItems = const [];
+
+  @override
+  void initState() {
+    super.initState();
+    _reload(showLoader: true);
+    _setupRealtime();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _realtime?.unsubscribe();
+    super.dispose();
+  }
+
+  void _setupRealtime() {
+    _timer?.cancel();
+    _timer = Timer.periodic(
+      const Duration(seconds: 20),
+      (_) => _requestReload(),
+    );
+
+    _realtime?.unsubscribe();
+    _realtime = _supa
+        .channel('dashboard-warehouse-summary')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'inventory_items',
+          callback: (_) => _requestReload(),
+        )
+        .subscribe();
+  }
+
+  void _requestReload() {
+    if (!mounted) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    unawaited(_reload());
+  }
+
+  Future<void> _reload({bool showLoader = false}) async {
+    if (!mounted || _refreshing) return;
+    _refreshing = true;
+    if (showLoader) {
+      setState(() => _loading = true);
+    }
+    try {
+      final rows = await _supa
+          .from('inventory_items')
+          .select('id,code,name,current_stock,minimum_stock,is_active')
+          .order('name', ascending: true);
+      final all = (rows as List).cast<Map<String, dynamic>>();
+      final lowStock = <_DashboardWarehouseStockItem>[];
+      var noStockCount = 0;
+      for (final row in all) {
+        final current = _toDouble(row['current_stock']);
+        final minimum = _toDouble(row['minimum_stock']);
+        if (current > minimum) continue;
+        if (current <= 0) noStockCount += 1;
+        lowStock.add(
+          _DashboardWarehouseStockItem(
+            code: (row['code'] ?? '').toString().trim(),
+            name: (row['name'] ?? 'Sin nombre').toString().trim(),
+            currentStock: current,
+            minimumStock: minimum,
+          ),
+        );
+      }
+
+      lowStock.sort((a, b) {
+        final aGap = a.minimumStock - a.currentStock;
+        final bGap = b.minimumStock - b.currentStock;
+        if (aGap != bGap) return bGap.compareTo(aGap);
+        return a.name.compareTo(b.name);
+      });
+
+      if (!mounted) return;
+      setState(() {
+        _lowStockCount = lowStock.length;
+        _noStockCount = noStockCount;
+        _lowStockItems = lowStock.take(6).toList();
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    } finally {
+      _refreshing = false;
+      if (_pendingReload) {
+        _pendingReload = false;
+        _requestReload();
+      }
+    }
+  }
+
+  double _toDouble(dynamic value) {
+    if (value == null) return 0;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString()) ?? 0;
+  }
+
+  String _fmtQty(double value) {
+    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
+    return value.toStringAsFixed(2);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return _HoverLift(
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: widget.onTap == null ? null : () => widget.onTap!(),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.72),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _SummaryCardHeader(
+                  icon: Icons.warehouse_outlined,
+                  title: 'Resumen de Almacén',
+                  subtitle: '$_lowStockCount artículos en bajo stock',
+                ),
+                const SizedBox(height: 8),
+                if (_loading)
+                  const SizedBox(
+                    height: 72,
+                    child: Center(
+                      child: CircularProgressIndicator(strokeWidth: 2.2),
+                    ),
+                  )
+                else if (_lowStockCount == 0)
+                  const SizedBox(
+                    height: 58,
+                    child: Center(
+                      child: Text(
+                        'Sin alertas de stock bajo.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF3B5A58),
+                        ),
+                      ),
+                    ),
+                  )
+                else ...[
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 6,
+                    children: [
+                      _SummaryCountPill(
+                        label: 'Bajo stock',
+                        value: _lowStockCount.toString(),
+                      ),
+                      _SummaryCountPill(
+                        label: 'Sin existencias',
+                        value: _noStockCount.toString(),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(height: 1),
+                  const SizedBox(height: 8),
+                  for (final item in _lowStockItems) ...[
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            item.code.isEmpty
+                                ? item.name
+                                : '${item.code} · ${item.name}',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF173937),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '${_fmtQty(item.currentStock)} / ${_fmtQty(item.minimumStock)}',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFFC75D00),
+                          ),
+                        ),
+                      ],
+                    ),
+                    if (item != _lowStockItems.last) const SizedBox(height: 6),
+                  ],
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryCardHeader extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+
+  const _SummaryCardHeader({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 30,
+          height: 30,
+          decoration: BoxDecoration(
+            color: const Color(0xFFE7F2F1),
+            borderRadius: BorderRadius.circular(9),
+          ),
+          child: Icon(icon, size: 17, color: const Color(0xFF1D4C49)),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF0B2B2B),
+                ),
+              ),
+              Text(
+                subtitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF3C5A58),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SummaryCountPill extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _SummaryCountPill({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE5F1F0),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        '$label: $value',
+        style: const TextStyle(
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF1E4643),
+        ),
+      ),
+    );
+  }
+}
+
+class _MaintenanceStageChip extends StatelessWidget {
+  final String text;
+
+  const _MaintenanceStageChip({required this.text});
+
+  Color _bgFor(String value) {
+    final key = value.toLowerCase();
+    if (key.contains('aviso') || key.contains('revision')) {
+      return const Color(0xFFFFE0B2);
+    }
+    if (key.contains('cotiz') || key.contains('autoriz')) {
+      return const Color(0xFFFFECB3);
+    }
+    if (key.contains('programado') || key.contains('realizado')) {
+      return const Color(0xFFC8E6C9);
+    }
+    if (key.contains('supervision')) {
+      return const Color(0xFFBBDEFB);
+    }
+    return const Color(0xFFEAF1F1);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: _bgFor(text),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.w800,
+          color: Color(0xFF1A3A38),
+        ),
+      ),
+    );
+  }
+}
+
+class _DashboardMaintenanceOrderItem {
+  final String folio;
+  final String stage;
+
+  const _DashboardMaintenanceOrderItem({
+    required this.folio,
+    required this.stage,
+  });
+}
+
+class _DashboardWarehouseStockItem {
+  final String code;
+  final String name;
+  final double currentStock;
+  final double minimumStock;
+
+  const _DashboardWarehouseStockItem({
+    required this.code,
+    required this.name,
+    required this.currentStock,
+    required this.minimumStock,
+  });
+}
+
+const String _kDashboardInventorySite = 'DICSA_CELAYA';
+
+class _DashboardInventoryWidgetPref {
+  final String widgetKey;
+  final String sourceKind;
+  final String? material;
+  final String? commercialMaterialCode;
+  final int sortOrder;
+  final bool isVisible;
+
+  const _DashboardInventoryWidgetPref({
+    required this.widgetKey,
+    required this.sourceKind,
+    required this.material,
+    required this.commercialMaterialCode,
+    required this.sortOrder,
+    required this.isVisible,
+  });
+
+  factory _DashboardInventoryWidgetPref.fromRow(Map<String, dynamic> row) {
+    return _DashboardInventoryWidgetPref(
+      widgetKey: (row['widget_key'] ?? '').toString(),
+      sourceKind: (row['source_kind'] ?? '').toString(),
+      material: row['material']?.toString(),
+      commercialMaterialCode: row['commercial_material_code']?.toString(),
+      sortOrder: (row['sort_order'] as num?)?.toInt() ?? 0,
+      isVisible: (row['is_visible'] as bool?) ?? true,
+    );
+  }
+
+  Map<String, dynamic> toInsertRow(String userId) => <String, dynamic>{
+    'user_id': userId,
+    'widget_key': widgetKey,
+    'source_kind': sourceKind,
+    'material': material,
+    'commercial_material_code': commercialMaterialCode,
+    'sort_order': sortOrder,
+    'is_visible': isVisible,
+  };
+
+  _DashboardInventoryWidgetPref copyWith({
+    String? widgetKey,
+    String? sourceKind,
+    Object? material = _copySentinel,
+    Object? commercialMaterialCode = _copySentinel,
+    int? sortOrder,
+    bool? isVisible,
+  }) {
+    return _DashboardInventoryWidgetPref(
+      widgetKey: widgetKey ?? this.widgetKey,
+      sourceKind: sourceKind ?? this.sourceKind,
+      material: identical(material, _copySentinel)
+          ? this.material
+          : material as String?,
+      commercialMaterialCode: identical(commercialMaterialCode, _copySentinel)
+          ? this.commercialMaterialCode
+          : commercialMaterialCode as String?,
+      sortOrder: sortOrder ?? this.sortOrder,
+      isVisible: isVisible ?? this.isVisible,
+    );
+  }
+}
+
+class _DashboardCommercialMaterialOption {
+  final String code;
+  final String name;
+  final String? inventoryMaterial;
+
+  const _DashboardCommercialMaterialOption({
+    required this.code,
+    required this.name,
+    required this.inventoryMaterial,
+  });
+}
+
+class _DashboardInventoryTileModel {
+  final _DashboardInventoryWidgetPref pref;
+  final String label;
+  final String value;
+  final String? secondaryValue;
+  final Color color;
+
+  const _DashboardInventoryTileModel({
+    required this.pref,
+    required this.label,
+    required this.value,
+    required this.secondaryValue,
+    required this.color,
+  });
+}
+
+class _DashboardInventoryWidgetEditorResult {
+  final String sourceKind;
+  final String? material;
+  final String? commercialMaterialCode;
+
+  const _DashboardInventoryWidgetEditorResult({
+    required this.sourceKind,
+    required this.material,
+    required this.commercialMaterialCode,
+  });
+}
+
+const Object _copySentinel = Object();
+
+class _InventoryYardPanel extends StatefulWidget {
+  final Future<void> Function()? onOpenInventoryStock;
+  final Future<void> Function()? onOpenInventoryProduction;
+
+  const _InventoryYardPanel({
+    this.onOpenInventoryStock,
+    this.onOpenInventoryProduction,
+  });
+
+  @override
+  State<_InventoryYardPanel> createState() => _InventoryYardPanelState();
+}
+
+class _InventoryYardPanelState extends State<_InventoryYardPanel> {
+  final _supa = Supabase.instance.client;
+  Timer? _timer;
+  RealtimeChannel? _realtime;
+  bool _loading = true;
+  bool _refreshing = false;
+  bool _pendingReload = false;
+  String? _userId;
+  bool _editingTiles = false;
+  String? _selectedTileKey;
+
+  @override
+  void initState() {
+    super.initState();
+    _userId = _supa.auth.currentUser?.id;
+    _reload(showLoader: true);
+    _setupRealtime();
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _realtime?.unsubscribe();
+    super.dispose();
+  }
+
+  final Map<String, double> _operationalOnHandKg = <String, double>{};
+  final Map<String, double> _commercialOnHandKg = <String, double>{};
+  final Map<String, _DashboardCommercialMaterialOption>
+  _commercialOptionsByCode = <String, _DashboardCommercialMaterialOption>{};
+  List<_ProductionLineSeries> _pacaProductionSeries = const [];
+  List<_ProductionLineSeries> _separationSeries = const [];
+  List<_InventoryCommercialBreakdownItem> _scrapBreakdown = const [];
+  List<_InventoryCommercialBreakdownItem> _paperBreakdown = const [];
+  List<_DashboardInventoryWidgetPref> _widgetPrefs = const [];
+
+  static const List<Color> _kProductionSeriesPalette = <Color>[
+    Color(0xFF1E88E5),
+    Color(0xFF43A047),
+    Color(0xFFF9A825),
+    Color(0xFFE53935),
+    Color(0xFF6D4C41),
+    Color(0xFF00897B),
+    Color(0xFF3949AB),
+    Color(0xFFD81B60),
+  ];
+
+  void _setupRealtime() {
+    _timer?.cancel();
+    _timer = Timer.periodic(
       const Duration(seconds: 15),
       (_) => _requestReload(),
     );
 
     _realtime?.unsubscribe();
     _realtime = _supa
-        .channel('dashboard-yard-inventory')
+        .channel('dashboard-yard-operations')
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
@@ -1563,6 +2388,12 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'production_runs',
+          callback: (_) => _requestReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'material_separation_runs',
           callback: (_) => _requestReload(),
         )
         .onPostgresChanges(
@@ -1588,9 +2419,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     final dd = date.day.toString().padLeft(2, '0');
     return '${date.year}-$mm-$dd';
   }
-
-  String _sqlMonthStart(DateTime date) =>
-      _sqlDate(DateTime(date.year, date.month, 1));
 
   double _productionBalesFromRow(Map<String, dynamic> row) {
     final direct = _num(
@@ -1632,25 +2460,321 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   }
 
   String _normalizeOperational(String material) {
-    switch (material) {
-      case 'METAL_ALUMINUM':
-      case 'METAL_STEEL':
-      case 'METAL_COPPER':
-      case 'METAL_BRASS':
-      case 'METAL_OTHER':
-        return 'METAL';
+    final normalized = material.trim().toUpperCase();
+    switch (normalized) {
+      case 'BALE_CAPLE':
+      case 'PACA CAPLE':
+      case 'PACA_CAPLE':
+        return 'CAPLE';
+      default:
+        return normalized;
+    }
+  }
+
+  bool _isBaleOperationalMaterial(String material) {
+    final m = material.trim().toUpperCase();
+    return m.startsWith('BALE_') || m.contains('PACA') || m == 'CAPLE';
+  }
+
+  String _materialUiLabel(String material) {
+    switch (material.trim().toUpperCase()) {
+      case 'BALE_NATIONAL':
+        return 'Paca nacional';
+      case 'BALE_AMERICAN':
+        return 'Paca americana';
+      case 'BALE_CLEAN':
+        return 'Paca limpia';
+      case 'BALE_TRASH':
+        return 'Paca basura';
+      case 'CAPLE':
+        return 'Paca caple';
+      case 'SCRAP':
+        return 'Chatarra';
+      case 'PAPER':
+        return 'Papel';
+      case 'PLASTIC':
+        return 'Plásticos';
+      case 'WOOD':
+        return 'Madera';
       default:
         return material;
     }
   }
 
-  String? _operationalBreakdownGroup(String material) {
-    final m = material.trim().toUpperCase();
-    if (m == 'SCRAP' || m.contains('CHATARR')) return 'SCRAP';
-    if (m == 'METAL' || m.startsWith('METAL_')) return 'METAL';
-    if (m == 'WOOD' || m.contains('MADERA')) return 'WOOD';
-    if (m == 'PLASTIC' || m.contains('PLAST')) return 'PLASTIC';
-    return null;
+  int _materialSortOrder(String material) {
+    const preferred = <String>[
+      'BALE_NATIONAL',
+      'BALE_AMERICAN',
+      'BALE_CLEAN',
+      'BALE_TRASH',
+      'CAPLE',
+      'SCRAP',
+      'PAPER',
+      'PLASTIC',
+      'WOOD',
+    ];
+    final upper = material.trim().toUpperCase();
+    final idx = preferred.indexOf(upper);
+    return idx >= 0 ? idx : 999;
+  }
+
+  List<_DashboardInventoryWidgetPref> _defaultWidgetPrefs() {
+    const defaults = <Map<String, String?>>[
+      {'source_kind': 'bales_total'},
+      {'source_kind': 'operational_material', 'material': 'SCRAP'},
+      {'source_kind': 'operational_material', 'material': 'PAPER'},
+      {'source_kind': 'operational_material', 'material': 'PLASTIC'},
+      {'source_kind': 'operational_material', 'material': 'WOOD'},
+      {'source_kind': 'operational_material', 'material': 'BALE_NATIONAL'},
+      {'source_kind': 'operational_material', 'material': 'BALE_AMERICAN'},
+      {'source_kind': 'operational_material', 'material': 'BALE_CLEAN'},
+      {'source_kind': 'operational_material', 'material': 'BALE_TRASH'},
+      {'source_kind': 'operational_material', 'material': 'CAPLE'},
+    ];
+    return [
+      for (var i = 0; i < defaults.length; i++)
+        _DashboardInventoryWidgetPref(
+          widgetKey:
+              'default_${i + 1}_${defaults[i]['source_kind']}_${defaults[i]['material'] ?? 'total'}',
+          sourceKind: defaults[i]['source_kind']!,
+          material: defaults[i]['material'],
+          commercialMaterialCode: defaults[i]['commercial_material_code'],
+          sortOrder: i,
+          isVisible: true,
+        ),
+    ];
+  }
+
+  Future<List<_DashboardInventoryWidgetPref>> _loadWidgetPrefs() async {
+    final userId = _userId;
+    if (userId == null) return _defaultWidgetPrefs();
+    try {
+      final rows = await _supa
+          .from('dashboard_inventory_widgets')
+          .select(
+            'widget_key,source_kind,material,commercial_material_code,sort_order,is_visible,created_at',
+          )
+          .eq('user_id', userId)
+          .order('sort_order')
+          .order('created_at');
+      final prefs = (rows as List)
+          .cast<Map<String, dynamic>>()
+          .map(_DashboardInventoryWidgetPref.fromRow)
+          .where((pref) => pref.widgetKey.isNotEmpty)
+          .toList();
+      if (prefs.isNotEmpty) return prefs;
+
+      final defaults = _defaultWidgetPrefs();
+      await _supa
+          .from('dashboard_inventory_widgets')
+          .upsert(
+            defaults.map((pref) => pref.toInsertRow(userId)).toList(),
+            onConflict: 'user_id,widget_key',
+          );
+      return defaults;
+    } catch (_) {
+      return _widgetPrefs.isNotEmpty ? _widgetPrefs : _defaultWidgetPrefs();
+    }
+  }
+
+  Future<void> _replaceWidgetPrefs(
+    List<_DashboardInventoryWidgetPref> prefs,
+  ) async {
+    final userId = _userId;
+    if (userId == null) {
+      if (!mounted) return;
+      setState(() {
+        _widgetPrefs = prefs;
+        if (_selectedTileKey != null &&
+            !prefs.any((pref) => pref.widgetKey == _selectedTileKey)) {
+          _selectedTileKey = null;
+        }
+      });
+      return;
+    }
+
+    try {
+      final existingRows = await _supa
+          .from('dashboard_inventory_widgets')
+          .select('widget_key')
+          .eq('user_id', userId);
+      final existingKeys = (existingRows as List)
+          .map((row) => (row['widget_key'] ?? '').toString())
+          .where((key) => key.isNotEmpty)
+          .toSet();
+      final nextKeys = prefs.map((pref) => pref.widgetKey).toSet();
+      final keysToDelete = existingKeys.difference(nextKeys).toList();
+      if (keysToDelete.isNotEmpty) {
+        await _supa
+            .from('dashboard_inventory_widgets')
+            .delete()
+            .eq('user_id', userId)
+            .inFilter('widget_key', keysToDelete);
+      }
+      await _supa
+          .from('dashboard_inventory_widgets')
+          .upsert(
+            prefs.map((pref) => pref.toInsertRow(userId)).toList(),
+            onConflict: 'user_id,widget_key',
+          );
+    } catch (_) {
+      // Fallback local until the migration is applied remotely.
+    }
+    if (!mounted) return;
+    setState(() {
+      _widgetPrefs = prefs;
+      if (_selectedTileKey != null &&
+          !prefs.any((pref) => pref.widgetKey == _selectedTileKey)) {
+        _selectedTileKey = null;
+      }
+    });
+  }
+
+  String _newWidgetKey() => 'custom_${DateTime.now().microsecondsSinceEpoch}';
+
+  Color _tileColorForMaterial(String? material) {
+    switch ((material ?? '').trim().toUpperCase()) {
+      case 'SCRAP':
+        return const Color(0xFFE3F1FF);
+      case 'PAPER':
+        return const Color(0xFFEAF6E3);
+      case 'PLASTIC':
+        return const Color(0xFFFFF2D8);
+      case 'WOOD':
+        return const Color(0xFFF0E6D8);
+      default:
+        return const Color(0xFFE0F3FF);
+    }
+  }
+
+  String _tileLabelForOperationalMaterial(String material) {
+    final label = _materialUiLabel(material);
+    return _isBaleOperationalMaterial(material) ? label : '$label en patio';
+  }
+
+  List<String> _availableOperationalMaterials() {
+    final seen = <String>{};
+    final preferred = <String>[
+      'SCRAP',
+      'PAPER',
+      'PLASTIC',
+      'WOOD',
+      'BALE_NATIONAL',
+      'BALE_AMERICAN',
+      'BALE_CLEAN',
+      'BALE_TRASH',
+      'CAPLE',
+    ];
+    for (final material in _operationalOnHandKg.keys) {
+      final normalized = _normalizeOperational(material);
+      if (normalized.isNotEmpty) preferred.add(normalized);
+    }
+    final options = <String>[];
+    for (final material in preferred) {
+      final normalized = _normalizeOperational(material);
+      if (normalized.isEmpty || !seen.add(normalized)) continue;
+      options.add(normalized);
+    }
+    return options;
+  }
+
+  List<_DashboardCommercialMaterialOption> _availableCommercialOptions() {
+    final options = _commercialOptionsByCode.values.toList()
+      ..sort((a, b) {
+        final materialA = _materialUiLabel(a.inventoryMaterial ?? '');
+        final materialB = _materialUiLabel(b.inventoryMaterial ?? '');
+        final byMaterial = materialA.compareTo(materialB);
+        if (byMaterial != 0) return byMaterial;
+        return a.name.compareTo(b.name);
+      });
+    return options;
+  }
+
+  Future<void> _toggleTileEditing() async {
+    if (!mounted) return;
+    setState(() {
+      _editingTiles = !_editingTiles;
+      if (!_editingTiles) _selectedTileKey = null;
+    });
+  }
+
+  Future<void> _restoreDefaultWidgets() async {
+    final defaults = _defaultWidgetPrefs();
+    await _replaceWidgetPrefs(defaults);
+    if (!mounted) return;
+    setState(() => _selectedTileKey = null);
+  }
+
+  Future<void> _addInventoryWidget() async {
+    final result = await _showWidgetEditor();
+    if (result == null) return;
+    final next = [..._widgetPrefs];
+    next.add(
+      _DashboardInventoryWidgetPref(
+        widgetKey: _newWidgetKey(),
+        sourceKind: result.sourceKind,
+        material: result.material,
+        commercialMaterialCode: result.commercialMaterialCode,
+        sortOrder: next.length,
+        isVisible: true,
+      ),
+    );
+    await _replaceWidgetPrefs(next);
+  }
+
+  Future<void> _changeSelectedInventoryWidget() async {
+    _DashboardInventoryWidgetPref? selected;
+    for (final pref in _widgetPrefs) {
+      if (pref.widgetKey == _selectedTileKey) {
+        selected = pref;
+        break;
+      }
+    }
+    if (selected == null) return;
+    final selectedPref = selected;
+    final result = await _showWidgetEditor(initialPref: selectedPref);
+    if (result == null) return;
+    final next = _widgetPrefs
+        .map(
+          (pref) => pref.widgetKey == selectedPref.widgetKey
+              ? pref.copyWith(
+                  sourceKind: result.sourceKind,
+                  material: result.material,
+                  commercialMaterialCode: result.commercialMaterialCode,
+                )
+              : pref,
+        )
+        .toList();
+    await _replaceWidgetPrefs(next);
+  }
+
+  Future<void> _removeSelectedInventoryWidget() async {
+    final selectedKey = _selectedTileKey;
+    if (selectedKey == null) return;
+    final next =
+        _widgetPrefs.where((pref) => pref.widgetKey != selectedKey).toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final resequenced = [
+      for (var i = 0; i < next.length; i++) next[i].copyWith(sortOrder: i),
+    ];
+    await _replaceWidgetPrefs(resequenced);
+    if (!mounted) return;
+    setState(() => _selectedTileKey = null);
+  }
+
+  Future<_DashboardInventoryWidgetEditorResult?> _showWidgetEditor({
+    _DashboardInventoryWidgetPref? initialPref,
+  }) {
+    return showDialog<_DashboardInventoryWidgetEditorResult>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.24),
+      builder: (dialogContext) => _DashboardInventoryWidgetEditorDialog(
+        initialPref: initialPref,
+        operationalMaterials: _availableOperationalMaterials(),
+        commercialOptions: _availableCommercialOptions(),
+        materialUiLabel: _materialUiLabel,
+      ),
+    );
   }
 
   Future<void> _reload({bool showLoader = false}) async {
@@ -1666,27 +2790,30 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         asOfDate.subtract(const Duration(days: 89)),
       );
       final responses = await Future.wait<dynamic>([
+        _loadWidgetPrefs(),
         _supa.rpc(
           'rpc_inventory_summary_by_period',
           params: {
-            'p_period_month': _sqlMonthStart(asOfDate),
+            'p_period_month': _sqlDate(monthStart),
             'p_as_of_date': _sqlDate(asOfDate),
             'p_site': _kDashboardInventorySite,
           },
         ),
         _supa
             .from('commercial_material_catalog')
-            .select('code,name')
+            .select('code,name,inventory_material')
             .eq('active', true),
         _supa
             .from('opening_balances')
             .select('material,commercial_material_code,weight_kg')
             .eq('site', _kDashboardInventorySite)
-            .eq('period_month', _sqlMonthStart(asOfDate)),
+            .eq('period_month', _sqlDate(monthStart)),
         _supa
             .from('movements')
-            .select('material,commercial_material_code,flow,weight_kg,op_date')
-            .eq('site', _kDashboardInventorySite)
+            .select(
+              'material,commercial_material_code,flow,weight_kg,net_kg,site,op_date',
+            )
+            .or('site.eq.$_kDashboardInventorySite,site.is.null')
             .gte('op_date', _sqlDate(monthStart))
             .lte('op_date', _sqlDate(asOfDate)),
         _supa
@@ -1694,16 +2821,27 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
             .select(
               'op_date,bale_material,bale_count,avg_bale_weight_kg,produced_weight_kg',
             )
-            .eq('site', _kDashboardInventorySite)
+            .or('site.eq.$_kDashboardInventorySite,site.is.null')
+            .gte('op_date', _sqlDate(trendStart))
+            .lte('op_date', _sqlDate(asOfDate)),
+        _supa
+            .from('material_separation_runs')
+            .select(
+              'op_date,source_material,commercial_material_code,weight_kg,site',
+            )
+            .or('site.eq.$_kDashboardInventorySite,site.is.null')
             .gte('op_date', _sqlDate(trendStart))
             .lte('op_date', _sqlDate(asOfDate)),
       ]);
 
-      final summaryRows = (responses[0] as List).cast<Map<String, dynamic>>();
-      final catalogRows = (responses[1] as List).cast<Map<String, dynamic>>();
-      final openingRows = (responses[2] as List).cast<Map<String, dynamic>>();
-      final movementRows = (responses[3] as List).cast<Map<String, dynamic>>();
-      var productionRows = (responses[4] as List).cast<Map<String, dynamic>>();
+      final widgetPrefs = (responses[0] as List)
+          .cast<_DashboardInventoryWidgetPref>();
+      final summaryRows = (responses[1] as List).cast<Map<String, dynamic>>();
+      final catalogRows = (responses[2] as List).cast<Map<String, dynamic>>();
+      final openingRows = (responses[3] as List).cast<Map<String, dynamic>>();
+      final movementRows = (responses[4] as List).cast<Map<String, dynamic>>();
+      var productionRows = (responses[5] as List).cast<Map<String, dynamic>>();
+      var separationRows = (responses[6] as List).cast<Map<String, dynamic>>();
       if (productionRows.isEmpty) {
         final fallback = await _supa
             .from('production_runs')
@@ -1714,96 +2852,130 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
             .lte('op_date', _sqlDate(asOfDate));
         productionRows = (fallback as List).cast<Map<String, dynamic>>();
       }
+      if (separationRows.isEmpty) {
+        final fallback = await _supa
+            .from('material_separation_runs')
+            .select(
+              'op_date,source_material,commercial_material_code,weight_kg',
+            )
+            .gte('op_date', _sqlDate(trendStart))
+            .lte('op_date', _sqlDate(asOfDate));
+        separationRows = (fallback as List).cast<Map<String, dynamic>>();
+      }
 
       final operational = <String, double>{};
       for (final row in summaryRows) {
-        final rawMaterial = (row['material'] ?? '').toString().trim();
-        if (rawMaterial.isEmpty) continue;
-        final material = _normalizeOperational(rawMaterial);
-        operational[material] =
-            (operational[material] ?? 0) + _num(row['on_hand_kg']);
+        final material = _normalizeOperational(
+          (row['material'] ?? '').toString(),
+        );
+        if (material.isEmpty) continue;
+        operational[material] = _num(row['on_hand_kg']);
       }
-
       final commercialNames = <String, String>{
         for (final row in catalogRows)
           (row['code'] ?? '').toString(): (row['name'] ?? '').toString(),
       };
+      final commercialOptionsByCode =
+          <String, _DashboardCommercialMaterialOption>{
+            for (final row in catalogRows)
+              (row['code'] ?? '')
+                  .toString(): _DashboardCommercialMaterialOption(
+                code: (row['code'] ?? '').toString(),
+                name: (row['name'] ?? '').toString(),
+                inventoryMaterial: row['inventory_material']?.toString(),
+              ),
+          };
+      final commercialOnHand = <String, double>{};
+      final scrapByCommercial = <String, double>{};
+      final paperByCommercial = <String, double>{};
+      final dailyProductionByMaterialAndDate =
+          <String, Map<DateTime, double>>{};
+      final dailySeparationByCommercialAndDate =
+          <String, Map<DateTime, double>>{};
 
-      final byMaterialCommercial = <String, double>{};
-      final dailyProductionByMaterialAndDate = <String, Map<DateTime, double>>{
-        'BALE_NATIONAL': <DateTime, double>{},
-        'BALE_AMERICAN': <DateTime, double>{},
-        'BALE_CLEAN': <DateTime, double>{},
-        'BALE_TRASH': <DateTime, double>{},
-      };
       for (final row in openingRows) {
-        final rawMaterial = (row['material'] ?? '').toString().trim();
+        final material = _normalizeOperational(
+          (row['material'] ?? '').toString(),
+        );
         final code = (row['commercial_material_code'] ?? '').toString().trim();
-        if (rawMaterial.isEmpty || code.isEmpty) continue;
-        final material = _normalizeOperational(rawMaterial);
-        final key = '$material|$code';
-        byMaterialCommercial[key] =
-            (byMaterialCommercial[key] ?? 0) + _num(row['weight_kg']);
+        if (code.isEmpty) continue;
+        final weightKg = _num(row['weight_kg']);
+        commercialOnHand[code] = (commercialOnHand[code] ?? 0) + weightKg;
+        if (material == 'SCRAP') {
+          scrapByCommercial[code] = (scrapByCommercial[code] ?? 0) + weightKg;
+        } else if (material == 'PAPER') {
+          paperByCommercial[code] = (paperByCommercial[code] ?? 0) + weightKg;
+        }
       }
 
       for (final row in movementRows) {
-        final rawMaterial = (row['material'] ?? '').toString().trim();
+        final material = _normalizeOperational(
+          (row['material'] ?? '').toString(),
+        );
         final code = (row['commercial_material_code'] ?? '').toString().trim();
+        if (code.isEmpty) continue;
         final flow = (row['flow'] ?? '').toString().trim().toUpperCase();
-        final signedKg = flow == 'OUT'
-            ? -_num(row['weight_kg'])
-            : _num(row['weight_kg']);
-
-        if (rawMaterial.isEmpty || code.isEmpty) continue;
-        final material = _normalizeOperational(rawMaterial);
-        final key = '$material|$code';
-        byMaterialCommercial[key] = (byMaterialCommercial[key] ?? 0) + signedKg;
+        final weightKg = _num(row['net_kg']) == 0
+            ? _num(row['weight_kg'])
+            : _num(row['net_kg']);
+        final signedKg = flow == 'OUT' ? -weightKg : weightKg;
+        commercialOnHand[code] = (commercialOnHand[code] ?? 0) + signedKg;
+        if (material == 'SCRAP') {
+          scrapByCommercial[code] = (scrapByCommercial[code] ?? 0) + signedKg;
+        } else if (material == 'PAPER') {
+          paperByCommercial[code] = (paperByCommercial[code] ?? 0) + signedKg;
+        }
       }
 
       for (final row in productionRows) {
         final opDate = DateUtils.dateOnly(_parseDate(row['op_date']));
         final producedBales = _productionBalesFromRow(row);
         final material = (row['bale_material'] ?? '').toString().trim();
-        final key = dailyProductionByMaterialAndDate.containsKey(material)
-            ? material
-            : 'BALE_TRASH';
-        final perDay = dailyProductionByMaterialAndDate[key]!;
+        if (material.isEmpty) continue;
+        final key = _normalizeOperational(material);
+        final perDay = dailyProductionByMaterialAndDate.putIfAbsent(
+          key,
+          () => <DateTime, double>{},
+        );
         perDay[opDate] = (perDay[opDate] ?? 0) + producedBales;
       }
 
-      final scrap = <_InventoryCommercialBreakdownItem>[];
-      final metal = <_InventoryCommercialBreakdownItem>[];
-      final wood = <_InventoryCommercialBreakdownItem>[];
-      final plastic = <_InventoryCommercialBreakdownItem>[];
-
-      byMaterialCommercial.forEach((key, kg) {
-        if (kg.abs() < 0.005) return;
-        final separator = key.indexOf('|');
-        if (separator <= 0 || separator >= key.length - 1) return;
-        final material = key.substring(0, separator);
-        final code = key.substring(separator + 1);
-        final name = commercialNames[code] ?? code;
-        final item = _InventoryCommercialBreakdownItem(
-          code: code,
-          name: name,
-          kg: kg,
+      for (final row in separationRows) {
+        final opDate = DateUtils.dateOnly(_parseDate(row['op_date']));
+        final material = _normalizeOperational(
+          (row['source_material'] ?? '').toString(),
         );
-        final group = _operationalBreakdownGroup(material);
-        if (group == 'SCRAP') {
-          scrap.add(item);
-        } else if (group == 'METAL') {
-          metal.add(item);
-        } else if (group == 'WOOD') {
-          wood.add(item);
-        } else if (group == 'PLASTIC') {
-          plastic.add(item);
-        }
-      });
+        if (material != 'SCRAP' && material != 'PAPER') continue;
+        final commercialCode = (row['commercial_material_code'] ?? '')
+            .toString()
+            .trim();
+        if (commercialCode.isEmpty) continue;
+        final weightKg = _num(row['weight_kg']);
+        if (weightKg <= 0) continue;
+        final perDay = dailySeparationByCommercialAndDate.putIfAbsent(
+          commercialCode,
+          () => <DateTime, double>{},
+        );
+        perDay[opDate] = (perDay[opDate] ?? 0) + weightKg;
+      }
 
-      scrap.sort((a, b) => b.kg.compareTo(a.kg));
-      metal.sort((a, b) => b.kg.compareTo(a.kg));
-      wood.sort((a, b) => b.kg.compareTo(a.kg));
-      plastic.sort((a, b) => b.kg.compareTo(a.kg));
+      final scrap = <_InventoryCommercialBreakdownItem>[
+        for (final entry in scrapByCommercial.entries)
+          _InventoryCommercialBreakdownItem(
+            code: entry.key,
+            name: commercialNames[entry.key] ?? entry.key,
+            kg: entry.value,
+          ),
+      ]..sort((a, b) => b.kg.compareTo(a.kg));
+
+      final paper = <_InventoryCommercialBreakdownItem>[
+        for (final entry in paperByCommercial.entries)
+          _InventoryCommercialBreakdownItem(
+            code: entry.key,
+            name: commercialNames[entry.key] ?? entry.key,
+            kg: entry.value,
+          ),
+      ]..sort((a, b) => b.kg.compareTo(a.kg));
 
       final dayAxis = <DateTime>[];
       for (
@@ -1813,40 +2985,92 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       ) {
         dayAxis.add(d);
       }
-      _ProductionLineSeries buildSeries(
-        String material,
-        String label,
-        Color color,
-      ) {
+
+      _ProductionLineSeries buildSeries(String material, Color color) {
         final perDay = dailyProductionByMaterialAndDate[material]!;
         final points = dayAxis
             .map((d) => _DailyPoint(day: d, value: perDay[d] ?? 0))
             .toList();
         return _ProductionLineSeries(
-          label: label,
+          label: _materialUiLabel(material),
           color: color,
           points: points,
+          unitLabel: 'pacas',
         );
       }
 
+      _ProductionLineSeries buildSeparationSeries(
+        String commercialCode,
+        Color color,
+      ) {
+        final perDay = dailySeparationByCommercialAndDate[commercialCode]!;
+        final points = dayAxis
+            .map((d) => _DailyPoint(day: d, value: perDay[d] ?? 0))
+            .toList();
+        return _ProductionLineSeries(
+          label: commercialNames[commercialCode] ?? commercialCode,
+          color: color,
+          points: points,
+          unitLabel: 'kg',
+        );
+      }
+
+      final productionMaterials = dailyProductionByMaterialAndDate.keys.toList()
+        ..sort((a, b) {
+          final byOrder = _materialSortOrder(
+            a,
+          ).compareTo(_materialSortOrder(b));
+          if (byOrder != 0) return byOrder;
+          return a.compareTo(b);
+        });
       final pacaProductionSeries = <_ProductionLineSeries>[
-        buildSeries('BALE_NATIONAL', 'Paca nacional', const Color(0xFF1E88E5)),
-        buildSeries('BALE_AMERICAN', 'Paca americana', const Color(0xFF43A047)),
-        buildSeries('BALE_CLEAN', 'Paca limpia', const Color(0xFFF9A825)),
-        buildSeries('BALE_TRASH', 'Paca basura', const Color(0xFFE53935)),
+        for (var i = 0; i < productionMaterials.length; i++)
+          buildSeries(
+            productionMaterials[i],
+            _kProductionSeriesPalette[i % _kProductionSeriesPalette.length],
+          ),
+      ];
+      final separationMaterials =
+          dailySeparationByCommercialAndDate.keys.toList()..sort((a, b) {
+            final totalA = dailySeparationByCommercialAndDate[a]!.values.fold(
+              0.0,
+              (sum, value) => sum + value,
+            );
+            final totalB = dailySeparationByCommercialAndDate[b]!.values.fold(
+              0.0,
+              (sum, value) => sum + value,
+            );
+            final byWeight = totalB.compareTo(totalA);
+            if (byWeight != 0) return byWeight;
+            final labelA = commercialNames[a] ?? a;
+            final labelB = commercialNames[b] ?? b;
+            return labelA.compareTo(labelB);
+          });
+      final separationSeries = <_ProductionLineSeries>[
+        for (var i = 0; i < separationMaterials.length; i++)
+          buildSeparationSeries(
+            separationMaterials[i],
+            _kProductionSeriesPalette[(i + pacaProductionSeries.length) %
+                _kProductionSeriesPalette.length],
+          ),
       ];
 
       if (!mounted) return;
       setState(() {
-        _asOfDate = asOfDate;
         _operationalOnHandKg
           ..clear()
           ..addAll(operational);
+        _commercialOnHandKg
+          ..clear()
+          ..addAll(commercialOnHand);
+        _commercialOptionsByCode
+          ..clear()
+          ..addAll(commercialOptionsByCode);
         _pacaProductionSeries = pacaProductionSeries;
+        _separationSeries = separationSeries;
         _scrapBreakdown = scrap;
-        _metalBreakdown = metal;
-        _woodBreakdown = wood;
-        _plasticBreakdown = plastic;
+        _paperBreakdown = paper;
+        _widgetPrefs = widgetPrefs;
         _loading = false;
       });
     } catch (_) {
@@ -1869,13 +3093,90 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
 
   String _fmtKg(double value) => '${value.toStringAsFixed(1)} kg';
 
+  _DashboardInventoryTileModel? _buildTileModel(
+    _DashboardInventoryWidgetPref pref,
+    Map<String, double> baleByMaterial,
+    double totalPacasKg,
+  ) {
+    switch (pref.sourceKind) {
+      case 'bales_total':
+        return _DashboardInventoryTileModel(
+          pref: pref,
+          label: 'Pacas en patio',
+          value: '${_fmtPacas(totalPacasKg)} pacas',
+          secondaryValue: _fmtKg(totalPacasKg),
+          color: const Color(0xFFD6F4FF),
+        );
+      case 'operational_material':
+        final material = _normalizeOperational((pref.material ?? '').trim());
+        if (material.isEmpty) return null;
+        final kg = _operationalOnHandKg[material] ?? 0;
+        final isBale = _isBaleOperationalMaterial(material);
+        return _DashboardInventoryTileModel(
+          pref: pref,
+          label: _tileLabelForOperationalMaterial(material),
+          value: isBale ? '${_fmtPacas(kg)} pacas' : _fmtKg(kg),
+          secondaryValue: isBale ? _fmtKg(kg) : 'Existencia actual',
+          color: _tileColorForMaterial(material),
+        );
+      case 'commercial_material':
+        final code = (pref.commercialMaterialCode ?? '').trim();
+        if (code.isEmpty) return null;
+        final option = _commercialOptionsByCode[code];
+        final kg = _commercialOnHandKg[code] ?? 0;
+        final inventoryMaterial = _normalizeOperational(
+          option?.inventoryMaterial ?? '',
+        );
+        final isBale = _isBaleOperationalMaterial(inventoryMaterial);
+        return _DashboardInventoryTileModel(
+          pref: pref,
+          label: option?.name.isNotEmpty == true ? option!.name : code,
+          value: isBale ? '${_fmtPacas(kg)} pacas' : _fmtKg(kg),
+          secondaryValue: isBale
+              ? _fmtKg(kg)
+              : _materialUiLabel(option?.inventoryMaterial ?? ''),
+          color: _tileColorForMaterial(option?.inventoryMaterial),
+        );
+      default:
+        return null;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final pacaNacional = _operationalOnHandKg['BALE_NATIONAL'] ?? 0;
-    final pacaAmericana = _operationalOnHandKg['BALE_AMERICAN'] ?? 0;
-    final pacaLimpia = _operationalOnHandKg['BALE_CLEAN'] ?? 0;
-    final pacaBasura = _operationalOnHandKg['BALE_TRASH'] ?? 0;
-    final totalPacas = pacaNacional + pacaAmericana + pacaLimpia + pacaBasura;
+    final baleByMaterial = <String, double>{};
+    for (final entry in _operationalOnHandKg.entries) {
+      if (!_isBaleOperationalMaterial(entry.key)) continue;
+      final key = _normalizeOperational(entry.key);
+      baleByMaterial[key] = (baleByMaterial[key] ?? 0) + entry.value;
+    }
+    for (final key in const <String>[
+      'BALE_NATIONAL',
+      'BALE_AMERICAN',
+      'BALE_CLEAN',
+      'BALE_TRASH',
+      'CAPLE',
+    ]) {
+      baleByMaterial.putIfAbsent(key, () => 0);
+    }
+    final baleMaterials = baleByMaterial.entries.toList()
+      ..sort((a, b) {
+        final byOrder = _materialSortOrder(
+          a.key,
+        ).compareTo(_materialSortOrder(b.key));
+        if (byOrder != 0) return byOrder;
+        return a.key.compareTo(b.key);
+      });
+    final totalPacasKg = baleMaterials.fold<double>(
+      0,
+      (sum, entry) => sum + entry.value,
+    );
+    final visiblePrefs = _widgetPrefs.where((pref) => pref.isVisible).toList()
+      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final tileModels = visiblePrefs
+        .map((pref) => _buildTileModel(pref, baleByMaterial, totalPacasKg))
+        .whereType<_DashboardInventoryTileModel>()
+        .toList();
 
     return _loading && _operationalOnHandKg.isEmpty
         ? const SizedBox(
@@ -1891,72 +3192,97 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
                   ? (width - (2 * gap)) / 3
                   : ((width - gap) / 2).clamp(120.0, 520.0);
               final mediumW = desktopGrid ? (width - gap) / 2 : width;
-              final tileItems = [
-                _SquareTileData(
-                  label: 'Pacas patio (est.)',
-                  value: '${_fmtPacas(totalPacas)} pacas',
-                  secondaryValue: _fmtKg(totalPacas),
-                  color: const Color(0xFFD6F4FF),
-                ),
-                _SquareTileData(
-                  label: 'Paca nacional (est.)',
-                  value: '${_fmtPacas(pacaNacional)} pacas',
-                  secondaryValue: _fmtKg(pacaNacional),
-                  color: const Color(0xFFBEEBFF),
-                ),
-                _SquareTileData(
-                  label: 'Paca americana (est.)',
-                  value: '${_fmtPacas(pacaAmericana)} pacas',
-                  secondaryValue: _fmtKg(pacaAmericana),
-                  color: const Color(0xFFC8F7D8),
-                ),
-                _SquareTileData(
-                  label: 'Paca limpia (est.)',
-                  value: '${_fmtPacas(pacaLimpia)} pacas',
-                  secondaryValue: _fmtKg(pacaLimpia),
-                  color: const Color(0xFFFFF4C4),
-                ),
-                _SquareTileData(
-                  label: 'Paca basura (est.)',
-                  value: '${_fmtPacas(pacaBasura)} pacas',
-                  secondaryValue: _fmtKg(pacaBasura),
-                  color: const Color(0xFFFFE2BF),
-                ),
-                _SquareTileData(
-                  label: 'Total pacas hoy',
-                  value: '${_fmtPacas(totalPacas)} pacas',
-                  secondaryValue: _fmtKg(totalPacas),
-                  color: const Color(0xFFE0F3FF),
-                ),
-              ];
               final tiles = Wrap(
                 spacing: gap,
                 runSpacing: gap,
-                children: tileItems
-                    .map((tile) => _SquareTile(tile: tile, width: smallW))
+                children: tileModels
+                    .map(
+                      (tile) => _SquareTile(
+                        tile: tile,
+                        width: smallW,
+                        editMode: _editingTiles,
+                        isSelected: tile.pref.widgetKey == _selectedTileKey,
+                        onTap: _editingTiles
+                            ? () async {
+                                if (!mounted) return;
+                                setState(
+                                  () => _selectedTileKey = tile.pref.widgetKey,
+                                );
+                              }
+                            : widget.onOpenInventoryProduction,
+                      ),
+                    )
                     .toList(),
               );
 
               final chart = _ChartCard(
                 title: 'Producción diaria de cartón',
-                subtitle: 'Comparativo de pacas producidas por día y tipo',
+                subtitle: 'Comparativo por material de producción',
+                onTap: widget.onOpenInventoryProduction,
                 child: _ProductionBarChart(seriesList: _pacaProductionSeries),
+              );
+              final separationChart = _ChartCard(
+                title: 'Separación diaria de chatarra y papel',
+                subtitle: 'Kg procesados por día en patio',
+                onTap: widget.onOpenInventoryProduction,
+                child: _ProductionBarChart(seriesList: _separationSeries),
               );
 
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      _HeaderIconButton(
+                        label: _editingTiles
+                            ? 'Terminar widgets'
+                            : 'Personalizar widgets',
+                        icon: _editingTiles
+                            ? Icons.check_circle_outline_rounded
+                            : Icons.dashboard_customize_rounded,
+                        onTap: _toggleTileEditing,
+                      ),
+                      if (_editingTiles)
+                        _HeaderIconButton(
+                          label: 'Agregar widget',
+                          icon: Icons.add_circle_outline_rounded,
+                          onTap: _addInventoryWidget,
+                        ),
+                      if (_editingTiles && _selectedTileKey != null)
+                        _HeaderIconButton(
+                          label: 'Cambiar widget',
+                          icon: Icons.tune_rounded,
+                          onTap: _changeSelectedInventoryWidget,
+                        ),
+                      if (_editingTiles && _selectedTileKey != null)
+                        _HeaderIconButton(
+                          label: 'Quitar widget',
+                          icon: Icons.delete_outline_rounded,
+                          onTap: _removeSelectedInventoryWidget,
+                        ),
+                      if (_editingTiles)
+                        _HeaderIconButton(
+                          label: 'Restaurar defaults',
+                          icon: Icons.restart_alt_rounded,
+                          onTap: _restoreDefaultWidgets,
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   tiles,
                   const SizedBox(height: 10),
                   SizedBox(height: _kWidgetLargeHeight, child: chart),
                   const SizedBox(height: 10),
+                  SizedBox(height: _kWidgetLargeHeight, child: separationChart),
+                  const SizedBox(height: 10),
                   _OperationalBreakdownCard(
                     scrap: _scrapBreakdown,
-                    metal: _metalBreakdown,
-                    wood: _woodBreakdown,
-                    plastic: _plasticBreakdown,
+                    paper: _paperBreakdown,
                     mediumCardWidth: mediumW,
                     cardGap: gap,
+                    onTap: widget.onOpenInventoryProduction,
                   ),
                 ],
               );
@@ -1988,160 +3314,332 @@ class _ProductionLineSeries {
   final String label;
   final Color color;
   final List<_DailyPoint> points;
+  final String unitLabel;
 
   const _ProductionLineSeries({
     required this.label,
     required this.color,
     required this.points,
+    this.unitLabel = 'pacas',
   });
-}
-
-class _SquareTileData {
-  final String label;
-  final String value;
-  final String? secondaryValue;
-  final Color color;
-
-  const _SquareTileData({
-    required this.label,
-    required this.value,
-    this.secondaryValue,
-    required this.color,
-  });
-}
-
-class _SquareTileGrid extends StatelessWidget {
-  final List<_SquareTileData> tiles;
-  final int? preferredColumns;
-
-  const _SquareTileGrid({required this.tiles, this.preferredColumns});
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final maxWidth = constraints.maxWidth;
-        final columns =
-            preferredColumns ??
-            (maxWidth < 760 ? 2 : (maxWidth < 1080 ? 3 : 5));
-        final tileWidth = (maxWidth - ((columns - 1) * 8)) / columns;
-        return Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: tiles
-              .map((tile) => _SquareTile(tile: tile, width: tileWidth))
-              .toList(),
-        );
-      },
-    );
-  }
 }
 
 class _SquareTile extends StatelessWidget {
-  final _SquareTileData tile;
+  final _DashboardInventoryTileModel tile;
   final double width;
+  final Future<void> Function()? onTap;
+  final bool editMode;
+  final bool isSelected;
 
-  const _SquareTile({required this.tile, required this.width});
+  const _SquareTile({
+    required this.tile,
+    required this.width,
+    this.onTap,
+    this.editMode = false,
+    this.isSelected = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     return _HoverLift(
-      child: Container(
-        width: width,
-        constraints: const BoxConstraints(minHeight: _kWidgetSmallHeight),
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [
-              Colors.white.withOpacity(0.40),
-              tile.color.withOpacity(0.56),
-            ],
-          ),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(18),
+        child: InkWell(
           borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withOpacity(0.80)),
-          boxShadow: [
-            BoxShadow(
-              blurRadius: 16,
-              spreadRadius: 0.5,
-              offset: const Offset(0, 6),
-              color: const Color(0x1A0B2B2B),
-            ),
-            BoxShadow(
-              blurRadius: 10,
-              spreadRadius: -2,
-              offset: const Offset(0, -2),
-              color: Colors.white.withOpacity(0.34),
-            ),
-          ],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              tile.label,
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF1D3B39),
+          onTap: onTap == null ? null : () => onTap!(),
+          child: Container(
+            width: width,
+            constraints: const BoxConstraints(minHeight: _kWidgetSmallHeight),
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.40),
+                  tile.color.withValues(alpha: 0.56),
+                ],
               ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              tile.value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF0B2B2B),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: isSelected
+                    ? const Color(0xFF0B72FF).withValues(alpha: 0.88)
+                    : Colors.white.withValues(alpha: 0.80),
+                width: isSelected ? 1.5 : 1,
               ),
-            ),
-            if (tile.secondaryValue != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                tile.secondaryValue!,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF3D5E5B),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: 16,
+                  spreadRadius: 0.5,
+                  offset: const Offset(0, 6),
+                  color: const Color(0x1A0B2B2B),
                 ),
-              ),
-            ],
-          ],
+                BoxShadow(
+                  blurRadius: 10,
+                  spreadRadius: -2,
+                  offset: const Offset(0, -2),
+                  color: Colors.white.withValues(alpha: 0.34),
+                ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (editMode)
+                  Align(
+                    alignment: Alignment.topRight,
+                    child: Container(
+                      width: 10,
+                      height: 10,
+                      decoration: BoxDecoration(
+                        color: isSelected
+                            ? const Color(0xFF0B72FF)
+                            : Colors.white.withValues(alpha: 0.7),
+                        shape: BoxShape.circle,
+                        border: Border.all(
+                          color: const Color(
+                            0xFF0B72FF,
+                          ).withValues(alpha: isSelected ? 0.95 : 0.35),
+                        ),
+                      ),
+                    ),
+                  ),
+                Text(
+                  tile.label,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF1D3B39),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  tile.value,
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF0B2B2B),
+                  ),
+                ),
+                if (tile.secondaryValue != null) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    tile.secondaryValue!,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF3D5E5B),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ),
       ),
     );
   }
 }
 
+class _DashboardInventoryWidgetEditorDialog extends StatefulWidget {
+  final _DashboardInventoryWidgetPref? initialPref;
+  final List<String> operationalMaterials;
+  final List<_DashboardCommercialMaterialOption> commercialOptions;
+  final String Function(String material) materialUiLabel;
+
+  const _DashboardInventoryWidgetEditorDialog({
+    required this.initialPref,
+    required this.operationalMaterials,
+    required this.commercialOptions,
+    required this.materialUiLabel,
+  });
+
+  @override
+  State<_DashboardInventoryWidgetEditorDialog> createState() =>
+      _DashboardInventoryWidgetEditorDialogState();
+}
+
+class _DashboardInventoryWidgetEditorDialogState
+    extends State<_DashboardInventoryWidgetEditorDialog> {
+  late String _sourceKind;
+  String? _material;
+  String? _commercialMaterialCode;
+
+  @override
+  void initState() {
+    super.initState();
+    _sourceKind = widget.initialPref?.sourceKind ?? 'operational_material';
+    _material =
+        widget.initialPref?.material ??
+        (widget.operationalMaterials.isEmpty
+            ? null
+            : widget.operationalMaterials.first);
+    _commercialMaterialCode =
+        widget.initialPref?.commercialMaterialCode ??
+        (widget.commercialOptions.isEmpty
+            ? null
+            : widget.commercialOptions.first.code);
+  }
+
+  bool get _canSave {
+    switch (_sourceKind) {
+      case 'bales_total':
+        return true;
+      case 'operational_material':
+        return (_material ?? '').trim().isNotEmpty;
+      case 'commercial_material':
+        return (_commercialMaterialCode ?? '').trim().isNotEmpty;
+      default:
+        return false;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: Text(
+        widget.initialPref == null
+            ? 'Agregar widget de patio'
+            : 'Cambiar widget de patio',
+      ),
+      content: SizedBox(
+        width: 520,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            DropdownButtonFormField<String>(
+              initialValue: _sourceKind,
+              decoration: const InputDecoration(labelText: 'Tipo de widget'),
+              items: const [
+                DropdownMenuItem(
+                  value: 'bales_total',
+                  child: Text('Pacas totales en patio'),
+                ),
+                DropdownMenuItem(
+                  value: 'operational_material',
+                  child: Text('Material general'),
+                ),
+                DropdownMenuItem(
+                  value: 'commercial_material',
+                  child: Text('Material comercial'),
+                ),
+              ],
+              onChanged: (value) {
+                if (value == null) return;
+                setState(() {
+                  _sourceKind = value;
+                  if (_sourceKind == 'operational_material' &&
+                      (_material ?? '').isEmpty) {
+                    _material = widget.operationalMaterials.isEmpty
+                        ? null
+                        : widget.operationalMaterials.first;
+                  }
+                  if (_sourceKind == 'commercial_material' &&
+                      (_commercialMaterialCode ?? '').isEmpty) {
+                    _commercialMaterialCode = widget.commercialOptions.isEmpty
+                        ? null
+                        : widget.commercialOptions.first.code;
+                  }
+                });
+              },
+            ),
+            if (_sourceKind == 'operational_material') ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _material,
+                decoration: const InputDecoration(labelText: 'Material'),
+                items: widget.operationalMaterials
+                    .map(
+                      (material) => DropdownMenuItem<String>(
+                        value: material,
+                        child: Text(widget.materialUiLabel(material)),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) => setState(() => _material = value),
+              ),
+            ],
+            if (_sourceKind == 'commercial_material') ...[
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                initialValue: _commercialMaterialCode,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Material comercial',
+                ),
+                items: widget.commercialOptions
+                    .map(
+                      (option) => DropdownMenuItem<String>(
+                        value: option.code,
+                        child: Text(
+                          option.inventoryMaterial == null ||
+                                  option.inventoryMaterial!.trim().isEmpty
+                              ? option.name
+                              : '${option.name} · ${widget.materialUiLabel(option.inventoryMaterial!)}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) =>
+                    setState(() => _commercialMaterialCode = value),
+              ),
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        FilledButton(
+          onPressed: !_canSave
+              ? null
+              : () {
+                  Navigator.of(context).pop(
+                    _DashboardInventoryWidgetEditorResult(
+                      sourceKind: _sourceKind,
+                      material: _sourceKind == 'operational_material'
+                          ? _material
+                          : null,
+                      commercialMaterialCode:
+                          _sourceKind == 'commercial_material'
+                          ? _commercialMaterialCode
+                          : null,
+                    ),
+                  );
+                },
+          child: const Text('Guardar'),
+        ),
+      ],
+    );
+  }
+}
+
 class _OperationalBreakdownCard extends StatelessWidget {
   final List<_InventoryCommercialBreakdownItem> scrap;
-  final List<_InventoryCommercialBreakdownItem> metal;
-  final List<_InventoryCommercialBreakdownItem> wood;
-  final List<_InventoryCommercialBreakdownItem> plastic;
+  final List<_InventoryCommercialBreakdownItem> paper;
   final double? mediumCardWidth;
   final double cardGap;
+  final Future<void> Function()? onTap;
 
   const _OperationalBreakdownCard({
     required this.scrap,
-    required this.metal,
-    required this.wood,
-    required this.plastic,
+    required this.paper,
     this.mediumCardWidth,
     this.cardGap = 10,
+    this.onTap,
   });
-
-  String _fmtKg(double value) => '${value.toStringAsFixed(1)} kg';
 
   @override
   Widget build(BuildContext context) {
     final totalScrap = scrap.fold<double>(0, (sum, item) => sum + item.kg);
-    final totalMetal = metal.fold<double>(0, (sum, item) => sum + item.kg);
-    final totalWood = wood.fold<double>(0, (sum, item) => sum + item.kg);
-    final totalPlastic = plastic.fold<double>(0, (sum, item) => sum + item.kg);
-    final totalOp = totalScrap + totalMetal + totalWood + totalPlastic;
+    final totalPaper = paper.fold<double>(0, (sum, item) => sum + item.kg);
     final blocks = <_OperationalBlockData>[
       _OperationalBlockData(
         heading: 'Chatarra',
@@ -2150,22 +3648,10 @@ class _OperationalBreakdownCard extends StatelessWidget {
         totalKg: totalScrap,
       ),
       _OperationalBlockData(
-        heading: 'Metal',
-        accent: const Color(0xFF7D46D3),
-        items: metal,
-        totalKg: totalMetal,
-      ),
-      _OperationalBlockData(
-        heading: 'Madera',
-        accent: const Color(0xFF9B7A4B),
-        items: wood,
-        totalKg: totalWood,
-      ),
-      _OperationalBlockData(
-        heading: 'Plástico',
-        accent: const Color(0xFF15906F),
-        items: plastic,
-        totalKg: totalPlastic,
+        heading: 'Papel',
+        accent: const Color(0xFF4B8F52),
+        items: paper,
+        totalKg: totalPaper,
       ),
     ];
 
@@ -2197,6 +3683,7 @@ class _OperationalBreakdownCard extends StatelessWidget {
                         accent: block.accent,
                         items: block.items,
                         totalKg: block.totalKg,
+                        onTap: onTap,
                       ),
                     ),
                   )
@@ -2228,12 +3715,14 @@ class _OperationalBreakdownTable extends StatelessWidget {
   final Color accent;
   final List<_InventoryCommercialBreakdownItem> items;
   final double totalKg;
+  final Future<void> Function()? onTap;
 
   const _OperationalBreakdownTable({
     required this.heading,
     required this.accent,
     required this.items,
     required this.totalKg,
+    this.onTap,
   });
 
   String _fmtKg(double value) => '${value.toStringAsFixed(1)} kg';
@@ -2242,101 +3731,109 @@ class _OperationalBreakdownTable extends StatelessWidget {
   Widget build(BuildContext context) {
     final shown = items.take(8).toList();
     return _HoverLift(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.78),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withOpacity(0.8)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+          onTap: onTap == null ? null : () => onTap!(),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.78),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.8)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 12,
-                  height: 12,
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
+                Row(
+                  children: [
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        heading,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF173937),
+                        ),
+                      ),
+                    ),
+                    Text(
+                      _fmtKg(totalKg),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF355957),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    heading,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                      color: Color(0xFF173937),
+                const SizedBox(height: 8),
+                if (shown.isEmpty)
+                  const Text(
+                    'Sin materiales comerciales.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF5A7977),
+                    ),
+                  )
+                else
+                  Expanded(
+                    child: ScrollConfiguration(
+                      behavior: ScrollConfiguration.of(
+                        context,
+                      ).copyWith(scrollbars: true),
+                      child: ListView.builder(
+                        padding: EdgeInsets.zero,
+                        itemCount: shown.length,
+                        itemBuilder: (_, i) {
+                          final item = shown[i];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 3),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    item.name,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                      color: Color(0xFF244846),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  _fmtKg(item.kg),
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF355957),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
                     ),
                   ),
-                ),
-                Text(
-                  _fmtKg(totalKg),
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF355957),
-                  ),
-                ),
               ],
             ),
-            const SizedBox(height: 8),
-            if (shown.isEmpty)
-              const Text(
-                'Sin materiales comerciales.',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF5A7977),
-                ),
-              )
-            else
-              Expanded(
-                child: ScrollConfiguration(
-                  behavior: ScrollConfiguration.of(
-                    context,
-                  ).copyWith(scrollbars: true),
-                  child: ListView.builder(
-                    padding: EdgeInsets.zero,
-                    itemCount: shown.length,
-                    itemBuilder: (_, i) {
-                      final item = shown[i];
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 3),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                item.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFF244846),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Text(
-                              _fmtKg(item.kg),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                                color: Color(0xFF355957),
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ),
-          ],
+          ),
         ),
       ),
     );
@@ -2347,45 +3844,55 @@ class _ChartCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final Widget child;
+  final Future<void> Function()? onTap;
 
   const _ChartCard({
     required this.title,
     required this.subtitle,
     required this.child,
+    this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     return _HoverLift(
-      child: Container(
-        padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.46),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: Colors.white.withOpacity(0.78)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFF1F3D3A),
-              ),
+          onTap: onTap == null ? null : () => onTap!(),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.46),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.78)),
             ),
-            Text(
-              subtitle,
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFF4B6A68),
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF1F3D3A),
+                  ),
+                ),
+                Text(
+                  subtitle,
+                  style: const TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF4B6A68),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Expanded(child: child),
+              ],
             ),
-            const SizedBox(height: 8),
-            Expanded(child: child),
-          ],
+          ),
         ),
       ),
     );
@@ -2414,8 +3921,13 @@ class _HoverLiftState extends State<_HoverLift> {
         curve: Curves.easeOutCubic,
         transformAlignment: Alignment.center,
         transform: Matrix4.identity()
-          ..translate(0.0, _hovered ? -4.0 : 0.0)
-          ..scale(_hovered ? 1.008 : 1.0),
+          ..translateByDouble(0.0, _hovered ? -4.0 : 0.0, 0.0, 1.0)
+          ..scaleByDouble(
+            _hovered ? 1.008 : 1.0,
+            _hovered ? 1.008 : 1.0,
+            1.0,
+            1.0,
+          ),
         child: widget.child,
       ),
     );
@@ -2584,14 +4096,16 @@ class _ProductionBarChartState extends State<_ProductionBarChart> {
                                     vertical: 6,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withOpacity(0.95),
+                                    color: Colors.white.withValues(alpha: 0.95),
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
-                                      color: _hovered!.color.withOpacity(0.6),
+                                      color: _hovered!.color.withValues(
+                                        alpha: 0.6,
+                                      ),
                                     ),
                                   ),
                                   child: Text(
-                                    '${_hovered!.label} · ${_hovered!.dayLabel} · ${_hovered!.value.toStringAsFixed(0)} pacas',
+                                    '${_hovered!.label} · ${_hovered!.dayLabel} · ${_hovered!.value.toStringAsFixed(0)} ${_hovered!.unitLabel}',
                                     style: const TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w800,
@@ -2704,6 +4218,7 @@ class _ProductionBarChartState extends State<_ProductionBarChart> {
           label: widget.seriesList[s].label,
           color: widget.seriesList[s].color,
           value: value,
+          unitLabel: widget.seriesList[s].unitLabel,
           dayLabel:
               '${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}',
         );
@@ -2763,7 +4278,7 @@ class _ProductionBarChartPainter extends CustomPainter {
     );
 
     final gridPaint = Paint()
-      ..color = axisColor.withOpacity(0.65)
+      ..color = axisColor.withValues(alpha: 0.65)
       ..strokeWidth = 1;
     const yTicks = 5;
     for (var i = 0; i < yTicks; i++) {
@@ -2778,7 +4293,7 @@ class _ProductionBarChartPainter extends CustomPainter {
         Offset(x, top + 2),
         Offset(x, bottom),
         Paint()
-          ..color = axisColor.withOpacity(0.18)
+          ..color = axisColor.withValues(alpha: 0.18)
           ..strokeWidth = 1,
       );
       final baseX = left + (i * dayStep) + ((dayStep - groupWidth) / 2);
@@ -2820,7 +4335,7 @@ class _ProductionBarChartPainter extends CustomPainter {
       Offset(left, bottom),
       Offset(right, bottom),
       Paint()
-        ..color = axisColor.withOpacity(0.75)
+        ..color = axisColor.withValues(alpha: 0.75)
         ..strokeWidth = 1.2,
     );
   }
@@ -2837,6 +4352,7 @@ class _HoveredBarInfo {
   final String label;
   final Color color;
   final double value;
+  final String unitLabel;
   final String dayLabel;
 
   const _HoveredBarInfo({
@@ -2845,6 +4361,7 @@ class _HoveredBarInfo {
     required this.label,
     required this.color,
     required this.value,
+    required this.unitLabel,
     required this.dayLabel,
   });
 
@@ -2878,7 +4395,7 @@ class _FixedYAxisPainter extends CustomPainter {
         Offset(left - 6, y),
         Offset(left, y),
         Paint()
-          ..color = axisColor.withOpacity(0.7)
+          ..color = axisColor.withValues(alpha: 0.7)
           ..strokeWidth = 1,
       );
       final val = maxY * ratio;
@@ -2900,7 +4417,7 @@ class _FixedYAxisPainter extends CustomPainter {
       Offset(left, top),
       Offset(left, bottom),
       Paint()
-        ..color = axisColor.withOpacity(0.8)
+        ..color = axisColor.withValues(alpha: 0.8)
         ..strokeWidth = 1,
     );
   }
@@ -2932,10 +4449,10 @@ class _NavGlassButton extends StatelessWidget {
         height: 40,
         decoration: BoxDecoration(
           color: enabled
-              ? Colors.white.withOpacity(0.74)
-              : Colors.white.withOpacity(0.30),
+              ? Colors.white.withValues(alpha: 0.74)
+              : Colors.white.withValues(alpha: 0.30),
           borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: Colors.white.withOpacity(0.72)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
         ),
         child: Icon(
           icon,

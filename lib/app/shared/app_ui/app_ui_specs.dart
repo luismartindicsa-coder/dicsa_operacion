@@ -1,35 +1,35 @@
 import 'package:flutter/material.dart';
 
-enum OperationalModuleLayout { singleGrid, tabbedGrid, cardsAndGrid }
+enum AppModuleLayout { singleGrid, tabbedGrid, cardsAndGrid }
 
-enum OperationalMetricKind { kg, count, custom }
+enum AppMetricKind { kg, count, custom }
 
 @immutable
-class OperationalMetricSpec {
+class AppMetricSpec {
   final IconData icon;
   final String label;
   final String value;
   final String? subtitle;
-  final OperationalMetricKind kind;
+  final AppMetricKind kind;
 
-  const OperationalMetricSpec({
+  const AppMetricSpec({
     required this.icon,
     required this.label,
     required this.value,
     this.subtitle,
-    this.kind = OperationalMetricKind.custom,
+    this.kind = AppMetricKind.custom,
   });
 }
 
 @immutable
-class OperationalToolbarSpec {
+class AppToolbarSpec {
   final bool showExportCsv;
   final bool showGridEditToggle;
   final bool showDeleteSelected;
   final bool showSelectionCount;
   final bool showActiveCellHint;
 
-  const OperationalToolbarSpec({
+  const AppToolbarSpec({
     this.showExportCsv = true,
     this.showGridEditToggle = true,
     this.showDeleteSelected = true,
@@ -39,24 +39,20 @@ class OperationalToolbarSpec {
 }
 
 @immutable
-class OperationalTabSpec {
+class AppTabSpec {
   final String id;
   final String label;
   final IconData icon;
 
-  const OperationalTabSpec({
-    required this.id,
-    required this.label,
-    required this.icon,
-  });
+  const AppTabSpec({required this.id, required this.label, required this.icon});
 }
 
 @immutable
-class OperationalPageBlueprint {
+class AppPageBlueprint {
   final String pageName;
   final String headerTitle;
-  final OperationalModuleLayout layout;
-  final List<OperationalTabSpec> tabs;
+  final AppModuleLayout layout;
+  final List<AppTabSpec> tabs;
   final bool externalActionToolbar;
   final bool metricCardInsideBody;
   final bool autoFocusInsertDate;
@@ -72,7 +68,7 @@ class OperationalPageBlueprint {
   final bool csvExportEnabled;
   final bool gridEditEnabled;
 
-  const OperationalPageBlueprint({
+  const AppPageBlueprint({
     required this.pageName,
     required this.headerTitle,
     required this.layout,
@@ -93,29 +89,29 @@ class OperationalPageBlueprint {
     this.gridEditEnabled = true,
   });
 
-  factory OperationalPageBlueprint.singleGrid({
+  factory AppPageBlueprint.singleGrid({
     required String pageName,
     required String headerTitle,
     bool metricCardInsideBody = true,
   }) {
-    return OperationalPageBlueprint(
+    return AppPageBlueprint(
       pageName: pageName,
       headerTitle: headerTitle,
-      layout: OperationalModuleLayout.singleGrid,
+      layout: AppModuleLayout.singleGrid,
       metricCardInsideBody: metricCardInsideBody,
     );
   }
 
-  factory OperationalPageBlueprint.tabbedGrid({
+  factory AppPageBlueprint.tabbedGrid({
     required String pageName,
     required String headerTitle,
-    required List<OperationalTabSpec> tabs,
+    required List<AppTabSpec> tabs,
     bool metricCardInsideBody = true,
   }) {
-    return OperationalPageBlueprint(
+    return AppPageBlueprint(
       pageName: pageName,
       headerTitle: headerTitle,
-      layout: OperationalModuleLayout.tabbedGrid,
+      layout: AppModuleLayout.tabbedGrid,
       tabs: tabs,
       metricCardInsideBody: metricCardInsideBody,
     );
@@ -123,7 +119,7 @@ class OperationalPageBlueprint {
 
   List<String> validate() {
     final errors = <String>[];
-    if (layout == OperationalModuleLayout.tabbedGrid && tabs.isEmpty) {
+    if (layout == AppModuleLayout.tabbedGrid && tabs.isEmpty) {
       errors.add('`tabs` is required when layout is `tabbedGrid`.');
     }
     if (tabs.map((t) => t.id).toSet().length != tabs.length) {
@@ -134,7 +130,7 @@ class OperationalPageBlueprint {
 }
 
 @immutable
-class OperationalInteractionContract {
+class AppInteractionContract {
   final bool arrowsNavigateInsertRow;
   final bool arrowsNavigateGrid;
   final bool spaceOpensDropdownOrDate;
@@ -144,7 +140,7 @@ class OperationalInteractionContract {
   final bool ctrlCmdExtendsSelection;
   final bool preventArrowUpPastTableBoundary;
 
-  const OperationalInteractionContract({
+  const AppInteractionContract({
     this.arrowsNavigateInsertRow = true,
     this.arrowsNavigateGrid = true,
     this.spaceOpensDropdownOrDate = true,
@@ -156,16 +152,22 @@ class OperationalInteractionContract {
   });
 }
 
-class OperationalStandards {
-  static const OperationalInteractionContract interaction =
-      OperationalInteractionContract();
+class AppUiStandards {
+  static const AppInteractionContract interaction = AppInteractionContract();
 
-  static const OperationalToolbarSpec toolbar = OperationalToolbarSpec();
+  static const AppToolbarSpec toolbar = AppToolbarSpec();
 
   static const List<int> defaultPageSizes = <int>[40, 80, 120];
 
   static const double folderTabsHeight = 64;
   static const double metricCardHeight = 64;
 
-  const OperationalStandards._();
+  const AppUiStandards._();
 }
+
+typedef OperationalMetricSpec = AppMetricSpec;
+typedef OperationalToolbarSpec = AppToolbarSpec;
+typedef OperationalTabSpec = AppTabSpec;
+typedef OperationalPageBlueprint = AppPageBlueprint;
+typedef OperationalInteractionContract = AppInteractionContract;
+typedef OperationalStandards = AppUiStandards;

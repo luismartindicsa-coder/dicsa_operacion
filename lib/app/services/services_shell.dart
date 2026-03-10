@@ -2,11 +2,13 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../auth/auth_access.dart';
 
 enum ServicesOverlayNavModule {
   entradasSalidas,
   produccion,
   inventario,
+  almacen,
   servicios,
   pesadas,
   mantenimiento,
@@ -17,14 +19,16 @@ class ServicesShell extends StatefulWidget {
   final String? headerTitle;
   final Widget? topContent;
   final ServicesOverlayNavModule? activeOverlayModule;
-  final Future<void> Function()? onRefresh;
   final Future<void> Function()? onLogout;
+  final Future<void> Function()? onGoToGeneralDashboard;
   final Future<void> Function()? onGoToOperacion;
   final Future<void> Function()? onGoToEntriesAndOutputs;
   final Future<void> Function()? onGoToProduction;
+  final Future<void> Function()? onGoToInventory;
   final Future<void> Function()? onGoToServices;
   final Future<void> Function()? onGoToWeighings;
   final Future<void> Function()? onGoToMaintenance;
+  final Future<void> Function()? onGoToWarehouse;
   final Future<void> Function()? onGoToCatalogs;
   final Future<void> Function()? onHeaderGuide;
   final String? headerGuideLabel;
@@ -35,14 +39,16 @@ class ServicesShell extends StatefulWidget {
     this.headerTitle,
     this.topContent,
     this.activeOverlayModule,
-    this.onRefresh,
     this.onLogout,
+    this.onGoToGeneralDashboard,
     this.onGoToOperacion,
     this.onGoToEntriesAndOutputs,
     this.onGoToProduction,
+    this.onGoToInventory,
     this.onGoToServices,
     this.onGoToWeighings,
     this.onGoToMaintenance,
+    this.onGoToWarehouse,
     this.onGoToCatalogs,
     this.onHeaderGuide,
     this.headerGuideLabel,
@@ -56,6 +62,7 @@ class _ServicesShellState extends State<ServicesShell>
     with SingleTickerProviderStateMixin {
   late final AnimationController _c;
   late final Animation<double> _content;
+  late final Future<AuthResolvedProfile?> _profileFuture;
   bool _menuOverlayOpen = false;
 
   @override
@@ -69,6 +76,7 @@ class _ServicesShellState extends State<ServicesShell>
       parent: _c,
       curve: const Interval(0.55, 1.00, curve: Curves.easeOut),
     );
+    _profileFuture = AuthAccess.resolveCurrentProfile();
     _c.forward();
   }
 
@@ -99,6 +107,26 @@ class _ServicesShellState extends State<ServicesShell>
         child: Stack(
           children: [
             const _DicsaBackground(),
+            Positioned.fill(
+              child: IgnorePointer(
+                ignoring: !_menuOverlayOpen,
+                child: AnimatedOpacity(
+                  duration: const Duration(milliseconds: 180),
+                  curve: Curves.easeOutCubic,
+                  opacity: _menuOverlayOpen ? 1 : 0,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      if (!mounted) return;
+                      setState(() => _menuOverlayOpen = false);
+                    },
+                    child: Container(
+                      color: Colors.black.withValues(alpha: 0.16),
+                    ),
+                  ),
+                ),
+              ),
+            ),
             SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
@@ -108,7 +136,7 @@ class _ServicesShellState extends State<ServicesShell>
                       children: [
                         AnimatedBuilder(
                           animation: _content,
-                          builder: (_, __) => Opacity(
+                          builder: (context, child) => Opacity(
                             opacity: _content.value,
                             child: _HeaderActionButton(
                               label: _menuOverlayOpen
@@ -135,24 +163,9 @@ class _ServicesShellState extends State<ServicesShell>
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            if (widget.onRefresh != null)
-                              Padding(
-                                padding: const EdgeInsets.only(right: 8),
-                                child: AnimatedBuilder(
-                                  animation: _content,
-                                  builder: (_, __) => Opacity(
-                                    opacity: _content.value,
-                                    child: _HeaderActionButton(
-                                      label: 'Recargar',
-                                      icon: Icons.refresh_rounded,
-                                      onTap: () async => widget.onRefresh!(),
-                                    ),
-                                  ),
-                                ),
-                              ),
                             AnimatedBuilder(
                               animation: _content,
-                              builder: (_, __) => Opacity(
+                              builder: (context, child) => Opacity(
                                 opacity: _content.value,
                                 child: Padding(
                                   padding: const EdgeInsets.only(right: 8),
@@ -165,7 +178,7 @@ class _ServicesShellState extends State<ServicesShell>
                             if (widget.onHeaderGuide != null)
                               AnimatedBuilder(
                                 animation: _content,
-                                builder: (_, __) => Opacity(
+                                builder: (context, child) => Opacity(
                                   opacity: _content.value,
                                   child: Padding(
                                     padding: const EdgeInsets.only(right: 8),
@@ -180,7 +193,7 @@ class _ServicesShellState extends State<ServicesShell>
                               ),
                             AnimatedBuilder(
                               animation: _content,
-                              builder: (_, __) => Opacity(
+                              builder: (context, child) => Opacity(
                                 opacity: _content.value,
                                 child: _HeaderActionButton(
                                   label: 'Cerrar sesión',
@@ -207,7 +220,7 @@ class _ServicesShellState extends State<ServicesShell>
                     Expanded(
                       child: AnimatedBuilder(
                         animation: _content,
-                        builder: (_, __) => Opacity(
+                        builder: (context, child) => Opacity(
                           opacity: _content.value,
                           child: Transform.translate(
                             offset: Offset(0, (1 - _content.value) * 14),
@@ -234,13 +247,18 @@ class _ServicesShellState extends State<ServicesShell>
                     curve: Curves.easeOutCubic,
                     opacity: _menuOverlayOpen ? 1 : 0,
                     child: _ServicesSideMenu(
+                      profileFuture: _profileFuture,
                       activeModule: widget.activeOverlayModule,
+                      onGoToGeneralDashboard: widget.onGoToGeneralDashboard,
                       onGoToOperacion: widget.onGoToOperacion,
                       onGoToEntriesAndOutputs: widget.onGoToEntriesAndOutputs,
                       onGoToProduction: widget.onGoToProduction,
+                      onGoToInventory: widget.onGoToInventory,
                       onGoToServices: widget.onGoToServices,
                       onGoToWeighings: widget.onGoToWeighings,
                       onGoToMaintenance: widget.onGoToMaintenance,
+                      onGoToWarehouse: widget.onGoToWarehouse,
+                      onGoToCatalogs: widget.onGoToCatalogs,
                       onNavigate: () {
                         if (!mounted) return;
                         setState(() => _menuOverlayOpen = false);
@@ -445,7 +463,7 @@ class _ServicesShellState extends State<ServicesShell>
 
     await showDialog<void>(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.26),
+      barrierColor: Colors.black.withValues(alpha: 0.26),
       builder: (dialogContext) => Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
@@ -460,11 +478,11 @@ class _ServicesShellState extends State<ServicesShell>
                 color: const Color(0xE6EAF2F9),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: const Color(0xFF90AFC8).withOpacity(0.58),
+                  color: const Color(0xFF90AFC8).withValues(alpha: 0.58),
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF5E87A9).withOpacity(0.26),
+                    color: const Color(0xFF5E87A9).withValues(alpha: 0.26),
                     blurRadius: 26,
                     offset: const Offset(0, 12),
                   ),
@@ -521,10 +539,10 @@ class _ServicesShellState extends State<ServicesShell>
                                   8,
                                 ),
                                 decoration: BoxDecoration(
-                                  color: Colors.white.withOpacity(0.24),
+                                  color: Colors.white.withValues(alpha: 0.24),
                                   borderRadius: BorderRadius.circular(14),
                                   border: Border.all(
-                                    color: Colors.white.withOpacity(0.42),
+                                    color: Colors.white.withValues(alpha: 0.42),
                                   ),
                                 ),
                                 child: Row(
@@ -540,10 +558,10 @@ class _ServicesShellState extends State<ServicesShell>
                                           colors: [
                                             const Color(
                                               0xFF52CFA6,
-                                            ).withOpacity(0.92),
+                                            ).withValues(alpha: 0.92),
                                             const Color(
                                               0xFF6CB7E2,
-                                            ).withOpacity(0.86),
+                                            ).withValues(alpha: 0.86),
                                           ],
                                         ),
                                         borderRadius: BorderRadius.circular(10),
@@ -551,7 +569,7 @@ class _ServicesShellState extends State<ServicesShell>
                                           BoxShadow(
                                             color: const Color(
                                               0xFF5FAEC5,
-                                            ).withOpacity(0.32),
+                                            ).withValues(alpha: 0.32),
                                             blurRadius: 10,
                                             offset: const Offset(0, 4),
                                           ),
@@ -659,7 +677,7 @@ class _HeaderBrand extends StatelessWidget {
   Widget build(BuildContext context) {
     return AnimatedBuilder(
       animation: contentAnim,
-      builder: (_, __) => Opacity(
+      builder: (context, child) => Opacity(
         opacity: contentAnim.value,
         child: Transform.translate(
           offset: Offset(0, (1 - contentAnim.value) * 10),
@@ -673,14 +691,18 @@ class _HeaderBrand extends StatelessWidget {
                     width: 56,
                     height: 56,
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.24),
+                      color: Colors.white.withValues(alpha: 0.24),
                       borderRadius: BorderRadius.circular(14),
-                      border: Border.all(color: Colors.white.withOpacity(0.44)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.44),
+                      ),
                       boxShadow: [
                         BoxShadow(
                           blurRadius: 24,
                           spreadRadius: 1,
-                          color: const Color(0xFF0E86FF).withOpacity(0.20),
+                          color: const Color(
+                            0xFF0E86FF,
+                          ).withValues(alpha: 0.20),
                           offset: const Offset(0, 8),
                         ),
                       ],
@@ -699,7 +721,7 @@ class _HeaderBrand extends StatelessWidget {
                     width: 1.5,
                     margin: const EdgeInsets.symmetric(vertical: 8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0B2B2B).withOpacity(0.28),
+                      color: const Color(0xFF0B2B2B).withValues(alpha: 0.28),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
@@ -782,21 +804,23 @@ class _HeaderHelpButtonState extends State<_HeaderHelpButton> {
             height: 48,
             transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.22),
+              color: Colors.white.withValues(alpha: 0.22),
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  const Color(0xFF9AC5E3).withOpacity(_hovered ? 0.24 : 0.16),
-                  Colors.white.withOpacity(_hovered ? 0.22 : 0.14),
+                  const Color(
+                    0xFF9AC5E3,
+                  ).withValues(alpha: _hovered ? 0.24 : 0.16),
+                  Colors.white.withValues(alpha: _hovered ? 0.22 : 0.14),
                 ],
               ),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withOpacity(0.66)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.66)),
               boxShadow: [
                 BoxShadow(
                   blurRadius: _hovered ? 28 : 16,
-                  color: Colors.black.withOpacity(_hovered ? 0.22 : 0.10),
+                  color: Colors.black.withValues(alpha: _hovered ? 0.22 : 0.10),
                   offset: Offset(0, _hovered ? 14 : 9),
                 ),
               ],
@@ -863,34 +887,36 @@ class _HeaderActionButtonState extends State<_HeaderActionButton> {
               transform: Matrix4.translationValues(0, highlighted ? -2 : 0, 0),
               decoration: BoxDecoration(
                 color: enabled
-                    ? Colors.white.withOpacity(0.22)
-                    : Colors.white.withOpacity(0.14),
+                    ? Colors.white.withValues(alpha: 0.22)
+                    : Colors.white.withValues(alpha: 0.14),
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    tint.withOpacity(highlighted ? 0.22 : 0.14),
-                    Colors.white.withOpacity(highlighted ? 0.20 : 0.14),
+                    tint.withValues(alpha: highlighted ? 0.22 : 0.14),
+                    Colors.white.withValues(alpha: highlighted ? 0.20 : 0.14),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: enabled
-                      ? Colors.white.withOpacity(highlighted ? 0.74 : 0.60)
-                      : Colors.white.withOpacity(0.32),
+                      ? Colors.white.withValues(
+                          alpha: highlighted ? 0.74 : 0.60,
+                        )
+                      : Colors.white.withValues(alpha: 0.32),
                 ),
                 boxShadow: [
                   BoxShadow(
                     blurRadius: highlighted ? 30 : 18,
-                    color: Colors.black.withOpacity(
-                      enabled ? (highlighted ? 0.24 : 0.11) : 0.05,
+                    color: Colors.black.withValues(
+                      alpha: enabled ? (highlighted ? 0.24 : 0.11) : 0.05,
                     ),
                     offset: Offset(0, highlighted ? 16 : 10),
                   ),
                   if (enabled)
                     BoxShadow(
                       blurRadius: highlighted ? 22 : 12,
-                      color: tint.withOpacity(highlighted ? 0.30 : 0.16),
+                      color: tint.withValues(alpha: highlighted ? 0.30 : 0.16),
                       offset: Offset(0, highlighted ? 9 : 4),
                     ),
                 ],
@@ -928,23 +954,33 @@ class _HeaderActionButtonState extends State<_HeaderActionButton> {
 }
 
 class _ServicesSideMenu extends StatelessWidget {
+  final Future<AuthResolvedProfile?> profileFuture;
   final ServicesOverlayNavModule? activeModule;
+  final Future<void> Function()? onGoToGeneralDashboard;
   final Future<void> Function()? onGoToOperacion;
   final Future<void> Function()? onGoToEntriesAndOutputs;
   final Future<void> Function()? onGoToProduction;
+  final Future<void> Function()? onGoToInventory;
   final Future<void> Function()? onGoToServices;
   final Future<void> Function()? onGoToWeighings;
   final Future<void> Function()? onGoToMaintenance;
+  final Future<void> Function()? onGoToWarehouse;
+  final Future<void> Function()? onGoToCatalogs;
   final VoidCallback onNavigate;
 
   const _ServicesSideMenu({
+    required this.profileFuture,
     required this.activeModule,
+    required this.onGoToGeneralDashboard,
     required this.onGoToOperacion,
     required this.onGoToEntriesAndOutputs,
     required this.onGoToProduction,
+    required this.onGoToInventory,
     required this.onGoToServices,
     required this.onGoToWeighings,
     required this.onGoToMaintenance,
+    required this.onGoToWarehouse,
+    required this.onGoToCatalogs,
     required this.onNavigate,
   });
 
@@ -956,61 +992,158 @@ class _ServicesSideMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xE40B2B2B),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withOpacity(0.22)),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 24,
-            color: Colors.black.withOpacity(0.20),
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
+    return FutureBuilder<AuthResolvedProfile?>(
+      future: profileFuture,
+      builder: (context, snapshot) {
+        final profile = snapshot.data;
+        bool can(ServicesOverlayNavModule module) =>
+            AuthAccess.canAccessOperationalModule(profile, module);
+        final canGeneralDashboard = AuthAccess.canAccessGeneralDashboard(
+          profile,
+        );
+        final canDashboard = AuthAccess.canAccessDashboard(profile);
+        final canCatalogs =
+            onGoToCatalogs != null && AuthAccess.canOpenCatalogs(profile);
+
+        final basculaTiles = <Widget>[
+          if (can(ServicesOverlayNavModule.entradasSalidas)) ...[
+            _SideMenuTile(
+              icon: Icons.compare_arrows_rounded,
+              title: 'Entradas y salidas',
+              active: activeModule == ServicesOverlayNavModule.entradasSalidas,
+              onTap: () => _handleTap(onGoToEntriesAndOutputs),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (can(ServicesOverlayNavModule.servicios)) ...[
+            _SideMenuTile(
+              icon: Icons.local_shipping_outlined,
+              title: 'Servicios',
+              active: activeModule == ServicesOverlayNavModule.servicios,
+              onTap: () => _handleTap(onGoToServices),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (can(ServicesOverlayNavModule.pesadas)) ...[
+            _SideMenuTile(
+              icon: Icons.scale_rounded,
+              title: 'Pesadas',
+              active: activeModule == ServicesOverlayNavModule.pesadas,
+              onTap: () => _handleTap(onGoToWeighings),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ];
+
+        final operacionTiles = <Widget>[
+          if (can(ServicesOverlayNavModule.produccion)) ...[
+            _SideMenuTile(
+              icon: Icons.factory_outlined,
+              title: 'Producción',
+              active: activeModule == ServicesOverlayNavModule.produccion,
+              onTap: () => _handleTap(onGoToProduction),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (can(ServicesOverlayNavModule.inventario)) ...[
+            _SideMenuTile(
+              icon: Icons.inventory_2_outlined,
+              title: 'Inventario',
+              active: activeModule == ServicesOverlayNavModule.inventario,
+              onTap: () => _handleTap(onGoToInventory),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (can(ServicesOverlayNavModule.almacen)) ...[
+            _SideMenuTile(
+              icon: Icons.warehouse_outlined,
+              title: 'Almacen',
+              active: activeModule == ServicesOverlayNavModule.almacen,
+              onTap: () => _handleTap(onGoToWarehouse),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (can(ServicesOverlayNavModule.mantenimiento)) ...[
+            _SideMenuTile(
+              icon: Icons.build_circle_outlined,
+              title: 'Mantenimiento',
+              active: activeModule == ServicesOverlayNavModule.mantenimiento,
+              onTap: () => _handleTap(onGoToMaintenance),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ];
+
+        final accessTiles = <Widget>[
+          if (canCatalogs) ...[
+            _SideMenuTile(
+              icon: Icons.library_books_outlined,
+              title: 'Catálogos',
+              onTap: () => _handleTap(onGoToCatalogs),
+              emphasize: true,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (canGeneralDashboard) ...[
+            _SideMenuTile(
+              icon: Icons.assessment_outlined,
+              title: 'Dashboard general',
+              onTap: () => _handleTap(onGoToGeneralDashboard),
+              emphasize: true,
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (canDashboard)
+            _SideMenuTile(
+              icon: Icons.dashboard_customize_rounded,
+              title: 'Dashboard operativo',
+              onTap: () => _handleTap(onGoToOperacion),
+              emphasize: true,
+            ),
+        ];
+
+        final tiles = <Widget>[
           const SizedBox(height: 4),
-          _SideMenuTile(
-            icon: Icons.compare_arrows_rounded,
-            title: 'Entradas y salidas',
-            active: activeModule == ServicesOverlayNavModule.entradasSalidas,
-            onTap: () => _handleTap(onGoToEntriesAndOutputs),
+          if (basculaTiles.isNotEmpty) ...[
+            const _SideMenuSectionHeader(text: 'Báscula'),
+            const SizedBox(height: 8),
+            ...basculaTiles,
+            const SizedBox(height: 6),
+          ],
+          if (operacionTiles.isNotEmpty) ...[
+            const _SideMenuSectionHeader(text: 'Operación'),
+            const SizedBox(height: 8),
+            ...operacionTiles,
+            const SizedBox(height: 6),
+          ],
+          if (accessTiles.isNotEmpty) ...[
+            const _SideMenuSectionHeader(text: 'Accesos'),
+            const SizedBox(height: 8),
+            ...accessTiles,
+          ],
+        ];
+
+        return Container(
+          decoration: BoxDecoration(
+            color: const Color(0xE40B2B2B),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: 24,
+                color: Colors.black.withValues(alpha: 0.20),
+                offset: const Offset(0, 14),
+              ),
+            ],
           ),
-          const SizedBox(height: 8),
-          _SideMenuTile(
-            icon: Icons.local_shipping_outlined,
-            title: 'Servicios',
-            active: activeModule == ServicesOverlayNavModule.servicios,
-            onTap: () => _handleTap(onGoToServices),
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: tiles,
           ),
-          const SizedBox(height: 8),
-          _SideMenuTile(
-            icon: Icons.scale_rounded,
-            title: 'Pesadas',
-            active: activeModule == ServicesOverlayNavModule.pesadas,
-            onTap: () => _handleTap(onGoToWeighings),
-          ),
-          const SizedBox(height: 8),
-          _SideMenuTile(
-            icon: Icons.factory_outlined,
-            title: 'Producción',
-            active: activeModule == ServicesOverlayNavModule.produccion,
-            onTap: () => _handleTap(onGoToProduction),
-          ),
-          const SizedBox(height: 12),
-          _SideMenuTile(
-            icon: Icons.dashboard_customize_rounded,
-            title: 'Dashboard',
-            onTap: () => _handleTap(onGoToOperacion),
-            emphasize: true,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 }
@@ -1032,6 +1165,36 @@ class _SideMenuTile extends StatefulWidget {
 
   @override
   State<_SideMenuTile> createState() => _SideMenuTileState();
+}
+
+class _SideMenuSectionHeader extends StatelessWidget {
+  final String text;
+
+  const _SideMenuSectionHeader({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Text(
+          text.toUpperCase(),
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 1.2,
+            color: Colors.white.withValues(alpha: 0.72),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Container(
+            height: 1,
+            color: Colors.white.withValues(alpha: 0.14),
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class _SideMenuTileState extends State<_SideMenuTile> {
@@ -1063,13 +1226,15 @@ class _SideMenuTileState extends State<_SideMenuTile> {
           decoration: BoxDecoration(
             gradient: highlighted ? gradient : null,
             color: highlighted
-                ? (gradient == null ? Colors.white.withOpacity(0.14) : null)
-                : Colors.white.withOpacity(0.08),
+                ? (gradient == null
+                      ? Colors.white.withValues(alpha: 0.14)
+                      : null)
+                : Colors.white.withValues(alpha: 0.08),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: highlighted
-                  ? Colors.white.withOpacity(0.28)
-                  : Colors.white.withOpacity(0.18),
+                  ? Colors.white.withValues(alpha: 0.28)
+                  : Colors.white.withValues(alpha: 0.18),
             ),
           ),
           child: Row(
@@ -1098,7 +1263,7 @@ class _SideMenuTileState extends State<_SideMenuTile> {
               if (!widget.active)
                 Icon(
                   Icons.chevron_right_rounded,
-                  color: Colors.white.withOpacity(0.78),
+                  color: Colors.white.withValues(alpha: 0.78),
                 ),
             ],
           ),
@@ -1120,14 +1285,14 @@ class _GlassCard extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.62),
+            color: Colors.white.withValues(alpha: 0.62),
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withOpacity(0.55)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
             boxShadow: [
               BoxShadow(
                 blurRadius: 26,
                 spreadRadius: 2,
-                color: Colors.black.withOpacity(0.06),
+                color: Colors.black.withValues(alpha: 0.06),
                 offset: const Offset(0, 12),
               ),
             ],

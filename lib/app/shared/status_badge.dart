@@ -10,12 +10,12 @@ class StatusBadge extends StatelessWidget {
   final EdgeInsetsGeometry padding;
 
   const StatusBadge({
-    Key? key,
+    super.key,
     required this.label,
     required this.status,
     this.height = 36,
     this.padding = const EdgeInsets.symmetric(horizontal: 14),
-  }) : super(key: key);
+  });
 
   factory StatusBadge.programado([String label = 'PROGRAMADO']) =>
       StatusBadge(label: label, status: BadgeStatus.programado);
@@ -43,17 +43,20 @@ class StatusBadge extends StatelessWidget {
           decoration: BoxDecoration(
             gradient: s.gradient,
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(color: Colors.white.withOpacity(0.12), width: 1),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.12),
+              width: 1,
+            ),
             boxShadow: [
               // soft drop shadow
               BoxShadow(
-                color: Colors.black.withOpacity(0.10),
+                color: Colors.black.withValues(alpha: 0.10),
                 blurRadius: 18,
                 offset: const Offset(0, 6),
               ),
               // subtle colored glow
               BoxShadow(
-                color: s.glowColor.withOpacity(0.08),
+                color: s.glowColor.withValues(alpha: 0.08),
                 blurRadius: 30,
                 spreadRadius: 1,
               ),
@@ -71,8 +74,8 @@ class StatusBadge extends StatelessWidget {
                         begin: Alignment(-0.9, -0.3),
                         end: Alignment(0.9, 0.5),
                         colors: [
-                          Colors.white.withOpacity(0.06),
-                          Colors.white.withOpacity(0.00),
+                          Colors.white.withValues(alpha: 0.06),
+                          Colors.white.withValues(alpha: 0.00),
                         ],
                         stops: const [0.0, 0.6],
                       ),
@@ -94,12 +97,14 @@ class StatusBadge extends StatelessWidget {
                       begin: Alignment.topCenter,
                       end: Alignment.bottomCenter,
                       colors: [
-                        Colors.white.withOpacity(0.32),
-                        Colors.white.withOpacity(0.04),
+                        Colors.white.withValues(alpha: 0.32),
+                        Colors.white.withValues(alpha: 0.04),
                       ],
                     ),
                     borderRadius: BorderRadius.vertical(
-                        top: Radius.circular(999), bottom: Radius.circular(999)),
+                      top: Radius.circular(999),
+                      bottom: Radius.circular(999),
+                    ),
                   ),
                 ),
               ),
@@ -117,7 +122,7 @@ class StatusBadge extends StatelessWidget {
                     height: 1.02,
                     shadows: [
                       Shadow(
-                        color: Colors.black.withOpacity(0.12),
+                        color: Colors.black.withValues(alpha: 0.12),
                         offset: const Offset(0, 1),
                         blurRadius: 4,
                       ),
@@ -186,5 +191,9 @@ class _BadgeStyle {
   final Color glowColor;
   final Color textColor;
 
-  _BadgeStyle({required this.gradient, required this.glowColor, required this.textColor});
+  _BadgeStyle({
+    required this.gradient,
+    required this.glowColor,
+    required this.textColor,
+  });
 }

@@ -77,6 +77,40 @@ String _commercialMaterialCodeFromName(String raw) {
       .replaceAll(RegExp(r'^_|_$'), '');
 }
 
+String _inventoryMaterialCodeFromGeneralName(String raw) {
+  final normalized = _normalizeName(raw);
+  switch (normalized) {
+    case 'CARTON NACIONAL':
+    case 'CARTON CELANESE':
+    case 'GRANEL NACIONAL':
+      return 'CARDBOARD_BULK_NATIONAL';
+    case 'CARTON AMERICANO':
+    case 'GRANEL AMERICANO':
+      return 'CARDBOARD_BULK_AMERICAN';
+    case 'PACA NACIONAL':
+      return 'BALE_NATIONAL';
+    case 'PACA AMERICANA':
+      return 'BALE_AMERICAN';
+    case 'PACA LIMPIA':
+      return 'BALE_CLEAN';
+    case 'PACA BASURA':
+      return 'BALE_TRASH';
+    case 'CHATARRA':
+    case 'SCRAP':
+      return 'SCRAP';
+    case 'METAL':
+      return 'METAL';
+    case 'MADERA':
+      return 'WOOD';
+    case 'PAPEL':
+      return 'PAPER';
+    case 'PLASTICO':
+      return 'PLASTIC';
+    default:
+      return _commercialMaterialCodeFromName(normalized);
+  }
+}
+
 const String _kOpeningTemplateSite = 'DICSA';
 
 const List<_OpMaterialOpt> _kOpeningTemplateMaterials = [
@@ -137,7 +171,7 @@ ButtonStyle _catalogPrimaryActionStyle() {
   return FilledButton.styleFrom(
     backgroundColor: const Color(0xFF4F8E8C),
     foregroundColor: Colors.white,
-    side: BorderSide(color: const Color(0xFF4F8E8C).withOpacity(0.45)),
+    side: BorderSide(color: const Color(0xFF4F8E8C).withValues(alpha: 0.45)),
     textStyle: const TextStyle(fontWeight: FontWeight.w700),
   );
 }
@@ -145,8 +179,8 @@ ButtonStyle _catalogPrimaryActionStyle() {
 ButtonStyle _catalogSecondaryActionStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF0B2B2B),
-    side: BorderSide(color: Colors.white.withOpacity(0.52)),
-    backgroundColor: Colors.white.withOpacity(0.18),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.52)),
+    backgroundColor: Colors.white.withValues(alpha: 0.18),
     textStyle: const TextStyle(fontWeight: FontWeight.w700),
   );
 }
@@ -159,20 +193,23 @@ const Color _kCatalogTableSelectionAccent = Color(0xFF153B66);
 InputDecoration _catalogContractGlassFieldDecoration({String? hintText}) {
   final border = OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Colors.white.withOpacity(0.58), width: 1),
+    borderSide: BorderSide(
+      color: Colors.white.withValues(alpha: 0.58),
+      width: 1,
+    ),
   );
 
   return InputDecoration(
     hintText: hintText,
     isDense: true,
     filled: true,
-    fillColor: Colors.white.withOpacity(0.45),
+    fillColor: Colors.white.withValues(alpha: 0.45),
     contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
     border: border,
     enabledBorder: border,
     focusedBorder: border.copyWith(
       borderSide: BorderSide(
-        color: _kCatalogTableSelectionAccent.withOpacity(0.8),
+        color: _kCatalogTableSelectionAccent.withValues(alpha: 0.8),
         width: 1.2,
       ),
     ),
@@ -181,17 +218,17 @@ InputDecoration _catalogContractGlassFieldDecoration({String? hintText}) {
 
 BoxDecoration _catalogFilterDialogDecoration() {
   return BoxDecoration(
-    color: Colors.white.withOpacity(0.62),
+    color: Colors.white.withValues(alpha: 0.62),
     borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: Colors.white.withOpacity(0.68)),
+    border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
   );
 }
 
 ButtonStyle _catalogFilterOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF2A4B49),
-    side: BorderSide(color: const Color(0xFF2A4B49).withOpacity(0.25)),
-    backgroundColor: Colors.white.withOpacity(0.40),
+    side: BorderSide(color: const Color(0xFF2A4B49).withValues(alpha: 0.25)),
+    backgroundColor: Colors.white.withValues(alpha: 0.40),
   );
 }
 
@@ -265,7 +302,7 @@ Widget _catalogInputPanel({required Widget child}) {
     color: const Color(0xFFE7F1F8),
     shape: RoundedRectangleBorder(
       borderRadius: BorderRadius.circular(16),
-      side: BorderSide(color: Colors.white.withOpacity(0.40)),
+      side: BorderSide(color: Colors.white.withValues(alpha: 0.40)),
     ),
     child: Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -283,7 +320,7 @@ Future<T?> _showCatalogSearchablePickerDialog<T>(
   final searchC = TextEditingController();
   return showDialog<T>(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.28),
+    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       T? highlighted =
           initialValue ?? (options.isEmpty ? null : options.first.value);
@@ -355,7 +392,9 @@ Future<T?> _showCatalogSearchablePickerDialog<T>(
                         _catalogContractGlassFieldDecoration(
                           hintText: 'Buscar',
                         ).copyWith(
-                          fillColor: const Color(0xFFF5FBFF).withOpacity(0.70),
+                          fillColor: const Color(
+                            0xFFF5FBFF,
+                          ).withValues(alpha: 0.70),
                           enabledBorder: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(14),
                             borderSide: const BorderSide(
@@ -421,7 +460,7 @@ Future<T?> _showCatalogSearchablePickerDialog<T>(
                                     color: isHighlighted
                                         ? const Color(
                                             0xFFBFD8EE,
-                                          ).withOpacity(0.34)
+                                          ).withValues(alpha: 0.34)
                                         : Colors.transparent,
                                     borderRadius: BorderRadius.circular(14),
                                     border: Border.all(
@@ -682,7 +721,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     String? draftSelected = _commercialMaterialFilterMaterialId;
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.28),
+      barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocalState) {
           final query = _normalizeName(searchC.text);
@@ -790,18 +829,29 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                                     final material = visibleMaterials[idx];
                                     final id = (material['id'] ?? '')
                                         .toString();
-                                    return RadioListTile<String>(
+                                    final selected = draftSelected == id;
+                                    return ListTile(
                                       dense: true,
-                                      value: id,
-                                      groupValue: draftSelected,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 4,
+                                          ),
+                                      leading: Icon(
+                                        selected
+                                            ? Icons.radio_button_checked_rounded
+                                            : Icons
+                                                  .radio_button_unchecked_rounded,
+                                        color: selected
+                                            ? _kCatalogTableFilterAccent
+                                            : const Color(0xFF6C7E7C),
+                                      ),
                                       title: Text(
                                         (material['name'] ?? '').toString(),
                                         overflow: TextOverflow.ellipsis,
                                       ),
-                                      onChanged: (v) => setLocalState(
-                                        () => draftSelected = v,
+                                      onTap: () => setLocalState(
+                                        () => draftSelected = id,
                                       ),
-                                      activeColor: _kCatalogTableFilterAccent,
                                     );
                                   },
                                 ),
@@ -1061,7 +1111,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   }) async {
     final changed = await showDialog<bool>(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.28),
+      barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (_) => _InactiveCatalogDialog(
         title: title,
         emptyText: emptyText,
@@ -1261,7 +1311,9 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
             .order('name'),
         supa
             .from('materials')
-            .select('id,name,area_id,inventory_general_code')
+            .select(
+              'id,name,area_id,inventory_general_code,inventory_material_code',
+            )
             .eq('is_active', true)
             .order('name'),
         supa
@@ -1479,7 +1531,13 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
 
     setState(() => _savingMaterial = true);
     try {
-      final payload = <String, dynamic>{'name': normalized};
+      final inventoryMaterialCode = _inventoryMaterialCodeFromGeneralName(
+        normalized,
+      );
+      final payload = <String, dynamic>{
+        'name': normalized,
+        'inventory_material_code': inventoryMaterialCode,
+      };
       if (_defaultAreaId != null) {
         payload['area_id'] = _defaultAreaId;
       }
@@ -3047,9 +3105,9 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
         children: [
           Container(
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.28),
+              color: Colors.white.withValues(alpha: 0.28),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withOpacity(0.56)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.56)),
             ),
             child: TabBar(
               isScrollable: true,
@@ -3192,9 +3250,16 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
               emptyText: 'Sin materiales',
               subtitleOf: (row) {
                 final general = row['inventory_general_code']?.toString();
-                return (general == null || general.isEmpty)
-                    ? null
-                    : 'Grupo inventario: $general';
+                final operational = row['inventory_material_code']?.toString();
+                final hasGeneral = general != null && general.isNotEmpty;
+                final hasOperational =
+                    operational != null && operational.isNotEmpty;
+                if (!hasGeneral && !hasOperational) return null;
+                if (hasGeneral && hasOperational) {
+                  return 'Grupo: $general · Operativo: $operational';
+                }
+                if (hasGeneral) return 'Grupo inventario: $general';
+                return 'Código operativo: $operational';
               },
               onEdit: _editMaterial,
               onInlineEdit: _updateMaterialNameInline,
@@ -3223,9 +3288,9 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
       children: [
         Container(
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.28),
+            color: Colors.white.withValues(alpha: 0.28),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withOpacity(0.56)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.56)),
           ),
           child: const TabBar(
             isScrollable: true,
@@ -3267,9 +3332,17 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                 emptyText: 'Sin materiales',
                 subtitleOf: (row) {
                   final general = row['inventory_general_code']?.toString();
-                  return (general == null || general.isEmpty)
-                      ? null
-                      : 'Grupo inventario: $general';
+                  final operational = row['inventory_material_code']
+                      ?.toString();
+                  final hasGeneral = general != null && general.isNotEmpty;
+                  final hasOperational =
+                      operational != null && operational.isNotEmpty;
+                  if (!hasGeneral && !hasOperational) return null;
+                  if (hasGeneral && hasOperational) {
+                    return 'Grupo: $general · Operativo: $operational';
+                  }
+                  if (hasGeneral) return 'Grupo inventario: $general';
+                  return 'Código operativo: $operational';
                 },
                 onEdit: _editMaterial,
                 onInlineEdit: _updateMaterialNameInline,
@@ -3539,15 +3612,15 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                                     color: hasMaterialFilter
                                         ? _kCatalogTableFilterAccent
                                         : _kCatalogTableFilterAccentSoft
-                                              .withOpacity(0.35),
+                                              .withValues(alpha: 0.35),
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
                                       color: hasMaterialFilter
                                           ? _kCatalogTableFilterAccent
-                                                .withOpacity(0.55)
+                                                .withValues(alpha: 0.55)
                                           : const Color(
                                               0xFF0B2B2B,
-                                            ).withOpacity(0.15),
+                                            ).withValues(alpha: 0.15),
                                     ),
                                   ),
                                   child: Icon(
@@ -3656,19 +3729,19 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     final fieldDecoration = InputDecoration(
       isDense: true,
       filled: true,
-      fillColor: Colors.white.withOpacity(0.42),
+      fillColor: Colors.white.withValues(alpha: 0.42),
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.white.withOpacity(0.62)),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.62)),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: Colors.white.withOpacity(0.62)),
+        borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.62)),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
         borderSide: BorderSide(
-          color: const Color(0xFF2A9D8F).withOpacity(0.88),
+          color: const Color(0xFF2A9D8F).withValues(alpha: 0.88),
           width: 1.2,
         ),
       ),
@@ -3699,12 +3772,14 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                   child: Container(
                     padding: const EdgeInsets.all(18),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.18),
+                      color: Colors.white.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(22),
-                      border: Border.all(color: Colors.white.withOpacity(0.42)),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.42),
+                      ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.08),
+                          color: Colors.black.withValues(alpha: 0.08),
                           blurRadius: 24,
                           offset: const Offset(0, 16),
                         ),
@@ -3946,7 +4021,7 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
 
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.28),
+      barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setLocalState) {
           final query = _normalizeName(searchC.text);
@@ -4150,6 +4225,9 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
         pressed.contains(LogicalKeyboardKey.metaRight);
   }
 
+  bool _isSelectionExtendPressed() =>
+      _isCtrlOrCmdPressed() || HardwareKeyboard.instance.isShiftPressed;
+
   void _onFocusChange() {
     if (mounted) setState(() {});
   }
@@ -4275,7 +4353,11 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
   }
 
   void _activateInsertRow() {
-    setState(() => _insertActive = true);
+    setState(() {
+      _insertActive = true;
+      _selectedRowIds.clear();
+      _selectionAnchorIndex = null;
+    });
     _focusNode.requestFocus();
     _insertFocusNode.requestFocus();
   }
@@ -4506,10 +4588,10 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
       position: position,
       color: _kCatalogTableGlassMenuBg,
       elevation: 8,
-      shadowColor: Colors.black.withOpacity(0.12),
+      shadowColor: Colors.black.withValues(alpha: 0.12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withOpacity(0.7)),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
       ),
       items: [
         if (editing)
@@ -4619,11 +4701,11 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
       return KeyEventResult.ignored;
     }
     if (key == LogicalKeyboardKey.arrowDown) {
-      _moveSelection(1, extend: _isCtrlOrCmdPressed());
+      _moveSelection(1, extend: _isSelectionExtendPressed());
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp) {
-      _moveSelection(-1, extend: _isCtrlOrCmdPressed());
+      _moveSelection(-1, extend: _isSelectionExtendPressed());
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.enter ||
@@ -4688,12 +4770,12 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.28),
+            color: Colors.white.withValues(alpha: 0.28),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: _focusNode.hasFocus
-                  ? _kCatalogTableSelectionAccent.withOpacity(0.60)
-                  : Colors.white.withOpacity(0.48),
+                  ? _kCatalogTableSelectionAccent.withValues(alpha: 0.60)
+                  : Colors.white.withValues(alpha: 0.48),
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -4702,7 +4784,7 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
             children: [
               Card(
                 elevation: 0,
-                color: Colors.white.withOpacity(0.34),
+                color: Colors.white.withValues(alpha: 0.34),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -4752,7 +4834,7 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
               const SizedBox(height: 8),
               Card(
                 elevation: 0,
-                color: Colors.black.withOpacity(0.03),
+                color: Colors.black.withValues(alpha: 0.03),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -4773,14 +4855,18 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                           decoration: BoxDecoration(
                             color: hasNameFilterActive
                                 ? _kCatalogTableFilterAccent
-                                : _kCatalogTableFilterAccentSoft.withOpacity(
-                                    0.35,
+                                : _kCatalogTableFilterAccentSoft.withValues(
+                                    alpha: 0.35,
                                   ),
                             borderRadius: BorderRadius.circular(8),
                             border: Border.all(
                               color: hasNameFilterActive
-                                  ? _kCatalogTableFilterAccent.withOpacity(0.55)
-                                  : const Color(0xFF0B2B2B).withOpacity(0.15),
+                                  ? _kCatalogTableFilterAccent.withValues(
+                                      alpha: 0.55,
+                                    )
+                                  : const Color(
+                                      0xFF0B2B2B,
+                                    ).withValues(alpha: 0.15),
                             ),
                           ),
                           child: Icon(
@@ -4856,7 +4942,7 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
                     color: _insertActive
-                        ? const Color(0xFF3C8DCC).withOpacity(0.55)
+                        ? const Color(0xFF3C8DCC).withValues(alpha: 0.55)
                         : Colors.transparent,
                   ),
                 ),
@@ -4884,7 +4970,7 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                               onChanged: (_) => setState(() {}),
                               onTap: () {
                                 _focusNode.requestFocus();
-                                setState(() => _insertActive = true);
+                                _activateInsertRow();
                               },
                               onSubmitted: (_) => _insertFromRow(),
                               onTapOutside: (event) {
@@ -4913,11 +4999,13 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                             height: 34,
                             decoration: BoxDecoration(
                               color: canInsert
-                                  ? const Color(0xFF19C37D).withOpacity(0.92)
-                                  : Colors.white.withOpacity(0.35),
+                                  ? const Color(
+                                      0xFF19C37D,
+                                    ).withValues(alpha: 0.92)
+                                  : Colors.white.withValues(alpha: 0.35),
                               borderRadius: BorderRadius.circular(10),
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.52),
+                                color: Colors.white.withValues(alpha: 0.52),
                               ),
                             ),
                             child: _inserting
@@ -4957,7 +5045,7 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                           controller: _scrollController,
                           itemCount: rows.length,
                           separatorBuilder: (_, _) => Divider(
-                            color: Colors.white.withOpacity(0.55),
+                            color: Colors.white.withValues(alpha: 0.55),
                             height: 6,
                           ),
                           itemBuilder: (_, i) {
@@ -4983,8 +5071,8 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                             final rowBg = editing
                                 ? const Color(0xFFCBEFE2)
                                 : hasSelection
-                                ? _kCatalogTableSelectionAccent.withOpacity(
-                                    primarySelected ? 0.16 : 0.13,
+                                ? _kCatalogTableSelectionAccent.withValues(
+                                    alpha: primarySelected ? 0.16 : 0.13,
                                   )
                                 : hoverOnly
                                 ? const Color(0xFFE9F7EE)
@@ -5052,8 +5140,10 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                                         side: BorderSide(
                                           color: primarySelected
                                               ? _kCatalogTableSelectionAccent
-                                                    .withOpacity(0.65)
-                                              : Colors.white.withOpacity(0.0),
+                                                    .withValues(alpha: 0.65)
+                                              : Colors.white.withValues(
+                                                  alpha: 0.0,
+                                                ),
                                           width: 1.0,
                                         ),
                                       ),
@@ -5085,8 +5175,8 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                                                       color:
                                                           (hovered || editing)
                                                           ? _kCatalogTableSelectionAccent
-                                                                .withOpacity(
-                                                                  editing
+                                                                .withValues(
+                                                                  alpha: editing
                                                                       ? 0.12
                                                                       : 0.06,
                                                                 )
@@ -5098,13 +5188,13 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                                                       border: Border.all(
                                                         color: editing
                                                             ? _kCatalogTableSelectionAccent
-                                                                  .withOpacity(
-                                                                    0.25,
+                                                                  .withValues(
+                                                                    alpha: 0.25,
                                                                   )
                                                             : hovered
                                                             ? _kCatalogTableSelectionAccent
-                                                                  .withOpacity(
-                                                                    0.14,
+                                                                  .withValues(
+                                                                    alpha: 0.14,
                                                                   )
                                                             : Colors
                                                                   .transparent,
@@ -5366,9 +5456,11 @@ class _InactiveCatalogDialogState extends State<_InactiveCatalogDialog> {
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.20),
+                    color: Colors.white.withValues(alpha: 0.20),
                     borderRadius: BorderRadius.circular(20),
-                    border: Border.all(color: Colors.white.withOpacity(0.42)),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.42),
+                    ),
                   ),
                   child: Focus(
                     autofocus: true,
@@ -5412,10 +5504,10 @@ class _InactiveCatalogDialogState extends State<_InactiveCatalogDialog> {
                           child: Container(
                             padding: const EdgeInsets.all(10),
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.52),
+                              color: Colors.white.withValues(alpha: 0.52),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
-                                color: Colors.white.withOpacity(0.70),
+                                color: Colors.white.withValues(alpha: 0.70),
                               ),
                             ),
                             child: _loading
@@ -5435,7 +5527,9 @@ class _InactiveCatalogDialogState extends State<_InactiveCatalogDialog> {
                                 : ListView.separated(
                                     itemCount: _rows.length,
                                     separatorBuilder: (_, _) => Divider(
-                                      color: Colors.white.withOpacity(0.55),
+                                      color: Colors.white.withValues(
+                                        alpha: 0.55,
+                                      ),
                                     ),
                                     itemBuilder: (_, i) {
                                       final row = _rows[i];
@@ -5612,6 +5706,9 @@ class _CatalogListState extends State<_CatalogList> {
         pressed.contains(LogicalKeyboardKey.metaRight);
   }
 
+  bool _isSelectionExtendPressed() =>
+      _isCtrlOrCmdPressed() || HardwareKeyboard.instance.isShiftPressed;
+
   void _selectIndex(
     int index, {
     bool ensureVisible = true,
@@ -5698,11 +5795,17 @@ class _CatalogListState extends State<_CatalogList> {
     Offset? globalPosition,
   }) async {
     _focusNode.requestFocus();
-    _selectIndex(
-      index,
-      ensureVisible: false,
-      additiveToggle: globalPosition == null ? false : _isCtrlOrCmdPressed(),
-    );
+    final rowId = _rowId(row);
+    if (rowId == null) return;
+    if (!_selectedRowIds.contains(rowId)) {
+      _selectIndex(
+        index,
+        ensureVisible: false,
+        additiveToggle: globalPosition == null ? false : _isCtrlOrCmdPressed(),
+      );
+    } else {
+      setState(() => _selectedIndex = index);
+    }
 
     final rowsToDelete =
         _selectedRowIds.length > 1 && widget.onDeleteMany != null
@@ -5724,10 +5827,10 @@ class _CatalogListState extends State<_CatalogList> {
       position: position,
       color: _kCatalogTableGlassMenuBg,
       elevation: 8,
-      shadowColor: Colors.black.withOpacity(0.12),
+      shadowColor: Colors.black.withValues(alpha: 0.12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withOpacity(0.7)),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
       ),
       items: [
         const PopupMenuItem<String>(
@@ -5827,7 +5930,7 @@ class _CatalogListState extends State<_CatalogList> {
 
     final key = event.logicalKey;
     if (key == LogicalKeyboardKey.arrowDown) {
-      if (_isCtrlOrCmdPressed()) {
+      if (_isSelectionExtendPressed()) {
         _extendSelectionWithArrow(1);
       } else {
         _moveSelectedRow(1);
@@ -5835,7 +5938,7 @@ class _CatalogListState extends State<_CatalogList> {
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp) {
-      if (_isCtrlOrCmdPressed()) {
+      if (_isSelectionExtendPressed()) {
         _extendSelectionWithArrow(-1);
       } else {
         _moveSelectedRow(-1);
@@ -5881,12 +5984,12 @@ class _CatalogListState extends State<_CatalogList> {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.28),
+            color: Colors.white.withValues(alpha: 0.28),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: _focusNode.hasFocus
-                  ? _kCatalogTableSelectionAccent.withOpacity(0.60)
-                  : Colors.white.withOpacity(0.48),
+                  ? _kCatalogTableSelectionAccent.withValues(alpha: 0.60)
+                  : Colors.white.withValues(alpha: 0.48),
             ),
           ),
           padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
@@ -5895,7 +5998,7 @@ class _CatalogListState extends State<_CatalogList> {
             children: [
               Card(
                 elevation: 0,
-                color: Colors.white.withOpacity(0.34),
+                color: Colors.white.withValues(alpha: 0.34),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
                 ),
@@ -5964,7 +6067,7 @@ class _CatalogListState extends State<_CatalogList> {
               const SizedBox(height: 8),
               Card(
                 elevation: 0,
-                color: Colors.black.withOpacity(0.03),
+                color: Colors.black.withValues(alpha: 0.03),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(14),
                 ),
@@ -6001,7 +6104,7 @@ class _CatalogListState extends State<_CatalogList> {
                           controller: _scrollController,
                           itemCount: widget.rows.length,
                           separatorBuilder: (_, _) => Divider(
-                            color: Colors.white.withOpacity(0.55),
+                            color: Colors.white.withValues(alpha: 0.55),
                             height: 6,
                           ),
                           itemBuilder: (_, i) {
@@ -6020,8 +6123,8 @@ class _CatalogListState extends State<_CatalogList> {
                             final hoverOnly = hovered && !hasSelection;
                             final highlighted = hasSelection || hovered;
                             final rowBg = hasSelection
-                                ? _kCatalogTableSelectionAccent.withOpacity(
-                                    primarySelected ? 0.16 : 0.13,
+                                ? _kCatalogTableSelectionAccent.withValues(
+                                    alpha: primarySelected ? 0.16 : 0.13,
                                   )
                                 : hoverOnly
                                 ? const Color(0xFFE9F7EE)
@@ -6086,9 +6189,9 @@ class _CatalogListState extends State<_CatalogList> {
                                             side: BorderSide(
                                               color: primarySelected
                                                   ? _kCatalogTableSelectionAccent
-                                                        .withOpacity(0.65)
-                                                  : Colors.white.withOpacity(
-                                                      0.0,
+                                                        .withValues(alpha: 0.65)
+                                                  : Colors.white.withValues(
+                                                      alpha: 0.0,
                                                     ),
                                               width: 1.0,
                                             ),
@@ -6191,9 +6294,9 @@ class _GlassCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.58),
+        color: Colors.white.withValues(alpha: 0.58),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.white.withOpacity(0.75)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.75)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

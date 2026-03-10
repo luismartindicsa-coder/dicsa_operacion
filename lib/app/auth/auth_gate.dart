@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'auth_access.dart';
 import 'login_page.dart';
 import 'role_router.dart';
 import '../shared/session_expiry_service.dart';
@@ -77,7 +78,7 @@ class _AuthGateState extends State<AuthGate>
   Future<void> _expireSession() async {
     if (_expiring) return;
     _expiring = true;
-    await Supabase.instance.client.auth.signOut();
+    await AuthSessionActions.signOut();
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
@@ -119,7 +120,6 @@ class _AuthGateState extends State<AuthGate>
     final target = _hasSession
         ? const RoleRouter(key: ValueKey('role_router'))
         : const LoginPage(key: ValueKey('login'));
-
     return Stack(
       fit: StackFit.expand,
       children: [

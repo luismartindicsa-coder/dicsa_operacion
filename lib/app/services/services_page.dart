@@ -6,10 +6,13 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../auth/auth_gate.dart';
+import '../auth/auth_access.dart';
+import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
+import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
 import 'inventory_page.dart';
+import 'warehouse_page.dart';
 import 'weighings_page.dart';
 import 'services_shell.dart'; // ajusta el path si lo guardaste en /ui/ o /app/
 import '../shared/page_routes.dart';
@@ -76,7 +79,7 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
 }) {
   return showDialog<_DateFilterDialogResult>(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.28),
+    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       DateTime displayMonth = DateTime(
         (initialRange?.start ?? DateTime.now()).year,
@@ -244,7 +247,9 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                                       final bgColor = active
                                           ? _kFilterAccent
                                           : inRange
-                                          ? _kFilterAccentSoft.withOpacity(0.8)
+                                          ? _kFilterAccentSoft.withValues(
+                                              alpha: 0.8,
+                                            )
                                           : Colors.transparent;
 
                                       final txtColor = active
@@ -302,7 +307,9 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                                                 border: inRange && !active
                                                     ? Border.all(
                                                         color: _kFilterAccent
-                                                            .withOpacity(0.35),
+                                                            .withValues(
+                                                              alpha: 0.35,
+                                                            ),
                                                       )
                                                     : null,
                                               ),
@@ -394,7 +401,7 @@ Future<T?> _showSearchablePickerDialog<T>(
 }) async {
   return showDialog<T>(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.28),
+    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (_) => _SearchablePickerDialog<T>(
       title: title,
       options: options,
@@ -434,7 +441,7 @@ Future<DateTime?> _showGlassDatePickerDialog(
 
   return showDialog<DateTime>(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.28),
+    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       return StatefulBuilder(
         builder: (innerContext, setInnerState) {
@@ -485,11 +492,13 @@ Future<DateTime?> _showGlassDatePickerDialog(
                   ),
                 ),
                 child: AlertDialog(
-                  backgroundColor: const Color(0xFFEAF2F9).withOpacity(0.98),
+                  backgroundColor: const Color(
+                    0xFFEAF2F9,
+                  ).withValues(alpha: 0.98),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16),
                     side: BorderSide(
-                      color: const Color(0xFF8AA9C2).withOpacity(0.42),
+                      color: const Color(0xFF8AA9C2).withValues(alpha: 0.42),
                     ),
                   ),
                   title: const Text('Selecciona fecha'),
@@ -604,16 +613,16 @@ class _SearchablePickerDialogState<T>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    const Color(0xFF9CC7E5).withOpacity(0.44),
-                    const Color(0xFFDDEAF5).withOpacity(0.40),
-                    const Color(0xFF8BE0CF).withOpacity(0.30),
+                    const Color(0xFF9CC7E5).withValues(alpha: 0.44),
+                    const Color(0xFFDDEAF5).withValues(alpha: 0.40),
+                    const Color(0xFF8BE0CF).withValues(alpha: 0.30),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withOpacity(0.72)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.12),
+                    color: Colors.black.withValues(alpha: 0.12),
                     blurRadius: 22,
                     offset: const Offset(0, 10),
                   ),
@@ -744,14 +753,14 @@ class _SearchablePickerDialogState<T>
                                       color: active
                                           ? const Color(
                                               0xFFA9E8CF,
-                                            ).withOpacity(0.48)
+                                            ).withValues(alpha: 0.48)
                                           : Colors.transparent,
                                       borderRadius: BorderRadius.circular(10),
                                       border: Border.all(
                                         color: active
                                             ? const Color(
                                                 0xFF0B72FF,
-                                              ).withOpacity(0.56)
+                                              ).withValues(alpha: 0.56)
                                             : Colors.transparent,
                                         width: active ? 1.0 : 0.8,
                                       ),
@@ -760,7 +769,7 @@ class _SearchablePickerDialogState<T>
                                               BoxShadow(
                                                 color: const Color(
                                                   0xFF75C8A5,
-                                                ).withOpacity(0.22),
+                                                ).withValues(alpha: 0.22),
                                                 blurRadius: 10,
                                                 offset: const Offset(0, 3),
                                               ),
@@ -771,8 +780,8 @@ class _SearchablePickerDialogState<T>
                                       decoration: BoxDecoration(
                                         border: Border(
                                           bottom: BorderSide(
-                                            color: Colors.white.withOpacity(
-                                              0.40,
+                                            color: Colors.white.withValues(
+                                              alpha: 0.40,
                                             ),
                                             width: 1,
                                           ),
@@ -890,20 +899,23 @@ class _FitText extends StatelessWidget {
 InputDecoration _glassFieldDecoration({String? hintText}) {
   final border = OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(color: Colors.white.withOpacity(0.58), width: 1),
+    borderSide: BorderSide(
+      color: Colors.white.withValues(alpha: 0.58),
+      width: 1,
+    ),
   );
 
   return InputDecoration(
     hintText: hintText,
     isDense: true,
     filled: true,
-    fillColor: Colors.white.withOpacity(0.45),
+    fillColor: Colors.white.withValues(alpha: 0.45),
     contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
     border: border,
     enabledBorder: border,
     focusedBorder: border.copyWith(
       borderSide: BorderSide(
-        color: const Color(0xFF00A3FF).withOpacity(0.8),
+        color: const Color(0xFF00A3FF).withValues(alpha: 0.8),
         width: 1.2,
       ),
     ),
@@ -912,17 +924,17 @@ InputDecoration _glassFieldDecoration({String? hintText}) {
 
 BoxDecoration _filterDialogDecoration() {
   return BoxDecoration(
-    color: Colors.white.withOpacity(0.62),
+    color: Colors.white.withValues(alpha: 0.62),
     borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: Colors.white.withOpacity(0.68)),
+    border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
   );
 }
 
 ButtonStyle _filterOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF2A4B49),
-    side: BorderSide(color: const Color(0xFF2A4B49).withOpacity(0.25)),
-    backgroundColor: Colors.white.withOpacity(0.40),
+    side: BorderSide(color: const Color(0xFF2A4B49).withValues(alpha: 0.25)),
+    backgroundColor: Colors.white.withValues(alpha: 0.40),
   );
 }
 
@@ -936,10 +948,10 @@ ButtonStyle _filterFilledButtonStyle() {
 ButtonStyle _actionOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: const Color(0xFF0B2B2B),
-    backgroundColor: Colors.white.withOpacity(0.34),
-    side: BorderSide(color: Colors.white.withOpacity(0.72)),
+    backgroundColor: Colors.white.withValues(alpha: 0.34),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.72)),
     surfaceTintColor: Colors.transparent,
-    shadowColor: Colors.black.withOpacity(0.28),
+    shadowColor: Colors.black.withValues(alpha: 0.28),
   ).copyWith(
     overlayColor: WidgetStateProperty.all(Colors.transparent),
     elevation: WidgetStateProperty.resolveWith((states) {
@@ -954,7 +966,7 @@ ButtonStyle _actionOutlinedButtonStyle() {
 ButtonStyle _actionFilledButtonStyle() {
   return FilledButton.styleFrom(
     surfaceTintColor: Colors.transparent,
-    shadowColor: Colors.black.withOpacity(0.30),
+    shadowColor: Colors.black.withValues(alpha: 0.30),
   ).copyWith(
     overlayColor: WidgetStateProperty.all(Colors.transparent),
     elevation: WidgetStateProperty.resolveWith((states) {
@@ -974,7 +986,7 @@ Future<bool?> _showGlassConfirmDialog(
 }) {
   return showDialog<bool>(
     context: context,
-    barrierColor: Colors.black.withOpacity(0.28),
+    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) => Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -987,12 +999,12 @@ Future<bool?> _showGlassConfirmDialog(
             child: Container(
               padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
               decoration: BoxDecoration(
-                color: Colors.white.withOpacity(0.62),
+                color: Colors.white.withValues(alpha: 0.62),
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withOpacity(0.68)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.09),
+                    color: Colors.black.withValues(alpha: 0.09),
                     blurRadius: 20,
                     offset: const Offset(0, 10),
                   ),
@@ -1091,7 +1103,6 @@ class _ServicesPageState extends State<ServicesPage>
   List<Map<String, dynamic>> _rows = [];
   String? _selectedRowId;
   final Set<String> _bulkSelectedRowIds = <String>{};
-  bool _gridEditMode = false;
   static const int _insertColumnCount = 10;
   static const int _gridColumnCount = 9;
   static const List<String> _gridColumnLabels = <String>[
@@ -1107,8 +1118,6 @@ class _ServicesPageState extends State<ServicesPage>
   ];
   int _activeGridColumn = 0;
   int _activeInsertColumn = 0;
-  int _gridSaveSignal = 0;
-  int _gridCancelSignal = 0;
   bool _bulkDeleting = false;
   bool _insertRowActive = false;
   int _currentPage = 0;
@@ -1228,7 +1237,6 @@ class _ServicesPageState extends State<ServicesPage>
       _draft.notes.trim().isNotEmpty;
 
   bool get _hasRowsInEditingState {
-    if (_gridEditMode) return true;
     for (final key in _rowKeys.values) {
       if (key.currentState?.isEditing ?? false) return true;
     }
@@ -1299,6 +1307,17 @@ class _ServicesPageState extends State<ServicesPage>
     );
   }
 
+  Future<void> _goToInventory() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const InventoryStockPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   Future<void> _goToWeighings() async {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -1315,6 +1334,45 @@ class _ServicesPageState extends State<ServicesPage>
     Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const MaintenancePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToGeneralDashboard() async {
+    final profile = await AuthAccess.resolveCurrentProfile();
+    if (!AuthAccess.canAccessGeneralDashboard(profile)) {
+      _toast('Acceso no autorizado');
+      return;
+    }
+
+    if (!mounted) return;
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.pushReplacement(
+        appPageRoute(
+          page: const GeneralDashboardPage(instantOpen: true),
+          duration: const Duration(milliseconds: 420),
+          reverseDuration: const Duration(milliseconds: 360),
+        ),
+      );
+      return;
+    }
+    nav.push(
+      appPageRoute(
+        page: const GeneralDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToWarehouse() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const WarehousePage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
@@ -2178,7 +2236,7 @@ class _ServicesPageState extends State<ServicesPage>
     _marqueePointerLocal = local;
     _marqueeStartContent = _localToContent(local);
     _marqueeCurrentContent = _marqueeStartContent;
-    _marqueeAdditive = _isCtrlOrCmdPressed();
+    _marqueeAdditive = _isSelectionExtendPressed();
     _marqueeBaseSelection = _currentSelectionIds();
     _marqueeActive = false;
   }
@@ -2302,6 +2360,16 @@ class _ServicesPageState extends State<ServicesPage>
         pressed.contains(LogicalKeyboardKey.controlRight) ||
         pressed.contains(LogicalKeyboardKey.metaLeft) ||
         pressed.contains(LogicalKeyboardKey.metaRight);
+  }
+
+  bool _isShiftPressed() {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    return pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+  }
+
+  bool _isSelectionExtendPressed() {
+    return _isCtrlOrCmdPressed() || _isShiftPressed();
   }
 
   bool _isEditableTextFocused() {
@@ -2443,10 +2511,7 @@ class _ServicesPageState extends State<ServicesPage>
   }
 
   bool get _hasExplicitMultiSelection {
-    final primary = _selectedRowId;
-    return primary != null &&
-        _bulkSelectedRowIds.length > 1 &&
-        _bulkSelectedRowIds.contains(primary);
+    return _currentSelectionIds().length > 1;
   }
 
   List<_ServiceDataRowState> _selectedRowStates() {
@@ -2458,18 +2523,15 @@ class _ServicesPageState extends State<ServicesPage>
       return <_ServiceDataRowState>[state];
     }
 
-    final primaryId = _selectedRowId;
     final orderedIds = <String>[];
-    if (primaryId != null && _bulkSelectedRowIds.contains(primaryId)) {
-      orderedIds.add(primaryId);
-    }
+    if (_selectedRowId != null) orderedIds.add(_selectedRowId!);
     for (final row in _visibleRows) {
       final id = row['id'] as String;
-      if (_bulkSelectedRowIds.contains(id) && !orderedIds.contains(id)) {
+      if (_currentSelectionIds().contains(id) && !orderedIds.contains(id)) {
         orderedIds.add(id);
       }
     }
-    for (final id in _bulkSelectedRowIds) {
+    for (final id in _currentSelectionIds()) {
       if (!orderedIds.contains(id)) orderedIds.add(id);
     }
     return orderedIds
@@ -2552,148 +2614,38 @@ class _ServicesPageState extends State<ServicesPage>
 
   Future<String?> _showRowsContextMenu(Offset globalPosition) {
     final actions = _rowContextActions();
-    final mediaSize = MediaQuery.of(context).size;
-    const menuWidth = 228.0;
-    final left = globalPosition.dx.clamp(
-      8.0,
-      mediaSize.width - menuWidth - 8.0,
+    const menuTextStyle = TextStyle(
+      fontWeight: FontWeight.w800,
+      decoration: TextDecoration.none,
+      decorationColor: Colors.transparent,
+      color: Color(0xFF223D5A),
     );
-    final top = globalPosition.dy.clamp(8.0, mediaSize.height - 8.0);
-    return showGeneralDialog<String>(
+    final media = MediaQuery.of(context).size;
+    return showMenu<String>(
       context: context,
-      barrierLabel: 'context_menu',
-      barrierColor: Colors.transparent,
-      barrierDismissible: true,
-      transitionDuration: const Duration(milliseconds: 90),
-      pageBuilder: (dialogContext, _, __) {
-        int? hoveredIndex;
-        return Stack(
-          children: [
-            Positioned.fill(
-              child: GestureDetector(
-                onTap: () => Navigator.of(dialogContext).pop(),
-                behavior: HitTestBehavior.translucent,
-              ),
+      color: const Color(0xE6EAF2F9),
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        media.width - globalPosition.dx,
+        media.height - globalPosition.dy,
+      ),
+      items: [
+        for (var i = 0; i < actions.length; i++) ...[
+          PopupMenuItem<String>(
+            value: actions[i].key,
+            child: Text(
+              actions[i].value,
+              style: actions[i].key == 'delete'
+                  ? menuTextStyle.copyWith(color: const Color(0xFF8A1F1F))
+                  : menuTextStyle,
             ),
-            Positioned(
-              left: left.toDouble(),
-              top: top.toDouble(),
-              child: StatefulBuilder(
-                builder: (context, setMenuState) {
-                  return Focus(
-                    autofocus: true,
-                    onKeyEvent: (_, event) {
-                      if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                      if (event.logicalKey == LogicalKeyboardKey.escape) {
-                        Navigator.of(dialogContext).pop();
-                        return KeyEventResult.handled;
-                      }
-                      return KeyEventResult.ignored;
-                    },
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(18),
-                      child: BackdropFilter(
-                        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                        child: Container(
-                          width: menuWidth,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 8,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xE6EAF2F9),
-                            borderRadius: BorderRadius.circular(18),
-                            border: Border.all(
-                              color: Colors.white.withOpacity(0.72),
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withOpacity(0.18),
-                                blurRadius: 20,
-                                offset: const Offset(0, 10),
-                              ),
-                            ],
-                          ),
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              for (var i = 0; i < actions.length; i++) ...[
-                                MouseRegion(
-                                  onEnter: (_) =>
-                                      setMenuState(() => hoveredIndex = i),
-                                  onExit: (_) {
-                                    if (hoveredIndex == i) {
-                                      setMenuState(() => hoveredIndex = null);
-                                    }
-                                  },
-                                  child: GestureDetector(
-                                    behavior: HitTestBehavior.opaque,
-                                    onTap: () => Navigator.of(
-                                      dialogContext,
-                                    ).pop(actions[i].key),
-                                    child: AnimatedContainer(
-                                      duration: const Duration(
-                                        milliseconds: 80,
-                                      ),
-                                      curve: Curves.easeOutCubic,
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 12,
-                                        vertical: 10,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: hoveredIndex == i
-                                            ? const Color(
-                                                0xFFA9E8CF,
-                                              ).withOpacity(0.55)
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(12),
-                                        boxShadow: hoveredIndex == i
-                                            ? [
-                                                BoxShadow(
-                                                  color: const Color(
-                                                    0xFF75C8A5,
-                                                  ).withOpacity(0.30),
-                                                  blurRadius: 10,
-                                                  offset: const Offset(0, 4),
-                                                ),
-                                              ]
-                                            : const [],
-                                      ),
-                                      child: Text(
-                                        actions[i].value,
-                                        style: TextStyle(
-                                          fontSize: 13.5,
-                                          fontWeight: FontWeight.w800,
-                                          color: actions[i].key == 'delete'
-                                              ? const Color(0xFF8A1F1F)
-                                              : const Color(0xFF1C3E5D),
-                                          decoration: TextDecoration.none,
-                                          decorationColor: Colors.transparent,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                if (i != actions.length - 1)
-                                  Divider(
-                                    height: 1,
-                                    thickness: 1,
-                                    color: Colors.white.withOpacity(0.44),
-                                  ),
-                              ],
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        );
-      },
+          ),
+          if (i != actions.length - 1) const PopupMenuDivider(height: 1),
+        ],
+      ],
     );
   }
 
@@ -2743,6 +2695,8 @@ class _ServicesPageState extends State<ServicesPage>
     if (_draft.serviceDate == null) missing.add('Fecha');
     if (_draft.clientId == null) missing.add('Empresa');
     if (_draft.materialId == null) missing.add('Material');
+    if (_draft.direction == null) missing.add('Tipo');
+    if (_draft.status == null) missing.add('Estado');
     if (missing.isNotEmpty) {
       await _showInsertMissingFieldsDialog(missing);
       return;
@@ -2751,8 +2705,8 @@ class _ServicesPageState extends State<ServicesPage>
     await supa.from('services').insert({
       'service_date': _fmtDbDate(_draft.serviceDate!),
       'due_date': _draft.dueDate == null ? null : _fmtDbDate(_draft.dueDate!),
-      'direction': _draft.direction ?? 'recoleccion',
-      'status': _draft.status ?? 'programado',
+      'direction': _draft.direction,
+      'status': _draft.status,
       'client_id': _draft.clientId,
       'material_id': _draft.materialId,
       'driver_employee_id': _draft.driverEmployeeId,
@@ -2778,7 +2732,7 @@ class _ServicesPageState extends State<ServicesPage>
     final detail = missing.join(', ');
     await showDialog<void>(
       context: context,
-      barrierColor: Colors.black.withOpacity(0.28),
+      barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (dialogContext) => Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -2793,10 +2747,12 @@ class _ServicesPageState extends State<ServicesPage>
                 decoration: BoxDecoration(
                   color: const Color(0xE6EAF2F9),
                   borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white.withOpacity(0.72)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.72),
+                  ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.14),
+                      color: Colors.black.withValues(alpha: 0.14),
                       blurRadius: 18,
                       offset: const Offset(0, 10),
                     ),
@@ -2981,12 +2937,15 @@ class _ServicesPageState extends State<ServicesPage>
         sel.extentOffset == end;
   }
 
-  void _setActiveInsertColumn(int value) {
+  void _setActiveInsertColumn(int value, {bool requestFocus = true}) {
     setState(() {
       _activeInsertColumn =
           ((value % _insertColumnCount) + _insertColumnCount) %
           _insertColumnCount;
+      _selectedRowId = null;
+      _bulkSelectedRowIds.clear();
     });
+    if (!requestFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (_activeInsertColumn == 7) {
@@ -3017,6 +2976,8 @@ class _ServicesPageState extends State<ServicesPage>
   void _focusInsertRowFromGrid() {
     setState(() {
       _activeInsertColumn = _gridToInsertColumn(_activeGridColumn);
+      _selectedRowId = null;
+      _bulkSelectedRowIds.clear();
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -3228,7 +3189,7 @@ class _ServicesPageState extends State<ServicesPage>
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
           color: _insertRowActive
-              ? const Color(0xFF3C8DCC).withOpacity(0.55)
+              ? const Color(0xFF3C8DCC).withValues(alpha: 0.55)
               : Colors.transparent,
         ),
       ),
@@ -3238,17 +3199,27 @@ class _ServicesPageState extends State<ServicesPage>
           builder: (context, constraints) {
             Widget insertCellFrame(int columnIndex, Widget child) {
               final active = _activeInsertColumn == columnIndex;
-              if (!active) return child;
               return DecoratedBox(
-                position: DecorationPosition.foreground,
+                position: DecorationPosition.background,
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(
-                    color: const Color(0xFF0B72FF).withOpacity(0.80),
-                    width: 1.15,
-                  ),
+                  color: active
+                      ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
+                      : Colors.transparent,
                 ),
-                child: child,
+                child: DecoratedBox(
+                  position: DecorationPosition.foreground,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: active
+                          ? const Color(0xFF0B72FF).withValues(alpha: 0.80)
+                          : Colors.transparent,
+                      width: active ? 1.15 : 1.0,
+                    ),
+                  ),
+                  child: child,
+                ),
               );
             }
 
@@ -3388,7 +3359,7 @@ class _ServicesPageState extends State<ServicesPage>
                           SizedBox(
                             width: 130,
                             child: _DropStrInline(
-                              value: _draft.direction ?? _directions.first,
+                              value: _draft.direction,
                               items: _directions,
                               format: _uiLabel,
                               onTapStart: () => _setActiveInsertColumn(3),
@@ -3484,11 +3455,10 @@ class _ServicesPageState extends State<ServicesPage>
                                 controller: _draftNotesC,
                                 focusNode: _draftNotesFocusNode,
                                 decoration: _glassFieldDecoration(),
-                                onTap: () {
-                                  if (!_draftNotesFocusNode.hasFocus) {
-                                    _draftNotesFocusNode.requestFocus();
-                                  }
-                                },
+                                onTap: () => _setActiveInsertColumn(
+                                  7,
+                                  requestFocus: false,
+                                ),
                                 onChanged: (t) => setState(
                                   () => _draft = _draft.copyWith(notes: t),
                                 ),
@@ -3510,7 +3480,7 @@ class _ServicesPageState extends State<ServicesPage>
                                 SizedBox(
                                   width: _kActionsW - 50,
                                   child: _DropStrInline(
-                                    value: _draft.status ?? _statuses.first,
+                                    value: _draft.status,
                                     items: _statuses,
                                     format: _uiLabel,
                                     onTapStart: () => _setActiveInsertColumn(8),
@@ -3533,13 +3503,13 @@ class _ServicesPageState extends State<ServicesPage>
                                         decoration: BoxDecoration(
                                           color: const Color(
                                             0xFF19C37D,
-                                          ).withOpacity(0.92),
+                                          ).withValues(alpha: 0.92),
                                           borderRadius: BorderRadius.circular(
                                             10,
                                           ),
                                           border: Border.all(
-                                            color: Colors.white.withOpacity(
-                                              0.52,
+                                            color: Colors.white.withValues(
+                                              alpha: 0.52,
                                             ),
                                           ),
                                         ),
@@ -3569,13 +3539,13 @@ class _ServicesPageState extends State<ServicesPage>
   }
 
   Widget _buildServicesTopActionsBar() {
-    final cellMode = _gridEditMode || (_selectedRowState()?.isEditing ?? false);
+    final cellMode = _selectedRowState()?.isEditing ?? false;
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
       child: Card(
         elevation: 0,
-        color: Colors.white.withOpacity(0.34),
+        color: Colors.white.withValues(alpha: 0.34),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -3596,41 +3566,6 @@ class _ServicesPageState extends State<ServicesPage>
                       ),
                       label: const Text('Descargar CSV'),
                     ),
-                    const SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      style: _actionOutlinedButtonStyle(),
-                      onPressed: () => setState(() {
-                        _gridEditMode = !_gridEditMode;
-                        if (_gridEditMode) {
-                          _activeGridColumn = 0;
-                          _ensureGridSelection();
-                        } else {
-                          _gridCancelSignal++;
-                        }
-                      }),
-                      icon: Icon(
-                        _gridEditMode
-                            ? Icons.grid_off
-                            : Icons.grid_view_rounded,
-                      ),
-                      label: Text(
-                        _gridEditMode
-                            ? 'Salir de cuadrícula'
-                            : 'Edición en cuadrícula',
-                      ),
-                    ),
-                    if (_gridEditMode) ...[
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        style: _actionFilledButtonStyle(),
-                        onPressed: () => setState(() {
-                          _gridSaveSignal++;
-                          _gridEditMode = false;
-                        }),
-                        icon: const Icon(Icons.save_outlined),
-                        label: const Text('Guardar'),
-                      ),
-                    ],
                     if (_selectedCount > 0) ...[
                       const SizedBox(width: 8),
                       FilledButton.icon(
@@ -3716,6 +3651,7 @@ class _ServicesPageState extends State<ServicesPage>
     return ServicesShell(
       headerTitle: 'Programación de Viajes y Servicios',
       activeOverlayModule: ServicesOverlayNavModule.servicios,
+      onGoToGeneralDashboard: _goToGeneralDashboard,
       onLogout: () async {
         final ok = await _showGlassConfirmDialog(
           context,
@@ -3724,19 +3660,12 @@ class _ServicesPageState extends State<ServicesPage>
           confirmText: 'Cerrar sesión',
         );
         if (ok != true) return;
-        await supa.auth.signOut();
         if (!mounted) return;
-        _toast('Sesión cerrada');
-        Navigator.of(this.context).pushAndRemoveUntil(
-          appPageRoute(page: const AuthGate()),
-          (_) => false,
-        );
+        await signOutAndRouteToLogin(this.context);
       },
       onGoToOperacion: () async {
-        final user = supa.auth.currentUser;
-        final email = user?.email?.toLowerCase();
-        final allowed = {'operacion@dicsamx.com', 'administracion@dicsamx.com'};
-        if (email == null || !allowed.contains(email)) {
+        final profile = await AuthAccess.resolveCurrentProfile();
+        if (!AuthAccess.canAccessDashboard(profile)) {
           _toast('Acceso no autorizado');
           return;
         }
@@ -3757,9 +3686,11 @@ class _ServicesPageState extends State<ServicesPage>
       },
       onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
       onGoToProduction: _goToProduction,
+      onGoToInventory: _goToInventory,
       onGoToServices: () async {},
       onGoToWeighings: _goToWeighings,
       onGoToMaintenance: _goToMaintenance,
+      onGoToWarehouse: _goToWarehouse,
       onGoToCatalogs: null,
       topContent: _loadingCats || _loadingRows
           ? null
@@ -3803,10 +3734,8 @@ class _ServicesPageState extends State<ServicesPage>
                                   final key = event.logicalKey;
                                   final editingAnyRow =
                                       _selectedRowState()?.isEditing ?? false;
-                                  final keyboardCellMode =
-                                      _gridEditMode || editingAnyRow;
+                                  final keyboardCellMode = editingAnyRow;
                                   final allowVerticalCellNavigation =
-                                      _gridEditMode ||
                                       _hasExplicitMultiSelection;
                                   final selectedState = _selectedRowState();
                                   final firstVisibleRowId = _visibleRows.isEmpty
@@ -3900,37 +3829,20 @@ class _ServicesPageState extends State<ServicesPage>
                                     }
                                     if (key == LogicalKeyboardKey.enter ||
                                         key == LogicalKeyboardKey.numpadEnter) {
-                                      if (_gridEditMode) {
-                                        setState(() {
-                                          _gridSaveSignal++;
-                                          _gridEditMode = false;
-                                        });
-                                      } else {
-                                        _handleEnterOnSelectedRow();
-                                      }
+                                      _handleEnterOnSelectedRow();
                                       return KeyEventResult.handled;
                                     }
                                     if (key == LogicalKeyboardKey.escape) {
-                                      if (_gridEditMode) {
-                                        setState(() {
-                                          _gridCancelSignal++;
-                                          _gridEditMode = false;
-                                        });
-                                      } else {
-                                        _handleEscapeOnSelectedRow();
-                                      }
+                                      _handleEscapeOnSelectedRow();
                                       return KeyEventResult.handled;
                                     }
                                     if (key == LogicalKeyboardKey.delete ||
                                         key == LogicalKeyboardKey.backspace) {
-                                      if (!_gridEditMode) {
-                                        return KeyEventResult.ignored;
-                                      }
-                                      return KeyEventResult.handled;
+                                      return KeyEventResult.ignored;
                                     }
                                   }
                                   if (key == LogicalKeyboardKey.arrowDown) {
-                                    if (_isCtrlOrCmdPressed()) {
+                                    if (_isSelectionExtendPressed()) {
                                       _extendSelectionWithArrow(1);
                                     } else {
                                       _moveSelectedRow(1);
@@ -3938,7 +3850,7 @@ class _ServicesPageState extends State<ServicesPage>
                                     return KeyEventResult.handled;
                                   }
                                   if (key == LogicalKeyboardKey.arrowUp) {
-                                    if (_isCtrlOrCmdPressed()) {
+                                    if (_isSelectionExtendPressed()) {
                                       _extendSelectionWithArrow(-1);
                                     } else if (firstVisibleRowId == null ||
                                         _selectedRowId == null ||
@@ -4041,12 +3953,6 @@ class _ServicesPageState extends State<ServicesPage>
                                                                 .contains(
                                                                   rowId,
                                                                 ),
-                                                        gridEditMode:
-                                                            _gridEditMode,
-                                                        gridSaveSignal:
-                                                            _gridSaveSignal,
-                                                        gridCancelSignal:
-                                                            _gridCancelSignal,
                                                         activeGridColumn:
                                                             _activeGridColumn,
                                                         showRowActions: true,
@@ -4108,7 +4014,7 @@ class _ServicesPageState extends State<ServicesPage>
                               padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
                               child: Card(
                                 elevation: 0,
-                                color: Colors.white.withOpacity(0.30),
+                                color: Colors.white.withValues(alpha: 0.30),
                                 shape: RoundedRectangleBorder(
                                   borderRadius: BorderRadius.circular(12),
                                 ),
@@ -4149,7 +4055,7 @@ class _ServicesPageState extends State<ServicesPage>
                                       SizedBox(
                                         width: 90,
                                         child: DropdownButtonFormField<int>(
-                                          value: _pageSize,
+                                          initialValue: _pageSize,
                                           isDense: true,
                                           decoration: _glassFieldDecoration(),
                                           items: const [40, 80, 120]
@@ -4202,7 +4108,7 @@ class _HeaderRow extends StatelessWidget {
     TextStyle s = const TextStyle(fontSize: 12, fontWeight: FontWeight.w800);
     return Card(
       elevation: 0,
-      color: Colors.black.withOpacity(0.03),
+      color: Colors.black.withValues(alpha: 0.03),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
@@ -4354,12 +4260,12 @@ class _HCellExpand extends StatelessWidget {
             decoration: BoxDecoration(
               color: active
                   ? _kFilterAccent
-                  : _kFilterAccentSoft.withOpacity(0.35),
+                  : _kFilterAccentSoft.withValues(alpha: 0.35),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: active
-                    ? _kFilterAccent.withOpacity(0.55)
-                    : const Color(0xFF0B2B2B).withOpacity(0.15),
+                    ? _kFilterAccent.withValues(alpha: 0.55)
+                    : const Color(0xFF0B2B2B).withValues(alpha: 0.15),
               ),
             ),
             child: Icon(
@@ -4397,9 +4303,6 @@ class _ServiceDataRow extends StatefulWidget {
   final Future<void> Function(String id, Map<String, dynamic> patch) onUpdate;
   final bool isSelected;
   final bool isChecked;
-  final bool gridEditMode;
-  final int gridSaveSignal;
-  final int gridCancelSignal;
   final int activeGridColumn;
   final bool showRowActions;
   final ValueChanged<Offset>? onOpenContextMenu;
@@ -4423,9 +4326,6 @@ class _ServiceDataRow extends StatefulWidget {
     required this.onUpdate,
     required this.isSelected,
     required this.isChecked,
-    required this.gridEditMode,
-    required this.gridSaveSignal,
-    required this.gridCancelSignal,
     required this.activeGridColumn,
     required this.showRowActions,
     this.onOpenContextMenu,
@@ -4500,28 +4400,11 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
     _vehicleId = r['vehicle_id'] as String?;
 
     _notes = TextEditingController(text: (r['notes'] ?? '') as String);
-    _editing = widget.gridEditMode;
   }
 
   @override
   void didUpdateWidget(covariant _ServiceDataRow oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.gridEditMode != oldWidget.gridEditMode) {
-      if (widget.gridEditMode) {
-        _setEditing(true);
-      } else {
-        _setEditing(false);
-      }
-    }
-    if (widget.gridSaveSignal != oldWidget.gridSaveSignal) {
-      unawaited(_save(keepEditing: false));
-    }
-    if (widget.gridCancelSignal != oldWidget.gridCancelSignal) {
-      setState(() {
-        _notes.dispose();
-        _syncFromRow();
-      });
-    }
   }
 
   @override
@@ -4763,7 +4646,9 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
     final rowBg = _editing
         ? const Color(0xFFCBEFE2)
         : hasSelection
-        ? const Color(0xFF00A3FF).withOpacity(isPrimarySelected ? 0.16 : 0.13)
+        ? const Color(
+            0xFF00A3FF,
+          ).withValues(alpha: isPrimarySelected ? 0.16 : 0.13)
         : hoverOnly
         ? const Color(0xFFE9F7EE)
         : Colors.white;
@@ -4778,7 +4663,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(10),
           border: Border.all(
-            color: const Color(0xFF0B72FF).withOpacity(0.85),
+            color: const Color(0xFF0B72FF).withValues(alpha: 0.85),
             width: 1.2,
           ),
         ),
@@ -4814,11 +4699,11 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
     Widget previewEditableCell({required int col, required Widget child}) {
       final hovered = !_editing && _hoveredEditableColumn == col;
       final top = hasSelection
-          ? const Color(0xFFD9EBFB).withOpacity(0.64)
-          : const Color(0xFFDDEFE6).withOpacity(0.84);
+          ? const Color(0xFFD9EBFB).withValues(alpha: 0.64)
+          : const Color(0xFFDDEFE6).withValues(alpha: 0.84);
       final bottom = hasSelection
-          ? const Color(0xFFCCE5FA).withOpacity(0.42)
-          : const Color(0xFFCFE8DD).withOpacity(0.56);
+          ? const Color(0xFFCCE5FA).withValues(alpha: 0.42)
+          : const Color(0xFFCFE8DD).withValues(alpha: 0.56);
       return MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) {
@@ -4847,7 +4732,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
             boxShadow: hovered
                 ? [
                     BoxShadow(
-                      color: const Color(0xFF7FCBAA).withOpacity(0.22),
+                      color: const Color(0xFF7FCBAA).withValues(alpha: 0.22),
                       blurRadius: 9,
                       offset: const Offset(0, 3),
                     ),
@@ -4886,7 +4771,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                 height: 30,
                 margin: const EdgeInsets.only(left: 8, right: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFC9D5E2).withOpacity(0.90),
+                  color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
                   borderRadius: BorderRadius.circular(999),
                 ),
               ),
@@ -4928,8 +4813,8 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                 borderRadius: BorderRadius.circular(14),
                 side: BorderSide(
                   color: widget.isSelected
-                      ? const Color(0xFF00A3FF).withOpacity(0.65)
-                      : Colors.white.withOpacity(0.0),
+                      ? const Color(0xFF00A3FF).withValues(alpha: 0.65)
+                      : Colors.white.withValues(alpha: 0.0),
                   width: 1.0,
                 ),
               ),
@@ -5052,8 +4937,10 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                           format: widget.uiLabel,
                                           onTapStart: () =>
                                               widget.onActivateColumn(3),
-                                          onChanged: (v) =>
-                                              setState(() => _direction = v),
+                                          onChanged: (v) {
+                                            if (v == null) return;
+                                            setState(() => _direction = v);
+                                          },
                                         )
                                       : previewEditableCell(
                                           col: 3,
@@ -5208,8 +5095,10 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                             format: widget.uiLabel,
                                             onTapStart: () =>
                                                 widget.onActivateColumn(8),
-                                            onChanged: (v) =>
-                                                setState(() => _status = v),
+                                            onChanged: (v) {
+                                              if (v == null) return;
+                                              setState(() => _status = v);
+                                            },
                                           ),
                                         )
                                       else
@@ -5242,23 +5131,24 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                               height: 32,
                                               decoration: BoxDecoration(
                                                 color: _hoverActionsButton
-                                                    ? Colors.white.withOpacity(
-                                                        0.62,
+                                                    ? Colors.white.withValues(
+                                                        alpha: 0.62,
                                                       )
-                                                    : Colors.white.withOpacity(
-                                                        0.42,
+                                                    : Colors.white.withValues(
+                                                        alpha: 0.42,
                                                       ),
                                                 borderRadius:
                                                     BorderRadius.circular(999),
                                                 border: Border.all(
                                                   color: Colors.white
-                                                      .withOpacity(0.72),
+                                                      .withValues(alpha: 0.72),
                                                 ),
                                                 boxShadow: [
                                                   BoxShadow(
                                                     color: Colors.black
-                                                        .withOpacity(
-                                                          _hoverActionsButton
+                                                        .withValues(
+                                                          alpha:
+                                                              _hoverActionsButton
                                                               ? 0.15
                                                               : 0.08,
                                                         ),
@@ -5338,9 +5228,10 @@ class _MarqueeSelectionPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     if (rect.isEmpty) return;
-    final fill = Paint()..color = const Color(0xFF4B8DBD).withOpacity(0.18);
+    final fill = Paint()
+      ..color = const Color(0xFF4B8DBD).withValues(alpha: 0.18);
     final stroke = Paint()
-      ..color = const Color(0xFF3C7FB0).withOpacity(0.80)
+      ..color = const Color(0xFF3C7FB0).withValues(alpha: 0.80)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
     canvas.drawRect(rect, fill);
@@ -5383,7 +5274,7 @@ class _ServiceMaterialBadge extends StatelessWidget {
           borderRadius: BorderRadius.circular(999),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha: 0.06),
               blurRadius: 6,
               offset: const Offset(0, 2),
             ),
@@ -5496,10 +5387,10 @@ class _StatusPill extends StatelessWidget {
     final c1 = g.colors.first;
     final c2 = g.colors.length > 1 ? g.colors[1] : c1;
     final avg = Color.fromARGB(
-      ((c1.alpha + c2.alpha) ~/ 2),
-      ((c1.red + c2.red) ~/ 2),
-      ((c1.green + c2.green) ~/ 2),
-      ((c1.blue + c2.blue) ~/ 2),
+      (((c1.a + c2.a) / 2) * 255).round().clamp(0, 255),
+      (((c1.r + c2.r) / 2) * 255).round().clamp(0, 255),
+      (((c1.g + c2.g) / 2) * 255).round().clamp(0, 255),
+      (((c1.b + c2.b) / 2) * 255).round().clamp(0, 255),
     );
     return avg.computeLuminance() > 0.55
         ? const Color(0xFF0B2B2B)
@@ -5513,7 +5404,7 @@ class _StatusPill extends StatelessWidget {
     final textColor = _textColorForGradient(gradient);
 
     // subtle glow color derived from last gradient stop
-    final glow = gradient.colors.last.withOpacity(0.18);
+    final glow = gradient.colors.last.withValues(alpha: 0.18);
 
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
@@ -5528,7 +5419,7 @@ class _StatusPill extends StatelessWidget {
             offset: const Offset(0, 6),
           ),
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 6,
             offset: const Offset(0, 2),
           ),
@@ -5540,7 +5431,7 @@ class _StatusPill extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w800,
           color: textColor,
-          shadows: [Shadow(color: glow.withOpacity(0.6), blurRadius: 6)],
+          shadows: [Shadow(color: glow.withValues(alpha: 0.6), blurRadius: 6)],
         ),
       ),
     );
@@ -5610,11 +5501,11 @@ class _DropOptInline extends StatelessWidget {
 
 // Dropdown inline de String (con formato)
 class _DropStrInline extends StatelessWidget {
-  final String value;
+  final String? value;
   final List<String> items;
   final String Function(String) format;
   final VoidCallback? onTapStart;
-  final ValueChanged<String> onChanged;
+  final ValueChanged<String?> onChanged;
 
   const _DropStrInline({
     required this.value,
@@ -5626,9 +5517,8 @@ class _DropStrInline extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final safe = items.contains(value)
-        ? value
-        : (items.isEmpty ? value : items.first);
+    final safe = items.contains(value) ? value : null;
+    final selectedItems = <String?>[null, ...items];
 
     return GestureDetector(
       behavior: HitTestBehavior.translucent,
@@ -5640,32 +5530,29 @@ class _DropStrInline extends StatelessWidget {
         borderRadius: BorderRadius.circular(16),
         dropdownColor: _kGlassMenuBg,
         decoration: _glassFieldDecoration(),
-        selectedItemBuilder: (context) => items
+        selectedItemBuilder: (context) => selectedItems
             .map(
               (e) => Align(
                 alignment: Alignment.centerLeft,
                 child: _FitText(
-                  format(e),
+                  e == null ? '—' : format(e),
                   style: const TextStyle(fontSize: 14),
                 ),
               ),
             )
             .toList(),
-        items: items
+        items: selectedItems
             .map(
               (e) => DropdownMenuItem<String>(
                 value: e,
                 child: _FitText(
-                  format(e),
+                  e == null ? '—' : format(e),
                   style: const TextStyle(fontSize: 14),
                 ),
               ),
             )
             .toList(),
-        onChanged: (v) {
-          if (v == null) return;
-          onChanged(v);
-        },
+        onChanged: onChanged,
       ),
     );
   }

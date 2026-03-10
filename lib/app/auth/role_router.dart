@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'auth_access.dart';
 import '../maintenance/maintenance_page.dart';
+import '../dashboard/general_dashboard_page.dart';
 import '../services/services_page.dart';
 import '../dashboard/dashboard_page.dart';
 
@@ -19,79 +20,136 @@ class _RoleRouterState extends State<RoleRouter> {
   @override
   void initState() {
     super.initState();
-    final user = Supabase.instance.client.auth.currentUser;
-    final email = (user?.email ?? '').toLowerCase().trim();
-    if (email == 'logistica@dicsamx.com') {
-      _immediateTarget = const ServicesPage();
-    } else if (email == 'operacion@dicsamx.com' ||
-        email == 'administracion@dicsamx.com') {
-      _immediateTarget = const DashboardPage();
-    }
     _target = _resolveTarget();
   }
 
   Future<Widget> _resolveTarget() async {
-    final supa = Supabase.instance.client;
-    final user = supa.auth.currentUser;
+    final profile = await AuthAccess.resolveCurrentProfile();
+    if (profile == null) return const _NoSession();
+    if (!profile.isActive) return _BlockedUser(email: profile.email);
 
-    if (user == null) {
-      // Si por alguna razón no hay sesión, manda a una pantalla simple
-      return const _NoSession();
+    switch (AuthAccess.routeKeyForProfile(profile)) {
+      case 'services':
+        return const ServicesPage();
+      case 'maintenance':
+        return const MaintenancePage();
+      case 'dashboard_general':
+        return const GeneralDashboardPage();
+      case 'dashboard':
+      default:
+        return const DashboardPage();
     }
-
-    final email = (user.email ?? '').toLowerCase().trim();
-
-    // ✅ Regla dura por email (tu requerimiento)
-    if (email == 'logistica@dicsamx.com') {
-      return const ServicesPage();
-    }
-    if (email == 'operacion@dicsamx.com' ||
-        email == 'administracion@dicsamx.com') {
-      return const DashboardPage();
-    }
-
-    // ✅ Regla por rol en profiles
-    final row = await supa
-        .from('profiles')
-        .select('role, is_active')
-        .eq('user_id', user.id)
-        .maybeSingle();
-
-    final isActive = (row?['is_active'] as bool?) ?? true;
-    final role = ((row?['role'] as String?) ?? 'viewer').toLowerCase().trim();
-
-    if (!isActive) return _BlockedUser(email: email);
-
-    // ✅ Routing por rol
-    if (role == 'services') return const ServicesPage();
-    if (role == 'maintenance') return const MaintenancePage();
-    if (role == 'ops_manager' || role == 'admin') return const DashboardPage();
-
-    // viewer / fleet / fuel (por ahora) -> dashboard
-    return const DashboardPage();
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_immediateTarget != null) {
-      return _immediateTarget!;
-    }
-
     return FutureBuilder<Widget>(
       future: _target,
       builder: (_, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (snap.hasError) {
-          return Scaffold(
+        final nextChild = switch (snap.connectionState) {
+          ConnectionState.done when snap.hasError => Scaffold(
+            key: const ValueKey('role-error'),
             body: Center(child: Text('Error RoleRouter:\n${snap.error}')),
-          );
+          ),
+          ConnectionState.done => snap.data ?? const _NoSession(),
+          _ => const _RoleRouterLoading(),
+        };
+
+        if (snap.connectionState != ConnectionState.done) {
+          _immediateTarget = null;
+        } else if (snap.hasData) {
+          _immediateTarget ??= snap.data;
         }
-        return snap.data ?? const _NoSession();
+
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 520),
+          reverseDuration: const Duration(milliseconds: 320),
+          switchInCurve: Curves.easeOutCubic,
+          switchOutCurve: Curves.easeOutCubic,
+          transitionBuilder: (child, animation) {
+            final fade = CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOutCubic,
+            );
+            final slide = Tween<Offset>(
+              begin: const Offset(0, 0.012),
+              end: Offset.zero,
+            ).animate(fade);
+            return FadeTransition(
+              opacity: fade,
+              child: SlideTransition(position: slide, child: child),
+            );
+          },
+          child: KeyedSubtree(
+            key: ValueKey<String>(switch (nextChild) {
+              _RoleRouterLoading _ => 'loading',
+              _BlockedUser _ => 'blocked',
+              _NoSession _ => 'no-session',
+              _ => nextChild.runtimeType.toString(),
+            }),
+            child: nextChild,
+          ),
+        );
       },
+    );
+  }
+}
+
+class _RoleRouterLoading extends StatelessWidget {
+  const _RoleRouterLoading();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Colors.transparent,
+      body: Stack(
+        children: [
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Color(0xFFF7FCFF),
+                  Color(0xFFEAF6FF),
+                  Color(0xFFE7FFF5),
+                ],
+              ),
+            ),
+          ),
+          Center(
+            child: Container(
+              width: 170,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.70),
+                borderRadius: BorderRadius.circular(22),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.82)),
+              ),
+              child: const Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(strokeWidth: 2.4),
+                  ),
+                  SizedBox(height: 12),
+                  Text(
+                    'Abriendo dashboard...',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF355454),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
