@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
@@ -167,9 +168,14 @@ class _MaintenancePageState extends State<MaintenancePage>
   bool _exportingPdf = false;
   bool _autoReloading = false;
   bool _pendingAutoReload = false;
+  bool _suspendAutosave = false;
+  bool _autosavePending = false;
   DateTime? _lastBackgroundRefreshAt;
+  Timer? _autosaveTimer;
+  String? _lastSavedFingerprint;
   static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
   static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
+  static const Duration _autosaveDelay = Duration(seconds: 2);
 
   List<Map<String, dynamic>> _orders = const [];
   final Map<String, int> _evidenceCountByOt = <String, int>{};
@@ -210,6 +216,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _attachAutosaveListeners();
     unawaited(_bootstrap());
     _setupAutoRefresh();
   }
@@ -219,8 +226,10 @@ class _MaintenancePageState extends State<MaintenancePage>
     WidgetsBinding.instance.removeObserver(this);
     _autoRefreshTimer?.cancel();
     _deferredAutoRefreshTimer?.cancel();
+    _autosaveTimer?.cancel();
     _maintenanceRealtimeChannel?.unsubscribe();
     _ordersListFocusNode.dispose();
+    _detachAutosaveListeners();
     _areaC.dispose();
     _equipmentC.dispose();
     _serialC.dispose();
@@ -536,6 +545,8 @@ class _MaintenancePageState extends State<MaintenancePage>
         .toList();
 
     _syncEditorsFromOrder();
+    _lastSavedFingerprint = _buildAutosaveFingerprint();
+    _autosavePending = false;
     if (mounted) setState(() {});
   }
 
@@ -545,59 +556,166 @@ class _MaintenancePageState extends State<MaintenancePage>
       _clearEditors();
       return;
     }
+    _runWithAutosaveSuspended(() {
+      _areaC.text = (order['area_label'] ?? '').toString();
+      _equipmentC.text = (order['equipment_label'] ?? '').toString();
+      _serialC.text = (order['equipment_serial'] ?? '').toString();
+      _requesterC.text = (order['requester_name'] ?? '').toString();
+      _descriptionC.text = (order['problem_description'] ?? '').toString();
+      _diagnosisC.text = (order['diagnosis'] ?? '').toString();
+      _summaryC.text = (order['work_summary'] ?? '').toString();
+      _assignedToC.text = (order['assigned_to_name'] ?? '').toString();
 
-    _areaC.text = (order['area_label'] ?? '').toString();
-    _equipmentC.text = (order['equipment_label'] ?? '').toString();
-    _serialC.text = (order['equipment_serial'] ?? '').toString();
-    _requesterC.text = (order['requester_name'] ?? '').toString();
-    _descriptionC.text = (order['problem_description'] ?? '').toString();
-    _diagnosisC.text = (order['diagnosis'] ?? '').toString();
-    _summaryC.text = (order['work_summary'] ?? '').toString();
-    _assignedToC.text = (order['assigned_to_name'] ?? '').toString();
+      _priority = (order['priority'] ?? 'media').toString();
+      _type = (order['type'] ?? 'correctivo').toString();
+      _category = (order['category'] ?? 'otros').toString();
+      _impact = (order['impact'] ?? 'sin_impacto').toString();
 
-    _priority = (order['priority'] ?? 'media').toString();
-    _type = (order['type'] ?? 'correctivo').toString();
-    _category = (order['category'] ?? 'otros').toString();
-    _impact = (order['impact'] ?? 'sin_impacto').toString();
-
-    _selectedVehicleId = (order['equipment_id'] ?? '').toString().trim();
-    if (_selectedVehicleId!.isEmpty) {
-      final equipment = _equipmentC.text.trim().toUpperCase();
-      final match = _vehicleCatalog.cast<Map<String, dynamic>?>().firstWhere(
-        (v) =>
-            ((v?['code'] ?? '').toString().trim().toUpperCase()) == equipment,
-        orElse: () => null,
-      );
-      _selectedVehicleId = match?['id']?.toString();
-      if (_serialC.text.trim().isEmpty &&
-          (match?['serial_number'] ?? '').toString().trim().isNotEmpty) {
-        _serialC.text = (match?['serial_number'] ?? '').toString();
+      _selectedVehicleId = (order['equipment_id'] ?? '').toString().trim();
+      if (_selectedVehicleId!.isEmpty) {
+        final equipment = _equipmentC.text.trim().toUpperCase();
+        final match = _vehicleCatalog.cast<Map<String, dynamic>?>().firstWhere(
+          (v) =>
+              ((v?['code'] ?? '').toString().trim().toUpperCase()) == equipment,
+          orElse: () => null,
+        );
+        _selectedVehicleId = match?['id']?.toString();
+        if (_serialC.text.trim().isEmpty &&
+            (match?['serial_number'] ?? '').toString().trim().isNotEmpty) {
+          _serialC.text = (match?['serial_number'] ?? '').toString();
+        }
       }
-    }
-    if (!_kFixedAreas.contains(_areaC.text.trim().toUpperCase())) {
-      _areaC.text = _kFixedAreas.first;
-    }
+      if (!_kFixedAreas.contains(_areaC.text.trim().toUpperCase())) {
+        _areaC.text = _kFixedAreas.first;
+      }
+    });
   }
 
   void _clearEditors() {
-    _areaC.text = _kFixedAreas.first;
-    _equipmentC.clear();
-    _serialC.clear();
-    _requesterC.clear();
-    _descriptionC.clear();
-    _diagnosisC.clear();
-    _summaryC.clear();
-    _assignedToC.clear();
-    _priority = 'media';
-    _type = 'correctivo';
-    _category = 'otros';
-    _impact = 'sin_impacto';
-    _selectedVehicleId = null;
-    _tasks = <Map<String, dynamic>>[];
-    _materials = <Map<String, dynamic>>[];
-    _timeLogs = <Map<String, dynamic>>[];
-    _evidences = <Map<String, dynamic>>[];
-    _approvals = <Map<String, dynamic>>[];
+    _runWithAutosaveSuspended(() {
+      _areaC.text = _kFixedAreas.first;
+      _equipmentC.clear();
+      _serialC.clear();
+      _requesterC.clear();
+      _descriptionC.clear();
+      _diagnosisC.clear();
+      _summaryC.clear();
+      _assignedToC.clear();
+      _priority = 'media';
+      _type = 'correctivo';
+      _category = 'otros';
+      _impact = 'sin_impacto';
+      _selectedVehicleId = null;
+      _tasks = <Map<String, dynamic>>[];
+      _materials = <Map<String, dynamic>>[];
+      _timeLogs = <Map<String, dynamic>>[];
+      _evidences = <Map<String, dynamic>>[];
+      _approvals = <Map<String, dynamic>>[];
+      _lastSavedFingerprint = null;
+      _autosavePending = false;
+    });
+  }
+
+  void _attachAutosaveListeners() {
+    for (final controller in [
+      _areaC,
+      _equipmentC,
+      _serialC,
+      _requesterC,
+      _descriptionC,
+      _diagnosisC,
+      _summaryC,
+      _assignedToC,
+    ]) {
+      controller.addListener(_handleAutosaveEditorChanged);
+    }
+  }
+
+  void _detachAutosaveListeners() {
+    for (final controller in [
+      _areaC,
+      _equipmentC,
+      _serialC,
+      _requesterC,
+      _descriptionC,
+      _diagnosisC,
+      _summaryC,
+      _assignedToC,
+    ]) {
+      controller.removeListener(_handleAutosaveEditorChanged);
+    }
+  }
+
+  void _handleAutosaveEditorChanged() {
+    _scheduleAutosave();
+  }
+
+  void _runWithAutosaveSuspended(VoidCallback action) {
+    final previous = _suspendAutosave;
+    _suspendAutosave = true;
+    try {
+      action();
+    } finally {
+      _suspendAutosave = previous;
+    }
+  }
+
+  String? _buildAutosaveFingerprint() {
+    final orderId = _selectedOrder?['id']?.toString();
+    if (orderId == null || orderId.isEmpty) return null;
+    return jsonEncode({
+      'order_id': orderId,
+      'area_label': _areaC.text.trim(),
+      'equipment_id': _selectedVehicleId,
+      'equipment_label': _equipmentC.text.trim(),
+      'equipment_serial': _serialC.text.trim(),
+      'requester_name': _requesterC.text.trim(),
+      'priority': _priority,
+      'type': _type,
+      'category': _category,
+      'impact': _impact,
+      'problem_description': _descriptionC.text.trim(),
+      'diagnosis': _diagnosisC.text.trim(),
+      'work_summary': _summaryC.text.trim(),
+      'assigned_to_name': _assignedToC.text.trim(),
+      'tasks': _tasks,
+      'materials': _materials,
+      'time_logs': _timeLogs,
+    });
+  }
+
+  void _scheduleAutosave({bool immediate = false}) {
+    if (_suspendAutosave || !mounted) return;
+    final fingerprint = _buildAutosaveFingerprint();
+    if (fingerprint == null) return;
+    if (!immediate && fingerprint == _lastSavedFingerprint) {
+      _autosavePending = false;
+      return;
+    }
+    _autosavePending = true;
+    _autosaveTimer?.cancel();
+    _autosaveTimer = Timer(
+      immediate ? Duration.zero : _autosaveDelay,
+      () => unawaited(_flushAutosave()),
+    );
+  }
+
+  Future<void> _flushAutosave() async {
+    if (!mounted || _suspendAutosave || !_autosavePending) return;
+    if (_saving || _loading || _creating) {
+      _scheduleAutosave();
+      return;
+    }
+    final fingerprint = _buildAutosaveFingerprint();
+    if (fingerprint == null) {
+      _autosavePending = false;
+      return;
+    }
+    if (fingerprint == _lastSavedFingerprint) {
+      _autosavePending = false;
+      return;
+    }
+    await _saveCurrentOrder(showToast: false, refreshAfterSave: false);
   }
 
   List<Map<String, dynamic>> get _filteredOrders {
@@ -815,11 +933,15 @@ class _MaintenancePageState extends State<MaintenancePage>
     return 'OT-$year-$next';
   }
 
-  Future<void> _saveCurrentOrder() async {
+  Future<void> _saveCurrentOrder({
+    bool showToast = true,
+    bool refreshAfterSave = true,
+  }) async {
     final order = _selectedOrder;
     if (order == null || _saving) return;
     final orderId = order['id']?.toString();
     if (orderId == null || orderId.isEmpty) return;
+    final fingerprintBeforeSave = _buildAutosaveFingerprint();
 
     setState(() => _saving = true);
     try {
@@ -863,13 +985,49 @@ class _MaintenancePageState extends State<MaintenancePage>
           .eq('id', orderId);
 
       await _replaceChildRows(orderId);
-      await _loadOrders();
-      await _loadOrderDetails(orderId);
-      _toast('OT guardada');
+      _lastSavedFingerprint = fingerprintBeforeSave;
+      _autosavePending = false;
+      if (refreshAfterSave) {
+        await _loadOrders();
+        await _loadOrderDetails(orderId);
+      } else if (mounted) {
+        setState(() {
+          _selectedOrder = {
+            ...?_selectedOrder,
+            'area_label': _areaC.text.trim(),
+            'equipment_id': _selectedVehicleId,
+            'equipment_label': _equipmentC.text.trim(),
+            'equipment_serial': _serialC.text.trim(),
+            'requester_name': _requesterC.text.trim(),
+            'priority': _priority,
+            'type': _type,
+            'category': _category,
+            'impact': _impact,
+            'problem_description': _descriptionC.text.trim(),
+            'diagnosis': _diagnosisC.text.trim().isEmpty
+                ? null
+                : _diagnosisC.text.trim(),
+            'work_summary': _summaryC.text.trim().isEmpty
+                ? null
+                : _summaryC.text.trim(),
+            'assigned_to_name': _assignedToC.text.trim().isEmpty
+                ? null
+                : _assignedToC.text.trim(),
+            'cost_estimated_total': estTotal,
+            'cost_actual_total': realTotal,
+          };
+        });
+      }
+      if (showToast) _toast('OT guardada');
     } catch (e) {
       _toast('No se pudo guardar: $e');
     } finally {
       if (mounted) setState(() => _saving = false);
+      final currentFingerprint = _buildAutosaveFingerprint();
+      if (currentFingerprint != null &&
+          currentFingerprint != _lastSavedFingerprint) {
+        _scheduleAutosave();
+      }
     }
   }
 
@@ -2007,12 +2165,14 @@ class _MaintenancePageState extends State<MaintenancePage>
     final row = await _showTaskDialog();
     if (row == null) return;
     setState(() => _tasks.add(row));
+    _scheduleAutosave(immediate: true);
   }
 
   Future<void> _editTask(int index) async {
     final row = await _showTaskDialog(initial: _tasks[index]);
     if (row == null) return;
     setState(() => _tasks[index] = row);
+    _scheduleAutosave(immediate: true);
   }
 
   Future<Map<String, dynamic>?> _showTaskDialog({
@@ -2128,12 +2288,14 @@ class _MaintenancePageState extends State<MaintenancePage>
     final row = await _showMaterialDialog();
     if (row == null) return;
     setState(() => _materials.add(row));
+    _scheduleAutosave(immediate: true);
   }
 
   Future<void> _editMaterial(int index) async {
     final row = await _showMaterialDialog(initial: _materials[index]);
     if (row == null) return;
     setState(() => _materials[index] = row);
+    _scheduleAutosave(immediate: true);
   }
 
   Future<Map<String, dynamic>?> _showMaterialDialog({
@@ -2309,12 +2471,14 @@ class _MaintenancePageState extends State<MaintenancePage>
     final row = await _showTimeDialog();
     if (row == null) return;
     setState(() => _timeLogs.add(row));
+    _scheduleAutosave(immediate: true);
   }
 
   Future<void> _editTimeLog(int index) async {
     final row = await _showTimeDialog(initial: _timeLogs[index]);
     if (row == null) return;
     setState(() => _timeLogs[index] = row);
+    _scheduleAutosave(immediate: true);
   }
 
   Future<Map<String, dynamic>?> _showTimeDialog({
@@ -3749,6 +3913,7 @@ class _MaintenancePageState extends State<MaintenancePage>
                 onChanged: (v) {
                   if (v == null) return;
                   setState(() => _areaC.text = v);
+                  _scheduleAutosave();
                 },
                 decoration: _maintenanceInputDecoration(labelText: 'Area'),
               ),
@@ -3774,6 +3939,7 @@ class _MaintenancePageState extends State<MaintenancePage>
                     _equipmentC.text = (match?['code'] ?? '').toString();
                     _serialC.text = (match?['serial_number'] ?? '').toString();
                   });
+                  _scheduleAutosave();
                 },
                 decoration: _maintenanceInputDecoration(
                   labelText: 'Equipo (unidades)',
@@ -3845,6 +4011,7 @@ class _MaintenancePageState extends State<MaintenancePage>
             onChanged: (v) {
               if (v == null) return;
               setState(() => _type = v);
+              _scheduleAutosave();
             },
             decoration: _maintenanceInputDecoration(),
           ),
@@ -3866,6 +4033,7 @@ class _MaintenancePageState extends State<MaintenancePage>
             onChanged: (v) {
               if (v == null) return;
               setState(() => _priority = v);
+              _scheduleAutosave();
             },
             decoration: _maintenanceInputDecoration(),
           ),
@@ -3887,6 +4055,7 @@ class _MaintenancePageState extends State<MaintenancePage>
             onChanged: (v) {
               if (v == null) return;
               setState(() => _category = v);
+              _scheduleAutosave();
             },
             decoration: _maintenanceInputDecoration(),
           ),
@@ -3908,6 +4077,7 @@ class _MaintenancePageState extends State<MaintenancePage>
             onChanged: (v) {
               if (v == null) return;
               setState(() => _impact = v);
+              _scheduleAutosave();
             },
             decoration: _maintenanceInputDecoration(),
           ),
@@ -4011,7 +4181,10 @@ class _MaintenancePageState extends State<MaintenancePage>
                     icon: const Icon(Icons.edit_outlined),
                   ),
                   IconButton(
-                    onPressed: () => setState(() => _tasks.removeAt(i)),
+                    onPressed: () {
+                      setState(() => _tasks.removeAt(i));
+                      _scheduleAutosave(immediate: true);
+                    },
                     icon: const Icon(Icons.delete_outline),
                   ),
                 ],
@@ -4072,7 +4245,10 @@ class _MaintenancePageState extends State<MaintenancePage>
                     icon: const Icon(Icons.edit_outlined),
                   ),
                   IconButton(
-                    onPressed: () => setState(() => _materials.removeAt(i)),
+                    onPressed: () {
+                      setState(() => _materials.removeAt(i));
+                      _scheduleAutosave(immediate: true);
+                    },
                     icon: const Icon(Icons.delete_outline),
                   ),
                 ],
@@ -4131,7 +4307,10 @@ class _MaintenancePageState extends State<MaintenancePage>
                     icon: const Icon(Icons.edit_outlined),
                   ),
                   IconButton(
-                    onPressed: () => setState(() => _timeLogs.removeAt(i)),
+                    onPressed: () {
+                      setState(() => _timeLogs.removeAt(i));
+                      _scheduleAutosave(immediate: true);
+                    },
                     icon: const Icon(Icons.delete_outline),
                   ),
                 ],

@@ -77,7 +77,7 @@ String _commercialMaterialCodeFromName(String raw) {
       .replaceAll(RegExp(r'^_|_$'), '');
 }
 
-String _inventoryMaterialCodeFromGeneralName(String raw) {
+String? _inventoryMaterialCodeFromGeneralName(String raw) {
   final normalized = _normalizeName(raw);
   switch (normalized) {
     case 'CARTON NACIONAL':
@@ -107,7 +107,7 @@ String _inventoryMaterialCodeFromGeneralName(String raw) {
     case 'PLASTICO':
       return 'PLASTIC';
     default:
-      return _commercialMaterialCodeFromName(normalized);
+      return null;
   }
 }
 
@@ -1546,8 +1546,10 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
       );
       final payload = <String, dynamic>{
         'name': normalized,
-        'inventory_material_code': inventoryMaterialCode,
       };
+      if (inventoryMaterialCode != null) {
+        payload['inventory_material_code'] = inventoryMaterialCode;
+      }
       if (_defaultAreaId != null) {
         payload['area_id'] = _defaultAreaId;
       }
@@ -1620,6 +1622,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     try {
       await supa.from('vehicles').insert({
         'code': normalized,
+        'type': 'unidad',
         'serial_number': resolvedSerial.isEmpty ? null : resolvedSerial,
         'status': 'activo',
       });

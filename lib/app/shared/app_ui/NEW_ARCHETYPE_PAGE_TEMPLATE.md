@@ -7,6 +7,9 @@ Si la página pertenece a `Workflow Master-Detail`, `Operación Híbrida por Tab
 ## 1) Definir blueprint
 
 ```dart
+import 'package:dicsa_operacion/app/shared/archetypes/grid_editable/grid_editable.dart';
+import 'package:dicsa_operacion/app/shared/ui_contract_core/ui_contract_core.dart';
+
 const blueprint = AppPageBlueprint.tabbedGrid(
   pageName: 'inventario_movimientos',
   headerTitle: 'Entradas y Salidas',
@@ -25,6 +28,12 @@ const blueprint = AppPageBlueprint.tabbedGrid(
   - tabs folder (si aplica)
   - card de métrica (kg/pacas)
   - grid
+
+## 2.1) Infraestructura obligatoria para paginas nuevas
+
+- importar `shared/ui_contract_core/ui_contract_core.dart`
+- importar el kit del arquetipo desde `shared/archetypes/...`
+- no crear wrappers locales de foco/teclado si ya existe equivalente homologado
 
 ## 3) Reglas obligatorias
 
