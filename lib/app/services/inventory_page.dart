@@ -1427,8 +1427,9 @@ class _InventoryStockPageState extends State<InventoryStockPage>
             .select(
               'id,site,material,commercial_material_code,sort_order,is_active',
             )
-            .eq('site', site)
+            .inFilter('site', <String>[site, 'DICSA'])
             .eq('is_active', true)
+            .order('site')
             .order('sort_order')
             .order('commercial_material_code'),
         supa
@@ -1495,7 +1496,9 @@ class _InventoryStockPageState extends State<InventoryStockPage>
       setState(() {
         _widgetRow = widgetRow;
         _inventoryRows = rows;
-        _monthlyCutRow = results[1] as Map<String, dynamic>?;
+        _monthlyCutRow = _normalizeMonthlyCutRow(
+          results[1] as Map<String, dynamic>?,
+        );
         _openingBalanceRows = (results[2] as List).cast<Map<String, dynamic>>();
         _openingTemplateRows = (results[4] as List)
             .cast<Map<String, dynamic>>();
@@ -1713,6 +1716,72 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     return false;
   }
 
+  Future<void> _ensureMonthlyCutExists() async {
+    if (_monthlyCutRow != null) return;
+
+    final periodMonth = _dateSql(_selectedPeriodMonth);
+    final existing = await supa
+        .from('inventory_monthly_cuts')
+        .select('period_month,status,generated_at,locked_at,notes')
+        .eq('period_month', periodMonth)
+        .maybeSingle();
+    if (existing != null) {
+      final normalized = _normalizeMonthlyCutRow(existing);
+      if (!mounted) return;
+      setState(() => _monthlyCutRow = normalized);
+      return;
+    }
+
+    final statusCandidates = <String>['abierto', 'draft', 'open'];
+    PostgrestException? lastStatusError;
+
+    for (final status in statusCandidates) {
+      try {
+        await supa.from('inventory_monthly_cuts').insert({
+          'period_month': periodMonth,
+          'month': _selectedPeriodMonth.month,
+          'year': _selectedPeriodMonth.year,
+          'status': status,
+        });
+        if (!mounted) return;
+        setState(() {
+          _monthlyCutRow = _normalizeMonthlyCutRow({
+            'period_month': periodMonth,
+            'status': status,
+            'generated_at': null,
+            'locked_at': null,
+            'notes': null,
+          });
+        });
+        return;
+      } on PostgrestException catch (e) {
+        if (e.code == '23505') {
+          final fetched = await supa
+              .from('inventory_monthly_cuts')
+              .select('period_month,status,generated_at,locked_at,notes')
+              .eq('period_month', periodMonth)
+              .maybeSingle();
+          if (fetched != null) {
+            final normalized = _normalizeMonthlyCutRow(fetched);
+            if (!mounted) return;
+            setState(() => _monthlyCutRow = normalized);
+            return;
+          }
+        }
+        if (e.code == '23514' ||
+            e.message.contains('inventory_monthly_cuts_status_check')) {
+          lastStatusError = e;
+          continue;
+        }
+        rethrow;
+      }
+    }
+
+    if (lastStatusError != null) {
+      throw lastStatusError;
+    }
+  }
+
   Future<void> _setPeriodMonth(DateTime nextPeriod) async {
     final normalized = DateTime(nextPeriod.year, nextPeriod.month, 1);
     final nextAsOf = _selectedAsOfDate.isBefore(normalized)
@@ -1832,8 +1901,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
   Future<void> _editOpeningBalanceRow(Map<String, dynamic> row) async {
     final id = row['id']?.toString();
     if (id == null || id.isEmpty) return;
-    final status = (_monthlyCutRow?['status'] ?? 'draft').toString();
-    if (status == 'locked') {
+    if (_isMonthlyCutLockedStatus(_monthlyCutRow?['status']?.toString())) {
       _toast('El corte está bloqueado. Desbloquéalo para editar.');
       return;
     }
@@ -1859,8 +1927,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
   ) async {
     final id = row['id']?.toString();
     if (id == null || id.isEmpty) return;
-    final status = (_monthlyCutRow?['status'] ?? 'draft').toString();
-    if (status == 'locked') {
+    if (_isMonthlyCutLockedStatus(_monthlyCutRow?['status']?.toString())) {
       _toast('El corte está bloqueado. Desbloquéalo para editar.');
       return;
     }
@@ -1908,8 +1975,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
       _toast('Selecciona un sitio');
       return;
     }
-    final status = (_monthlyCutRow?['status'] ?? 'draft').toString();
-    if (status == 'locked') {
+    if (_isMonthlyCutLockedStatus(_monthlyCutRow?['status']?.toString())) {
       _toast('El corte está bloqueado. Desbloquéalo para agregar renglones.');
       return;
     }
@@ -1918,6 +1984,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
       context: context,
       builder: (dialogContext) => _OpeningBalanceCreateDialog(
         allCommercialMaterials: _commercialMaterials,
+        openingTemplateRows: _openingTemplateRows,
       ),
     );
     if (result == null) return;
@@ -1939,6 +2006,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     }
 
     try {
+      await _ensureMonthlyCutExists();
       await supa.from('opening_balances').insert({
         'period_month': _dateSql(_selectedPeriodMonth),
         'as_of_date': _dateSql(_selectedPeriodMonth),
@@ -1965,8 +2033,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
       _toast('Selecciona un sitio');
       return;
     }
-    final status = (_monthlyCutRow?['status'] ?? 'draft').toString();
-    if (status == 'locked') {
+    if (_isMonthlyCutLockedStatus(_monthlyCutRow?['status']?.toString())) {
       _toast('El corte está bloqueado. Desbloquéalo para agregar renglones.');
       return;
     }
@@ -1988,6 +2055,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     }
 
     try {
+      await _ensureMonthlyCutExists();
       await supa.from('opening_balances').insert({
         'period_month': _dateSql(_selectedPeriodMonth),
         'as_of_date': _dateSql(_selectedPeriodMonth),
@@ -2011,8 +2079,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
   Future<void> _deleteOpeningBalanceRow(Map<String, dynamic> row) async {
     final id = row['id']?.toString();
     if (id == null || id.isEmpty) return;
-    final status = (_monthlyCutRow?['status'] ?? 'draft').toString();
-    if (status == 'locked') {
+    if (_isMonthlyCutLockedStatus(_monthlyCutRow?['status']?.toString())) {
       _toast('El corte está bloqueado. Desbloquéalo para eliminar.');
       return;
     }
@@ -2070,8 +2137,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     List<Map<String, dynamic>> rows,
   ) async {
     if (rows.isEmpty) return;
-    final status = (_monthlyCutRow?['status'] ?? 'draft').toString();
-    if (status == 'locked') {
+    if (_isMonthlyCutLockedStatus(_monthlyCutRow?['status']?.toString())) {
       _toast('El corte está bloqueado. Desbloquéalo para eliminar.');
       return;
     }
@@ -2132,8 +2198,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     List<Map<String, dynamic>> rows,
   ) async {
     if (rows.isEmpty) return;
-    final status = (_monthlyCutRow?['status'] ?? 'draft').toString();
-    if (status == 'locked') {
+    if (_isMonthlyCutLockedStatus(_monthlyCutRow?['status']?.toString())) {
       _toast('El corte está bloqueado. Desbloquéalo para editar.');
       return;
     }
@@ -2605,8 +2670,8 @@ class _InventoryMonthlyCutBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final status = (cutRow?['status'] ?? 'draft').toString();
-    final isLocked = status == 'locked';
+    final status = _normalizeMonthlyCutStatus(cutRow?['status']?.toString());
+    final isLocked = _isMonthlyCutLockedStatus(status);
     final hasSite = selectedSite != null && selectedSite!.trim().isNotEmpty;
     final previousMonthNegativeRows = suggestedClosingRows.where((row) {
       final onHand = _num(row['on_hand_kg']) ?? 0;
@@ -2955,11 +3020,29 @@ class _OpeningBalancesFloatingDialogState
   bool get _insertCanSubmit =>
       widget.editable && (_parseDouble(_insertKgC.text) ?? -1) >= 0;
 
+  void _setActiveInsertColumn(int value, {bool requestFocus = true}) {
+    setState(() {
+      _activeInsertColumn = value.clamp(0, 3);
+      _selectedIds.clear();
+      _selectionAnchorRowIndex = null;
+    });
+    if (!requestFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_activeInsertColumn == 2) {
+        FocusScope.of(context).requestFocus(_insertKgFocusNode);
+        return;
+      }
+      FocusManager.instance.primaryFocus?.unfocus();
+      _insertFocusNode.requestFocus();
+    });
+  }
+
   void _moveInsertColumn(int delta) {
     const cols = <int>[0, 1, 2, 3];
     final currentIdx = cols.indexOf(_activeInsertColumn);
     final nextIdx = (currentIdx + delta).clamp(0, cols.length - 1);
-    setState(() => _activeInsertColumn = cols[nextIdx]);
+    _setActiveInsertColumn(cols[nextIdx]);
   }
 
   void _focusGridFromInsert() {
@@ -2976,6 +3059,19 @@ class _OpeningBalancesFloatingDialogState
       _activeInsertColumn = 0;
       _selectedIds.clear();
       _selectionAnchorRowIndex = null;
+    });
+  }
+
+  void _activateInsertKgField() {
+    if (!widget.editable) return;
+    _setActiveInsertColumn(2, requestFocus: false);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      FocusScope.of(context).requestFocus(_insertKgFocusNode);
+      _insertKgC.selection = TextSelection(
+        baseOffset: 0,
+        extentOffset: _insertKgC.text.length,
+      );
     });
   }
 
@@ -3632,11 +3728,7 @@ class _OpeningBalancesFloatingDialogState
         break;
       case 2:
         keepInsertRowFocus = false;
-        _insertKgFocusNode.requestFocus();
-        _insertKgC.selection = TextSelection(
-          baseOffset: 0,
-          extentOffset: _insertKgC.text.length,
-        );
+        _activateInsertKgField();
         break;
       case 3:
         if (_insertCanSubmit) await _submitInsertRow();
@@ -3720,7 +3812,11 @@ class _OpeningBalancesFloatingDialogState
     if (!widget.editable) return;
     final selectedRows = _selectedRows;
     if (selectedRows.length <= 1) {
-      _selectedRowState()?.startInlineEdit();
+      _selectedRowState()?.startInlineEdit(requestFocus: false);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _selectedRowState()?.focusInlineKgField();
+      });
       return;
     }
     final states = _selectedRowStates();
@@ -3819,6 +3915,10 @@ class _OpeningBalancesFloatingDialogState
   }
 
   void _handleCellClick(int rowIndex, int colIndex) {
+    if (widget.editable && colIndex == 2) {
+      _activateInlineKgEdit(rowIndex);
+      return;
+    }
     _handleRowClick(rowIndex);
     _gridFocusNode.requestFocus();
   }
@@ -3916,7 +4016,7 @@ class _OpeningBalancesFloatingDialogState
     }
   }
 
-  void _handleEditableKgCellDoubleTap(int rowIndex) {
+  void _activateInlineKgEdit(int rowIndex) {
     if (rowIndex < 0 || rowIndex >= _visibleRows.length) return;
     final rowId = _rowIdAt(rowIndex);
     final hasSelectionGroupContext =
@@ -3931,7 +4031,6 @@ class _OpeningBalancesFloatingDialogState
         _selectedIds.add(rowId);
       });
       _ensureActiveRowVisible();
-      _gridFocusNode.requestFocus();
       _startInlineEditForCurrentSelection();
       return;
     }
@@ -3944,8 +4043,11 @@ class _OpeningBalancesFloatingDialogState
     } else {
       _handleRowClick(rowIndex);
     }
-    _gridFocusNode.requestFocus();
     _startInlineEditForCurrentSelection();
+  }
+
+  void _handleEditableKgCellDoubleTap(int rowIndex) {
+    _activateInlineKgEdit(rowIndex);
   }
 
   void _ensureActiveRowVisible() {
@@ -4120,8 +4222,8 @@ class _OpeningBalancesFloatingDialogState
             onTap: widget.editable
                 ? () {
                     _clearGridSelectionForInsertRow();
+                    _setActiveInsertColumn(col, requestFocus: false);
                     _insertFocusNode.requestFocus();
-                    setState(() => _activeInsertColumn = col);
                     onTap();
                   }
                 : null,
@@ -4234,24 +4336,25 @@ class _OpeningBalancesFloatingDialogState
                   2,
                   SizedBox(
                     width: _kOpeningTableKgColW,
-                    child: TextField(
-                      controller: _insertKgC,
-                      focusNode: _insertKgFocusNode,
-                      enabled: widget.editable,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                    child: Listener(
+                      behavior: HitTestBehavior.opaque,
+                      onPointerDown: (_) => _activateInsertKgField(),
+                      child: TextField(
+                        controller: _insertKgC,
+                        focusNode: _insertKgFocusNode,
+                        enabled: widget.editable,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                        decoration: _openingInlineFieldDecoration(
+                          hintText: '0',
+                        ),
+                        onTap: _activateInsertKgField,
+                        onChanged: (_) => setState(() {}),
+                        onSubmitted: (_) {
+                          if (canInsert) unawaited(_submitInsertRow());
+                        },
                       ),
-                      decoration: _openingInlineFieldDecoration(hintText: '0'),
-                      onTap: () {
-                        _clearGridSelectionForInsertRow();
-                        if (!_insertKgFocusNode.hasFocus) {
-                          _insertKgFocusNode.requestFocus();
-                        }
-                      },
-                      onChanged: (_) => setState(() {}),
-                      onSubmitted: (_) {
-                        if (canInsert) unawaited(_submitInsertRow());
-                      },
                     ),
                   ),
                 ),
@@ -5403,12 +5506,24 @@ class _OpeningBalancesDataRowState extends State<_OpeningBalancesDataRow> {
     if (!_editing) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _weightFocusNode.requestFocus();
+      FocusScope.of(context).requestFocus(_weightFocusNode);
       _weightC.selection = TextSelection(
         baseOffset: 0,
         extentOffset: _weightC.text.length,
       );
     });
+  }
+
+  void _enterEditingFromPointer() {
+    if (!widget.editable) return;
+    widget.onRowTap?.call();
+    widget.onCellTap?.call(2);
+    if (!_editing) {
+      final weight = _num(widget.row['weight_kg']);
+      _weightC.text = weight == null ? '' : weight.toStringAsFixed(2);
+      setState(() => _editing = true);
+    }
+    focusInlineKgField();
   }
 
   void cancelInlineEdit() {
@@ -5534,268 +5649,295 @@ class _OpeningBalancesDataRowState extends State<_OpeningBalancesDataRow> {
         : (widget.commercialLabelsByCode[commercialCode] ?? commercialCode);
     final locked = row['locked_at'] != null;
 
-    return MouseRegion(
-      onEnter: (_) => setState(() => _hovering = true),
-      onExit: (_) => setState(() => _hovering = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.translucent,
-        onTap: widget.onRowTap,
-        onSecondaryTapDown: widget.onRowSecondaryTapDown,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 140),
-          curve: Curves.easeOutCubic,
-          transform: Matrix4.translationValues(0, highlighted ? -1.5 : 0, 0),
-          child: Card(
-            margin: EdgeInsets.zero,
-            elevation: highlighted ? 3 : 0.4,
-            color: rowBg,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(14),
-              side: BorderSide(
-                color: widget.isSelected
-                    ? const Color(0xFF00A3FF).withValues(alpha: 0.60)
-                    : Colors.white.withValues(alpha: 0.0),
-              ),
-            ),
-            child: SizedBox(
-              height: _kOpeningTableRowVisualHeight,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 8,
+    return TapRegion(
+      onTapOutside: (_) {
+        if (_editing) {
+          widget.onInlineCancelSelection?.call();
+        }
+      },
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _hovering = true),
+        onExit: (_) => setState(() => _hovering = false),
+        child: GestureDetector(
+          behavior: HitTestBehavior.translucent,
+          onTapDown: (_) {
+            if (_editing) return;
+            widget.onRowTap?.call();
+          },
+          onSecondaryTapDown: widget.onRowSecondaryTapDown,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOutCubic,
+            transform: Matrix4.translationValues(0, highlighted ? -1.5 : 0, 0),
+            child: Card(
+              margin: EdgeInsets.zero,
+              elevation: highlighted ? 3 : 0.4,
+              color: rowBg,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(
+                  color: widget.isSelected
+                      ? const Color(0xFF00A3FF).withValues(alpha: 0.60)
+                      : Colors.white.withValues(alpha: 0.0),
                 ),
-                child: Row(
-                  children: [
-                    tappableCell(
-                      col: 0,
-                      width: _kOpeningTableMaterialColW,
-                      child: Text(
-                        _materialLabel(row['material']?.toString()),
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF0B2B2B),
+              ),
+              child: SizedBox(
+                height: _kOpeningTableRowVisualHeight,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 12,
+                    vertical: 8,
+                  ),
+                  child: Row(
+                    children: [
+                      tappableCell(
+                        col: 0,
+                        width: _kOpeningTableMaterialColW,
+                        child: Text(
+                          _materialLabel(row['material']?.toString()),
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF0B2B2B),
+                          ),
                         ),
                       ),
-                    ),
-                    tappableCell(
-                      col: 1,
-                      width: _kOpeningTableCommercialColW,
-                      child: Text(
-                        commercialLabel,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: FontWeight.w600,
-                          color: commercialCode.isEmpty
-                              ? (isGeneratedTotalRow
-                                    ? const Color(0xFF8A5B12)
-                                    : const Color(0xFF567070))
-                              : const Color(0xFF0B2B2B),
+                      tappableCell(
+                        col: 1,
+                        width: _kOpeningTableCommercialColW,
+                        child: Text(
+                          commercialLabel,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: commercialCode.isEmpty
+                                ? (isGeneratedTotalRow
+                                      ? const Color(0xFF8A5B12)
+                                      : const Color(0xFF567070))
+                                : const Color(0xFF0B2B2B),
+                          ),
                         ),
                       ),
-                    ),
-                    tappableCell(
-                      col: 2,
-                      width: _kOpeningTableKgColW,
-                      editableHover: widget.editable && !_editing,
-                      onDoubleTap: widget.editable && !_editing
-                          ? widget.onEditableKgCellDoubleTap ??
-                                () => widget.onEditRow?.call(row)
-                          : null,
-                      child: _editing
-                          ? Focus(
-                              onKeyEvent: (_, event) =>
-                                  _handleInlineFieldKey(event),
-                              child: TextField(
-                                controller: _weightC,
-                                focusNode: _weightFocusNode,
-                                keyboardType:
-                                    const TextInputType.numberWithOptions(
-                                      decimal: true,
-                                    ),
-                                decoration: _openingInlineFieldDecoration(
-                                  hintText: '0',
+                      tappableCell(
+                        col: 2,
+                        width: _kOpeningTableKgColW,
+                        editableHover: widget.editable && !_editing,
+                        onDoubleTap: widget.editable && !_editing
+                            ? _enterEditingFromPointer
+                            : null,
+                        child: _editing
+                            ? Focus(
+                                onKeyEvent: (_, event) =>
+                                    _handleInlineFieldKey(event),
+                                child: TextField(
+                                  controller: _weightC,
+                                  focusNode: _weightFocusNode,
+                                  keyboardType:
+                                      const TextInputType.numberWithOptions(
+                                        decimal: true,
+                                      ),
+                                  decoration: _openingInlineFieldDecoration(
+                                    hintText: '0',
+                                  ),
+                                  onTap: focusInlineKgField,
+                                  onTapOutside: (event) {
+                                    final isSecondaryMouseClick =
+                                        event.kind == PointerDeviceKind.mouse &&
+                                        (event.buttons &
+                                                kSecondaryMouseButton) !=
+                                            0;
+                                    if (isSecondaryMouseClick) return;
+                                    widget.onInlineCancelSelection?.call();
+                                  },
+                                  onSubmitted: (_) => submitInlineEdit(),
                                 ),
-                                onTapOutside: (event) {
-                                  final isSecondaryMouseClick =
-                                      event.kind == PointerDeviceKind.mouse &&
-                                      (event.buttons & kSecondaryMouseButton) !=
-                                          0;
-                                  if (isSecondaryMouseClick) return;
-                                  widget.onInlineCancelSelection?.call();
+                              )
+                            : Listener(
+                                behavior: HitTestBehavior.opaque,
+                                onPointerDown: (_) {
+                                  if (!widget.editable) return;
+                                  widget.onRowTap?.call();
+                                  widget.onCellTap?.call(2);
                                 },
-                                onSubmitted: (_) => submitInlineEdit(),
+                                child: GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTap: widget.editable
+                                      ? _enterEditingFromPointer
+                                      : null,
+                                  child: Text(
+                                    _formatKg(_num(row['weight_kg'])),
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF0B2B2B),
+                                    ),
+                                  ),
+                                ),
                               ),
-                            )
-                          : Text(
-                              _formatKg(_num(row['weight_kg'])),
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF0B2B2B),
-                              ),
-                            ),
-                    ),
-                    tappableCell(
-                      col: 3,
-                      width: _kOpeningTableSourceColW,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 5,
-                        ),
-                        decoration: BoxDecoration(
-                          color: switch (sourceUiLabel) {
-                            'Plantilla' => const Color(
-                              0xFF6BA8FF,
-                            ).withValues(alpha: 0.14),
-                            'Total generado' => const Color(
-                              0xFFE7B75C,
-                            ).withValues(alpha: 0.18),
-                            'Manual' => const Color(
-                              0xFF3FAE9A,
-                            ).withValues(alpha: 0.14),
-                            _ => Colors.white.withValues(alpha: 0.30),
-                          },
-                          borderRadius: BorderRadius.circular(10),
-                          border: Border.all(
+                      ),
+                      tappableCell(
+                        col: 3,
+                        width: _kOpeningTableSourceColW,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 8,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
                             color: switch (sourceUiLabel) {
                               'Plantilla' => const Color(
                                 0xFF6BA8FF,
-                              ).withValues(alpha: 0.35),
+                              ).withValues(alpha: 0.14),
                               'Total generado' => const Color(
                                 0xFFE7B75C,
-                              ).withValues(alpha: 0.45),
+                              ).withValues(alpha: 0.18),
                               'Manual' => const Color(
                                 0xFF3FAE9A,
-                              ).withValues(alpha: 0.35),
-                              _ => Colors.white.withValues(alpha: 0.38),
+                              ).withValues(alpha: 0.14),
+                              _ => Colors.white.withValues(alpha: 0.30),
                             },
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(
+                              color: switch (sourceUiLabel) {
+                                'Plantilla' => const Color(
+                                  0xFF6BA8FF,
+                                ).withValues(alpha: 0.35),
+                                'Total generado' => const Color(
+                                  0xFFE7B75C,
+                                ).withValues(alpha: 0.45),
+                                'Manual' => const Color(
+                                  0xFF3FAE9A,
+                                ).withValues(alpha: 0.35),
+                                _ => Colors.white.withValues(alpha: 0.38),
+                              },
+                            ),
                           ),
-                        ),
-                        child: Text(
-                          sourceUiLabel,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontWeight: FontWeight.w700,
-                            color: switch (sourceUiLabel) {
-                              'Plantilla' => const Color(0xFF295FA9),
-                              'Total generado' => const Color(0xFF7E5610),
-                              'Manual' => const Color(0xFF14685E),
-                              _ => const Color(0xFF0B2B2B),
-                            },
-                          ),
-                        ),
-                      ),
-                    ),
-                    tappableCell(
-                      col: 4,
-                      width: _kOpeningTableLockedColW,
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            locked
-                                ? Icons.lock_rounded
-                                : Icons.lock_open_rounded,
-                            size: 14,
-                            color: locked
-                                ? Colors.red.shade700
-                                : const Color(0xFF2A4B49),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            locked ? 'Sí' : 'No',
+                          child: Text(
+                            sourceUiLabel,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
                               fontWeight: FontWeight.w700,
-                              color: locked
-                                  ? Colors.red.shade700
-                                  : const Color(0xFF0B2B2B),
+                              color: switch (sourceUiLabel) {
+                                'Plantilla' => const Color(0xFF295FA9),
+                                'Total generado' => const Color(0xFF7E5610),
+                                'Manual' => const Color(0xFF14685E),
+                                _ => const Color(0xFF0B2B2B),
+                              },
                             ),
                           ),
-                        ],
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 10),
-                    tappableCell(
-                      col: 5,
-                      width: _kOpeningTableActionsColW,
-                      alignEnd: true,
-                      child: widget.editable
-                          ? PopupMenuButton<String>(
-                              tooltip: 'Acciones',
-                              padding: EdgeInsets.zero,
-                              color: const Color(0xE6F2F7F6),
-                              onSelected: (value) {
-                                switch (value) {
-                                  case 'edit':
-                                    widget.onEditRow?.call(row);
-                                    break;
-                                  case 'save':
-                                    submitInlineEdit();
-                                    break;
-                                  case 'cancel':
-                                    cancelInlineEdit();
-                                    break;
-                                  case 'delete':
-                                    widget.onDeleteRow?.call(row);
-                                    break;
-                                }
-                              },
-                              itemBuilder: (_) => [
-                                if (_editing) ...const [
-                                  PopupMenuItem<String>(
-                                    value: 'save',
-                                    child: Text('GUARDAR'),
-                                  ),
-                                  PopupMenuItem<String>(
-                                    value: 'cancel',
-                                    child: Text('CANCELAR'),
-                                  ),
-                                  PopupMenuDivider(),
-                                  PopupMenuItem<String>(
-                                    value: 'delete',
-                                    child: Text('ELIMINAR'),
-                                  ),
-                                ] else ...const [
-                                  PopupMenuItem<String>(
-                                    value: 'edit',
-                                    child: Text('EDITAR'),
-                                  ),
-                                  PopupMenuDivider(),
-                                  PopupMenuItem<String>(
-                                    value: 'delete',
-                                    child: Text('ELIMINAR'),
-                                  ),
-                                ],
-                              ],
-                              child: Container(
-                                width: 34,
-                                height: 34,
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.40),
-                                  borderRadius: BorderRadius.circular(10),
-                                  border: Border.all(
-                                    color: Colors.white.withValues(alpha: 0.58),
-                                  ),
-                                ),
-                                child: const Icon(
-                                  Icons.more_horiz,
-                                  size: 18,
-                                  color: Color(0xFF0B2B2B),
-                                ),
-                              ),
-                            )
-                          : const Text(
-                              '—',
+                      tappableCell(
+                        col: 4,
+                        width: _kOpeningTableLockedColW,
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(
+                              locked
+                                  ? Icons.lock_rounded
+                                  : Icons.lock_open_rounded,
+                              size: 14,
+                              color: locked
+                                  ? Colors.red.shade700
+                                  : const Color(0xFF2A4B49),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              locked ? 'Sí' : 'No',
+                              overflow: TextOverflow.ellipsis,
                               style: TextStyle(
-                                color: Color(0x88294545),
                                 fontWeight: FontWeight.w700,
+                                color: locked
+                                    ? Colors.red.shade700
+                                    : const Color(0xFF0B2B2B),
                               ),
                             ),
-                    ),
-                  ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      tappableCell(
+                        col: 5,
+                        width: _kOpeningTableActionsColW,
+                        alignEnd: true,
+                        child: widget.editable
+                            ? PopupMenuButton<String>(
+                                tooltip: 'Acciones',
+                                padding: EdgeInsets.zero,
+                                color: const Color(0xE6F2F7F6),
+                                onSelected: (value) {
+                                  switch (value) {
+                                    case 'edit':
+                                      widget.onEditRow?.call(row);
+                                      break;
+                                    case 'save':
+                                      submitInlineEdit();
+                                      break;
+                                    case 'cancel':
+                                      cancelInlineEdit();
+                                      break;
+                                    case 'delete':
+                                      widget.onDeleteRow?.call(row);
+                                      break;
+                                  }
+                                },
+                                itemBuilder: (_) => [
+                                  if (_editing) ...const [
+                                    PopupMenuItem<String>(
+                                      value: 'save',
+                                      child: Text('GUARDAR'),
+                                    ),
+                                    PopupMenuItem<String>(
+                                      value: 'cancel',
+                                      child: Text('CANCELAR'),
+                                    ),
+                                    PopupMenuDivider(),
+                                    PopupMenuItem<String>(
+                                      value: 'delete',
+                                      child: Text('ELIMINAR'),
+                                    ),
+                                  ] else ...const [
+                                    PopupMenuItem<String>(
+                                      value: 'edit',
+                                      child: Text('EDITAR'),
+                                    ),
+                                    PopupMenuDivider(),
+                                    PopupMenuItem<String>(
+                                      value: 'delete',
+                                      child: Text('ELIMINAR'),
+                                    ),
+                                  ],
+                                ],
+                                child: Container(
+                                  width: 34,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.40),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.58,
+                                      ),
+                                    ),
+                                  ),
+                                  child: const Icon(
+                                    Icons.more_horiz,
+                                    size: 18,
+                                    color: Color(0xFF0B2B2B),
+                                  ),
+                                ),
+                              )
+                            : const Text(
+                                '—',
+                                style: TextStyle(
+                                  color: Color(0x88294545),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -6378,7 +6520,9 @@ class _OpeningBalanceEditDialog extends StatefulWidget {
 class _OpeningBalanceEditDialogState extends State<_OpeningBalanceEditDialog> {
   late final TextEditingController _weightC;
   late final TextEditingController _notesC;
+  final FocusNode _weightFocusNode = FocusNode();
   String? _selectedCommercialCode;
+  bool _weightPrimed = false;
 
   @override
   void initState() {
@@ -6399,9 +6543,19 @@ class _OpeningBalanceEditDialogState extends State<_OpeningBalanceEditDialog> {
 
   @override
   void dispose() {
+    _weightFocusNode.dispose();
     _weightC.dispose();
     _notesC.dispose();
     super.dispose();
+  }
+
+  void _primeWeightFieldSelection() {
+    if (_weightPrimed) return;
+    _weightPrimed = true;
+    _weightC.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _weightC.text.length,
+    );
   }
 
   @override
@@ -6412,7 +6566,6 @@ class _OpeningBalanceEditDialogState extends State<_OpeningBalanceEditDialog> {
       'notes': _notesC.text.trim().isEmpty ? null : _notesC.text.trim(),
     };
     return Focus(
-      autofocus: true,
       onKeyEvent: (_, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
         if (event.logicalKey == LogicalKeyboardKey.escape) {
@@ -6467,7 +6620,9 @@ class _OpeningBalanceEditDialogState extends State<_OpeningBalanceEditDialog> {
               const SizedBox(height: 10),
               TextField(
                 controller: _weightC,
+                focusNode: _weightFocusNode,
                 autofocus: true,
+                onTap: _primeWeightFieldSelection,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -6495,7 +6650,6 @@ class _OpeningBalanceEditDialogState extends State<_OpeningBalanceEditDialog> {
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            autofocus: true,
             onPressed: () => Navigator.pop(context, payload()),
             child: const Text('Guardar'),
           ),
@@ -6507,8 +6661,12 @@ class _OpeningBalanceEditDialogState extends State<_OpeningBalanceEditDialog> {
 
 class _OpeningBalanceCreateDialog extends StatefulWidget {
   final List<_CommercialMaterialOption> allCommercialMaterials;
+  final List<Map<String, dynamic>> openingTemplateRows;
 
-  const _OpeningBalanceCreateDialog({required this.allCommercialMaterials});
+  const _OpeningBalanceCreateDialog({
+    required this.allCommercialMaterials,
+    required this.openingTemplateRows,
+  });
 
   @override
   State<_OpeningBalanceCreateDialog> createState() =>
@@ -6521,8 +6679,48 @@ class _OpeningBalanceCreateDialogState
   String? _selectedCommercialCode;
   final TextEditingController _weightC = TextEditingController(text: '0');
   final TextEditingController _notesC = TextEditingController();
+  final FocusNode _weightFocusNode = FocusNode();
+  bool _weightPrimed = false;
+
+  String _normalizeOpeningKey(String value) => value.trim().toUpperCase();
 
   List<_CommercialMaterialOption> get _filteredCommercialOptions {
+    final templateRows =
+        widget.openingTemplateRows.where((r) {
+          final material = _normalizeOpeningKey(
+            (r['material'] ?? '').toString(),
+          );
+          final active = r['is_active'] == null
+              ? true
+              : (r['is_active'] == true);
+          return active && material == _normalizeOpeningKey(_material);
+        }).toList()..sort((a, b) {
+          final ao = (a['sort_order'] as num?)?.toInt() ?? 999999;
+          final bo = (b['sort_order'] as num?)?.toInt() ?? 999999;
+          final byOrder = ao.compareTo(bo);
+          if (byOrder != 0) return byOrder;
+          return (a['commercial_material_code'] ?? '').toString().compareTo(
+            (b['commercial_material_code'] ?? '').toString(),
+          );
+        });
+
+    if (templateRows.isNotEmpty) {
+      final byCode = <String, _CommercialMaterialOption>{
+        for (final c in widget.allCommercialMaterials)
+          _normalizeOpeningKey(c.code): c,
+      };
+      final templated = <_CommercialMaterialOption>[];
+      final seen = <String>{};
+      for (final row in templateRows) {
+        final code = _normalizeOpeningKey(
+          (row['commercial_material_code'] ?? '').toString(),
+        );
+        final option = byCode[code];
+        if (option != null && seen.add(code)) templated.add(option);
+      }
+      return templated;
+    }
+
     final filtered = widget.allCommercialMaterials
         .where((c) => (c.inventoryMaterial ?? '') == _material)
         .toList();
@@ -6538,9 +6736,19 @@ class _OpeningBalanceCreateDialogState
 
   @override
   void dispose() {
+    _weightFocusNode.dispose();
     _weightC.dispose();
     _notesC.dispose();
     super.dispose();
+  }
+
+  void _primeWeightFieldSelection() {
+    if (_weightPrimed) return;
+    _weightPrimed = true;
+    _weightC.selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: _weightC.text.length,
+    );
   }
 
   @override
@@ -6552,7 +6760,6 @@ class _OpeningBalanceCreateDialogState
       'notes': _notesC.text.trim().isEmpty ? null : _notesC.text.trim(),
     };
     return Focus(
-      autofocus: true,
       onKeyEvent: (_, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
         if (event.logicalKey == LogicalKeyboardKey.escape) {
@@ -6620,7 +6827,9 @@ class _OpeningBalanceCreateDialogState
               const SizedBox(height: 10),
               TextField(
                 controller: _weightC,
+                focusNode: _weightFocusNode,
                 autofocus: true,
+                onTap: _primeWeightFieldSelection,
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -6648,7 +6857,6 @@ class _OpeningBalanceCreateDialogState
             child: const Text('Cancelar'),
           ),
           FilledButton(
-            autofocus: true,
             onPressed: () => Navigator.pop(context, payload()),
             child: const Text('Agregar'),
           ),
@@ -6840,13 +7048,15 @@ class _CutStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isLocked = status == 'locked';
-    final subtitle = isLocked
-        ? 'Bloqueado · $openingCount renglones'
-        : 'Borrador · $openingCount renglones';
+    final normalizedStatus = _normalizeMonthlyCutStatus(status);
+    final isLocked = _isMonthlyCutLockedStatus(normalizedStatus);
+    final label = normalizedStatus == 'cerrado'
+        ? 'Cerrado'
+        : (normalizedStatus == 'en_revision' ? 'En revision' : 'Abierto');
+    final subtitle = '$label · $openingCount renglones';
     return Tooltip(
       message:
-          'Estado: ${isLocked ? 'LOCKED' : 'DRAFT'}'
+          'Estado: $label'
           '${generatedAt != null ? '\nGenerado: ${_formatDateFromAny(generatedAt)}' : ''}'
           '${lockedAt != null ? '\nBloqueado: ${_formatDateFromAny(lockedAt)}' : ''}',
       child: SizedBox(
@@ -6854,7 +7064,7 @@ class _CutStatusBadge extends StatelessWidget {
         child: OperationalMetricCard(
           icon: isLocked ? Icons.lock_rounded : Icons.edit_note_rounded,
           label: 'Estado corte',
-          value: isLocked ? 'Locked' : 'Draft',
+          value: label,
           subtitle: subtitle,
           width: 220,
           height: 70,
@@ -6971,6 +7181,46 @@ String _formatDateFromAny(dynamic value) {
   if (parsed != null) return _formatDate(parsed);
   if (text.length >= 10) return text.substring(0, 10);
   return text;
+}
+
+String _normalizeMonthlyCutStatus([String? rawStatus]) {
+  final status = (rawStatus ?? '').trim().toLowerCase();
+  switch (status) {
+    case '':
+    case 'draft':
+    case 'open':
+    case 'opened':
+    case 'abierta':
+    case 'abierto':
+      return 'abierto';
+    case 'review':
+    case 'in_review':
+    case 'en-revision':
+    case 'revision':
+    case 'en_revision':
+      return 'en_revision';
+    case 'locked':
+    case 'closed':
+    case 'close':
+    case 'cierre':
+    case 'cerrada':
+    case 'cerrado':
+      return 'cerrado';
+    default:
+      return status;
+  }
+}
+
+bool _isMonthlyCutLockedStatus([String? rawStatus]) {
+  return _normalizeMonthlyCutStatus(rawStatus) == 'cerrado';
+}
+
+Map<String, dynamic>? _normalizeMonthlyCutRow(Map<String, dynamic>? row) {
+  if (row == null) return null;
+  return <String, dynamic>{
+    ...row,
+    'status': _normalizeMonthlyCutStatus(row['status']?.toString()),
+  };
 }
 
 String _dateSql(DateTime date) {

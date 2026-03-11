@@ -252,6 +252,14 @@ InputDecoration _catalogEditDialogFieldDecoration({
   );
 }
 
+bool _catalogEditableTextFocused() {
+  final primary = FocusManager.instance.primaryFocus;
+  final ctx = primary?.context;
+  if (ctx == null) return false;
+  if (ctx.widget is EditableText) return true;
+  return ctx.findAncestorWidgetOfExactType<EditableText>() != null;
+}
+
 Widget _catalogGlassDialogScaffold({
   required String title,
   required Widget child,
@@ -944,6 +952,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
 
   KeyEventResult _handleCommercialInsertKey(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (_catalogEditableTextFocused()) return KeyEventResult.ignored;
     final key = event.logicalKey;
     if (key == LogicalKeyboardKey.space) {
       if (_commercialInsertMaterialFocus.hasFocus) {
@@ -992,6 +1001,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
 
   KeyEventResult _handleOpeningInsertKey(FocusNode _, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (_catalogEditableTextFocused()) return KeyEventResult.ignored;
     final key = event.logicalKey;
     if (key == LogicalKeyboardKey.space) {
       if (_openingInsertMaterialFocus.hasFocus) {
@@ -4646,6 +4656,7 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
 
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (_catalogEditableTextFocused()) return KeyEventResult.ignored;
     final key = event.logicalKey;
     if (_editingRowIds.isNotEmpty) {
       if (key == LogicalKeyboardKey.escape) {
@@ -5926,6 +5937,7 @@ class _CatalogListState extends State<_CatalogList> {
 
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    if (_catalogEditableTextFocused()) return KeyEventResult.ignored;
     if (widget.rows.isEmpty) return KeyEventResult.ignored;
 
     final key = event.logicalKey;
