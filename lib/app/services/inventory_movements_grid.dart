@@ -10617,7 +10617,7 @@ const double _kSepModeColW = 132;
 const double _kSepCommercialColW = 240;
 const double _kSepKgColW = 130;
 const double _kSepNotesColW = 240;
-const double _kSepActionsColW = 112;
+const double _kSepActionsColW = 120;
 
 double _sepTableContentWFor(double availableWidth) {
   final base =
@@ -12252,24 +12252,32 @@ class _InventoryMaterialSeparationGridState
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.42),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    '${_fmtInvCount(draftKg, decimals: 1)} kg',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
+                                Expanded(
+                                  child: Align(
+                                    alignment: Alignment.centerRight,
+                                    child: Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 6,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: Colors.white.withValues(alpha: 0.42),
+                                        borderRadius: BorderRadius.circular(999),
+                                      ),
+                                      child: FittedBox(
+                                        fit: BoxFit.scaleDown,
+                                        child: Text(
+                                          '${_fmtInvCount(draftKg, decimals: 1)} kg',
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 6),
+                                const SizedBox(width: 4),
                                 Tooltip(
                                   message: 'AGREGAR',
                                   child: MouseRegion(

@@ -95,6 +95,12 @@ String? _inventoryMaterialCodeFromGeneralName(String raw) {
       return 'BALE_CLEAN';
     case 'PACA BASURA':
       return 'BALE_TRASH';
+    case 'CAPLE':
+    case 'GRANEL CAPLE':
+    case 'PACA CAPLE':
+      return 'CAPLE';
+    case 'LODOS':
+      return 'LODOS';
     case 'CHATARRA':
     case 'SCRAP':
       return 'SCRAP';
@@ -113,19 +119,23 @@ String? _inventoryMaterialCodeFromGeneralName(String raw) {
 
 const String _kOpeningTemplateSite = 'DICSA';
 
-const List<_OpMaterialOpt> _kOpeningTemplateMaterials = [
-  _OpMaterialOpt('CARDBOARD_BULK_NATIONAL', 'Granel nacional'),
-  _OpMaterialOpt('CARDBOARD_BULK_AMERICAN', 'Granel americano'),
-  _OpMaterialOpt('BALE_NATIONAL', 'Paca nacional'),
-  _OpMaterialOpt('BALE_AMERICAN', 'Paca americana'),
-  _OpMaterialOpt('BALE_CLEAN', 'Paca limpia'),
-  _OpMaterialOpt('BALE_TRASH', 'Paca basura'),
-  _OpMaterialOpt('SCRAP', 'Chatarra'),
-  _OpMaterialOpt('METAL', 'Metal'),
-  _OpMaterialOpt('WOOD', 'Madera'),
-  _OpMaterialOpt('PAPER', 'Papel'),
-  _OpMaterialOpt('PLASTIC', 'Plástico'),
-];
+const String _kDefaultOpeningTemplateMaterial = 'CARDBOARD_BULK_NATIONAL';
+
+const Map<String, String> _kOperationalMaterialLabels = {
+  'CARDBOARD_BULK_NATIONAL': 'Granel nacional',
+  'CARDBOARD_BULK_AMERICAN': 'Granel americano',
+  'BALE_NATIONAL': 'Paca nacional',
+  'BALE_AMERICAN': 'Paca americana',
+  'BALE_CLEAN': 'Paca limpia',
+  'BALE_TRASH': 'Paca basura',
+  'CAPLE': 'Caple',
+  'SCRAP': 'Chatarra',
+  'METAL': 'Metal',
+  'WOOD': 'Madera',
+  'PAPER': 'Papel',
+  'PLASTIC': 'Plástico',
+  'LODOS': 'Lodos',
+};
 
 List<Map<String, dynamic>> _sortCatalogRowsByName(
   List<Map<String, dynamic>> rows, {
@@ -639,7 +649,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   List<Map<String, dynamic>> _vehicles = [];
   List<Map<String, dynamic>> _commercialMaterials = [];
   List<Map<String, dynamic>> _openingTemplates = [];
-  String _openingTemplateMaterial = _kOpeningTemplateMaterials.first.value;
+  String _openingTemplateMaterial = _kDefaultOpeningTemplateMaterial;
   String? _openingTemplateCommercialCode;
   String? _commercialMaterialFilterMaterialId;
   String? _commercialMaterialDraftMaterialId;
@@ -703,6 +713,53 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     );
     final label = (match?['name'] ?? '').toString();
     return label.isEmpty ? emptyLabel : label;
+  }
+
+  List<_OpMaterialOpt> _openingTemplateMaterials() {
+    final seen = <String>{};
+    final options = <_OpMaterialOpt>[];
+
+    void addCode(String? rawCode) {
+      final code = (rawCode ?? '').trim().toUpperCase();
+      if (code.isEmpty || !seen.add(code)) return;
+      options.add(
+        _OpMaterialOpt(code, _kOperationalMaterialLabels[code] ?? code),
+      );
+    }
+
+    for (final material in _materials) {
+      addCode(material['inventory_material_code']?.toString());
+    }
+    for (final commercial in _commercialMaterials) {
+      addCode(commercial['inventory_material']?.toString());
+    }
+    for (final fallback in _kOperationalMaterialLabels.keys) {
+      addCode(fallback);
+    }
+
+    options.sort((a, b) {
+      final byLabel = _normalizeName(a.label).compareTo(_normalizeName(b.label));
+      if (byLabel != 0) return byLabel;
+      return a.value.compareTo(b.value);
+    });
+    return options;
+  }
+
+  String _operationalMaterialLabel(String? code) {
+    final key = (code ?? '').trim().toUpperCase();
+    if (key.isEmpty) return 'Seleccionar';
+    for (final opt in _openingTemplateMaterials()) {
+      if (opt.value == key) return opt.label;
+    }
+    return _kOperationalMaterialLabels[key] ?? key;
+  }
+
+  List<_CatalogPickerOption<String>> _operationalMaterialPickerOptions() {
+    return _openingTemplateMaterials()
+        .map(
+          (m) => _CatalogPickerOption<String>(value: m.value, label: m.label),
+        )
+        .toList(growable: false);
   }
 
   Future<void> _openCommercialInsertMaterialPicker() async {
@@ -912,11 +969,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   }
 
   Future<void> _openOpeningMaterialPicker() async {
-    final options = _kOpeningTemplateMaterials
-        .map(
-          (m) => _CatalogPickerOption<String>(value: m.value, label: m.label),
-        )
-        .toList(growable: false);
+    final options = _operationalMaterialPickerOptions();
     final selected = await _showCatalogSearchablePickerDialog<String>(
       context,
       title: 'Seleccionar',
@@ -1042,7 +1095,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
       }
       if (_openingInsertMaterialFocus.hasFocus) {
         setState(() {
-          _openingTemplateMaterial = _kOpeningTemplateMaterials.first.value;
+          _openingTemplateMaterial = _kDefaultOpeningTemplateMaterial;
           _openingTemplateCommercialCode = null;
         });
         return KeyEventResult.handled;
@@ -1417,6 +1470,18 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
         if (!draftMaterialStillExists) {
           _commercialMaterialDraftMaterialId = null;
         }
+        final validOperationalCodes = _openingTemplateMaterials()
+            .map((m) => m.value)
+            .toSet();
+        if (!validOperationalCodes.contains(_openingTemplateMaterial)) {
+          _openingTemplateMaterial = validOperationalCodes.contains(
+                _kDefaultOpeningTemplateMaterial,
+              )
+              ? _kDefaultOpeningTemplateMaterial
+              : (validOperationalCodes.isEmpty
+                    ? _kDefaultOpeningTemplateMaterial
+                    : validOperationalCodes.first);
+        }
         final selectedStillExists = commercialMaterials.any(
           (r) => r['code']?.toString() == _openingTemplateCommercialCode,
         );
@@ -1678,7 +1743,14 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
       return;
     }
     try {
-      await supa.from('materials').update({'name': newName}).eq('id', id);
+      final patch = <String, dynamic>{'name': newName};
+      final inventoryMaterialCode = _inventoryMaterialCodeFromGeneralName(
+        newName,
+      );
+      if (inventoryMaterialCode != null) {
+        patch['inventory_material_code'] = inventoryMaterialCode;
+      }
+      await supa.from('materials').update(patch).eq('id', id);
       _changed = true;
       _toast('Material actualizado');
       await _loadData();
@@ -1890,41 +1962,82 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   }
 
   Future<void> _editMaterial(Map<String, dynamic> row) async {
+    const noOperationalValue = '__NONE__';
     final id = row['id']?.toString();
     if (id == null) return;
-    final input = TextEditingController(
+    final nameC = TextEditingController(
       text: _normalizeName('${row['name'] ?? ''}'),
     );
-    final result = await showDialog<String>(
+    String? selectedOperationalCode = row['inventory_material_code']
+        ?.toString()
+        .trim();
+    final result = await showDialog<Map<String, dynamic>>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Editar Material'),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          inputFormatters: [
-            FilteringTextInputFormatter.singleLineFormatter,
-            _NameInputFormatter(),
-          ],
-          decoration: const InputDecoration(hintText: 'Nombre'),
-          onSubmitted: (_) =>
-              Navigator.pop(dialogContext, _normalizeName(input.text)),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setLocalState) => _catalogGlassDialogScaffold(
+          title: 'Editar Material',
+          maxWidth: 560,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: nameC,
+                autofocus: true,
+                inputFormatters: [
+                  FilteringTextInputFormatter.singleLineFormatter,
+                  _NameInputFormatter(),
+                ],
+                decoration: _catalogEditDialogFieldDecoration(
+                  hintText: 'Nombre',
+                ),
+              ),
+              const SizedBox(height: 10),
+              _CatalogPickerField<String>(
+                label: 'Material operativo',
+                valueLabel: _operationalMaterialLabel(selectedOperationalCode),
+                dialogTitle: 'Seleccionar',
+                value: selectedOperationalCode ?? noOperationalValue,
+                options: [
+                  const _CatalogPickerOption<String>(
+                    value: noOperationalValue,
+                    label: 'Sin asignar',
+                  ),
+                  ..._operationalMaterialPickerOptions(),
+                ],
+                onChanged: (v) => setLocalState(
+                  () => selectedOperationalCode =
+                      (v == null || v == noOperationalValue) ? null : v,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    style: _catalogFilterOutlinedButtonStyle(),
+                    onPressed: () => Navigator.pop(dialogContext),
+                    child: const Text('Cancelar'),
+                  ),
+                  const SizedBox(width: 8),
+                  FilledButton(
+                    style: _catalogFilterFilledButtonStyle(),
+                    onPressed: () => Navigator.pop(dialogContext, {
+                      'name': _normalizeName(nameC.text),
+                      'inventory_material_code': selectedOperationalCode,
+                    }),
+                    child: const Text('Guardar'),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, _normalizeName(input.text)),
-            child: const Text('Guardar'),
-          ),
-        ],
       ),
     );
+    nameC.dispose();
     if (result == null) return;
-    final newName = result;
+    final newName = (result['name'] ?? '').toString();
     if (newName.isEmpty) {
       _toast('El nombre no puede estar vacío');
       return;
@@ -1935,7 +2048,13 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     }
 
     try {
-      await supa.from('materials').update({'name': newName}).eq('id', id);
+      await supa
+          .from('materials')
+          .update({
+            'name': newName,
+            'inventory_material_code': result['inventory_material_code'],
+          })
+          .eq('id', id);
       _changed = true;
       _toast('Material actualizado');
       await _loadData();
@@ -2424,7 +2543,14 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   List<Map<String, dynamic>> _openingTemplateCommercialOptionsForMaterial(
     String inventoryMaterial,
   ) {
-    final rows = _commercialMaterials.toList();
+    final normalizedMaterial = inventoryMaterial.trim().toUpperCase();
+    final exactRows = _commercialMaterials.where((row) {
+      final inv = (row['inventory_material'] ?? '').toString().trim().toUpperCase();
+      return inv == normalizedMaterial;
+    }).toList(growable: false);
+    final rows = exactRows.isNotEmpty
+        ? exactRows.toList(growable: true)
+        : _commercialMaterials.toList();
     rows.sort((a, b) {
       final aInv = (a['inventory_material'] ?? '').toString().trim();
       final bInv = (b['inventory_material'] ?? '').toString().trim();
@@ -2542,12 +2668,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
             (c) => (c?['code'] ?? '').toString() == code,
             orElse: () => null,
           );
-      final opLabel = _kOpeningTemplateMaterials
-          .firstWhere(
-            (m) => m.value == material,
-            orElse: () => _OpMaterialOpt(material, material),
-          )
-          .label;
+      final opLabel = _operationalMaterialLabel(material);
       return <String, dynamic>{
         ...r,
         'name':
@@ -2609,22 +2730,10 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
               children: [
                 _CatalogPickerField<String>(
                   label: 'Material operativo',
-                  valueLabel: _kOpeningTemplateMaterials
-                      .firstWhere(
-                        (m) => m.value == material,
-                        orElse: () => _OpMaterialOpt(material, material),
-                      )
-                      .label,
+                  valueLabel: _operationalMaterialLabel(material),
                   dialogTitle: 'Seleccionar',
                   value: material,
-                  options: _kOpeningTemplateMaterials
-                      .map(
-                        (m) => _CatalogPickerOption<String>(
-                          value: m.value,
-                          label: m.label,
-                        ),
-                      )
-                      .toList(),
+                  options: _operationalMaterialPickerOptions(),
                   onChanged: (v) {
                     if (v == null) return;
                     setLocalState(() {
@@ -2823,12 +2932,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
             (c) => (c?['code'] ?? '').toString() == code,
             orElse: () => null,
           );
-      final opLabel = _kOpeningTemplateMaterials
-          .firstWhere(
-            (m) => m.value == material,
-            orElse: () => _OpMaterialOpt(material, material),
-          )
-          .label;
+      final opLabel = _operationalMaterialLabel(material);
       return {
         ...r,
         'name': (commercial?['name'] ?? code).toString(),
@@ -2857,25 +2961,12 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                             _CatalogPickerField<String>(
                               focusNode: _openingInsertMaterialFocus,
                               label: 'Material operativo',
-                              valueLabel: _kOpeningTemplateMaterials
-                                  .firstWhere(
-                                    (m) => m.value == _openingTemplateMaterial,
-                                    orElse: () => _OpMaterialOpt(
-                                      _openingTemplateMaterial,
-                                      _openingTemplateMaterial,
-                                    ),
-                                  )
-                                  .label,
+                              valueLabel: _operationalMaterialLabel(
+                                _openingTemplateMaterial,
+                              ),
                               dialogTitle: 'Seleccionar',
                               value: _openingTemplateMaterial,
-                              options: _kOpeningTemplateMaterials
-                                  .map(
-                                    (m) => _CatalogPickerOption<String>(
-                                      value: m.value,
-                                      label: m.label,
-                                    ),
-                                  )
-                                  .toList(),
+                              options: _operationalMaterialPickerOptions(),
                               onChanged: (v) {
                                 if (v == null) return;
                                 setState(() {
@@ -2905,25 +2996,12 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                             child: _CatalogPickerField<String>(
                               focusNode: _openingInsertMaterialFocus,
                               label: 'Material operativo',
-                              valueLabel: _kOpeningTemplateMaterials
-                                  .firstWhere(
-                                    (m) => m.value == _openingTemplateMaterial,
-                                    orElse: () => _OpMaterialOpt(
-                                      _openingTemplateMaterial,
-                                      _openingTemplateMaterial,
-                                    ),
-                                  )
-                                  .label,
+                              valueLabel: _operationalMaterialLabel(
+                                _openingTemplateMaterial,
+                              ),
                               dialogTitle: 'Seleccionar',
                               value: _openingTemplateMaterial,
-                              options: _kOpeningTemplateMaterials
-                                  .map(
-                                    (m) => _CatalogPickerOption<String>(
-                                      value: m.value,
-                                      label: m.label,
-                                    ),
-                                  )
-                                  .toList(),
+                              options: _operationalMaterialPickerOptions(),
                               onChanged: (v) {
                                 if (v == null) return;
                                 setState(() {

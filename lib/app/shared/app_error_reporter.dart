@@ -1,6 +1,7 @@
 import 'dart:collection';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 final GlobalKey<ScaffoldMessengerState> appScaffoldMessengerKey =
@@ -41,6 +42,13 @@ class AppErrorReporter {
     if (_showingMessage || _pendingMessages.isEmpty) return;
     final messenger = appScaffoldMessengerKey.currentState;
     if (messenger == null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _flush());
+      return;
+    }
+
+    final phase = SchedulerBinding.instance.schedulerPhase;
+    if (phase != SchedulerPhase.idle &&
+        phase != SchedulerPhase.postFrameCallbacks) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _flush());
       return;
     }

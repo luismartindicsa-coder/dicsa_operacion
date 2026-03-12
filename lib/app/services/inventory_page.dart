@@ -28,6 +28,7 @@ const List<_MaterialOption> _kInventoryMaterials = [
   _MaterialOption('BALE_AMERICAN', 'Paca americana'),
   _MaterialOption('BALE_CLEAN', 'Paca limpia'),
   _MaterialOption('BALE_TRASH', 'Paca basura'),
+  _MaterialOption('CAPLE', 'Caple'),
   _MaterialOption('SCRAP', 'Chatarra'),
   _MaterialOption('METAL', 'Metal'),
   _MaterialOption('WOOD', 'Madera'),
@@ -44,6 +45,7 @@ const List<_MaterialOption> _kInventorySummaryMaterials = [
   _MaterialOption('BALE_AMERICAN', 'Paca americana'),
   _MaterialOption('BALE_CLEAN', 'Paca limpia'),
   _MaterialOption('BALE_TRASH', 'Paca basura'),
+  _MaterialOption('CAPLE', 'Caple'),
   _MaterialOption('SCRAP', 'Chatarra'),
   _MaterialOption('METAL', 'Metal'),
   _MaterialOption('WOOD', 'Madera'),
@@ -4343,6 +4345,7 @@ class _OpeningBalancesFloatingDialogState
                         controller: _insertKgC,
                         focusNode: _insertKgFocusNode,
                         enabled: widget.editable,
+                        selectAllOnFocus: true,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),

@@ -2354,6 +2354,8 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
 
   final Map<String, double> _operationalOnHandKg = <String, double>{};
   final Map<String, double> _commercialOnHandKg = <String, double>{};
+  final Map<String, double> _operationalOnHandBales = <String, double>{};
+  final Map<String, double> _commercialOnHandBales = <String, double>{};
   final Map<String, _DashboardCommercialMaterialOption>
   _commercialOptionsByCode = <String, _DashboardCommercialMaterialOption>{};
   List<_ProductionLineSeries> _pacaProductionSeries = const [];
@@ -2372,6 +2374,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     Color(0xFF3949AB),
     Color(0xFFD81B60),
   ];
+  static const double _kDashboardOutgoingBaleAvgKg = 800.0;
 
   void _setupRealtime() {
     _timer?.cancel();
@@ -2487,8 +2490,19 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     return m.startsWith('BALE_') || m.contains('PACA') || m == 'CAPLE';
   }
 
+  bool _isBaleCommercialMaterialCode(String code) {
+    final normalized = code.trim().toUpperCase();
+    return normalized.startsWith('PACA_') ||
+        normalized == 'CAPLE' ||
+        normalized == 'PACA CAPLE';
+  }
+
   String _materialUiLabel(String material) {
     switch (material.trim().toUpperCase()) {
+      case 'CARDBOARD_BULK_NATIONAL':
+        return 'Granel nacional';
+      case 'CARDBOARD_BULK_AMERICAN':
+        return 'Granel americano';
       case 'BALE_NATIONAL':
         return 'Paca nacional';
       case 'BALE_AMERICAN':
@@ -2833,7 +2847,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         _supa
             .from('movements')
             .select(
-              'material,commercial_material_code,flow,weight_kg,net_kg,site,op_date',
+              'material,commercial_material_code,flow,weight_kg,net_kg,site,op_date,movement_origin',
             )
             .or('site.eq.$_kDashboardInventorySite,site.is.null')
             .gte('op_date', _sqlDate(monthStart))
@@ -2908,6 +2922,10 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
               ),
           };
       final commercialOnHand = <String, double>{};
+      final operationalBales = <String, double>{};
+      final commercialBales = <String, double>{};
+      final totalProducedKgByMaterial = <String, double>{};
+      final totalProducedBalesByMaterial = <String, double>{};
       final scrapByCommercial = <String, double>{};
       final paperByCommercial = <String, double>{};
       final dailyProductionByMaterialAndDate =
@@ -2923,6 +2941,17 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         if (code.isEmpty) continue;
         final weightKg = _num(row['weight_kg']);
         commercialOnHand[code] = (commercialOnHand[code] ?? 0) + weightKg;
+        final openingIsBale =
+            _isBaleOperationalMaterial(material) ||
+            _isBaleCommercialMaterialCode(code);
+        if (openingIsBale && _kDashboardOutgoingBaleAvgKg > 0) {
+          final baleCount = weightKg / _kDashboardOutgoingBaleAvgKg;
+          if (_isBaleOperationalMaterial(material)) {
+            operationalBales[material] =
+                (operationalBales[material] ?? 0) + baleCount;
+          }
+          commercialBales[code] = (commercialBales[code] ?? 0) + baleCount;
+        }
         if (material == 'SCRAP') {
           scrapByCommercial[code] = (scrapByCommercial[code] ?? 0) + weightKg;
         } else if (material == 'PAPER') {
@@ -2936,12 +2965,31 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         );
         final code = (row['commercial_material_code'] ?? '').toString().trim();
         if (code.isEmpty) continue;
+        final commercialOption = commercialOptionsByCode[code];
         final flow = (row['flow'] ?? '').toString().trim().toUpperCase();
+        final origin = (row['movement_origin'] ?? '').toString().trim().toUpperCase();
         final weightKg = _num(row['net_kg']) == 0
             ? _num(row['weight_kg'])
             : _num(row['net_kg']);
         final signedKg = flow == 'OUT' ? -weightKg : weightKg;
         commercialOnHand[code] = (commercialOnHand[code] ?? 0) + signedKg;
+        final commercialMaterial = _normalizeOperational(
+          commercialOption?.inventoryMaterial ?? material,
+        );
+        final movementIsBale =
+            _isBaleOperationalMaterial(commercialMaterial) ||
+            _isBaleCommercialMaterialCode(code);
+        if (movementIsBale &&
+            origin == 'MANUAL' &&
+            flow == 'OUT' &&
+            _kDashboardOutgoingBaleAvgKg > 0) {
+          final soldBales = weightKg / _kDashboardOutgoingBaleAvgKg;
+          if (_isBaleOperationalMaterial(commercialMaterial)) {
+            operationalBales[commercialMaterial] =
+                (operationalBales[commercialMaterial] ?? 0) - soldBales;
+          }
+          commercialBales[code] = (commercialBales[code] ?? 0) - soldBales;
+        }
         if (material == 'SCRAP') {
           scrapByCommercial[code] = (scrapByCommercial[code] ?? 0) + signedKg;
         } else if (material == 'PAPER') {
@@ -2955,6 +3003,20 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         final material = (row['bale_material'] ?? '').toString().trim();
         if (material.isEmpty) continue;
         final key = _normalizeOperational(material);
+        final avgBaleKg = _num(row['avg_bale_weight_kg']);
+        final producedKg = _num(row['produced_weight_kg']);
+        if (producedBales > 0) {
+          totalProducedBalesByMaterial[key] =
+              (totalProducedBalesByMaterial[key] ?? 0) + producedBales;
+          operationalBales[key] = (operationalBales[key] ?? 0) + producedBales;
+          final effectiveProducedKg = producedKg > 0
+              ? producedKg
+              : (avgBaleKg > 0 ? producedBales * avgBaleKg : 0);
+          if (effectiveProducedKg > 0) {
+            totalProducedKgByMaterial[key] =
+                (totalProducedKgByMaterial[key] ?? 0) + effectiveProducedKg;
+          }
+        }
         final perDay = dailyProductionByMaterialAndDate.putIfAbsent(
           key,
           () => <DateTime, double>{},
@@ -3085,6 +3147,12 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         _commercialOnHandKg
           ..clear()
           ..addAll(commercialOnHand);
+        _operationalOnHandBales
+          ..clear()
+          ..addAll(operationalBales);
+        _commercialOnHandBales
+          ..clear()
+          ..addAll(commercialBales);
         _commercialOptionsByCode
           ..clear()
           ..addAll(commercialOptionsByCode);
@@ -3112,12 +3180,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     }
   }
 
-  String _fmtPacas(double kg) {
-    const avgKgPerBale = 850.0;
-    final pacas = avgKgPerBale <= 0 ? 0 : (kg / avgKgPerBale);
-    return pacas.toStringAsFixed(0);
-  }
-
   String _fmtKg(double value) => '${value.toStringAsFixed(1)} kg';
 
   _DashboardInventoryTileModel? _buildTileModel(
@@ -3127,10 +3189,14 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   ) {
     switch (pref.sourceKind) {
       case 'bales_total':
+        final totalPacas = baleByMaterial.entries.fold<double>(
+          0,
+          (sum, entry) => sum + entry.value,
+        );
         return _DashboardInventoryTileModel(
           pref: pref,
           label: 'Pacas en patio',
-          value: '${_fmtPacas(totalPacasKg)} pacas',
+          value: '${totalPacas.toStringAsFixed(0)} pacas',
           secondaryValue: _fmtKg(totalPacasKg),
           color: const Color(0xFFD6F4FF),
         );
@@ -3139,10 +3205,13 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         if (material.isEmpty) return null;
         final kg = _operationalOnHandKg[material] ?? 0;
         final isBale = _isBaleOperationalMaterial(material);
+        final baleCount = _operationalOnHandBales[material] ?? 0;
         return _DashboardInventoryTileModel(
           pref: pref,
           label: _tileLabelForOperationalMaterial(material),
-          value: isBale ? '${_fmtPacas(kg)} pacas' : _fmtKg(kg),
+          value: isBale
+              ? '${baleCount.toStringAsFixed(0)} pacas'
+              : _fmtKg(kg),
           secondaryValue: isBale ? _fmtKg(kg) : 'Existencia actual',
           color: _tileColorForMaterial(material),
         );
@@ -3154,13 +3223,15 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         final inventoryMaterial = _normalizeOperational(
           option?.inventoryMaterial ?? '',
         );
-        final isBale = _isBaleOperationalMaterial(inventoryMaterial);
+        final isBale =
+            _isBaleOperationalMaterial(inventoryMaterial) ||
+            _isBaleCommercialMaterialCode(code);
         return _DashboardInventoryTileModel(
           pref: pref,
           label: option?.name.isNotEmpty == true ? option!.name : code,
-          value: isBale ? '${_fmtPacas(kg)} pacas' : _fmtKg(kg),
+          value: _fmtKg(kg),
           secondaryValue: isBale
-              ? _fmtKg(kg)
+              ? 'Equivale a ${(kg / _kDashboardOutgoingBaleAvgKg).toStringAsFixed(0)} pacas en patio'
               : _materialUiLabel(option?.inventoryMaterial ?? ''),
           color: _tileColorForMaterial(option?.inventoryMaterial),
         );
@@ -3172,7 +3243,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   @override
   Widget build(BuildContext context) {
     final baleByMaterial = <String, double>{};
-    for (final entry in _operationalOnHandKg.entries) {
+    for (final entry in _operationalOnHandBales.entries) {
       if (!_isBaleOperationalMaterial(entry.key)) continue;
       final key = _normalizeOperational(entry.key);
       baleByMaterial[key] = (baleByMaterial[key] ?? 0) + entry.value;

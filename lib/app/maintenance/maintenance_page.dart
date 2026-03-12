@@ -200,6 +200,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   final TextEditingController _diagnosisC = TextEditingController();
   final TextEditingController _summaryC = TextEditingController();
   final TextEditingController _assignedToC = TextEditingController();
+  final ScrollController _detailScrollController = ScrollController();
 
   String _priority = 'media';
   String _type = 'correctivo';
@@ -229,6 +230,7 @@ class _MaintenancePageState extends State<MaintenancePage>
     _autosaveTimer?.cancel();
     _maintenanceRealtimeChannel?.unsubscribe();
     _ordersListFocusNode.dispose();
+    _detailScrollController.dispose();
     _detachAutosaveListeners();
     _areaC.dispose();
     _equipmentC.dispose();
@@ -3460,8 +3462,10 @@ class _MaintenancePageState extends State<MaintenancePage>
         border: Border.all(color: Colors.white.withValues(alpha: 0.66)),
       ),
       child: Scrollbar(
+        controller: _detailScrollController,
         thumbVisibility: true,
         child: SingleChildScrollView(
+          controller: _detailScrollController,
           padding: const EdgeInsets.fromLTRB(14, 12, 14, 16),
           child: LayoutBuilder(
             builder: (context, constraints) {
@@ -3790,10 +3794,7 @@ class _MaintenancePageState extends State<MaintenancePage>
         ? child
         : SizedBox(
             height: height,
-            child: Scrollbar(
-              thumbVisibility: false,
-              child: SingleChildScrollView(primary: false, child: child),
-            ),
+            child: SingleChildScrollView(primary: false, child: child),
           );
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
