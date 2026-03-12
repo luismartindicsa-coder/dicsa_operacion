@@ -335,6 +335,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   List<_InvOpt> _vehicles = [];
   List<_InvMaterialOpt> _materials = [];
   List<_CommercialMaterialOpt> _commercialMaterials = [];
+  Map<String, Set<String>> _commercialSourceRulesByCode = {};
   List<Map<String, dynamic>> _rows = [];
 
   String? _selectedRowId;
@@ -609,6 +610,10 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
             .select('id,name,inventory_material_code,inventory_general_code')
             .eq('is_active', true)
             .order('name'),
+        supa
+            .from('commercial_material_source_rules')
+            .select('commercial_material_code,allowed_source_material')
+            .eq('is_active', true),
       ]);
       final sites = (results[0] as List).cast<Map<String, dynamic>>();
       final drivers = (results[1] as List).cast<Map<String, dynamic>>();
@@ -616,6 +621,19 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       final commercials = (results[3] as List).cast<Map<String, dynamic>>();
       final materialsCatalog = (results[4] as List)
           .cast<Map<String, dynamic>>();
+      final sourceRules = (results[5] as List).cast<Map<String, dynamic>>();
+      final commercialSourceRulesByCode = <String, Set<String>>{};
+      for (final row in sourceRules) {
+        final code = (row['commercial_material_code'] ?? '').toString().trim();
+        final source = (row['allowed_source_material'] ?? '')
+            .toString()
+            .trim()
+            .toUpperCase();
+        if (code.isEmpty || source.isEmpty) continue;
+        commercialSourceRulesByCode
+            .putIfAbsent(code, () => <String>{})
+            .add(source);
+      }
 
       if (!mounted) return;
       setState(() {
@@ -668,6 +686,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
             )
             .where((e) => e.code.isNotEmpty && e.name.isNotEmpty)
             .toList();
+        _commercialSourceRulesByCode = commercialSourceRulesByCode;
         if (!_materials.any((m) => m.id == _draft.materialId)) {
           _draft = _draft.copyWith(materialId: null);
         }
@@ -1094,10 +1113,40 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     String? materialId,
   ) {
     if (materialId == null || materialId.isEmpty) return _commercialMaterials;
+    final sourceCode = _sourceMaterialCodeForMaterialId(materialId);
     final filtered = _commercialMaterials
-        .where((opt) => opt.materialId == null || opt.materialId == materialId)
+        .where((opt) => _commercialMatchesMaterial(opt, materialId, sourceCode))
         .toList();
     return filtered.isEmpty ? _commercialMaterials : filtered;
+  }
+
+  bool _commercialMatchesMaterial(
+    _CommercialMaterialOpt opt,
+    String? materialId,
+    String? sourceCode,
+  ) {
+    final normalizedSource = (sourceCode ?? '').trim().toUpperCase();
+    if (normalizedSource.isNotEmpty) {
+      final allowed = _commercialSourceRulesByCode[opt.code];
+      if (allowed != null && allowed.isNotEmpty) {
+        return allowed.contains(normalizedSource);
+      }
+      final inventoryMaterial = (opt.inventoryMaterial ?? '')
+          .trim()
+          .toUpperCase();
+      if (inventoryMaterial == normalizedSource) return true;
+    }
+    return opt.materialId == null || opt.materialId == materialId;
+  }
+
+  String? _sourceMaterialCodeForMaterialId(String? materialId) {
+    final material = _materialById(materialId);
+    final operational = (material?.inventoryMaterialCode ?? '')
+        .trim()
+        .toUpperCase();
+    if (operational.isNotEmpty) return operational;
+    final general = (material?.inventoryGeneralCode ?? '').trim().toUpperCase();
+    return general.isEmpty ? null : general;
   }
 
   String _fmtUiDate(DateTime d) {
@@ -2564,6 +2613,8 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                                           for (final m in _materials) m.id: m,
                                         },
                                         materialLabel: _materialLabel,
+                                        commercialMatchesMaterial:
+                                            _commercialMatchesMaterial,
                                         materialOptions: _materials
                                             .map((m) => m.id)
                                             .toList(),
@@ -3653,6 +3704,8 @@ class _MovementDataRow extends StatefulWidget {
   final List<_CommercialMaterialOpt> commercialMaterialOptions;
   final Map<String, _InvMaterialOpt> materialsById;
   final String Function(String?) materialLabel;
+  final bool Function(_CommercialMaterialOpt, String?, String?)
+  commercialMatchesMaterial;
   final List<String> materialOptions;
   final bool isSelected;
   final bool isChecked;
@@ -3680,6 +3733,7 @@ class _MovementDataRow extends StatefulWidget {
     required this.commercialMaterialOptions,
     required this.materialsById,
     required this.materialLabel,
+    required this.commercialMatchesMaterial,
     required this.materialOptions,
     required this.isSelected,
     required this.isChecked,
@@ -4463,10 +4517,17 @@ class _MovementDataRowState extends State<_MovementDataRow> {
   }
 
   Future<void> _editExtras() async {
+    final sourceCode = _material == null
+        ? null
+        : widget.materialsById[_material!]?.inventoryMaterialCode ??
+              widget.materialsById[_material!]?.inventoryGeneralCode;
     final filteredCommercials = _material == null
         ? widget.commercialMaterialOptions
         : widget.commercialMaterialOptions
-              .where((o) => o.materialId == null || o.materialId == _material)
+              .where(
+                (o) =>
+                    widget.commercialMatchesMaterial(o, _material, sourceCode),
+              )
               .toList();
     final result = await _showMovementExtrasDialog(
       context,
@@ -12261,8 +12322,12 @@ class _InventoryMaterialSeparationGridState
                                         vertical: 6,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: Colors.white.withValues(alpha: 0.42),
-                                        borderRadius: BorderRadius.circular(999),
+                                        color: Colors.white.withValues(
+                                          alpha: 0.42,
+                                        ),
+                                        borderRadius: BorderRadius.circular(
+                                          999,
+                                        ),
                                       ),
                                       child: FittedBox(
                                         fit: BoxFit.scaleDown,
