@@ -77,53 +77,13 @@ String _commercialMaterialCodeFromName(String raw) {
       .replaceAll(RegExp(r'^_|_$'), '');
 }
 
-String? _inventoryMaterialCodeFromGeneralName(String raw) {
-  final normalized = _normalizeName(raw);
-  switch (normalized) {
-    case 'CARTON NACIONAL':
-    case 'CARTON CELANESE':
-    case 'GRANEL NACIONAL':
-      return 'CARDBOARD_BULK_NATIONAL';
-    case 'CARTON AMERICANO':
-    case 'GRANEL AMERICANO':
-      return 'CARDBOARD_BULK_AMERICAN';
-    case 'PACA NACIONAL':
-      return 'BALE_NATIONAL';
-    case 'PACA AMERICANA':
-      return 'BALE_AMERICAN';
-    case 'PACA LIMPIA':
-      return 'BALE_CLEAN';
-    case 'PACA BASURA':
-      return 'BALE_TRASH';
-    case 'CAPLE':
-    case 'GRANEL CAPLE':
-    case 'PACA CAPLE':
-      return 'CAPLE';
-    case 'LODOS':
-      return 'LODOS';
-    case 'CHATARRA':
-    case 'SCRAP':
-      return 'SCRAP';
-    case 'METAL':
-      return 'METAL';
-    case 'MADERA':
-      return 'WOOD';
-    case 'PAPEL':
-      return 'PAPER';
-    case 'PLASTICO':
-      return 'PLASTIC';
-    default:
-      return null;
-  }
-}
-
 const String _kOpeningTemplateSite = 'DICSA';
 
 const String _kDefaultOpeningTemplateMaterial = 'CARDBOARD_BULK_NATIONAL';
 
 const Map<String, String> _kOperationalMaterialLabels = {
-  'CARDBOARD_BULK_NATIONAL': 'Granel nacional',
-  'CARDBOARD_BULK_AMERICAN': 'Granel americano',
+  'CARDBOARD_BULK_NATIONAL': 'Carton granel',
+  'CARDBOARD_BULK_AMERICAN': 'Carton granel',
   'BALE_NATIONAL': 'Paca nacional',
   'BALE_AMERICAN': 'Paca americana',
   'BALE_CLEAN': 'Paca limpia',
@@ -533,6 +493,7 @@ class _CatalogPickerField<T> extends StatelessWidget {
   final List<_CatalogPickerOption<T>> options;
   final T? value;
   final ValueChanged<T?> onChanged;
+  final Future<void> Function()? onTapOverride;
 
   const _CatalogPickerField({
     required this.label,
@@ -542,9 +503,14 @@ class _CatalogPickerField<T> extends StatelessWidget {
     required this.value,
     required this.onChanged,
     this.focusNode,
+    this.onTapOverride,
   });
 
   Future<void> _open(BuildContext context) async {
+    if (onTapOverride != null) {
+      await onTapOverride!();
+      return;
+    }
     final selected = await _showCatalogSearchablePickerDialog<T>(
       context,
       title: dialogTitle,
@@ -642,7 +608,6 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   bool _savingOpeningTemplate = false;
   bool _changed = false;
 
-  String? _defaultAreaId;
   List<Map<String, dynamic>> _clients = [];
   List<Map<String, dynamic>> _materials = [];
   List<Map<String, dynamic>> _drivers = [];
@@ -738,7 +703,9 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     }
 
     options.sort((a, b) {
-      final byLabel = _normalizeName(a.label).compareTo(_normalizeName(b.label));
+      final byLabel = _normalizeName(
+        a.label,
+      ).compareTo(_normalizeName(b.label));
       if (byLabel != 0) return byLabel;
       return a.value.compareTo(b.value);
     });
@@ -1200,8 +1167,8 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
 
   Future<List<Map<String, dynamic>>> _loadInactiveMaterials() async {
     final rows = await supa
-        .from('materials')
-        .select('id,name,area_id,is_active')
+        .from('material_general_catalog_v2')
+        .select('id,code,name,is_active,notes')
         .eq('is_active', false)
         .order('name');
     return _sortCatalogRowsByName((rows as List).cast<Map<String, dynamic>>());
@@ -1244,9 +1211,9 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
 
   Future<List<Map<String, dynamic>>> _loadInactiveCommercialMaterials() async {
     final rows = await supa
-        .from('commercial_material_catalog')
-        .select('code,name,family,material_id')
-        .eq('active', false)
+        .from('material_commercial_catalog_v2')
+        .select('id,code,name,family,general_material_id,is_active')
+        .eq('is_active', false)
         .order('name');
     return _sortCatalogRowsByName((rows as List).cast<Map<String, dynamic>>());
   }
@@ -1278,7 +1245,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     if (id == null) return false;
     try {
       final updated = await supa
-          .from('materials')
+          .from('material_general_catalog_v2')
           .update({'is_active': true})
           .eq('id', id)
           .select('id');
@@ -1340,14 +1307,14 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   }
 
   Future<bool> _reactivateCommercialMaterial(Map<String, dynamic> row) async {
-    final code = row['code']?.toString();
-    if (code == null || code.isEmpty) return false;
+    final id = row['id']?.toString();
+    if (id == null || id.isEmpty) return false;
     try {
       final updated = await supa
-          .from('commercial_material_catalog')
-          .update({'active': true})
-          .eq('code', code)
-          .select('code');
+          .from('material_commercial_catalog_v2')
+          .update({'is_active': true})
+          .eq('id', id)
+          .select('id');
       if ((updated as List).isEmpty) {
         _toast('No se pudo reactivar material comercial');
         return false;
@@ -1373,11 +1340,10 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
             .eq('is_active', true)
             .order('name'),
         supa
-            .from('materials')
-            .select(
-              'id,name,area_id,inventory_general_code,inventory_material_code',
-            )
+            .from('material_general_catalog_v2')
+            .select('id,code,name,is_active,sort_order,notes')
             .eq('is_active', true)
+            .order('sort_order')
             .order('name'),
         supa
             .from('employees')
@@ -1391,9 +1357,12 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
             .eq('status', 'activo')
             .order('code'),
         supa
-            .from('commercial_material_catalog')
-            .select('code,name,family,material_id,inventory_material')
-            .eq('active', true)
+            .from('material_commercial_catalog_v2')
+            .select(
+              'id,code,name,family,general_material_id,classification_kind,flow_scope,tracks_patio_stock,allows_direct_entry,allows_transformation_output,allows_sale,is_active,sort_order,notes',
+            )
+            .eq('is_active', true)
+            .order('sort_order')
             .order('name'),
         supa
             .from('inventory_opening_templates')
@@ -1406,7 +1375,6 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
             .order('commercial_material_code'),
       ]);
 
-      final areas = (res[0] as List).cast<Map<String, dynamic>>();
       final clients = _sortCatalogRowsByName(
         (res[1] as List).cast<Map<String, dynamic>>(),
       );
@@ -1440,18 +1408,8 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
           .cast<Map<String, dynamic>>()
           .toList();
 
-      String? defaultAreaId;
-      if (areas.isNotEmpty) {
-        final logistica = areas.firstWhere(
-          (r) => (r['name']?.toString().toUpperCase() ?? '') == 'LOGISTICA',
-          orElse: () => areas.first,
-        );
-        defaultAreaId = logistica['id']?.toString();
-      }
-
       if (!mounted) return;
       setState(() {
-        _defaultAreaId = defaultAreaId;
         _clients = clients;
         _materials = materials;
         _drivers = drivers;
@@ -1474,9 +1432,8 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
             .map((m) => m.value)
             .toSet();
         if (!validOperationalCodes.contains(_openingTemplateMaterial)) {
-          _openingTemplateMaterial = validOperationalCodes.contains(
-                _kDefaultOpeningTemplateMaterial,
-              )
+          _openingTemplateMaterial =
+              validOperationalCodes.contains(_kDefaultOpeningTemplateMaterial)
               ? _kDefaultOpeningTemplateMaterial
               : (validOperationalCodes.isEmpty
                     ? _kDefaultOpeningTemplateMaterial
@@ -1606,19 +1563,11 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
 
     setState(() => _savingMaterial = true);
     try {
-      final inventoryMaterialCode = _inventoryMaterialCodeFromGeneralName(
-        normalized,
-      );
-      final payload = <String, dynamic>{
+      await supa.from('material_general_catalog_v2').insert({
+        'code': _commercialMaterialCodeFromName(normalized),
         'name': normalized,
-      };
-      if (inventoryMaterialCode != null) {
-        payload['inventory_material_code'] = inventoryMaterialCode;
-      }
-      if (_defaultAreaId != null) {
-        payload['area_id'] = _defaultAreaId;
-      }
-      await supa.from('materials').insert(payload);
+        'is_active': true,
+      });
       if (clearInput) _materialNameC.clear();
       _changed = true;
       _toast('Material agregado');
@@ -1743,14 +1692,13 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
       return;
     }
     try {
-      final patch = <String, dynamic>{'name': newName};
-      final inventoryMaterialCode = _inventoryMaterialCodeFromGeneralName(
-        newName,
-      );
-      if (inventoryMaterialCode != null) {
-        patch['inventory_material_code'] = inventoryMaterialCode;
-      }
-      await supa.from('materials').update(patch).eq('id', id);
+      await supa
+          .from('material_general_catalog_v2')
+          .update({
+            'name': newName,
+            'code': _commercialMaterialCodeFromName(newName),
+          })
+          .eq('id', id);
       _changed = true;
       _toast('Material actualizado');
       await _loadData();
@@ -1849,15 +1797,20 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
       _toast('Selecciona el material general para el material comercial');
       return;
     }
-
     setState(() => _savingCommercialMaterial = true);
     try {
-      await supa.from('commercial_material_catalog').insert({
+      await supa.from('material_commercial_catalog_v2').insert({
         'code': generatedCode,
         'name': normalizedName,
         'family': 'other',
-        'material_id': materialId,
-        'active': true,
+        'general_material_id': materialId,
+        'classification_kind': 'classified_stock',
+        'flow_scope': 'BOTH',
+        'tracks_patio_stock': true,
+        'allows_direct_entry': true,
+        'allows_transformation_output': true,
+        'allows_sale': true,
+        'is_active': true,
       });
       _commercialMaterialNameC.clear();
       _commercialMaterialFilterMaterialId ??= materialId;
@@ -1962,15 +1915,11 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   }
 
   Future<void> _editMaterial(Map<String, dynamic> row) async {
-    const noOperationalValue = '__NONE__';
     final id = row['id']?.toString();
     if (id == null) return;
     final nameC = TextEditingController(
       text: _normalizeName('${row['name'] ?? ''}'),
     );
-    String? selectedOperationalCode = row['inventory_material_code']
-        ?.toString()
-        .trim();
     final result = await showDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -1992,24 +1941,6 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                   hintText: 'Nombre',
                 ),
               ),
-              const SizedBox(height: 10),
-              _CatalogPickerField<String>(
-                label: 'Material operativo',
-                valueLabel: _operationalMaterialLabel(selectedOperationalCode),
-                dialogTitle: 'Seleccionar',
-                value: selectedOperationalCode ?? noOperationalValue,
-                options: [
-                  const _CatalogPickerOption<String>(
-                    value: noOperationalValue,
-                    label: 'Sin asignar',
-                  ),
-                  ..._operationalMaterialPickerOptions(),
-                ],
-                onChanged: (v) => setLocalState(
-                  () => selectedOperationalCode =
-                      (v == null || v == noOperationalValue) ? null : v,
-                ),
-              ),
               const SizedBox(height: 12),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -2024,7 +1955,6 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                     style: _catalogFilterFilledButtonStyle(),
                     onPressed: () => Navigator.pop(dialogContext, {
                       'name': _normalizeName(nameC.text),
-                      'inventory_material_code': selectedOperationalCode,
                     }),
                     child: const Text('Guardar'),
                   ),
@@ -2049,10 +1979,10 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
 
     try {
       await supa
-          .from('materials')
+          .from('material_general_catalog_v2')
           .update({
             'name': newName,
-            'inventory_material_code': result['inventory_material_code'],
+            'code': _commercialMaterialCodeFromName(newName),
           })
           .eq('id', id);
       _changed = true;
@@ -2080,7 +2010,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     if (id == null) return;
     try {
       final updated = await supa
-          .from('materials')
+          .from('material_general_catalog_v2')
           .update({'is_active': false})
           .eq('id', id)
           .select('id');
@@ -2318,14 +2248,15 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
 
   Future<void> _editCommercialMaterial(Map<String, dynamic> row) async {
     const noMaterialValue = '__NONE__';
+    final id = row['id']?.toString();
     final code = row['code']?.toString();
-    if (code == null || code.isEmpty) return;
+    if (id == null || id.isEmpty || code == null || code.isEmpty) return;
 
     final nameC = TextEditingController(
       text: _normalizeName('${row['name'] ?? ''}'),
     );
     String family = (row['family']?.toString() ?? 'other').trim();
-    String? selectedMaterialId = row['material_id']?.toString();
+    String? selectedMaterialId = row['general_material_id']?.toString();
     final materialOptions = _materials
         .map(
           (m) => _CatalogPickerOption<String>(
@@ -2396,11 +2327,11 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                   ),
                   ...materialOptions,
                 ],
-                onChanged: (v) => setLocalState(
-                  () => selectedMaterialId = (v == null || v == noMaterialValue)
+                onChanged: (v) => setLocalState(() {
+                  selectedMaterialId = (v == null || v == noMaterialValue)
                       ? null
-                      : v,
-                ),
+                      : v;
+                }),
               ),
               const SizedBox(height: 12),
               Row(
@@ -2450,13 +2381,13 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
 
     try {
       await supa
-          .from('commercial_material_catalog')
+          .from('material_commercial_catalog_v2')
           .update({
             'name': newName,
             'family': result['family'],
-            'material_id': nextMaterialId,
+            'general_material_id': nextMaterialId,
           })
-          .eq('code', code);
+          .eq('id', id);
       _changed = true;
       _toast('Material comercial actualizado');
       await _loadData();
@@ -2480,14 +2411,14 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   Future<void> _deleteCommercialMaterialWithoutConfirm(
     Map<String, dynamic> row,
   ) async {
-    final code = row['code']?.toString();
-    if (code == null || code.isEmpty) return;
+    final id = row['id']?.toString();
+    if (id == null || id.isEmpty) return;
     try {
       final updated = await supa
-          .from('commercial_material_catalog')
-          .update({'active': false})
-          .eq('code', code)
-          .select('code');
+          .from('material_commercial_catalog_v2')
+          .update({'is_active': false})
+          .eq('id', id)
+          .select('id');
       if ((updated as List).isEmpty) {
         _toast('No se pudo desactivar material comercial');
         return;
@@ -2544,10 +2475,15 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     String inventoryMaterial,
   ) {
     final normalizedMaterial = inventoryMaterial.trim().toUpperCase();
-    final exactRows = _commercialMaterials.where((row) {
-      final inv = (row['inventory_material'] ?? '').toString().trim().toUpperCase();
-      return inv == normalizedMaterial;
-    }).toList(growable: false);
+    final exactRows = _commercialMaterials
+        .where((row) {
+          final inv = (row['inventory_material'] ?? '')
+              .toString()
+              .trim()
+              .toUpperCase();
+          return inv == normalizedMaterial;
+        })
+        .toList(growable: false);
     final rows = exactRows.isNotEmpty
         ? exactRows.toList(growable: true)
         : _commercialMaterials.toList();
@@ -3340,17 +3276,14 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
               rows: _materials,
               emptyText: 'Sin materiales',
               subtitleOf: (row) {
-                final general = row['inventory_general_code']?.toString();
-                final operational = row['inventory_material_code']?.toString();
-                final hasGeneral = general != null && general.isNotEmpty;
-                final hasOperational =
-                    operational != null && operational.isNotEmpty;
-                if (!hasGeneral && !hasOperational) return null;
-                if (hasGeneral && hasOperational) {
-                  return 'Grupo: $general · Operativo: $operational';
+                final code = (row['code'] ?? '').toString().trim();
+                final notes = (row['notes'] ?? '').toString().trim();
+                if (code.isEmpty && notes.isEmpty) return null;
+                if (code.isNotEmpty && notes.isNotEmpty) {
+                  return 'Codigo: $code · $notes';
                 }
-                if (hasGeneral) return 'Grupo inventario: $general';
-                return 'Código operativo: $operational';
+                if (code.isNotEmpty) return 'Codigo: $code';
+                return notes;
               },
               onEdit: _editMaterial,
               onInlineEdit: _updateMaterialNameInline,
@@ -3422,18 +3355,14 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                 rows: _materials,
                 emptyText: 'Sin materiales',
                 subtitleOf: (row) {
-                  final general = row['inventory_general_code']?.toString();
-                  final operational = row['inventory_material_code']
-                      ?.toString();
-                  final hasGeneral = general != null && general.isNotEmpty;
-                  final hasOperational =
-                      operational != null && operational.isNotEmpty;
-                  if (!hasGeneral && !hasOperational) return null;
-                  if (hasGeneral && hasOperational) {
-                    return 'Grupo: $general · Operativo: $operational';
+                  final code = (row['code'] ?? '').toString().trim();
+                  final notes = (row['notes'] ?? '').toString().trim();
+                  if (code.isEmpty && notes.isEmpty) return null;
+                  if (code.isNotEmpty && notes.isNotEmpty) {
+                    return 'Codigo: $code · $notes';
                   }
-                  if (hasGeneral) return 'Grupo inventario: $general';
-                  return 'Código operativo: $operational';
+                  if (code.isNotEmpty) return 'Codigo: $code';
+                  return notes;
                 },
                 onEdit: _editMaterial,
                 onInlineEdit: _updateMaterialNameInline,
@@ -3538,14 +3467,17 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
 
     final filteredRows = _commercialMaterials.where((row) {
       if (_commercialMaterialFilterMaterialId == null) return true;
-      return (row['material_id'] ?? '').toString() ==
+      return (row['general_material_id'] ?? '').toString() ==
           _commercialMaterialFilterMaterialId;
     }).toList();
 
     String? subtitleOf(Map<String, dynamic> row) {
-      final materialId = row['material_id']?.toString();
+      final materialId = row['general_material_id']?.toString();
+      final kind = (row['classification_kind'] ?? '').toString().trim();
+      final flow = (row['flow_scope'] ?? '').toString().trim();
+      final patio = row['tracks_patio_stock'] == true ? 'Patio' : 'Sin patio';
       if (materialId == null || materialId.isEmpty) {
-        return 'Material general: Sin asignar';
+        return 'Material general: Sin asignar · $kind · $flow · $patio';
       }
       final match = _materials.cast<Map<String, dynamic>?>().firstWhere(
         (m) => (m?['id'] ?? '').toString() == materialId,
@@ -3553,8 +3485,8 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
       );
       final generalName = (match?['name'] ?? '').toString();
       return generalName.isEmpty
-          ? 'Material general: Sin asignar'
-          : 'Material general: $generalName';
+          ? 'Material general: Sin asignar · $kind · $flow · $patio'
+          : 'Material general: $generalName · $kind · $flow · $patio';
     }
 
     return _GlassCard(
@@ -3610,10 +3542,10 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                                   ),
                                 ),
                               ],
-                              onChanged: (v) => setState(
-                                () => _commercialMaterialDraftMaterialId =
-                                    (v == null || v == draftNone) ? null : v,
-                              ),
+                              onChanged: (v) => setState(() {
+                                _commercialMaterialDraftMaterialId =
+                                    (v == null || v == draftNone) ? null : v;
+                              }),
                             ),
                           ],
                         );
@@ -3660,10 +3592,10 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
                                   ),
                                 ),
                               ],
-                              onChanged: (v) => setState(
-                                () => _commercialMaterialDraftMaterialId =
-                                    (v == null || v == draftNone) ? null : v,
-                              ),
+                              onChanged: (v) => setState(() {
+                                _commercialMaterialDraftMaterialId =
+                                    (v == null || v == draftNone) ? null : v;
+                              }),
                             ),
                           ),
                         ],

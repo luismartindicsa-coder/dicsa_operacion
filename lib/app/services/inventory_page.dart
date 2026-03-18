@@ -1,6 +1,9 @@
+// ignore_for_file: unused_element, unused_field
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/gestures.dart' show kSecondaryMouseButton;
@@ -15,15 +18,20 @@ import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../shared/page_routes.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
+import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
+import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import '../shared/ui_contract_core/theme/contract_buttons.dart';
+import '../shared/ui_contract_core/theme/contract_tokens.dart';
 import 'inventory_movements_grid.dart';
+import 'inventory_stock_v2_body.dart';
+import 'inventory_transformation_grid.dart';
 import 'services_page.dart';
 import 'warehouse_page.dart';
 import 'weighings_page.dart';
 import 'services_shell.dart';
 
 const List<_MaterialOption> _kInventoryMaterials = [
-  _MaterialOption('CARDBOARD_BULK_NATIONAL', 'Granel nacional'),
-  _MaterialOption('CARDBOARD_BULK_AMERICAN', 'Granel americano'),
+  _MaterialOption('CARDBOARD_BULK_NATIONAL', 'Carton granel'),
   _MaterialOption('BALE_NATIONAL', 'Paca nacional'),
   _MaterialOption('BALE_AMERICAN', 'Paca americana'),
   _MaterialOption('BALE_CLEAN', 'Paca limpia'),
@@ -38,9 +46,20 @@ const List<_MaterialOption> _kInventoryMaterials = [
 
 const String _kFixedInventorySite = 'DICSA_CELAYA';
 
+const ContractAreaTokens _kOperationsAreaTokens = ContractAreaTokens(
+  primary: Color(0xFF1E8E63),
+  primaryStrong: Color(0xFF0B2B2B),
+  primarySoft: Color(0xFFD8EFE8),
+  accent: Color(0xFF52CFA6),
+  surfaceTint: Color(0xFFEAF7F2),
+  border: Color(0xFFB7D7D2),
+  badgeBackground: Color(0xFFDDF4EC),
+  badgeText: Color(0xFF0D5C46),
+  glow: Color(0xFF6CB7E2),
+);
+
 const List<_MaterialOption> _kInventorySummaryMaterials = [
-  _MaterialOption('CARDBOARD_BULK_NATIONAL', 'Granel nacional'),
-  _MaterialOption('CARDBOARD_BULK_AMERICAN', 'Granel americano'),
+  _MaterialOption('CARDBOARD_BULK_NATIONAL', 'Carton granel'),
   _MaterialOption('BALE_NATIONAL', 'Paca nacional'),
   _MaterialOption('BALE_AMERICAN', 'Paca americana'),
   _MaterialOption('BALE_CLEAN', 'Paca limpia'),
@@ -52,6 +71,172 @@ const List<_MaterialOption> _kInventorySummaryMaterials = [
   _MaterialOption('PAPER', 'Papel'),
   _MaterialOption('PLASTIC', 'Plástico'),
 ];
+
+class _GuideSectionData {
+  final String heading;
+  final List<String> lines;
+
+  const _GuideSectionData({required this.heading, required this.lines});
+}
+
+Future<void> _showModuleGuideDialog(
+  BuildContext context, {
+  required String title,
+  required String subtitle,
+  required List<_GuideSectionData> sections,
+}) {
+  return showDialog<void>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) => ContractDialogShell(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+        child: SizedBox(
+          width: 760,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 30,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF17324A),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF2A4B49),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      for (final section in sections) ...[
+                        Container(
+                          width: double.infinity,
+                          margin: const EdgeInsets.only(bottom: 12),
+                          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.28),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.56),
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                section.heading,
+                                style: const TextStyle(
+                                  fontSize: 17,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF17324A),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              for (final line in section.lines)
+                                Padding(
+                                  padding: const EdgeInsets.only(bottom: 4),
+                                  child: Text(
+                                    line,
+                                    style: const TextStyle(
+                                      fontSize: 14,
+                                      height: 1.35,
+                                      fontWeight: FontWeight.w600,
+                                      color: Color(0xFF2A4B49),
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 6),
+              Align(
+                alignment: Alignment.centerRight,
+                child: ElevatedButton(
+                  style: contractPrimaryButtonStyle(dialogContext),
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Entendido'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+}
+
+Future<void> showProductionUsageGuideDialog(BuildContext context) {
+  return _showModuleGuideDialog(
+    context,
+    title: 'Instructivo de uso',
+    subtitle: 'Producción',
+    sections: const [
+      _GuideSectionData(
+        heading: 'Para qué sirve',
+        lines: [
+          'Esta pantalla registra la producción o clasificación que realmente salió a patio.',
+          'Producción no registra compras ni ventas: solo transforma material base en material clasificado.',
+        ],
+      ),
+      _GuideSectionData(
+        heading: 'Flujo operativo',
+        lines: [
+          'Primero una entrada suma al inventario general, por ejemplo CARTÓN o PAPEL.',
+          'Después Producción baja ese inventario general y sube el material clasificado en patio.',
+          'Finalmente una venta descuenta del material clasificado, no del material general.',
+        ],
+      ),
+      _GuideSectionData(
+        heading: 'Cómo capturar una fila',
+        lines: [
+          'Selecciona la fecha, el turno, el origen y el material clasificado que salió a patio.',
+          'Captura siempre los kg de salida. Las unidades o pacas se llenan solo cuando aplican.',
+          'El comentario sirve para anotar aclaraciones operativas del movimiento.',
+        ],
+      ),
+      _GuideSectionData(
+        heading: 'Qué significa Consumo',
+        lines: [
+          'Consumo es el material base que realmente se gastó en el proceso.',
+          'Si se deja vacío, el sistema toma los mismos kg de salida como descuento del inventario general.',
+          'Si sí mides merma o diferencia real, puedes capturarlo para reflejar un consumo distinto.',
+        ],
+      ),
+      _GuideSectionData(
+        heading: 'Qué afecta Producción',
+        lines: [
+          'Baja el inventario general de la familia activa.',
+          'Sube el inventario comercial o clasificado del material producido.',
+          'Editar o eliminar una producción cambia automáticamente el inventario relacionado.',
+        ],
+      ),
+      _GuideSectionData(
+        heading: 'Ejemplos rápidos',
+        lines: [
+          'Cartón: entra CARTÓN, Producción genera PACA AMERICANA, baja CARTÓN y sube PACA AMERICANA.',
+          'Papel: entra PAPEL, Producción genera ARCHIVO, baja PAPEL y sube ARCHIVO.',
+          'Metal: entra METAL, Producción genera ALUMINIO, baja METAL y sube ALUMINIO.',
+        ],
+      ),
+    ],
+  );
+}
 
 Future<void> _inventoryLogoutFlow(BuildContext context) async {
   final ok = await showDialog<bool>(
@@ -649,36 +834,19 @@ class _InventoryFolderTabs extends StatelessWidget {
     return AnimatedBuilder(
       animation: controller.animation!,
       builder: (context, child) {
-        final railFill = Colors.white.withValues(alpha: 0.22);
         return SizedBox(
           height: 64,
-          child: Stack(
+          child: Row(
             children: [
-              Positioned(
-                left: 8,
-                right: 8,
-                bottom: 7,
-                child: Container(
-                  height: 1.5,
-                  decoration: BoxDecoration(
-                    color: railFill,
-                    borderRadius: BorderRadius.circular(99),
-                  ),
-                ),
+              tabItem(
+                index: 0,
+                icon: Icons.download_rounded,
+                label: 'Entradas',
               ),
-              Row(
-                children: [
-                  tabItem(
-                    index: 0,
-                    icon: Icons.download_rounded,
-                    label: 'Entradas',
-                  ),
-                  tabItem(
-                    index: 1,
-                    icon: Icons.local_shipping_rounded,
-                    label: 'Salidas',
-                  ),
-                ],
+              tabItem(
+                index: 1,
+                icon: Icons.local_shipping_rounded,
+                label: 'Salidas',
               ),
             ],
           ),
@@ -689,25 +857,31 @@ class _InventoryFolderTabs extends StatelessWidget {
 }
 
 class _InventoryStockTabs extends StatelessWidget {
-  const _InventoryStockTabs();
+  final TabController controller;
+
+  const _InventoryStockTabs({required this.controller});
 
   @override
   Widget build(BuildContext context) {
-    final controller = DefaultTabController.of(context);
     return Align(
       alignment: Alignment.centerLeft,
       child: SizedBox(
-        width: 360,
+        width: 540,
         child: OperationalFolderTabs(
           controller: controller,
-          maxWidth: 360,
+          maxWidth: 540,
+          showBottomRail: false,
           items: const [
             OperationalFolderTabItem(
-              label: 'Inventario',
+              label: 'Materia prima',
               icon: Icons.inventory_2_outlined,
             ),
             OperationalFolderTabItem(
-              label: 'Corte mensual',
+              label: 'Patio',
+              icon: Icons.warehouse_outlined,
+            ),
+            OperationalFolderTabItem(
+              label: 'Aperturas',
               icon: Icons.event_note_rounded,
             ),
           ],
@@ -743,7 +917,7 @@ class _InventoryProductionPageState extends State<InventoryProductionPage>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this)
+    _tabController = TabController(length: 6, vsync: this)
       ..addListener(_handleTabIndexChanged);
   }
 
@@ -835,6 +1009,16 @@ class _InventoryProductionPageState extends State<InventoryProductionPage>
 
   @override
   Widget build(BuildContext context) {
+    final tabSpecs = const [
+      ('CARTON', 'Cartón', Icons.view_in_ar_rounded),
+      ('CHATARRA', 'Chatarra', Icons.construction_rounded),
+      ('METAL', 'Metal', Icons.precision_manufacturing_rounded),
+      ('PLASTICO', 'Plástico', Icons.recycling_rounded),
+      ('MADERA', 'Madera', Icons.forest_rounded),
+      ('PAPEL', 'Papel', Icons.description_rounded),
+    ];
+    final topBar = _currentTopBarData;
+
     return ServicesShell(
       headerTitle: 'Producción',
       activeOverlayModule: ServicesOverlayNavModule.produccion,
@@ -847,70 +1031,116 @@ class _InventoryProductionPageState extends State<InventoryProductionPage>
       onGoToWeighings: _goToWeighings,
       onGoToMaintenance: _goToMaintenance,
       onGoToWarehouse: _goToWarehouse,
+      onHeaderGuide: () => showProductionUsageGuideDialog(context),
+      headerGuideLabel: 'Instructivo',
       onGoToCatalogs: null,
-      topContent: _currentTopBarData == null
-          ? null
-          : InventoryGridTopBar(data: _currentTopBarData!, showMetric: false),
+      topContent: Builder(
+        builder: (context) {
+          final current = _currentTopBarData;
+          if (current == null) return const SizedBox.shrink();
+          return InventoryGridTopBar(data: current, showMetric: false);
+        },
+      ),
       child: Padding(
         padding: const EdgeInsets.only(top: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Align(
-              alignment: Alignment.centerLeft,
-              child: SizedBox(
-                width: 520,
-                child: OperationalFolderTabs(
+        child: AreaThemeScope(
+          tokens: _kOperationsAreaTokens,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final tabs = Align(
+                    alignment: Alignment.topLeft,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 880),
+                      child: _ProductionFamilyTabs(
+                        controller: _tabController,
+                        items: tabSpecs,
+                      ),
+                    ),
+                  );
+                  final metric = topBar == null
+                      ? const SizedBox.shrink()
+                      : Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 330),
+                            child: InventoryGridTopBar(
+                              data: topBar,
+                              showActions: false,
+                            ),
+                          ),
+                        );
+
+                  if (constraints.maxWidth < 980) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        tabs,
+                        if (topBar != null) ...[
+                          const SizedBox(height: 8),
+                          metric,
+                        ],
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: tabs),
+                      if (topBar != null) ...[const SizedBox(width: 8), metric],
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: TabBarView(
                   controller: _tabController,
-                  maxWidth: 520,
-                  items: const [
-                    OperationalFolderTabItem(
-                      label: 'Cartón y caple',
-                      icon: Icons.view_in_ar_rounded,
+                  children: [
+                    InventoryTransformationGrid(
+                      sourceGeneralCode: 'CARTON',
+                      title: 'Cartón',
+                      metricIcon: Icons.view_in_ar_rounded,
+                      onTopBarChanged: (data) => _handleTopBarChanged(0, data),
                     ),
-                    OperationalFolderTabItem(
-                      label: 'Chatarra',
-                      icon: Icons.construction_rounded,
+                    InventoryTransformationGrid(
+                      sourceGeneralCode: 'CHATARRA',
+                      title: 'Chatarra',
+                      metricIcon: Icons.construction_rounded,
+                      onTopBarChanged: (data) => _handleTopBarChanged(1, data),
                     ),
-                    OperationalFolderTabItem(
-                      label: 'Papel',
-                      icon: Icons.description_rounded,
+                    InventoryTransformationGrid(
+                      sourceGeneralCode: 'METAL',
+                      title: 'Metal',
+                      metricIcon: Icons.precision_manufacturing_rounded,
+                      onTopBarChanged: (data) => _handleTopBarChanged(2, data),
+                    ),
+                    InventoryTransformationGrid(
+                      sourceGeneralCode: 'PLASTICO',
+                      title: 'Plástico',
+                      metricIcon: Icons.recycling_rounded,
+                      onTopBarChanged: (data) => _handleTopBarChanged(3, data),
+                    ),
+                    InventoryTransformationGrid(
+                      sourceGeneralCode: 'MADERA',
+                      title: 'Madera',
+                      metricIcon: Icons.forest_rounded,
+                      onTopBarChanged: (data) => _handleTopBarChanged(4, data),
+                    ),
+                    InventoryTransformationGrid(
+                      sourceGeneralCode: 'PAPEL',
+                      title: 'Papel',
+                      metricIcon: Icons.description_rounded,
+                      onTopBarChanged: (data) => _handleTopBarChanged(5, data),
                     ),
                   ],
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            if (_currentTopBarData != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 8),
-                child: InventoryGridTopBar(
-                  data: _currentTopBarData!,
-                  showActions: false,
-                ),
-              ),
-            Expanded(
-              child: TabBarView(
-                controller: _tabController,
-                children: [
-                  InventoryProductionGrid(
-                    showTopBarChrome: false,
-                    onTopBarChanged: (data) => _handleTopBarChanged(0, data),
-                  ),
-                  InventoryMaterialSeparationGrid(
-                    sourceMaterial: 'SCRAP',
-                    showTopBarChrome: false,
-                    onTopBarChanged: (data) => _handleTopBarChanged(1, data),
-                  ),
-                  InventoryMaterialSeparationGrid(
-                    sourceMaterial: 'PAPER',
-                    showTopBarChrome: false,
-                    onTopBarChanged: (data) => _handleTopBarChanged(2, data),
-                  ),
-                ],
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -924,9 +1154,170 @@ class InventoryStockPage extends StatefulWidget {
   State<InventoryStockPage> createState() => _InventoryStockPageState();
 }
 
+class _ProductionFamilyTabs extends StatelessWidget {
+  final TabController controller;
+  final List<(String, String, IconData)> items;
+
+  const _ProductionFamilyTabs({required this.controller, required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller.animation!,
+      builder: (context, child) {
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 720) {
+              final itemWidth = math.max(
+                150.0,
+                (constraints.maxWidth - 12) / 2,
+              );
+              return Wrap(
+                spacing: 6,
+                runSpacing: 6,
+                children: [
+                  for (final (index, spec) in items.indexed)
+                    SizedBox(
+                      width: itemWidth,
+                      child: _ProductionFamilyFolderTab(
+                        icon: spec.$3,
+                        label: spec.$2,
+                        selected: controller.index == index,
+                        onTap: () => controller.animateTo(index),
+                      ),
+                    ),
+                ],
+              );
+            }
+
+            return SizedBox(
+              height: 64,
+              child: Row(
+                children: [
+                  for (final (index, spec) in items.indexed)
+                    _ProductionFamilyFolderTab(
+                      icon: spec.$3,
+                      label: spec.$2,
+                      selected: controller.index == index,
+                      expanded: true,
+                      onTap: () => controller.animateTo(index),
+                    ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _ProductionFamilyFolderTab extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final bool expanded;
+  final VoidCallback onTap;
+
+  const _ProductionFamilyFolderTab({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    this.expanded = false,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final railFill = Colors.white.withValues(alpha: 0.22);
+    final tab = Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 3),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: onTap,
+        child: SizedBox(
+          height: 64,
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              AnimatedContainer(
+                duration: const Duration(milliseconds: 150),
+                curve: Curves.easeOutCubic,
+                margin: EdgeInsets.only(top: selected ? 0 : 12, bottom: 2),
+                decoration: BoxDecoration(
+                  color: selected
+                      ? const Color(0x55FFFFFF)
+                      : Colors.transparent,
+                  borderRadius: const BorderRadius.only(
+                    topLeft: Radius.circular(13),
+                    topRight: Radius.circular(13),
+                    bottomLeft: Radius.circular(8),
+                    bottomRight: Radius.circular(8),
+                  ),
+                  border: Border.all(
+                    color: selected
+                        ? Colors.white.withValues(alpha: 0.44)
+                        : Colors.transparent,
+                  ),
+                ),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(icon, color: const Color(0xFF0B2B2B), size: 20),
+                        const SizedBox(height: 2),
+                        Text(
+                          label,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            height: 1.0,
+                            color: Color(0xFF0B2B2B),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+              if (selected)
+                Positioned(
+                  left: 10,
+                  right: 10,
+                  bottom: -1,
+                  child: Container(
+                    height: 2,
+                    decoration: BoxDecoration(
+                      color: railFill,
+                      borderRadius: BorderRadius.circular(99),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (expanded) {
+      return Expanded(child: tab);
+    }
+
+    return tab;
+  }
+}
+
 class _InventoryStockPageState extends State<InventoryStockPage>
-    with WidgetsBindingObserver {
+    with WidgetsBindingObserver, SingleTickerProviderStateMixin {
   final SupabaseClient supa = Supabase.instance.client;
+  late final TabController _tabController;
+  final Map<int, InventoryGridTopBarData?> _topBarDataByTab =
+      <int, InventoryGridTopBarData?>{};
   final TextEditingController _inventoryAvgBaleWeightC = TextEditingController(
     text: '850',
   );
@@ -947,6 +1338,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
   List<Map<String, dynamic>> _cutSuggestedClosingRows = [];
   List<_CommercialMaterialOption> _commercialMaterials = [];
   List<_GeneralMaterialOption> _generalMaterials = [];
+  Map<String, Set<String>> _commercialSourceRulesByCode = {};
   List<String> _sites = [];
   String? _selectedSite;
   late DateTime _selectedPeriodMonth;
@@ -955,25 +1347,37 @@ class _InventoryStockPageState extends State<InventoryStockPage>
   late DateTime _inventoryToDate;
   String? _cutActionBusy;
 
+  InventoryGridTopBarData? get _currentTopBarData =>
+      _topBarDataByTab[_tabController.index];
+
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 3, vsync: this)
+      ..addListener(_handleTabIndexChanged);
     _selectedPeriodMonth = DateTime(_today.year, _today.month, 1);
     _selectedAsOfDate = _today;
     _inventoryFromDate = _selectedPeriodMonth;
     _inventoryToDate = _today;
-    WidgetsBinding.instance.addObserver(this);
-    _loadAll();
-    _setupAutoRefresh();
+  }
+
+  void _handleTabIndexChanged() {
+    if (!mounted || _tabController.indexIsChanging) return;
+    setState(() {});
   }
 
   @override
   void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    _autoRefreshTimer?.cancel();
-    _inventoryRealtimeChannel?.unsubscribe();
+    _tabController
+      ..removeListener(_handleTabIndexChanged)
+      ..dispose();
     _inventoryAvgBaleWeightC.dispose();
     super.dispose();
+  }
+
+  void _handleTopBarChanged(int tabIndex, InventoryGridTopBarData data) {
+    if (!mounted) return;
+    setState(() => _topBarDataByTab[tabIndex] = data);
   }
 
   @override
@@ -1216,95 +1620,59 @@ class _InventoryStockPageState extends State<InventoryStockPage>
   }
 
   Future<void> _showInventoryUsageGuide() async {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Instructivo de uso - Inventario'),
-        content: const SizedBox(
-          width: 620,
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  '1) Para que sirve este modulo',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Este modulo no captura entradas ni salidas del dia. Aqui se consulta el inventario consolidado por periodo y se define la apertura mensual con la que arranca cada material.',
-                ),
-                SizedBox(height: 10),
-                Text(
-                  '2) Cuando se usa',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Se usa principalmente al inicio de mes para revisar o capturar aperturas, y durante el mes para validar existencias acumuladas entre una fecha inicial y una fecha de corte.',
-                ),
-                SizedBox(height: 10),
-                Text(
-                  '3) Como leer la pestaña Detalles',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'La pestaña Detalles muestra el inventario resultante del periodo seleccionado: apertura del mes + movimientos netos + entradas/salidas de producción = existencia final.',
-                ),
-                Text(
-                  'Si cambias el rango de fechas, cambias el corte del reporte, no el inventario guardado en base.',
-                ),
-                SizedBox(height: 10),
-                Text(
-                  '4) Como usar Opening balances',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'Opening balances sirve para dejar fijo con que inventario arranca el mes por material. Esa captura debe hacerse una vez por periodo, normalmente con base en cierre del mes anterior o conteo validado.',
-                ),
-                Text(
-                  'Modificar una apertura cambia el punto de partida del inventario del mes; no sustituye movimientos diarios ya registrados.',
-                ),
-                SizedBox(height: 10),
-                Text(
-                  '5) Secuencia recomendada',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-                SizedBox(height: 4),
-                Text('1. Selecciona mes y fecha de corte.'),
-                Text(
-                  '2. Revisa Detalles para validar comportamiento por material.',
-                ),
-                Text(
-                  '3. En Opening balances captura o corrige aperturas del periodo si hace falta.',
-                ),
-                Text('4. Exporta CSV si necesitas conciliacion o respaldo.'),
-                SizedBox(height: 10),
-                Text(
-                  '6) Reglas importantes',
-                  style: TextStyle(fontWeight: FontWeight.w800),
-                ),
-                SizedBox(height: 4),
-                Text(
-                  'No uses este modulo para ajustar consumo diario; eso se corrige en Entradas y Salidas, Produccion o Almacen, segun el origen.',
-                ),
-                Text(
-                  'Si una apertura se cambia a mitad de mes, el inventario consolidado del periodo tambien cambia.',
-                ),
-              ],
-            ),
-          ),
+    await _showModuleGuideDialog(
+      context,
+      title: 'Instructivo de uso',
+      subtitle: 'Inventario',
+      sections: const [
+        _GuideSectionData(
+          heading: 'Para qué sirve',
+          lines: [
+            'Inventario muestra las existencias actuales del sistema.',
+            'Se divide en inventario general y en inventario comercial o clasificado de patio.',
+          ],
         ),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Entendido'),
-          ),
-        ],
-      ),
+        _GuideSectionData(
+          heading: 'Cómo está dividido',
+          lines: [
+            'Inventario general muestra la materia prima o familia base: CARTÓN, CHATARRA, METAL, PAPEL, PLÁSTICO y MADERA.',
+            'Inventario comercial muestra lo que ya existe clasificado en patio: PACAS, ARCHIVO, ALUMINIO, TARIMA y demás clasificados.',
+            'Aperturas muestra con cuánto arrancó el sistema o el periodo.',
+          ],
+        ),
+        _GuideSectionData(
+          heading: 'Cómo se calcula',
+          lines: [
+            'Existencia actual = Apertura + Movimiento.',
+            'Apertura es el saldo inicial con el que arrancaste.',
+            'Movimiento es todo lo que pasó después: entradas, salidas, producción o ajustes.',
+          ],
+        ),
+        _GuideSectionData(
+          heading: 'Cómo leer cada nivel',
+          lines: [
+            'En general, una entrada suma y Producción descuenta.',
+            'En comercial, Producción suma y las ventas descuentan.',
+            'Por eso una paca vendida baja del patio clasificado, no del material base.',
+          ],
+        ),
+        _GuideSectionData(
+          heading: 'Aperturas, cortes y arrastre',
+          lines: [
+            'La apertura inicial sí es necesaria para arrancar limpio.',
+            'Después el inventario puede seguir arrastrándose solo con la operación diaria, sin abrir cada mes a la fuerza.',
+            'Los cortes siguen existiendo: se compara el saldo del sistema contra el conteo físico y se ajusta si hace falta.',
+          ],
+        ),
+        _GuideSectionData(
+          heading: 'Ejemplos rápidos',
+          lines: [
+            'Si abres CARTÓN con 1000, entra 500 y Producción consume 300, el movimiento neto es +200 y la existencia actual queda en 1200.',
+            'Si PACA AMERICANA no tiene apertura, Producción suma 920 y una venta descuenta 300, el movimiento neto es +620 y esa es la existencia actual.',
+            'El arrastre entre meses sale del historial de aperturas y movimientos, no de una captura manual separada llamada movimiento.',
+          ],
+        ),
+      ],
     );
   }
 
@@ -1425,6 +1793,10 @@ class _InventoryStockPageState extends State<InventoryStockPage>
             .eq('active', true)
             .order('name'),
         supa
+            .from('commercial_material_source_rules')
+            .select('commercial_material_code,allowed_source_material')
+            .eq('is_active', true),
+        supa
             .from('inventory_opening_templates')
             .select(
               'id,site,material,commercial_material_code,sort_order,is_active',
@@ -1452,7 +1824,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
       );
       final widgetRow = _buildWidgetRowFromInventoryRows(rows);
       final cutSuggestedClosingRows = _withOperationalMaterials(
-        (results[6] as List).cast<Map<String, dynamic>>(),
+        (results[7] as List).cast<Map<String, dynamic>>(),
       );
       final commercialMaterials =
           (results[3] as List)
@@ -1475,7 +1847,7 @@ class _InventoryStockPageState extends State<InventoryStockPage>
               return a.code.compareTo(b.code);
             });
       final generalMaterials =
-          (results[5] as List)
+          (results[6] as List)
               .cast<Map<String, dynamic>>()
               .map(
                 (r) => _GeneralMaterialOption(
@@ -1494,6 +1866,19 @@ class _InventoryStockPageState extends State<InventoryStockPage>
               if (byName != 0) return byName;
               return a.id.compareTo(b.id);
             });
+      final commercialSourceRulesByCode = <String, Set<String>>{};
+      for (final row in (results[4] as List).cast<Map<String, dynamic>>()) {
+        final code = _normalizeInventoryMaterialKey(
+          (row['commercial_material_code'] ?? '').toString(),
+        );
+        final source = _normalizeInventoryMaterialKey(
+          (row['allowed_source_material'] ?? '').toString(),
+        );
+        if (code.isEmpty || source.isEmpty) continue;
+        commercialSourceRulesByCode
+            .putIfAbsent(code, () => <String>{})
+            .add(source);
+      }
       if (!mounted) return;
       setState(() {
         _widgetRow = widgetRow;
@@ -1502,11 +1887,12 @@ class _InventoryStockPageState extends State<InventoryStockPage>
           results[1] as Map<String, dynamic>?,
         );
         _openingBalanceRows = (results[2] as List).cast<Map<String, dynamic>>();
-        _openingTemplateRows = (results[4] as List)
+        _openingTemplateRows = (results[5] as List)
             .cast<Map<String, dynamic>>();
         _cutSuggestedClosingRows = cutSuggestedClosingRows;
         _commercialMaterials = commercialMaterials;
         _generalMaterials = generalMaterials;
+        _commercialSourceRulesByCode = commercialSourceRulesByCode;
       });
     } catch (e) {
       _toast('No se pudo cargar inventarios: $e');
@@ -1686,7 +2072,14 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     String material,
   ) {
     final filtered = _commercialMaterials
-        .where((c) => (c.inventoryMaterial ?? '') == material)
+        .where(
+          (c) => _commercialMatchesInventoryMaterial(
+            option: c,
+            selectedMaterial: material,
+            generalMaterials: _generalMaterials,
+            commercialSourceRulesByCode: _commercialSourceRulesByCode,
+          ),
+        )
         .toList();
     filtered.sort((a, b) {
       final byName = _normalizeSortKey(
@@ -1986,6 +2379,8 @@ class _InventoryStockPageState extends State<InventoryStockPage>
       context: context,
       builder: (dialogContext) => _OpeningBalanceCreateDialog(
         allCommercialMaterials: _commercialMaterials,
+        generalMaterials: _generalMaterials,
+        commercialSourceRulesByCode: _commercialSourceRulesByCode,
         openingTemplateRows: _openingTemplateRows,
       ),
     );
@@ -2349,8 +2744,9 @@ class _InventoryStockPageState extends State<InventoryStockPage>
 
   @override
   Widget build(BuildContext context) {
+    final topBar = _currentTopBarData;
     return DefaultTabController(
-      length: 2,
+      length: 3,
       child: ServicesShell(
         headerTitle: 'Inventario',
         activeOverlayModule: ServicesOverlayNavModule.inventario,
@@ -2367,78 +2763,78 @@ class _InventoryStockPageState extends State<InventoryStockPage>
         onHeaderGuide: _showInventoryUsageGuide,
         headerGuideLabel: 'Instructivo',
         onGoToCatalogs: null,
-        topContent: _loading
-            ? null
-            : Builder(
-                builder: (context) {
-                  final controller = DefaultTabController.of(context);
-                  return _buildStockTopToolbar(controller);
-                },
-              ),
-        child: _loading
-            ? const Center(child: CircularProgressIndicator())
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const _InventoryStockTabs(),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: TabBarView(
+        topContent: Builder(
+          builder: (context) {
+            final current = _currentTopBarData;
+            if (current == null) return const SizedBox.shrink();
+            return InventoryGridTopBar(data: current, showMetric: false);
+          },
+        ),
+        child: Padding(
+          padding: const EdgeInsets.only(top: 8),
+          child: AreaThemeScope(
+            tokens: _kOperationsAreaTokens,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final tabs = Align(
+                      alignment: Alignment.topLeft,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 560),
+                        child: _InventoryStockTabs(controller: _tabController),
+                      ),
+                    );
+                    final metric = topBar == null
+                        ? const SizedBox.shrink()
+                        : Padding(
+                            padding: const EdgeInsets.only(top: 4),
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 330),
+                              child: InventoryGridTopBar(
+                                data: topBar,
+                                showActions: false,
+                              ),
+                            ),
+                          );
+
+                    if (constraints.maxWidth < 980) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          tabs,
+                          if (topBar != null) ...[
+                            const SizedBox(height: 8),
+                            metric,
+                          ],
+                        ],
+                      );
+                    }
+
+                    return Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _InventorySummaryBody(
-                          widgetRow: _widgetRow,
-                          inventoryRows: _inventoryRows,
-                          sites: _sites,
-                          selectedSite: _selectedSite,
-                          periodMonth: _inventoryFromDate,
-                          asOfDate: _inventoryToDate,
-                          onSiteChanged: (site) async {
-                            if (site == null || site == _selectedSite) return;
-                            setState(() => _selectedSite = site);
-                            await _loadAll(showRefreshing: true);
-                          },
-                          onPickPeriodMonth: _pickInventoryDateRange,
-                          onPickAsOfDate: _pickInventoryDateRange,
-                          avgBaleWeightController: _inventoryAvgBaleWeightC,
-                          onAvgChanged: () => setState(() {}),
-                        ),
-                        _InventoryMonthlyCutBody(
-                          sites: _sites,
-                          selectedSite: _selectedSite,
-                          periodMonth: _selectedPeriodMonth,
-                          cutRow: _monthlyCutRow,
-                          openingBalanceRows: _openingBalanceRows,
-                          openingTemplateRows: _openingTemplateRows,
-                          suggestedClosingRows: _cutSuggestedClosingRows,
-                          commercialMaterials: _commercialMaterials,
-                          generalMaterials: _generalMaterials,
-                          getOpeningBalanceRows: () => _openingBalanceRows,
-                          actionBusy: _cutActionBusy,
-                          onSiteChanged: (site) async {
-                            if (site == null || site == _selectedSite) return;
-                            setState(() => _selectedSite = site);
-                            await _loadAll(showRefreshing: true);
-                          },
-                          onPeriodMonthChanged: _setPeriodMonth,
-                          onGenerate: () => _generateCut(overwrite: false),
-                          onRegenerate: () => _generateCut(overwrite: true),
-                          onLock: _lockCut,
-                          onUnlock: _unlockCut,
-                          onEditOpeningRow: _editOpeningBalanceRow,
-                          onSaveInlineOpeningRowEdits:
-                              _saveOpeningBalanceRowEdits,
-                          onAddOpeningRow: _addOpeningBalanceRow,
-                          onAddInlineOpeningRow: _addOpeningBalanceRowInline,
-                          onDeleteOpeningRow: _deleteOpeningBalanceRow,
-                          onBulkEditOpeningRows: _bulkEditOpeningBalanceRows,
-                          onBulkDeleteOpeningRows:
-                              _bulkDeleteOpeningBalanceRows,
-                        ),
+                        Expanded(child: tabs),
+                        if (topBar != null) ...[
+                          const SizedBox(width: 8),
+                          metric,
+                        ],
                       ],
-                    ),
+                    );
+                  },
+                ),
+                const SizedBox(height: 8),
+                Expanded(
+                  child: InventoryStockV2Body(
+                    controller: _tabController,
+                    onTopBarChanged: _handleTopBarChanged,
                   ),
-                ],
-              ),
+                ),
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -2620,6 +3016,7 @@ class _InventoryMonthlyCutBody extends StatelessWidget {
   final List<Map<String, dynamic>> suggestedClosingRows;
   final List<_CommercialMaterialOption> commercialMaterials;
   final List<_GeneralMaterialOption> generalMaterials;
+  final Map<String, Set<String>> commercialSourceRulesByCode;
   final List<Map<String, dynamic>> Function() getOpeningBalanceRows;
   final String? actionBusy;
   final ValueChanged<String?> onSiteChanged;
@@ -2653,6 +3050,7 @@ class _InventoryMonthlyCutBody extends StatelessWidget {
     required this.suggestedClosingRows,
     required this.commercialMaterials,
     required this.generalMaterials,
+    required this.commercialSourceRulesByCode,
     required this.getOpeningBalanceRows,
     required this.actionBusy,
     required this.onSiteChanged,
@@ -2830,6 +3228,7 @@ class _InventoryMonthlyCutBody extends StatelessWidget {
             onAddRow: onAddOpeningRow,
             commercialMaterials: commercialMaterials,
             generalMaterials: generalMaterials,
+            commercialSourceRulesByCode: commercialSourceRulesByCode,
             openingTemplateRows: openingTemplateRows,
             onEditRow: onEditOpeningRow,
             onSaveInlineRowEdits: onSaveInlineOpeningRowEdits,
@@ -2900,6 +3299,7 @@ class _OpeningBalancesFloatingDialog extends StatefulWidget {
   final Map<String, String> commercialLabelsByCode;
   final List<_CommercialMaterialOption> commercialMaterials;
   final List<_GeneralMaterialOption> generalMaterials;
+  final Map<String, Set<String>> commercialSourceRulesByCode;
   final List<Map<String, dynamic>> openingTemplateRows;
   final bool editable;
   final Future<void> Function() onAddRow;
@@ -2916,6 +3316,7 @@ class _OpeningBalancesFloatingDialog extends StatefulWidget {
     required this.commercialLabelsByCode,
     required this.commercialMaterials,
     required this.generalMaterials,
+    required this.commercialSourceRulesByCode,
     required this.openingTemplateRows,
     required this.editable,
     required this.onAddRow,
@@ -3138,9 +3539,24 @@ class _OpeningBalancesFloatingDialogState
         final opt = byCode[key];
         if (opt != null && seen.add(key)) templated.add(opt);
       }
-      // If a template exists for the selected operational material, treat it as
-      // the authoritative whitelist. Returning fallback options here would
-      // reintroduce unrelated commercial materials.
+      final compatible =
+          widget.commercialMaterials
+              .where(
+                (c) =>
+                    _openingCommercialMatchesInsertMaterial(c, _insertMaterial),
+              )
+              .toList()
+            ..sort((a, b) {
+              final byName = _normalizeSortKey(
+                a.name,
+              ).compareTo(_normalizeSortKey(b.name));
+              if (byName != 0) return byName;
+              return a.code.compareTo(b.code);
+            });
+      for (final opt in compatible) {
+        final key = _normalizeOpeningKey(opt.code);
+        if (seen.add(key)) templated.add(opt);
+      }
       return templated;
     }
 
@@ -3163,44 +3579,15 @@ class _OpeningBalancesFloatingDialogState
     _CommercialMaterialOption option,
     String insertMaterial,
   ) {
-    String optionMaterial = (option.inventoryMaterial ?? '').trim();
-    if ((option.materialId ?? '').trim().isNotEmpty) {
-      final general = widget.generalMaterials.firstWhere(
-        (g) => g.id == option.materialId,
-        orElse: () => const _GeneralMaterialOption(
-          id: '',
-          name: '',
-          inventoryMaterialCode: null,
-        ),
-      );
-      final mapped = (general.inventoryMaterialCode ?? '').trim();
-      if (mapped.isNotEmpty) {
-        optionMaterial = mapped;
-      }
-    }
-    if (optionMaterial.isEmpty) return false;
-    if (_isOpeningMetalMaterial(insertMaterial) &&
-        _isOpeningMetalMaterial(optionMaterial)) {
-      return true;
-    }
-    return optionMaterial == insertMaterial;
+    return _commercialMatchesInventoryMaterial(
+      option: option,
+      selectedMaterial: insertMaterial,
+      generalMaterials: widget.generalMaterials,
+      commercialSourceRulesByCode: widget.commercialSourceRulesByCode,
+    );
   }
 
   String _normalizeOpeningKey(String value) => value.trim().toUpperCase();
-
-  bool _isOpeningMetalMaterial(String material) {
-    switch (material) {
-      case 'METAL':
-      case 'METAL_ALUMINUM':
-      case 'METAL_STEEL':
-      case 'METAL_COPPER':
-      case 'METAL_BRASS':
-      case 'METAL_OTHER':
-        return true;
-      default:
-        return false;
-    }
-  }
 
   bool _isGeneratedTotalRow(Map<String, dynamic> row) {
     final source = _normalizeOpeningKey((row['source'] ?? '').toString());
@@ -6664,10 +7051,14 @@ class _OpeningBalanceEditDialogState extends State<_OpeningBalanceEditDialog> {
 
 class _OpeningBalanceCreateDialog extends StatefulWidget {
   final List<_CommercialMaterialOption> allCommercialMaterials;
+  final List<_GeneralMaterialOption> generalMaterials;
+  final Map<String, Set<String>> commercialSourceRulesByCode;
   final List<Map<String, dynamic>> openingTemplateRows;
 
   const _OpeningBalanceCreateDialog({
     required this.allCommercialMaterials,
+    required this.generalMaterials,
+    required this.commercialSourceRulesByCode,
     required this.openingTemplateRows,
   });
 
@@ -6721,11 +7112,41 @@ class _OpeningBalanceCreateDialogState
         final option = byCode[code];
         if (option != null && seen.add(code)) templated.add(option);
       }
+      final compatible =
+          widget.allCommercialMaterials
+              .where(
+                (c) => _commercialMatchesInventoryMaterial(
+                  option: c,
+                  selectedMaterial: _material,
+                  generalMaterials: widget.generalMaterials,
+                  commercialSourceRulesByCode:
+                      widget.commercialSourceRulesByCode,
+                ),
+              )
+              .toList()
+            ..sort((a, b) {
+              final byName = _normalizeSortKey(
+                a.name,
+              ).compareTo(_normalizeSortKey(b.name));
+              if (byName != 0) return byName;
+              return a.code.compareTo(b.code);
+            });
+      for (final option in compatible) {
+        final key = _normalizeOpeningKey(option.code);
+        if (seen.add(key)) templated.add(option);
+      }
       return templated;
     }
 
     final filtered = widget.allCommercialMaterials
-        .where((c) => (c.inventoryMaterial ?? '') == _material)
+        .where(
+          (c) => _commercialMatchesInventoryMaterial(
+            option: c,
+            selectedMaterial: _material,
+            generalMaterials: widget.generalMaterials,
+            commercialSourceRulesByCode: widget.commercialSourceRulesByCode,
+          ),
+        )
         .toList();
     filtered.sort((a, b) {
       final byName = _normalizeSortKey(
@@ -7133,6 +7554,76 @@ class _GeneralMaterialOption {
     required this.name,
     required this.inventoryMaterialCode,
   });
+}
+
+String _normalizeInventoryMaterialKey(String value) =>
+    value.trim().toUpperCase();
+
+bool _isInventoryMetalMaterial(String material) {
+  switch (_normalizeInventoryMaterialKey(material)) {
+    case 'METAL':
+    case 'METAL_ALUMINUM':
+    case 'METAL_STEEL':
+    case 'METAL_COPPER':
+    case 'METAL_BRASS':
+    case 'METAL_OTHER':
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool _commercialMatchesInventoryMaterial({
+  required _CommercialMaterialOption option,
+  required String selectedMaterial,
+  required List<_GeneralMaterialOption> generalMaterials,
+  required Map<String, Set<String>> commercialSourceRulesByCode,
+}) {
+  final selectedKey = _normalizeInventoryMaterialKey(selectedMaterial);
+  if (selectedKey.isEmpty) return false;
+
+  final optionCodeKey = _normalizeInventoryMaterialKey(option.code);
+  final directInventoryKey = _normalizeInventoryMaterialKey(
+    option.inventoryMaterial ?? '',
+  );
+  final sourceRules = commercialSourceRulesByCode[optionCodeKey];
+  if (sourceRules != null && sourceRules.isNotEmpty) {
+    if (sourceRules.contains(selectedKey)) return true;
+    if (_isInventoryMetalMaterial(selectedKey) &&
+        sourceRules.any(_isInventoryMetalMaterial)) {
+      return true;
+    }
+    if (directInventoryKey.isNotEmpty && directInventoryKey == selectedKey) {
+      return true;
+    }
+    return false;
+  }
+
+  var optionMaterialKey = directInventoryKey;
+  final optionMaterialId = (option.materialId ?? '').trim();
+  if (optionMaterialId.isNotEmpty) {
+    final general = generalMaterials.firstWhere(
+      (g) => g.id == optionMaterialId,
+      orElse: () => const _GeneralMaterialOption(
+        id: '',
+        name: '',
+        inventoryMaterialCode: null,
+      ),
+    );
+    final generalInventoryKey = _normalizeInventoryMaterialKey(
+      general.inventoryMaterialCode ?? '',
+    );
+    if (generalInventoryKey.isNotEmpty) {
+      optionMaterialKey = generalInventoryKey;
+    }
+  }
+
+  if (optionMaterialKey.isEmpty) return false;
+  if (_isInventoryMetalMaterial(selectedKey) &&
+      _isInventoryMetalMaterial(optionMaterialKey)) {
+    return true;
+  }
+  return optionMaterialKey == selectedKey;
 }
 
 BoxDecoration _glassCardDecoration() {

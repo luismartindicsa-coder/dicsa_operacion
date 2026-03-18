@@ -37,7 +37,6 @@ const double _kInvTableContentW =
     10 +
     _kInvActionsW;
 
-const Color _kInvGlassMenuBg = Color(0xE6ECF4FA);
 const Color _kInvFilterAccent = Color(0xFF5D7F9E);
 const Color _kInvFilterAccentSoft = Color(0xFFDCE7F2);
 
@@ -335,7 +334,6 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   List<_InvOpt> _vehicles = [];
   List<_InvMaterialOpt> _materials = [];
   List<_CommercialMaterialOpt> _commercialMaterials = [];
-  Map<String, Set<String>> _commercialSourceRulesByCode = {};
   List<Map<String, dynamic>> _rows = [];
 
   String? _selectedRowId;
@@ -439,6 +437,40 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  String _friendlyPostgrestMessage(
+    PostgrestException error, {
+    required String fallbackAction,
+  }) {
+    final message = error.message.trim();
+    final details = (error.details ?? '').toString().trim();
+    final hint = (error.hint ?? '').toString().trim();
+    if (error.code == 'P0001' && message.isNotEmpty) {
+      return message;
+    }
+    if (message.contains('Inventario insuficiente')) {
+      return message;
+    }
+    if (message.contains('material_target_chk')) {
+      return 'El movimiento no coincide con el nivel de inventario configurado.';
+    }
+    if (message.contains('weight_chk')) {
+      return 'El peso capturado no es válido para este movimiento.';
+    }
+    if (message.contains('foreign key') ||
+        message.contains('violates foreign key')) {
+      return 'Hay un material, cliente, chofer o unidad inválidos en la captura.';
+    }
+    if (message.contains('duplicate') || message.contains('unique')) {
+      return 'Ya existe un registro conflictivo con esos datos.';
+    }
+    final raw = <String>[
+      message,
+      details,
+      hint,
+    ].where((part) => part.isNotEmpty).join(' ');
+    return raw.isEmpty ? fallbackAction : raw;
+  }
+
   Future<void> _bootstrap() async {
     await _loadCatalogs();
     await _loadRows();
@@ -498,7 +530,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'movements',
+          table: 'inventory_movements_v2',
           callback: (_) => _requestReload(),
         )
         .subscribe();
@@ -601,19 +633,18 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
             .eq('status', 'activo')
             .order('code'),
         supa
-            .from('commercial_material_catalog')
-            .select('code,name,family,inventory_material,material_id')
-            .eq('active', true)
-            .order('name'),
-        supa
-            .from('materials')
-            .select('id,name,inventory_material_code,inventory_general_code')
+            .from('material_commercial_catalog_v2')
+            .select('id,code,name,family,general_material_id')
             .eq('is_active', true)
+            .eq(_isIn ? 'allows_direct_entry' : 'allows_sale', true)
+            .order('sort_order')
             .order('name'),
         supa
-            .from('commercial_material_source_rules')
-            .select('commercial_material_code,allowed_source_material')
-            .eq('is_active', true),
+            .from('material_general_catalog_v2')
+            .select('id,code,name')
+            .eq('is_active', true)
+            .order('sort_order')
+            .order('name'),
       ]);
       final sites = (results[0] as List).cast<Map<String, dynamic>>();
       final drivers = (results[1] as List).cast<Map<String, dynamic>>();
@@ -621,19 +652,6 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       final commercials = (results[3] as List).cast<Map<String, dynamic>>();
       final materialsCatalog = (results[4] as List)
           .cast<Map<String, dynamic>>();
-      final sourceRules = (results[5] as List).cast<Map<String, dynamic>>();
-      final commercialSourceRulesByCode = <String, Set<String>>{};
-      for (final row in sourceRules) {
-        final code = (row['commercial_material_code'] ?? '').toString().trim();
-        final source = (row['allowed_source_material'] ?? '')
-            .toString()
-            .trim()
-            .toUpperCase();
-        if (code.isEmpty || source.isEmpty) continue;
-        commercialSourceRulesByCode
-            .putIfAbsent(code, () => <String>{})
-            .add(source);
-      }
 
       if (!mounted) return;
       setState(() {
@@ -668,8 +686,8 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
               (e) => _InvMaterialOpt(
                 id: (e['id'] ?? '').toString(),
                 name: ((e['name'] ?? '') as String).trim(),
-                inventoryMaterialCode: e['inventory_material_code']?.toString(),
-                inventoryGeneralCode: e['inventory_general_code']?.toString(),
+                inventoryMaterialCode: e['code']?.toString(),
+                inventoryGeneralCode: e['code']?.toString(),
               ),
             )
             .where((e) => e.id.isNotEmpty && e.name.isNotEmpty)
@@ -677,16 +695,18 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         _commercialMaterials = commercials
             .map(
               (e) => _CommercialMaterialOpt(
+                id: (e['id'] ?? '').toString(),
                 code: (e['code'] ?? '').toString(),
                 name: (e['name'] ?? '').toString(),
                 family: (e['family'] ?? '').toString(),
-                inventoryMaterial: e['inventory_material']?.toString(),
-                materialId: e['material_id']?.toString(),
+                inventoryMaterial: null,
+                materialId: e['general_material_id']?.toString(),
               ),
             )
-            .where((e) => e.code.isNotEmpty && e.name.isNotEmpty)
+            .where(
+              (e) => e.id.isNotEmpty && e.code.isNotEmpty && e.name.isNotEmpty,
+            )
             .toList();
-        _commercialSourceRulesByCode = commercialSourceRulesByCode;
         if (!_materials.any((m) => m.id == _draft.materialId)) {
           _draft = _draft.copyWith(materialId: null);
         }
@@ -715,15 +735,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     }
 
     try {
-      final data = await supa
-          .from('movements')
-          .select('*')
-          .eq('flow', widget.flow)
-          .eq('movement_origin', 'MANUAL')
-          .order('op_date', ascending: false)
-          .order('created_at', ascending: false);
-
-      final nextRows = (data as List).cast<Map<String, dynamic>>();
+      final nextRows = await _loadRowsFromV2();
       final nextSignature = _rowsSignature(nextRows);
       if (onlyApplyIfChanged && nextSignature == _rowsSnapshotSignature) {
         if (showLoader && mounted) setState(() => _loadingRows = false);
@@ -764,6 +776,44 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     }
   }
 
+  Future<List<Map<String, dynamic>>> _loadRowsFromV2() async {
+    final data = await supa
+        .from('inventory_movements_v2')
+        .select(
+          '*,general_material:general_material_id(id,code,name),'
+          'commercial_material:commercial_material_id(id,code,name,general_material_id),'
+          'source_commercial:source_commercial_material_id(id,code,name)',
+        )
+        .eq('flow', widget.flow)
+        .eq('inventory_level', _isIn ? 'GENERAL' : 'COMMERCIAL')
+        .order('op_date', ascending: false)
+        .order('created_at', ascending: false);
+    return (data as List).cast<Map<String, dynamic>>().map((row) {
+      final general = (row['general_material'] as Map?)
+          ?.cast<String, dynamic>();
+      final commercialMaterial = (row['commercial_material'] as Map?)
+          ?.cast<String, dynamic>();
+      final sourceCommercial = (row['source_commercial'] as Map?)
+          ?.cast<String, dynamic>();
+      return <String, dynamic>{
+        ...row,
+        'material_id': _isIn
+            ? row['general_material_id']
+            : (commercialMaterial == null
+                  ? null
+                  : commercialMaterial['general_material_id']),
+        'material': _isIn
+            ? (general == null ? null : general['code'])
+            : (commercialMaterial == null ? null : commercialMaterial['code']),
+        'commercial_material_code': _isIn
+            ? (sourceCommercial == null ? null : sourceCommercial['code'])
+            : (commercialMaterial == null ? null : commercialMaterial['code']),
+        'net_kg': row['net_kg'] ?? row['weight_kg'],
+        'movement_origin': 'MANUAL',
+      };
+    }).toList();
+  }
+
   Future<void> _insertDraft() async {
     _draft = _draftWithComputed();
     final grossKg = _parseNum(_draftGrossC.text);
@@ -771,9 +821,11 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     final netKg = grossKg == null || grossKg <= 0
         ? null
         : math.max(0, grossKg - (tareKg ?? 0)).toDouble();
+    final commercial = _commercialByCode(_draft.commercialMaterialCode);
+    final resolvedMaterialId = commercial?.materialId ?? _draft.materialId;
     final missingFields = <String>[];
     if (_draft.opDate == null) missingFields.add('Fecha');
-    if (_draft.materialId == null) missingFields.add('Material general');
+    if (resolvedMaterialId == null) missingFields.add('Material general');
     if (_draftReferenceC.text.trim().isEmpty) {
       missingFields.add('Ticket / folio');
     }
@@ -795,7 +847,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
 
     setState(() => _inserting = true);
     try {
-      final materialOpt = _materialById(_draft.materialId);
+      final materialOpt = _materialById(resolvedMaterialId);
       if (materialOpt == null) {
         _toast('Selecciona un material general válido');
         return;
@@ -810,51 +862,79 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         _toast(extrasError);
         return;
       }
-      final commercial = _commercialByCode(_draft.commercialMaterialCode);
-      final invCode = (commercial?.inventoryMaterial ?? '')
-          .trim()
-          .toUpperCase();
-      if (commercial == null || invCode.isEmpty) {
-        _toast(
-          'El material comercial seleccionado no tiene material operativo configurado en catálogo.',
-        );
-        return;
-      }
       final totalAmountKg = _totalAmountKg(
         netKg: netKg!,
         humidityPercent: _parseNum(_draftHumidityC.text),
         trashKg: _parseNum(_draftTrashC.text),
       );
       final siteName = _labelOf(_counterparties, _draft.counterpartySiteId);
-      await supa.from('movements').insert({
-        'op_date': _fmtDbDate(_draft.opDate!),
-        'flow': widget.flow,
-        'movement_origin': 'MANUAL',
-        'material_id': _draft.materialId,
-        'material': invCode,
-        'weight_kg': netKg,
-        'gross_kg': grossKg,
-        'tare_kg': tareKg,
-        'net_kg': netKg,
-        'humidity_percent': _parseNum(_draftHumidityC.text),
-        'trash_kg': _parseNum(_draftTrashC.text),
-        'total_amount_kg': totalAmountKg,
-        'commercial_material_code': _draft.commercialMaterialCode,
-        'movement_reason': _isIn ? _draft.movementReason : null,
-        'scale_ticket': _draft.scaleTicket.trim().isEmpty
-            ? null
-            : _draft.scaleTicket.trim(),
-        'counterparty_site_id': _draft.counterpartySiteId,
-        'driver_employee_id': _draft.driverEmployeeId,
-        'vehicle_id': _draft.vehicleId,
-        'counterparty': siteName,
-        'reference': _draftReferenceC.text.trim().isEmpty
-            ? null
-            : _draftReferenceC.text.trim(),
-        'notes': _draftNotesC.text.trim().isEmpty
-            ? null
-            : _draftNotesC.text.trim(),
-      });
+      if (commercial == null || commercial.id.isEmpty) {
+        _toast('Selecciona un material comercial válido');
+        return;
+      }
+      await supa
+          .from('inventory_movements_v2')
+          .insert(
+            _isIn
+                ? {
+                    'op_date': _fmtDbDate(_draft.opDate!),
+                    'inventory_level': 'GENERAL',
+                    'flow': 'IN',
+                    'general_material_id': resolvedMaterialId,
+                    'source_commercial_material_id': commercial.id,
+                    'origin_type': _draft.movementReason == 'SCRAP_SEPARATION'
+                        ? 'TRANSFORMATION'
+                        : 'DIRECT_PURCHASE',
+                    'weight_kg': netKg,
+                    'gross_kg': grossKg,
+                    'tare_kg': tareKg,
+                    'net_kg': netKg,
+                    'humidity_percent': _parseNum(_draftHumidityC.text),
+                    'trash_kg': _parseNum(_draftTrashC.text),
+                    'total_amount_kg': totalAmountKg,
+                    'movement_reason': _draft.movementReason,
+                    'scale_ticket': _draft.scaleTicket.trim().isEmpty
+                        ? null
+                        : _draft.scaleTicket.trim(),
+                    'counterparty_site_id': _draft.counterpartySiteId,
+                    'driver_employee_id': _draft.driverEmployeeId,
+                    'vehicle_id': _draft.vehicleId,
+                    'counterparty': siteName,
+                    'reference': _draftReferenceC.text.trim().isEmpty
+                        ? null
+                        : _draftReferenceC.text.trim(),
+                    'notes': _draftNotesC.text.trim().isEmpty
+                        ? null
+                        : _draftNotesC.text.trim(),
+                  }
+                : {
+                    'op_date': _fmtDbDate(_draft.opDate!),
+                    'inventory_level': 'COMMERCIAL',
+                    'flow': 'OUT',
+                    'commercial_material_id': commercial.id,
+                    'origin_type': 'SALE',
+                    'weight_kg': netKg,
+                    'gross_kg': grossKg,
+                    'tare_kg': tareKg,
+                    'net_kg': netKg,
+                    'humidity_percent': _parseNum(_draftHumidityC.text),
+                    'trash_kg': _parseNum(_draftTrashC.text),
+                    'total_amount_kg': totalAmountKg,
+                    'scale_ticket': _draft.scaleTicket.trim().isEmpty
+                        ? null
+                        : _draft.scaleTicket.trim(),
+                    'counterparty_site_id': _draft.counterpartySiteId,
+                    'driver_employee_id': _draft.driverEmployeeId,
+                    'vehicle_id': _draft.vehicleId,
+                    'counterparty': siteName,
+                    'reference': _draftReferenceC.text.trim().isEmpty
+                        ? null
+                        : _draftReferenceC.text.trim(),
+                    'notes': _draftNotesC.text.trim().isEmpty
+                        ? null
+                        : _draftNotesC.text.trim(),
+                  },
+          );
       _toast('${_isIn ? 'Entrada' : 'Salida'} agregada');
       _initDraftDefaults();
       await _loadRows(showLoader: false);
@@ -865,7 +945,12 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         if (mounted) _insertFocusNode.requestFocus();
       });
     } on PostgrestException catch (e) {
-      _toast(e.message);
+      _toast(
+        _friendlyPostgrestMessage(
+          e,
+          fallbackAction: 'No se pudo guardar el movimiento.',
+        ),
+      );
     } catch (e) {
       _toast('No se pudo insertar: $e');
     } finally {
@@ -917,13 +1002,18 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
 
   Future<void> _deleteRow(String id) async {
     try {
-      await supa.from('movements').delete().eq('id', id);
+      await supa.from('inventory_movements_v2').delete().eq('id', id);
       _bulkSelectedRowIds.remove(id);
       _toast('Eliminado');
       await _loadRows(showLoader: false);
       await widget.onChanged?.call();
     } on PostgrestException catch (e) {
-      _toast(e.message);
+      _toast(
+        _friendlyPostgrestMessage(
+          e,
+          fallbackAction: 'No se pudo eliminar el movimiento.',
+        ),
+      );
     } catch (e) {
       _toast('No se pudo eliminar movimiento: $e');
     }
@@ -931,7 +1021,62 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
 
   Future<void> _updateRow(String id, Map<String, dynamic> patch) async {
     try {
-      await supa.from('movements').update(patch).eq('id', id);
+      final commercial = _commercialByCode(
+        patch['commercial_material_code']?.toString(),
+      );
+      final resolvedMaterialId =
+          patch['material_id']?.toString() ?? commercial?.materialId;
+      if (commercial == null || resolvedMaterialId == null) {
+        _toast('Material comercial o general inválido');
+        return;
+      }
+      final mappedPatch = _isIn
+          ? <String, dynamic>{
+              'op_date': patch['op_date'],
+              'general_material_id': resolvedMaterialId,
+              'source_commercial_material_id': commercial.id,
+              'origin_type': patch['movement_reason'] == 'SCRAP_SEPARATION'
+                  ? 'TRANSFORMATION'
+                  : 'DIRECT_PURCHASE',
+              'weight_kg': patch['weight_kg'] ?? patch['net_kg'],
+              'gross_kg': patch['gross_kg'],
+              'tare_kg': patch['tare_kg'],
+              'net_kg': patch['net_kg'] ?? patch['weight_kg'],
+              'humidity_percent': patch['humidity_percent'],
+              'trash_kg': patch['trash_kg'],
+              'total_amount_kg': patch['total_amount_kg'],
+              'counterparty_site_id': patch['counterparty_site_id'],
+              'driver_employee_id': patch['driver_employee_id'],
+              'vehicle_id': patch['vehicle_id'],
+              'counterparty': patch['counterparty'],
+              'movement_reason': patch['movement_reason'],
+              'scale_ticket': patch['scale_ticket'],
+              'reference': patch['reference'],
+              'notes': patch['notes'],
+            }
+          : <String, dynamic>{
+              'op_date': patch['op_date'],
+              'commercial_material_id': commercial.id,
+              'origin_type': 'SALE',
+              'weight_kg': patch['weight_kg'] ?? patch['net_kg'],
+              'gross_kg': patch['gross_kg'],
+              'tare_kg': patch['tare_kg'],
+              'net_kg': patch['net_kg'] ?? patch['weight_kg'],
+              'humidity_percent': patch['humidity_percent'],
+              'trash_kg': patch['trash_kg'],
+              'total_amount_kg': patch['total_amount_kg'],
+              'counterparty_site_id': patch['counterparty_site_id'],
+              'driver_employee_id': patch['driver_employee_id'],
+              'vehicle_id': patch['vehicle_id'],
+              'counterparty': patch['counterparty'],
+              'scale_ticket': patch['scale_ticket'],
+              'reference': patch['reference'],
+              'notes': patch['notes'],
+            };
+      await supa
+          .from('inventory_movements_v2')
+          .update(mappedPatch)
+          .eq('id', id);
       final idx = _rows.indexWhere((r) => r['id'] == id);
       if (idx != -1) {
         setState(() => _rows[idx] = {..._rows[idx], ...patch});
@@ -940,7 +1085,12 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       }
       await widget.onChanged?.call();
     } on PostgrestException catch (e) {
-      _toast(e.message);
+      _toast(
+        _friendlyPostgrestMessage(
+          e,
+          fallbackAction: 'No se pudo actualizar el movimiento.',
+        ),
+      );
     } catch (e) {
       _toast('No se pudo actualizar movimiento: $e');
     }
@@ -958,13 +1108,19 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     setState(() => _bulkDeleting = true);
     try {
       final ids = _bulkSelectedRowIds.toList();
-      await supa.from('movements').delete().inFilter('id', ids);
+      await supa.from('inventory_movements_v2').delete().inFilter('id', ids);
       _bulkSelectedRowIds.clear();
       _toast('Eliminados ${ids.length} movimientos');
       await _loadRows(showLoader: false);
       await widget.onChanged?.call();
     } on PostgrestException catch (e) {
-      _toast(e.message);
+      _toast(
+        _friendlyPostgrestMessage(
+          e,
+          fallbackAction:
+              'No se pudieron eliminar los movimientos seleccionados.',
+        ),
+      );
     } catch (e) {
       _toast('No se pudieron eliminar movimientos: $e');
     } finally {
@@ -987,14 +1143,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     if (_exportingCsv) return;
     setState(() => _exportingCsv = true);
     try {
-      final data = await supa
-          .from('movements')
-          .select('*')
-          .eq('movement_origin', 'MANUAL')
-          .eq('flow', widget.flow)
-          .order('op_date')
-          .order('created_at');
-      final rows = (data as List).cast<Map<String, dynamic>>();
+      final rows = await _loadRowsFromV2ForExport();
       const headers = <String>[
         'id',
         'created_at',
@@ -1040,6 +1189,13 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     } finally {
       if (mounted) setState(() => _exportingCsv = false);
     }
+  }
+
+  Future<List<Map<String, dynamic>>> _loadRowsFromV2ForExport() async {
+    final rows = await _loadRowsFromV2();
+    return rows
+        .map((row) => <String, dynamic>{...row, 'flow': widget.flow})
+        .toList();
   }
 
   Future<String?> _writeDownloadsFile(String fileName, String content) async {
@@ -1113,9 +1269,8 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     String? materialId,
   ) {
     if (materialId == null || materialId.isEmpty) return _commercialMaterials;
-    final sourceCode = _sourceMaterialCodeForMaterialId(materialId);
     final filtered = _commercialMaterials
-        .where((opt) => _commercialMatchesMaterial(opt, materialId, sourceCode))
+        .where((opt) => _commercialMatchesMaterial(opt, materialId, null))
         .toList();
     return filtered.isEmpty ? _commercialMaterials : filtered;
   }
@@ -1125,28 +1280,8 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     String? materialId,
     String? sourceCode,
   ) {
-    final normalizedSource = (sourceCode ?? '').trim().toUpperCase();
-    if (normalizedSource.isNotEmpty) {
-      final allowed = _commercialSourceRulesByCode[opt.code];
-      if (allowed != null && allowed.isNotEmpty) {
-        return allowed.contains(normalizedSource);
-      }
-      final inventoryMaterial = (opt.inventoryMaterial ?? '')
-          .trim()
-          .toUpperCase();
-      if (inventoryMaterial == normalizedSource) return true;
-    }
+    sourceCode;
     return opt.materialId == null || opt.materialId == materialId;
-  }
-
-  String? _sourceMaterialCodeForMaterialId(String? materialId) {
-    final material = _materialById(materialId);
-    final operational = (material?.inventoryMaterialCode ?? '')
-        .trim()
-        .toUpperCase();
-    if (operational.isNotEmpty) return operational;
-    final general = (material?.inventoryGeneralCode ?? '').trim().toUpperCase();
-    return general.isEmpty ? null : general;
   }
 
   String _fmtUiDate(DateTime d) {
@@ -1266,11 +1401,22 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   String _materialLabel(String? materialId) =>
       _materialById(materialId)?.name ?? '—';
 
+  String _commercialLabel(String? commercialCode) {
+    final commercial = _commercialByCode(commercialCode);
+    if (commercial == null) return '';
+    return commercial.name.trim();
+  }
+
   String _cellTextForColumn(Map<String, dynamic> row, String columnId) {
     switch (columnId) {
       case 'fecha':
         return _fmtUiDate(_parseDate(row['op_date']));
       case 'material':
+        final commercialCode = row['commercial_material_code']?.toString();
+        final commercialLabel = _commercialLabel(commercialCode);
+        if (commercialLabel.isNotEmpty) {
+          return commercialLabel;
+        }
         final materialId = row['material_id']?.toString();
         if (materialId != null && materialId.isNotEmpty) {
           return _materialLabel(materialId);
@@ -5637,40 +5783,6 @@ class _InvFitText extends StatelessWidget {
   }
 }
 
-class _InvTextInline extends StatelessWidget {
-  final TextEditingController controller;
-  final FocusNode focusNode;
-  final String hint;
-  final VoidCallback? onTapStart;
-  final TextInputType? keyboardType;
-
-  const _InvTextInline({
-    required this.controller,
-    required this.focusNode,
-    required this.hint,
-    this.onTapStart,
-    this.keyboardType,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 2),
-      child: TextField(
-        controller: controller,
-        focusNode: focusNode,
-        keyboardType: keyboardType,
-        onTap: onTapStart,
-        decoration: _invGlassFieldDecoration(
-          hintText: hint,
-          suppressFocusedBorder: true,
-          hideBorder: true,
-        ),
-      ),
-    );
-  }
-}
-
 class _InvOpt {
   final String id;
   final String label;
@@ -5693,6 +5805,7 @@ class _InvMaterialOpt {
 }
 
 class _CommercialMaterialOpt {
+  final String id;
   final String code;
   final String name;
   final String family;
@@ -5700,6 +5813,7 @@ class _CommercialMaterialOpt {
   final String? materialId;
 
   const _CommercialMaterialOpt({
+    required this.id,
     required this.code,
     required this.name,
     required this.family,
@@ -7227,9 +7341,9 @@ String _fmtInvCount(double value, {int decimals = 2}) {
 String _invMaterialLabel(String? material) {
   switch (material) {
     case 'CARDBOARD_BULK_NATIONAL':
-      return 'Granel nacional';
+      return 'Carton granel';
     case 'CARDBOARD_BULK_AMERICAN':
-      return 'Granel americano';
+      return 'Carton granel';
     case 'BALE_NATIONAL':
       return 'Paca nacional';
     case 'BALE_AMERICAN':
@@ -7261,6 +7375,9 @@ String _invMaterialLabel(String? material) {
   }
 }
 
+/*
+Legacy production/separation module archived in place.
+The active operation flow uses InventoryTransformationGrid on v2.
 class InventoryProductionGrid extends StatefulWidget {
   final Future<void> Function()? onChanged;
   final bool showTopBarChrome;
@@ -7413,6 +7530,7 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
       opDate: null,
       shift: null,
       baleMaterial: null,
+      sourceBulk: null,
       baleCount: null,
       avgBaleWeightKg: null,
       notes: '',
@@ -7429,6 +7547,8 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     return _draft.opDate != null &&
         _draft.shift != null &&
         _draft.baleMaterial != null &&
+        _draft.sourceBulk != null &&
+        _draft.sourceBulk!.trim().isNotEmpty &&
         count != null &&
         count > 0 &&
         avg != null &&
@@ -7547,7 +7667,10 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     }
     final count = int.tryParse(_draftCountC.text.trim())!;
     final avg = _toDouble(_draftAvgC.text)!;
-    final sourceBulk = _sourceBulkForBaleMaterial(_draft.baleMaterial);
+    final sourceBulk = _sourceBulkForBaleMaterial(
+      _draft.baleMaterial,
+      selectedSourceBulk: _draft.sourceBulk,
+    );
     setState(() => _inserting = true);
     try {
       await supa.from('production_runs').insert({
@@ -7588,6 +7711,9 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     }
     if (_draft.baleMaterial == null || _draft.baleMaterial!.trim().isEmpty) {
       missing.add('Tipo de paca');
+    }
+    if ((_draft.sourceBulk ?? '').trim().isEmpty) {
+      missing.add('Origen');
     }
     final count = int.tryParse(_draftCountC.text.trim());
     if (count == null || count <= 0) missing.add('Pacas');
@@ -7767,8 +7893,18 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     return needsQuotes ? '"$escaped"' : escaped;
   }
 
-  String? _sourceBulkForBaleMaterial(String? baleMaterial) {
-    return _productionSourceBulkForBaleMaterial(baleMaterial);
+  List<String> _sourceBulkOptionsForBaleMaterial(String? baleMaterial) {
+    return _productionSourceBulkOptionsForBaleMaterial(baleMaterial);
+  }
+
+  String? _sourceBulkForBaleMaterial(
+    String? baleMaterial, {
+    String? selectedSourceBulk,
+  }) {
+    return _productionSourceBulkForBaleMaterial(
+      baleMaterial,
+      selectedSourceBulk: selectedSourceBulk,
+    );
   }
 
   String _cellTextForColumn(Map<String, dynamic> row, String columnId) {
@@ -8187,7 +8323,36 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
           ],
         );
         if (material != null && mounted) {
-          setState(() => _draft = _draft.copyWith(baleMaterial: material));
+          final options = _sourceBulkOptionsForBaleMaterial(material);
+          setState(
+            () => _draft = _draft.copyWith(
+              baleMaterial: material,
+              sourceBulk: options.isEmpty ? null : options.first,
+            ),
+          );
+        }
+        return;
+      case 5:
+        final options = _sourceBulkOptionsForBaleMaterial(_draft.baleMaterial);
+        if (options.isEmpty) return;
+        final source = await _showInvSearchablePickerDialog<String>(
+          context,
+          title: 'Origen',
+          initialValue: _sourceBulkForBaleMaterial(
+            _draft.baleMaterial,
+            selectedSourceBulk: _draft.sourceBulk,
+          ),
+          options: options
+              .map(
+                (value) => _InvPickerOption<String>(
+                  value: value,
+                  label: _invMaterialLabel(value),
+                ),
+              )
+              .toList(),
+        );
+        if (source != null && mounted) {
+          setState(() => _draft = _draft.copyWith(sourceBulk: source));
         }
         return;
       case 7:
@@ -8207,7 +8372,12 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
         setState(() => _draft = _draft.copyWith(shift: null));
         return;
       case 2:
-        setState(() => _draft = _draft.copyWith(baleMaterial: null));
+        setState(
+          () => _draft = _draft.copyWith(baleMaterial: null, sourceBulk: null),
+        );
+        return;
+      case 5:
+        setState(() => _draft = _draft.copyWith(sourceBulk: null));
         return;
       case 3:
         _draftCountC.clear();
@@ -9401,10 +9571,22 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                                 items: _kProductionBaleMaterials,
                                 format: (v) => _prodBaleMaterialLabel(v),
                                 onTapStart: () => _setActiveInsertColumn(2),
-                                onChanged: (v) => setState(
-                                  () =>
-                                      _draft = _draft.copyWith(baleMaterial: v),
-                                ),
+                                onChanged: (v) {
+                                  final sourceOptions =
+                                      _sourceBulkOptionsForBaleMaterial(v);
+                                  setState(
+                                    () => _draft = _draft.copyWith(
+                                      baleMaterial: v,
+                                      sourceBulk: sourceOptions.isEmpty
+                                          ? null
+                                          : sourceOptions.contains(
+                                              _draft.sourceBulk,
+                                            )
+                                          ? _draft.sourceBulk
+                                          : sourceOptions.first,
+                                    ),
+                                  );
+                                },
                               ),
                             ),
                           ),
@@ -9467,16 +9649,18 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                           SizedBox(
                             width: _kProdOriginColW,
                             child: control(
-                              InputDecorator(
-                                decoration: _invGlassFieldDecoration(),
-                                child: _InvFitText(
-                                  _draft.baleMaterial == null
-                                      ? '—'
-                                      : _invMaterialLabel(
-                                          _sourceBulkForBaleMaterial(
-                                            _draft.baleMaterial,
-                                          ),
-                                        ),
+                              _InvDropStrInline(
+                                value: _sourceBulkForBaleMaterial(
+                                  _draft.baleMaterial,
+                                  selectedSourceBulk: _draft.sourceBulk,
+                                ),
+                                items: _sourceBulkOptionsForBaleMaterial(
+                                  _draft.baleMaterial,
+                                ),
+                                format: (v) => _invMaterialLabel(v),
+                                onTapStart: () => _setActiveInsertColumn(5),
+                                onChanged: (v) => setState(
+                                  () => _draft = _draft.copyWith(sourceBulk: v),
                                 ),
                               ),
                             ),
@@ -9650,16 +9834,30 @@ const List<String> _kProductionBaleMaterials = <String>[
   'CAPLE',
 ];
 
-String _productionSourceBulkForBaleMaterial(String? baleMaterial) {
-  if (baleMaterial == null) return 'CARDBOARD_BULK_NATIONAL';
-  switch (baleMaterial.trim().toUpperCase()) {
-    case 'BALE_AMERICAN':
-      return 'CARDBOARD_BULK_AMERICAN';
+List<String> _productionSourceBulkOptionsForBaleMaterial(String? baleMaterial) {
+  switch ((baleMaterial ?? '').trim().toUpperCase()) {
     case 'CAPLE':
-      return 'CAPLE';
+      return const <String>['CAPLE'];
+    case 'BALE_AMERICAN':
+    case 'BALE_NATIONAL':
+    case 'BALE_CLEAN':
+    case 'BALE_TRASH':
+      return const <String>['CARDBOARD_BULK_NATIONAL'];
     default:
-      return 'CARDBOARD_BULK_NATIONAL';
+      return const <String>['CARDBOARD_BULK_NATIONAL'];
   }
+}
+
+String _productionSourceBulkForBaleMaterial(
+  String? baleMaterial, {
+  String? selectedSourceBulk,
+}) {
+  final options = _productionSourceBulkOptionsForBaleMaterial(baleMaterial);
+  final selected = (selectedSourceBulk ?? '').trim().toUpperCase();
+  if (selected.isNotEmpty && options.contains(selected)) {
+    return selected;
+  }
+  return options.first;
 }
 
 String _prodBaleMaterialLabel(String? material) {
@@ -9808,6 +10006,7 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
   late DateTime _opDate;
   String _shift = 'DAY';
   String _baleMaterial = 'BALE_NATIONAL';
+  String? _sourceBulk;
   final TextEditingController _countC = TextEditingController();
   final TextEditingController _avgC = TextEditingController();
   final TextEditingController _notesC = TextEditingController();
@@ -9846,6 +10045,9 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
     _opDate = _parseDate(widget.row['op_date']);
     _shift = (widget.row['shift'] ?? 'DAY').toString();
     _baleMaterial = (widget.row['bale_material'] ?? 'BALE_NATIONAL').toString();
+    _sourceBulk = (widget.row['source_bulk'] ?? '').toString().trim().isEmpty
+        ? _productionSourceBulkForBaleMaterial(_baleMaterial)
+        : (widget.row['source_bulk'] ?? '').toString();
     _countC.text = (widget.row['bale_count'] ?? '').toString();
     _avgC.text =
         _toDouble(widget.row['avg_bale_weight_kg'])?.toStringAsFixed(2) ??
@@ -10008,7 +10210,36 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
             _InvPickerOption<String>(value: 'CAPLE', label: 'Paca caple'),
           ],
         );
-        if (mat != null) setState(() => _baleMaterial = mat);
+        if (mat != null) {
+          final options = _productionSourceBulkOptionsForBaleMaterial(mat);
+          setState(() {
+            _baleMaterial = mat;
+            _sourceBulk = options.isEmpty
+                ? null
+                : options.contains(_sourceBulk)
+                ? _sourceBulk
+                : options.first;
+          });
+        }
+        return;
+      case 5:
+        final source = await _showInvSearchablePickerDialog<String>(
+          context,
+          title: 'Origen',
+          initialValue: _productionSourceBulkForBaleMaterial(
+            _baleMaterial,
+            selectedSourceBulk: _sourceBulk,
+          ),
+          options: _productionSourceBulkOptionsForBaleMaterial(_baleMaterial)
+              .map(
+                (value) => _InvPickerOption<String>(
+                  value: value,
+                  label: _invMaterialLabel(value),
+                ),
+              )
+              .toList(),
+        );
+        if (source != null) setState(() => _sourceBulk = source);
         return;
       case 3:
         FocusScope.of(context).requestFocus(_countFocusNode);
@@ -10059,7 +10290,10 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
     final count = int.tryParse(_countC.text.trim());
     final avg = _toDouble(_avgC.text);
     if (count == null || count <= 0 || avg == null || avg <= 0) return;
-    final sourceBulk = _productionSourceBulkForBaleMaterial(_baleMaterial);
+    final sourceBulk = _productionSourceBulkForBaleMaterial(
+      _baleMaterial,
+      selectedSourceBulk: _sourceBulk,
+    );
     final patch = <String, dynamic>{
       'op_date': _fmtDbDate(_opDate),
       'shift': _shift,
@@ -10211,7 +10445,10 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
       );
     }
 
-    final sourceBulk = _productionSourceBulkForBaleMaterial(_baleMaterial);
+    final sourceBulk = _productionSourceBulkForBaleMaterial(
+      _baleMaterial,
+      selectedSourceBulk: _sourceBulk,
+    );
     final producedWeight =
         ((int.tryParse(_countC.text.trim()) ?? 0) *
         (_toDouble(_avgC.text) ?? 0));
@@ -10349,7 +10586,20 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                                               widget.onActivateColumn(2),
                                           onChanged: (v) {
                                             if (v == null) return;
-                                            setState(() => _baleMaterial = v);
+                                            final options =
+                                                _productionSourceBulkOptionsForBaleMaterial(
+                                                  v,
+                                                );
+                                            setState(() {
+                                              _baleMaterial = v;
+                                              _sourceBulk = options.isEmpty
+                                                  ? null
+                                                  : options.contains(
+                                                      _sourceBulk,
+                                                    )
+                                                  ? _sourceBulk
+                                                  : options.first;
+                                            });
                                           },
                                         )
                                       : previewEditableCell(
@@ -10433,16 +10683,33 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                                 5,
                                 SizedBox(
                                   width: _kProdOriginColW,
-                                  child: readonlyCell(
-                                    child: Builder(
-                                      builder: (_) {
-                                        final label = _invMaterialLabel(
-                                          sourceBulk,
-                                        );
-                                        return _InvUnitBadge(label: label);
-                                      },
-                                    ),
-                                  ),
+                                  child: _editing
+                                      ? _InvDropStrInline(
+                                          value: sourceBulk,
+                                          items:
+                                              _productionSourceBulkOptionsForBaleMaterial(
+                                                _baleMaterial,
+                                              ),
+                                          format: (v) => _invMaterialLabel(v),
+                                          onTapStart: () =>
+                                              widget.onActivateColumn(5),
+                                          onChanged: (v) {
+                                            if (v == null) return;
+                                            setState(() => _sourceBulk = v);
+                                          },
+                                        )
+                                      : readonlyCell(
+                                          child: Builder(
+                                            builder: (_) {
+                                              final label = _invMaterialLabel(
+                                                sourceBulk,
+                                              );
+                                              return _InvUnitBadge(
+                                                label: label,
+                                              );
+                                            },
+                                          ),
+                                        ),
                                 ),
                               ),
                               frame(
@@ -10595,6 +10862,7 @@ class _ProductionDraft {
   final DateTime? opDate;
   final String? shift;
   final String? baleMaterial;
+  final String? sourceBulk;
   final int? baleCount;
   final double? avgBaleWeightKg;
   final String notes;
@@ -10603,6 +10871,7 @@ class _ProductionDraft {
     required this.opDate,
     required this.shift,
     required this.baleMaterial,
+    required this.sourceBulk,
     required this.baleCount,
     required this.avgBaleWeightKg,
     required this.notes,
@@ -10612,6 +10881,7 @@ class _ProductionDraft {
     Object? opDate = _unset,
     Object? shift = _unset,
     Object? baleMaterial = _unset,
+    Object? sourceBulk = _unset,
     Object? baleCount = _unset,
     Object? avgBaleWeightKg = _unset,
     String? notes,
@@ -10622,6 +10892,9 @@ class _ProductionDraft {
       baleMaterial: identical(baleMaterial, _unset)
           ? this.baleMaterial
           : baleMaterial as String?,
+      sourceBulk: identical(sourceBulk, _unset)
+          ? this.sourceBulk
+          : sourceBulk as String?,
       baleCount: identical(baleCount, _unset)
           ? this.baleCount
           : baleCount as int?,
@@ -10693,6 +10966,8 @@ double _sepTableContentWFor(double availableWidth) {
   return math.max(base, availableWidth);
 }
 
+// Legacy widget retained temporarily to avoid breaking local references while
+// the new v2 transformation flow finishes replacing old code paths.
 class InventoryMaterialSeparationGrid extends StatefulWidget {
   final String sourceMaterial;
   final Future<void> Function()? onChanged;
@@ -13439,3 +13714,4 @@ DateTime _sepParseDate(dynamic v) {
   }
   return DateUtils.dateOnly(DateTime.now());
 }
+*/

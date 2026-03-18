@@ -2226,49 +2226,6 @@ class _DashboardInventoryWidgetPref {
     required this.sortOrder,
     required this.isVisible,
   });
-
-  factory _DashboardInventoryWidgetPref.fromRow(Map<String, dynamic> row) {
-    return _DashboardInventoryWidgetPref(
-      widgetKey: (row['widget_key'] ?? '').toString(),
-      sourceKind: (row['source_kind'] ?? '').toString(),
-      material: row['material']?.toString(),
-      commercialMaterialCode: row['commercial_material_code']?.toString(),
-      sortOrder: (row['sort_order'] as num?)?.toInt() ?? 0,
-      isVisible: (row['is_visible'] as bool?) ?? true,
-    );
-  }
-
-  Map<String, dynamic> toInsertRow(String userId) => <String, dynamic>{
-    'user_id': userId,
-    'widget_key': widgetKey,
-    'source_kind': sourceKind,
-    'material': material,
-    'commercial_material_code': commercialMaterialCode,
-    'sort_order': sortOrder,
-    'is_visible': isVisible,
-  };
-
-  _DashboardInventoryWidgetPref copyWith({
-    String? widgetKey,
-    String? sourceKind,
-    Object? material = _copySentinel,
-    Object? commercialMaterialCode = _copySentinel,
-    int? sortOrder,
-    bool? isVisible,
-  }) {
-    return _DashboardInventoryWidgetPref(
-      widgetKey: widgetKey ?? this.widgetKey,
-      sourceKind: sourceKind ?? this.sourceKind,
-      material: identical(material, _copySentinel)
-          ? this.material
-          : material as String?,
-      commercialMaterialCode: identical(commercialMaterialCode, _copySentinel)
-          ? this.commercialMaterialCode
-          : commercialMaterialCode as String?,
-      sortOrder: sortOrder ?? this.sortOrder,
-      isVisible: isVisible ?? this.isVisible,
-    );
-  }
 }
 
 class _DashboardCommercialMaterialOption {
@@ -2299,20 +2256,6 @@ class _DashboardInventoryTileModel {
   });
 }
 
-class _DashboardInventoryWidgetEditorResult {
-  final String sourceKind;
-  final String? material;
-  final String? commercialMaterialCode;
-
-  const _DashboardInventoryWidgetEditorResult({
-    required this.sourceKind,
-    required this.material,
-    required this.commercialMaterialCode,
-  });
-}
-
-const Object _copySentinel = Object();
-
 class _InventoryYardPanel extends StatefulWidget {
   final Future<void> Function()? onOpenInventoryStock;
   final Future<void> Function()? onOpenInventoryProduction;
@@ -2333,14 +2276,9 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   bool _loading = true;
   bool _refreshing = false;
   bool _pendingReload = false;
-  String? _userId;
-  bool _editingTiles = false;
-  String? _selectedTileKey;
-
   @override
   void initState() {
     super.initState();
-    _userId = _supa.auth.currentUser?.id;
     _reload(showLoader: true);
     _setupRealtime();
   }
@@ -2362,7 +2300,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   List<_ProductionLineSeries> _separationSeries = const [];
   List<_InventoryCommercialBreakdownItem> _scrapBreakdown = const [];
   List<_InventoryCommercialBreakdownItem> _paperBreakdown = const [];
-  List<_DashboardInventoryWidgetPref> _widgetPrefs = const [];
 
   static const List<Color> _kProductionSeriesPalette = <Color>[
     Color(0xFF1E88E5),
@@ -2389,31 +2326,31 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'movements',
+          table: 'inventory_movements_v2',
           callback: (_) => _requestReload(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'opening_balances',
+          table: 'inventory_opening_balances_v2',
           callback: (_) => _requestReload(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'production_runs',
+          table: 'material_transformation_runs_v2',
           callback: (_) => _requestReload(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'material_separation_runs',
+          table: 'material_transformation_run_outputs_v2',
           callback: (_) => _requestReload(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'commercial_material_catalog',
+          table: 'material_commercial_catalog_v2',
           callback: (_) => _requestReload(),
         )
         .subscribe();
@@ -2432,28 +2369,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     final mm = date.month.toString().padLeft(2, '0');
     final dd = date.day.toString().padLeft(2, '0');
     return '${date.year}-$mm-$dd';
-  }
-
-  double _productionBalesFromRow(Map<String, dynamic> row) {
-    final direct = _num(
-      row['bale_count'] ??
-          row['produced_bales'] ??
-          row['bales_count'] ??
-          row['bales'],
-    );
-    if (direct > 0) return direct;
-
-    final producedKg = _num(
-      row['produced_weight_kg'] ??
-          row['produced_kg'] ??
-          row['production_kg'] ??
-          row['weight_kg'],
-    );
-    final avgBaleKg = _num(row['avg_bale_weight_kg']);
-    if (producedKg > 0 && avgBaleKg > 0) {
-      return producedKg / avgBaleKg;
-    }
-    return 0;
   }
 
   double _num(dynamic v) {
@@ -2476,6 +2391,17 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   String _normalizeOperational(String material) {
     final normalized = material.trim().toUpperCase();
     switch (normalized) {
+      case 'CARTON':
+      case 'CARDBOARD':
+        return 'CARTON';
+      case 'SCRAP':
+        return 'CHATARRA';
+      case 'PAPER':
+        return 'PAPEL';
+      case 'PLASTIC':
+        return 'PLASTICO';
+      case 'WOOD':
+        return 'MADERA';
       case 'BALE_CAPLE':
       case 'PACA CAPLE':
       case 'PACA_CAPLE':
@@ -2499,28 +2425,36 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
 
   String _materialUiLabel(String material) {
     switch (material.trim().toUpperCase()) {
-      case 'CARDBOARD_BULK_NATIONAL':
-        return 'Granel nacional';
-      case 'CARDBOARD_BULK_AMERICAN':
-        return 'Granel americano';
+      case 'CARTON':
+        return 'Cartón';
+      case 'PACA_NACIONAL':
       case 'BALE_NATIONAL':
         return 'Paca nacional';
+      case 'PACA_AMERICANA':
       case 'BALE_AMERICAN':
         return 'Paca americana';
+      case 'PACA_LIMPIA':
       case 'BALE_CLEAN':
         return 'Paca limpia';
+      case 'PACA_BASURA':
       case 'BALE_TRASH':
         return 'Paca basura';
       case 'CAPLE':
         return 'Paca caple';
+      case 'CHATARRA':
       case 'SCRAP':
         return 'Chatarra';
+      case 'PAPEL':
       case 'PAPER':
         return 'Papel';
+      case 'PLASTICO':
       case 'PLASTIC':
         return 'Plásticos';
+      case 'MADERA':
       case 'WOOD':
         return 'Madera';
+      case 'METAL':
+        return 'Metal';
       default:
         return material;
     }
@@ -2528,33 +2462,51 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
 
   int _materialSortOrder(String material) {
     const preferred = <String>[
-      'BALE_NATIONAL',
-      'BALE_AMERICAN',
-      'BALE_CLEAN',
-      'BALE_TRASH',
+      'PACA_NACIONAL',
+      'PACA_AMERICANA',
+      'PACA_LIMPIA',
+      'PACA_BASURA',
       'CAPLE',
-      'SCRAP',
-      'PAPER',
-      'PLASTIC',
-      'WOOD',
+      'CHATARRA',
+      'METAL',
+      'PAPEL',
+      'PLASTICO',
+      'MADERA',
     ];
     final upper = material.trim().toUpperCase();
     final idx = preferred.indexOf(upper);
     return idx >= 0 ? idx : 999;
   }
 
-  List<_DashboardInventoryWidgetPref> _defaultWidgetPrefs() {
+  List<_DashboardInventoryWidgetPref> _fixedWidgetPrefs() {
     const defaults = <Map<String, String?>>[
       {'source_kind': 'bales_total'},
-      {'source_kind': 'operational_material', 'material': 'SCRAP'},
-      {'source_kind': 'operational_material', 'material': 'PAPER'},
-      {'source_kind': 'operational_material', 'material': 'PLASTIC'},
-      {'source_kind': 'operational_material', 'material': 'WOOD'},
-      {'source_kind': 'operational_material', 'material': 'BALE_NATIONAL'},
-      {'source_kind': 'operational_material', 'material': 'BALE_AMERICAN'},
-      {'source_kind': 'operational_material', 'material': 'BALE_CLEAN'},
-      {'source_kind': 'operational_material', 'material': 'BALE_TRASH'},
-      {'source_kind': 'operational_material', 'material': 'CAPLE'},
+      {'source_kind': 'operational_material', 'material': 'CARTON'},
+      {'source_kind': 'operational_material', 'material': 'CHATARRA'},
+      {'source_kind': 'operational_material', 'material': 'METAL'},
+      {'source_kind': 'operational_material', 'material': 'PAPEL'},
+      {'source_kind': 'operational_material', 'material': 'PLASTICO'},
+      {'source_kind': 'operational_material', 'material': 'MADERA'},
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'PACA_NACIONAL',
+      },
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'PACA_AMERICANA',
+      },
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'PACA_LIMPIA',
+      },
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'PACA_BASURA',
+      },
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'CAPLE',
+      },
     ];
     return [
       for (var i = 0; i < defaults.length; i++)
@@ -2569,104 +2521,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         ),
     ];
   }
-
-  Future<List<_DashboardInventoryWidgetPref>> _loadWidgetPrefs() async {
-    final userId = _userId;
-    if (userId == null) return _defaultWidgetPrefs();
-    try {
-      final rows = await _supa
-          .from('dashboard_inventory_widgets')
-          .select(
-            'widget_key,source_kind,material,commercial_material_code,sort_order,is_visible,created_at',
-          )
-          .eq('user_id', userId)
-          .order('sort_order')
-          .order('created_at');
-      final prefs = (rows as List)
-          .cast<Map<String, dynamic>>()
-          .map(_DashboardInventoryWidgetPref.fromRow)
-          .where((pref) => pref.widgetKey.isNotEmpty)
-          .toList();
-      if (prefs.isNotEmpty) return prefs;
-
-      final defaults = _defaultWidgetPrefs();
-      await _supa
-          .from('dashboard_inventory_widgets')
-          .upsert(
-            defaults.map((pref) => pref.toInsertRow(userId)).toList(),
-            onConflict: 'user_id,widget_key',
-          );
-      return defaults;
-    } catch (e, st) {
-      AppErrorReporter.report(
-        e,
-        st,
-        fallbackMessage:
-            'No se pudieron cargar las preferencias del dashboard.',
-      );
-      return _widgetPrefs.isNotEmpty ? _widgetPrefs : _defaultWidgetPrefs();
-    }
-  }
-
-  Future<void> _replaceWidgetPrefs(
-    List<_DashboardInventoryWidgetPref> prefs,
-  ) async {
-    final userId = _userId;
-    if (userId == null) {
-      if (!mounted) return;
-      setState(() {
-        _widgetPrefs = prefs;
-        if (_selectedTileKey != null &&
-            !prefs.any((pref) => pref.widgetKey == _selectedTileKey)) {
-          _selectedTileKey = null;
-        }
-      });
-      return;
-    }
-
-    try {
-      final existingRows = await _supa
-          .from('dashboard_inventory_widgets')
-          .select('widget_key')
-          .eq('user_id', userId);
-      final existingKeys = (existingRows as List)
-          .map((row) => (row['widget_key'] ?? '').toString())
-          .where((key) => key.isNotEmpty)
-          .toSet();
-      final nextKeys = prefs.map((pref) => pref.widgetKey).toSet();
-      final keysToDelete = existingKeys.difference(nextKeys).toList();
-      if (keysToDelete.isNotEmpty) {
-        await _supa
-            .from('dashboard_inventory_widgets')
-            .delete()
-            .eq('user_id', userId)
-            .inFilter('widget_key', keysToDelete);
-      }
-      await _supa
-          .from('dashboard_inventory_widgets')
-          .upsert(
-            prefs.map((pref) => pref.toInsertRow(userId)).toList(),
-            onConflict: 'user_id,widget_key',
-          );
-    } catch (e, st) {
-      AppErrorReporter.report(
-        e,
-        st,
-        fallbackMessage:
-            'No se pudieron guardar las preferencias del dashboard.',
-      );
-    }
-    if (!mounted) return;
-    setState(() {
-      _widgetPrefs = prefs;
-      if (_selectedTileKey != null &&
-          !prefs.any((pref) => pref.widgetKey == _selectedTileKey)) {
-        _selectedTileKey = null;
-      }
-    });
-  }
-
-  String _newWidgetKey() => 'custom_${DateTime.now().microsecondsSinceEpoch}';
 
   Color _tileColorForMaterial(String? material) {
     switch ((material ?? '').trim().toUpperCase()) {
@@ -2688,131 +2542,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     return _isBaleOperationalMaterial(material) ? label : '$label en patio';
   }
 
-  List<String> _availableOperationalMaterials() {
-    final seen = <String>{};
-    final preferred = <String>[
-      'SCRAP',
-      'PAPER',
-      'PLASTIC',
-      'WOOD',
-      'BALE_NATIONAL',
-      'BALE_AMERICAN',
-      'BALE_CLEAN',
-      'BALE_TRASH',
-      'CAPLE',
-    ];
-    for (final material in _operationalOnHandKg.keys) {
-      final normalized = _normalizeOperational(material);
-      if (normalized.isNotEmpty) preferred.add(normalized);
-    }
-    final options = <String>[];
-    for (final material in preferred) {
-      final normalized = _normalizeOperational(material);
-      if (normalized.isEmpty || !seen.add(normalized)) continue;
-      options.add(normalized);
-    }
-    return options;
-  }
-
-  List<_DashboardCommercialMaterialOption> _availableCommercialOptions() {
-    final options = _commercialOptionsByCode.values.toList()
-      ..sort((a, b) {
-        final materialA = _materialUiLabel(a.inventoryMaterial ?? '');
-        final materialB = _materialUiLabel(b.inventoryMaterial ?? '');
-        final byMaterial = materialA.compareTo(materialB);
-        if (byMaterial != 0) return byMaterial;
-        return a.name.compareTo(b.name);
-      });
-    return options;
-  }
-
-  Future<void> _toggleTileEditing() async {
-    if (!mounted) return;
-    setState(() {
-      _editingTiles = !_editingTiles;
-      if (!_editingTiles) _selectedTileKey = null;
-    });
-  }
-
-  Future<void> _restoreDefaultWidgets() async {
-    final defaults = _defaultWidgetPrefs();
-    await _replaceWidgetPrefs(defaults);
-    if (!mounted) return;
-    setState(() => _selectedTileKey = null);
-  }
-
-  Future<void> _addInventoryWidget() async {
-    final result = await _showWidgetEditor();
-    if (result == null) return;
-    final next = [..._widgetPrefs];
-    next.add(
-      _DashboardInventoryWidgetPref(
-        widgetKey: _newWidgetKey(),
-        sourceKind: result.sourceKind,
-        material: result.material,
-        commercialMaterialCode: result.commercialMaterialCode,
-        sortOrder: next.length,
-        isVisible: true,
-      ),
-    );
-    await _replaceWidgetPrefs(next);
-  }
-
-  Future<void> _changeSelectedInventoryWidget() async {
-    _DashboardInventoryWidgetPref? selected;
-    for (final pref in _widgetPrefs) {
-      if (pref.widgetKey == _selectedTileKey) {
-        selected = pref;
-        break;
-      }
-    }
-    if (selected == null) return;
-    final selectedPref = selected;
-    final result = await _showWidgetEditor(initialPref: selectedPref);
-    if (result == null) return;
-    final next = _widgetPrefs
-        .map(
-          (pref) => pref.widgetKey == selectedPref.widgetKey
-              ? pref.copyWith(
-                  sourceKind: result.sourceKind,
-                  material: result.material,
-                  commercialMaterialCode: result.commercialMaterialCode,
-                )
-              : pref,
-        )
-        .toList();
-    await _replaceWidgetPrefs(next);
-  }
-
-  Future<void> _removeSelectedInventoryWidget() async {
-    final selectedKey = _selectedTileKey;
-    if (selectedKey == null) return;
-    final next =
-        _widgetPrefs.where((pref) => pref.widgetKey != selectedKey).toList()
-          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-    final resequenced = [
-      for (var i = 0; i < next.length; i++) next[i].copyWith(sortOrder: i),
-    ];
-    await _replaceWidgetPrefs(resequenced);
-    if (!mounted) return;
-    setState(() => _selectedTileKey = null);
-  }
-
-  Future<_DashboardInventoryWidgetEditorResult?> _showWidgetEditor({
-    _DashboardInventoryWidgetPref? initialPref,
-  }) {
-    return showDialog<_DashboardInventoryWidgetEditorResult>(
-      context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.24),
-      builder: (dialogContext) => _DashboardInventoryWidgetEditorDialog(
-        initialPref: initialPref,
-        operationalMaterials: _availableOperationalMaterials(),
-        commercialOptions: _availableCommercialOptions(),
-        materialUiLabel: _materialUiLabel,
-      ),
-    );
-  }
-
   Future<void> _reload({bool showLoader = false}) async {
     if (!mounted || _refreshing) return;
     _refreshing = true;
@@ -2821,89 +2550,52 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     }
     try {
       final asOfDate = DateUtils.dateOnly(DateTime.now());
-      final monthStart = DateTime(asOfDate.year, asOfDate.month, 1);
       final trendStart = DateUtils.dateOnly(
         asOfDate.subtract(const Duration(days: 89)),
       );
       final responses = await Future.wait<dynamic>([
-        _loadWidgetPrefs(),
-        _supa.rpc(
-          'rpc_inventory_summary_by_period',
-          params: {
-            'p_period_month': _sqlDate(monthStart),
-            'p_as_of_date': _sqlDate(asOfDate),
-            'p_site': _kDashboardInventorySite,
-          },
-        ),
         _supa
-            .from('commercial_material_catalog')
-            .select('code,name,inventory_material')
-            .eq('active', true),
+            .from('v_inventory_general_balance_v2')
+            .select('code,name,opening_kg,movement_kg,on_hand_kg'),
         _supa
-            .from('opening_balances')
-            .select('material,commercial_material_code,weight_kg')
-            .eq('site', _kDashboardInventorySite)
-            .eq('period_month', _sqlDate(monthStart)),
-        _supa
-            .from('movements')
+            .from('v_inventory_commercial_balance_v2')
             .select(
-              'material,commercial_material_code,flow,weight_kg,net_kg,site,op_date,movement_origin',
-            )
-            .or('site.eq.$_kDashboardInventorySite,site.is.null')
-            .gte('op_date', _sqlDate(monthStart))
-            .lte('op_date', _sqlDate(asOfDate)),
+              'code,name,family,general_code,opening_kg,movement_kg,on_hand_kg',
+            ),
         _supa
-            .from('production_runs')
+            .from('material_commercial_catalog_v2')
+            .select('code,name,general_material:general_material_id(code)')
+            .eq('is_active', true),
+        _supa
+            .from('material_transformation_runs_v2')
             .select(
-              'op_date,bale_material,bale_count,avg_bale_weight_kg,produced_weight_kg',
+              'id,op_date,source_general_material:source_general_material_id(code),input_weight_kg',
             )
             .or('site.eq.$_kDashboardInventorySite,site.is.null')
             .gte('op_date', _sqlDate(trendStart))
             .lte('op_date', _sqlDate(asOfDate)),
         _supa
-            .from('material_separation_runs')
+            .from('material_transformation_run_outputs_v2')
             .select(
-              'op_date,source_material,commercial_material_code,weight_kg,site',
+              'run_id,output_weight_kg,output_unit_count,'
+              'commercial_material:commercial_material_id(code,name,general_material:general_material_id(code)),'
+              'run:run_id(op_date,source_general_material:source_general_material_id(code),site)',
             )
-            .or('site.eq.$_kDashboardInventorySite,site.is.null')
-            .gte('op_date', _sqlDate(trendStart))
-            .lte('op_date', _sqlDate(asOfDate)),
+            .gte('run.op_date', _sqlDate(trendStart))
+            .lte('run.op_date', _sqlDate(asOfDate)),
       ]);
 
-      final widgetPrefs = (responses[0] as List)
-          .cast<_DashboardInventoryWidgetPref>();
-      final summaryRows = (responses[1] as List).cast<Map<String, dynamic>>();
+      final generalBalanceRows = (responses[0] as List)
+          .cast<Map<String, dynamic>>();
+      final commercialBalanceRows = (responses[1] as List)
+          .cast<Map<String, dynamic>>();
       final catalogRows = (responses[2] as List).cast<Map<String, dynamic>>();
-      final openingRows = (responses[3] as List).cast<Map<String, dynamic>>();
-      final movementRows = (responses[4] as List).cast<Map<String, dynamic>>();
-      var productionRows = (responses[5] as List).cast<Map<String, dynamic>>();
-      var separationRows = (responses[6] as List).cast<Map<String, dynamic>>();
-      if (productionRows.isEmpty) {
-        final fallback = await _supa
-            .from('production_runs')
-            .select(
-              'op_date,bale_material,bale_count,avg_bale_weight_kg,produced_weight_kg',
-            )
-            .gte('op_date', _sqlDate(trendStart))
-            .lte('op_date', _sqlDate(asOfDate));
-        productionRows = (fallback as List).cast<Map<String, dynamic>>();
-      }
-      if (separationRows.isEmpty) {
-        final fallback = await _supa
-            .from('material_separation_runs')
-            .select(
-              'op_date,source_material,commercial_material_code,weight_kg',
-            )
-            .gte('op_date', _sqlDate(trendStart))
-            .lte('op_date', _sqlDate(asOfDate));
-        separationRows = (fallback as List).cast<Map<String, dynamic>>();
-      }
+      final transformationOutputs = (responses[4] as List)
+          .cast<Map<String, dynamic>>();
 
       final operational = <String, double>{};
-      for (final row in summaryRows) {
-        final material = _normalizeOperational(
-          (row['material'] ?? '').toString(),
-        );
+      for (final row in generalBalanceRows) {
+        final material = _normalizeOperational((row['code'] ?? '').toString());
         if (material.isEmpty) continue;
         operational[material] = _num(row['on_hand_kg']);
       }
@@ -2918,14 +2610,14 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
                   .toString(): _DashboardCommercialMaterialOption(
                 code: (row['code'] ?? '').toString(),
                 name: (row['name'] ?? '').toString(),
-                inventoryMaterial: row['inventory_material']?.toString(),
+                inventoryMaterial:
+                    ((((row['general_material'] as Map?) ?? const {})['code']))
+                        .toString(),
               ),
           };
       final commercialOnHand = <String, double>{};
       final operationalBales = <String, double>{};
       final commercialBales = <String, double>{};
-      final totalProducedKgByMaterial = <String, double>{};
-      final totalProducedBalesByMaterial = <String, double>{};
       final scrapByCommercial = <String, double>{};
       final paperByCommercial = <String, double>{};
       final dailyProductionByMaterialAndDate =
@@ -2933,114 +2625,62 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       final dailySeparationByCommercialAndDate =
           <String, Map<DateTime, double>>{};
 
-      for (final row in openingRows) {
-        final material = _normalizeOperational(
-          (row['material'] ?? '').toString(),
-        );
-        final code = (row['commercial_material_code'] ?? '').toString().trim();
+      for (final row in commercialBalanceRows) {
+        final code = (row['code'] ?? '').toString().trim();
         if (code.isEmpty) continue;
-        final weightKg = _num(row['weight_kg']);
-        commercialOnHand[code] = (commercialOnHand[code] ?? 0) + weightKg;
-        final openingIsBale =
-            _isBaleOperationalMaterial(material) ||
-            _isBaleCommercialMaterialCode(code);
-        if (openingIsBale && _kDashboardOutgoingBaleAvgKg > 0) {
-          final baleCount = weightKg / _kDashboardOutgoingBaleAvgKg;
-          if (_isBaleOperationalMaterial(material)) {
-            operationalBales[material] =
-                (operationalBales[material] ?? 0) + baleCount;
-          }
-          commercialBales[code] = (commercialBales[code] ?? 0) + baleCount;
-        }
-        if (material == 'SCRAP') {
-          scrapByCommercial[code] = (scrapByCommercial[code] ?? 0) + weightKg;
-        } else if (material == 'PAPER') {
-          paperByCommercial[code] = (paperByCommercial[code] ?? 0) + weightKg;
-        }
-      }
-
-      for (final row in movementRows) {
-        final material = _normalizeOperational(
-          (row['material'] ?? '').toString(),
+        final weightKg = _num(row['on_hand_kg']);
+        final generalCode = _normalizeOperational(
+          (row['general_code'] ?? '').toString(),
         );
-        final code = (row['commercial_material_code'] ?? '').toString().trim();
-        if (code.isEmpty) continue;
-        final commercialOption = commercialOptionsByCode[code];
-        final flow = (row['flow'] ?? '').toString().trim().toUpperCase();
-        final origin = (row['movement_origin'] ?? '').toString().trim().toUpperCase();
-        final weightKg = _num(row['net_kg']) == 0
-            ? _num(row['weight_kg'])
-            : _num(row['net_kg']);
-        final signedKg = flow == 'OUT' ? -weightKg : weightKg;
-        commercialOnHand[code] = (commercialOnHand[code] ?? 0) + signedKg;
-        final commercialMaterial = _normalizeOperational(
-          commercialOption?.inventoryMaterial ?? material,
-        );
+        commercialOnHand[code] = weightKg;
         final movementIsBale =
-            _isBaleOperationalMaterial(commercialMaterial) ||
+            _isBaleOperationalMaterial(code) ||
             _isBaleCommercialMaterialCode(code);
-        if (movementIsBale &&
-            origin == 'MANUAL' &&
-            flow == 'OUT' &&
-            _kDashboardOutgoingBaleAvgKg > 0) {
-          final soldBales = weightKg / _kDashboardOutgoingBaleAvgKg;
-          if (_isBaleOperationalMaterial(commercialMaterial)) {
-            operationalBales[commercialMaterial] =
-                (operationalBales[commercialMaterial] ?? 0) - soldBales;
-          }
-          commercialBales[code] = (commercialBales[code] ?? 0) - soldBales;
+        if (movementIsBale && _kDashboardOutgoingBaleAvgKg > 0) {
+          commercialBales[code] = weightKg / _kDashboardOutgoingBaleAvgKg;
         }
-        if (material == 'SCRAP') {
-          scrapByCommercial[code] = (scrapByCommercial[code] ?? 0) + signedKg;
-        } else if (material == 'PAPER') {
-          paperByCommercial[code] = (paperByCommercial[code] ?? 0) + signedKg;
+        if (generalCode == 'CHATARRA') {
+          scrapByCommercial[code] = weightKg;
+        } else if (generalCode == 'PAPEL') {
+          paperByCommercial[code] = weightKg;
         }
       }
 
-      for (final row in productionRows) {
-        final opDate = DateUtils.dateOnly(_parseDate(row['op_date']));
-        final producedBales = _productionBalesFromRow(row);
-        final material = (row['bale_material'] ?? '').toString().trim();
-        if (material.isEmpty) continue;
-        final key = _normalizeOperational(material);
-        final avgBaleKg = _num(row['avg_bale_weight_kg']);
-        final producedKg = _num(row['produced_weight_kg']);
-        if (producedBales > 0) {
-          totalProducedBalesByMaterial[key] =
-              (totalProducedBalesByMaterial[key] ?? 0) + producedBales;
-          operationalBales[key] = (operationalBales[key] ?? 0) + producedBales;
-          final effectiveProducedKg = producedKg > 0
-              ? producedKg
-              : (avgBaleKg > 0 ? producedBales * avgBaleKg : 0);
-          if (effectiveProducedKg > 0) {
-            totalProducedKgByMaterial[key] =
-                (totalProducedKgByMaterial[key] ?? 0) + effectiveProducedKg;
-          }
-        }
-        final perDay = dailyProductionByMaterialAndDate.putIfAbsent(
-          key,
-          () => <DateTime, double>{},
-        );
-        perDay[opDate] = (perDay[opDate] ?? 0) + producedBales;
-      }
-
-      for (final row in separationRows) {
-        final opDate = DateUtils.dateOnly(_parseDate(row['op_date']));
-        final material = _normalizeOperational(
-          (row['source_material'] ?? '').toString(),
-        );
-        if (material != 'SCRAP' && material != 'PAPER') continue;
-        final commercialCode = (row['commercial_material_code'] ?? '')
-            .toString()
-            .trim();
+      for (final row in transformationOutputs) {
+        final run = (row['run'] as Map?)?.cast<String, dynamic>();
+        final commercial = (row['commercial_material'] as Map?)
+            ?.cast<String, dynamic>();
+        final commercialCode = (commercial?['code'] ?? '').toString().trim();
         if (commercialCode.isEmpty) continue;
-        final weightKg = _num(row['weight_kg']);
-        if (weightKg <= 0) continue;
-        final perDay = dailySeparationByCommercialAndDate.putIfAbsent(
-          commercialCode,
-          () => <DateTime, double>{},
+        final opDate = DateUtils.dateOnly(_parseDate(run?['op_date']));
+        final generalCode = _normalizeOperational(
+          (((commercial?['general_material'] as Map?) ?? const {})['code'] ??
+                  ((run?['source_general_material'] as Map?) ??
+                      const {})['code'])
+              .toString(),
         );
-        perDay[opDate] = (perDay[opDate] ?? 0) + weightKg;
+        final outputKg = _num(row['output_weight_kg']);
+        final outputUnits = _num(row['output_unit_count']);
+        if (generalCode == 'CARTON') {
+          final key = _normalizeOperational(commercialCode);
+          final producedBales = outputUnits > 0
+              ? outputUnits
+              : (outputKg > 0 && _kDashboardOutgoingBaleAvgKg > 0
+                    ? outputKg / _kDashboardOutgoingBaleAvgKg
+                    : 0);
+          final perDay = dailyProductionByMaterialAndDate.putIfAbsent(
+            key,
+            () => <DateTime, double>{},
+          );
+          perDay[opDate] = (perDay[opDate] ?? 0) + producedBales;
+        }
+        if (generalCode == 'CHATARRA' || generalCode == 'PAPEL') {
+          final perDay = dailySeparationByCommercialAndDate.putIfAbsent(
+            commercialCode,
+            () => <DateTime, double>{},
+          );
+          perDay[opDate] = (perDay[opDate] ?? 0) + outputKg;
+        }
       }
 
       final scrap = <_InventoryCommercialBreakdownItem>[
@@ -3160,7 +2800,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         _separationSeries = separationSeries;
         _scrapBreakdown = scrap;
         _paperBreakdown = paper;
-        _widgetPrefs = widgetPrefs;
         _loading = false;
       });
     } catch (e, st) {
@@ -3203,15 +2842,19 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       case 'operational_material':
         final material = _normalizeOperational((pref.material ?? '').trim());
         if (material.isEmpty) return null;
-        final kg = _operationalOnHandKg[material] ?? 0;
+        final fallbackCommercialKg = _commercialOnHandKg[material] ?? 0;
+        final kg = (_operationalOnHandKg[material] ?? 0) > 0
+            ? (_operationalOnHandKg[material] ?? 0)
+            : fallbackCommercialKg;
         final isBale = _isBaleOperationalMaterial(material);
-        final baleCount = _operationalOnHandBales[material] ?? 0;
+        final fallbackCommercialBales = _commercialOnHandBales[material] ?? 0;
+        final baleCount = (_operationalOnHandBales[material] ?? 0) > 0
+            ? (_operationalOnHandBales[material] ?? 0)
+            : fallbackCommercialBales;
         return _DashboardInventoryTileModel(
           pref: pref,
           label: _tileLabelForOperationalMaterial(material),
-          value: isBale
-              ? '${baleCount.toStringAsFixed(0)} pacas'
-              : _fmtKg(kg),
+          value: isBale ? '${baleCount.toStringAsFixed(0)} pacas' : _fmtKg(kg),
           secondaryValue: isBale ? _fmtKg(kg) : 'Existencia actual',
           color: _tileColorForMaterial(material),
         );
@@ -3226,12 +2869,13 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         final isBale =
             _isBaleOperationalMaterial(inventoryMaterial) ||
             _isBaleCommercialMaterialCode(code);
+        final baleCount = _commercialOnHandBales[code] ?? 0;
         return _DashboardInventoryTileModel(
           pref: pref,
           label: option?.name.isNotEmpty == true ? option!.name : code,
-          value: _fmtKg(kg),
+          value: isBale ? '${baleCount.toStringAsFixed(0)} pacas' : _fmtKg(kg),
           secondaryValue: isBale
-              ? 'Equivale a ${(kg / _kDashboardOutgoingBaleAvgKg).toStringAsFixed(0)} pacas en patio'
+              ? _fmtKg(kg)
               : _materialUiLabel(option?.inventoryMaterial ?? ''),
           color: _tileColorForMaterial(option?.inventoryMaterial),
         );
@@ -3243,10 +2887,20 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   @override
   Widget build(BuildContext context) {
     final baleByMaterial = <String, double>{};
+    final baleKgByMaterial = <String, double>{};
     for (final entry in _operationalOnHandBales.entries) {
       if (!_isBaleOperationalMaterial(entry.key)) continue;
       final key = _normalizeOperational(entry.key);
       baleByMaterial[key] = (baleByMaterial[key] ?? 0) + entry.value;
+      baleKgByMaterial[key] =
+          (baleKgByMaterial[key] ?? 0) + (_operationalOnHandKg[entry.key] ?? 0);
+    }
+    for (final entry in _commercialOnHandBales.entries) {
+      if (!_isBaleCommercialMaterialCode(entry.key)) continue;
+      final key = _normalizeOperational(entry.key);
+      baleByMaterial[key] = (baleByMaterial[key] ?? 0) + entry.value;
+      baleKgByMaterial[key] =
+          (baleKgByMaterial[key] ?? 0) + (_commercialOnHandKg[entry.key] ?? 0);
     }
     for (final key in const <String>[
       'BALE_NATIONAL',
@@ -3256,21 +2910,15 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       'CAPLE',
     ]) {
       baleByMaterial.putIfAbsent(key, () => 0);
+      baleKgByMaterial.putIfAbsent(key, () => 0);
     }
-    final baleMaterials = baleByMaterial.entries.toList()
-      ..sort((a, b) {
-        final byOrder = _materialSortOrder(
-          a.key,
-        ).compareTo(_materialSortOrder(b.key));
-        if (byOrder != 0) return byOrder;
-        return a.key.compareTo(b.key);
-      });
-    final totalPacasKg = baleMaterials.fold<double>(
+    final totalPacasKg = baleKgByMaterial.values.fold<double>(
       0,
-      (sum, entry) => sum + entry.value,
+      (sum, value) => sum + value,
     );
-    final visiblePrefs = _widgetPrefs.where((pref) => pref.isVisible).toList()
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
+    final visiblePrefs =
+        _fixedWidgetPrefs().where((pref) => pref.isVisible).toList()
+          ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     final tileModels = visiblePrefs
         .map((pref) => _buildTileModel(pref, baleByMaterial, totalPacasKg))
         .whereType<_DashboardInventoryTileModel>()
@@ -3298,30 +2946,23 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
                       (tile) => _SquareTile(
                         tile: tile,
                         width: smallW,
-                        editMode: _editingTiles,
-                        isSelected: tile.pref.widgetKey == _selectedTileKey,
-                        onTap: _editingTiles
-                            ? () async {
-                                if (!mounted) return;
-                                setState(
-                                  () => _selectedTileKey = tile.pref.widgetKey,
-                                );
-                              }
-                            : widget.onOpenInventoryProduction,
+                        editMode: false,
+                        isSelected: false,
+                        onTap: widget.onOpenInventoryProduction,
                       ),
                     )
                     .toList(),
               );
 
               final chart = _ChartCard(
-                title: 'Producción diaria de cartón',
-                subtitle: 'Comparativo por material de producción',
+                title: 'Transformación diaria de cartón',
+                subtitle: 'Kg clasificados por material comercial',
                 onTap: widget.onOpenInventoryProduction,
                 child: _ProductionBarChart(seriesList: _pacaProductionSeries),
               );
               final separationChart = _ChartCard(
-                title: 'Separación diaria de chatarra y papel',
-                subtitle: 'Kg procesados por día en patio',
+                title: 'Transformación diaria de patio',
+                subtitle: 'Kg clasificados por día en chatarra y papel',
                 onTap: widget.onOpenInventoryProduction,
                 child: _ProductionBarChart(seriesList: _separationSeries),
               );
@@ -3329,46 +2970,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _HeaderIconButton(
-                        label: _editingTiles
-                            ? 'Terminar widgets'
-                            : 'Personalizar widgets',
-                        icon: _editingTiles
-                            ? Icons.check_circle_outline_rounded
-                            : Icons.dashboard_customize_rounded,
-                        onTap: _toggleTileEditing,
-                      ),
-                      if (_editingTiles)
-                        _HeaderIconButton(
-                          label: 'Agregar widget',
-                          icon: Icons.add_circle_outline_rounded,
-                          onTap: _addInventoryWidget,
-                        ),
-                      if (_editingTiles && _selectedTileKey != null)
-                        _HeaderIconButton(
-                          label: 'Cambiar widget',
-                          icon: Icons.tune_rounded,
-                          onTap: _changeSelectedInventoryWidget,
-                        ),
-                      if (_editingTiles && _selectedTileKey != null)
-                        _HeaderIconButton(
-                          label: 'Quitar widget',
-                          icon: Icons.delete_outline_rounded,
-                          onTap: _removeSelectedInventoryWidget,
-                        ),
-                      if (_editingTiles)
-                        _HeaderIconButton(
-                          label: 'Restaurar defaults',
-                          icon: Icons.restart_alt_rounded,
-                          onTap: _restoreDefaultWidgets,
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
                   tiles,
                   const SizedBox(height: 10),
                   SizedBox(height: _kWidgetLargeHeight, child: chart),
@@ -3538,183 +3139,6 @@ class _SquareTile extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _DashboardInventoryWidgetEditorDialog extends StatefulWidget {
-  final _DashboardInventoryWidgetPref? initialPref;
-  final List<String> operationalMaterials;
-  final List<_DashboardCommercialMaterialOption> commercialOptions;
-  final String Function(String material) materialUiLabel;
-
-  const _DashboardInventoryWidgetEditorDialog({
-    required this.initialPref,
-    required this.operationalMaterials,
-    required this.commercialOptions,
-    required this.materialUiLabel,
-  });
-
-  @override
-  State<_DashboardInventoryWidgetEditorDialog> createState() =>
-      _DashboardInventoryWidgetEditorDialogState();
-}
-
-class _DashboardInventoryWidgetEditorDialogState
-    extends State<_DashboardInventoryWidgetEditorDialog> {
-  late String _sourceKind;
-  String? _material;
-  String? _commercialMaterialCode;
-
-  @override
-  void initState() {
-    super.initState();
-    _sourceKind = widget.initialPref?.sourceKind ?? 'operational_material';
-    _material =
-        widget.initialPref?.material ??
-        (widget.operationalMaterials.isEmpty
-            ? null
-            : widget.operationalMaterials.first);
-    _commercialMaterialCode =
-        widget.initialPref?.commercialMaterialCode ??
-        (widget.commercialOptions.isEmpty
-            ? null
-            : widget.commercialOptions.first.code);
-  }
-
-  bool get _canSave {
-    switch (_sourceKind) {
-      case 'bales_total':
-        return true;
-      case 'operational_material':
-        return (_material ?? '').trim().isNotEmpty;
-      case 'commercial_material':
-        return (_commercialMaterialCode ?? '').trim().isNotEmpty;
-      default:
-        return false;
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(
-        widget.initialPref == null
-            ? 'Agregar widget de patio'
-            : 'Cambiar widget de patio',
-      ),
-      content: SizedBox(
-        width: 520,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            DropdownButtonFormField<String>(
-              initialValue: _sourceKind,
-              decoration: const InputDecoration(labelText: 'Tipo de widget'),
-              items: const [
-                DropdownMenuItem(
-                  value: 'bales_total',
-                  child: Text('Pacas totales en patio'),
-                ),
-                DropdownMenuItem(
-                  value: 'operational_material',
-                  child: Text('Material general'),
-                ),
-                DropdownMenuItem(
-                  value: 'commercial_material',
-                  child: Text('Material comercial'),
-                ),
-              ],
-              onChanged: (value) {
-                if (value == null) return;
-                setState(() {
-                  _sourceKind = value;
-                  if (_sourceKind == 'operational_material' &&
-                      (_material ?? '').isEmpty) {
-                    _material = widget.operationalMaterials.isEmpty
-                        ? null
-                        : widget.operationalMaterials.first;
-                  }
-                  if (_sourceKind == 'commercial_material' &&
-                      (_commercialMaterialCode ?? '').isEmpty) {
-                    _commercialMaterialCode = widget.commercialOptions.isEmpty
-                        ? null
-                        : widget.commercialOptions.first.code;
-                  }
-                });
-              },
-            ),
-            if (_sourceKind == 'operational_material') ...[
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _material,
-                decoration: const InputDecoration(labelText: 'Material'),
-                items: widget.operationalMaterials
-                    .map(
-                      (material) => DropdownMenuItem<String>(
-                        value: material,
-                        child: Text(widget.materialUiLabel(material)),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) => setState(() => _material = value),
-              ),
-            ],
-            if (_sourceKind == 'commercial_material') ...[
-              const SizedBox(height: 12),
-              DropdownButtonFormField<String>(
-                initialValue: _commercialMaterialCode,
-                isExpanded: true,
-                decoration: const InputDecoration(
-                  labelText: 'Material comercial',
-                ),
-                items: widget.commercialOptions
-                    .map(
-                      (option) => DropdownMenuItem<String>(
-                        value: option.code,
-                        child: Text(
-                          option.inventoryMaterial == null ||
-                                  option.inventoryMaterial!.trim().isEmpty
-                              ? option.name
-                              : '${option.name} · ${widget.materialUiLabel(option.inventoryMaterial!)}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                    )
-                    .toList(),
-                onChanged: (value) =>
-                    setState(() => _commercialMaterialCode = value),
-              ),
-            ],
-          ],
-        ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: !_canSave
-              ? null
-              : () {
-                  Navigator.of(context).pop(
-                    _DashboardInventoryWidgetEditorResult(
-                      sourceKind: _sourceKind,
-                      material: _sourceKind == 'operational_material'
-                          ? _material
-                          : null,
-                      commercialMaterialCode:
-                          _sourceKind == 'commercial_material'
-                          ? _commercialMaterialCode
-                          : null,
-                    ),
-                  );
-                },
-          child: const Text('Guardar'),
-        ),
-      ],
     );
   }
 }

@@ -1,0 +1,70 @@
+begin;
+
+do $$
+begin
+  if exists (
+    select 1
+      from information_schema.columns
+     where table_schema = 'public'
+       and table_name = 'profiles'
+       and column_name = 'employee_id'
+  ) then
+    update public.profiles
+       set employee_id = null
+     where employee_id is not null;
+  end if;
+
+  if exists (
+    select 1
+      from information_schema.tables
+     where table_schema = 'public'
+       and table_name = 'vehicle_driver_assignments'
+  ) then
+    delete from public.vehicle_driver_assignments;
+  end if;
+
+  if exists (
+    select 1
+      from information_schema.tables
+     where table_schema = 'public'
+       and table_name = 'dashboard_inventory_widgets'
+  ) then
+    delete from public.dashboard_inventory_widgets;
+  end if;
+
+  if exists (
+    select 1
+      from information_schema.tables
+     where table_schema = 'public'
+       and table_name = 'commercial_material_source_rules'
+  ) then
+    delete from public.commercial_material_source_rules;
+  end if;
+
+  delete from public.opening_balances;
+  delete from public.inventory_monthly_cut_lines;
+  delete from public.inventory_monthly_cuts;
+  delete from public.inventory_movements;
+  delete from public.inventory_items;
+
+  delete from public.services;
+  delete from public.pesadas;
+
+  truncate table public.material_separation_runs;
+  truncate table public.production_runs;
+  truncate table public.movements;
+
+  delete from public.inventory_opening_templates;
+  delete from public.commercial_material_catalog;
+  delete from public.materials;
+  delete from public.employees;
+
+  delete from public.sites
+   where coalesce(type, '') <> 'cliente';
+
+  delete from public.sites
+   where coalesce(type, '') = 'cliente';
+end
+$$;
+
+commit;

@@ -1,0 +1,68 @@
+code,name,family,general_material,classification_kind,tracks_patio_stock,allows_direct_entry,allows_transformation_output,allows_sale,active,notes
+ACERO,ACERO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+ACERO_CON_PINTURA,ACERO CON PINTURA,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+ALAMBRE_DE_ALUMINIO,ALAMBRE DE ALUMINIO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+ALUMINIO,ALUMINIO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+ALUMINIO_BLANDO,ALUMINIO BLANDO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+ALUMINIO_MACIZO,ALUMINIO MACIZO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+ALUMINIO_PISTON,ALUMINIO PISTON,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+ALUMINIO_TUBO,ALUMINIO TUBO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+AMERICANO,AMERICANO,fiber,CARTON,legacy_alias,false,false,false,false,false,Alias heredado; reemplazar por CARTON_AMERICANO o PACA_AMERICANA segun flujo
+ARCHIVO,ARCHIVO,fiber,PAPEL,classified_stock,true,true,true,true,true,Clasificacion comercial de papel
+BASURA,BASURA,fiber,CARTON,classified_stock,true,true,true,true,true,Salida clasificada de carton
+BLANCO_SELECCION,BLANCO SELECCION,fiber,PAPEL,classified_stock,true,true,true,true,true,Clasificacion comercial de papel
+BOLSA,BOLSA,polymer,PLASTICO,classified_stock,true,true,true,true,true,Clasificacion comercial de plastico
+BOTE_GRANEL,BOTE GRANEL,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+BRONCE,BRONCE,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+CAPLE,CAPLE,fiber,CARTON,classified_stock,true,true,true,true,true,Clasificacion comercial de carton
+CARTON_AMERICANO,CARTON AMERICANO,fiber,CARTON,general_input,false,true,false,false,true,Entrada comercial que suma a CARTON
+CARTON_NACIONAL,CARTON NACIONAL,fiber,CARTON,general_input,false,true,false,false,true,Entrada comercial que suma a CARTON
+CHATARRA_MIXTA,CHATARRA MIXTA,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+COBRE_CANDY,COBRE CANDY,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+COBRE_DE_PRIMERA,COBRE DE PRIMERA,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+COBRE_DE_SEGUNDA,COBRE DE SEGUNDA,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+COLOR,COLOR,fiber,PAPEL,classified_stock,true,true,true,true,true,Clasificacion comercial de papel
+FIERRO_VACIADO,FIERRO VACIADO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+FOLLETO,FOLLETO,fiber,PAPEL,classified_stock,true,true,true,true,true,Clasificacion comercial de papel
+LAMINA,LAMINA,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+LENA,LENA,other,MADERA,classified_stock,true,true,true,true,true,Clasificacion comercial de madera
+LIBRO,LIBRO,fiber,PAPEL,classified_stock,true,true,true,true,true,Clasificacion comercial de papel
+LIMPIO,LIMPIO,fiber,CARTON,legacy_alias,false,false,false,false,false,Alias heredado; reemplazar por PACA_LIMPIA
+LODOS,LODOS,other,CARTON,classified_stock,true,true,true,true,true,Clasificacion comercial heredada; validar si se conserva como subproducto
+MAGAZINE,MAGAZINE,fiber,PAPEL,classified_stock,true,true,true,true,true,Clasificacion comercial de papel
+MANGUERA,MANGUERA,polymer,PLASTICO,classified_stock,true,true,true,true,true,Clasificacion comercial de plastico
+MIXTO,MIXTO,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+MIXTO_PARA_PROCESAR,MIXTO PARA PROCESAR,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+NACIONAL,NACIONAL,fiber,CARTON,legacy_alias,false,false,false,false,false,Alias heredado; reemplazar por CARTON_NACIONAL o PACA_NACIONAL segun flujo
+PACA_AMERICANA,PACA AMERICANA,fiber,CARTON,classified_stock,true,true,true,true,true,Producto clasificado de carton para patio y venta
+PACA_BASURA,PACA BASURA,fiber,CARTON,classified_stock,true,true,true,true,true,Producto clasificado de carton para patio y venta
+PACA_DE_PRIMERA,PACA DE PRIMERA,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+PACA_DE_SEGUNDA,PACA DE SEGUNDA,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+PACA_LIMPIA,PACA LIMPIA,fiber,CARTON,classified_stock,true,true,true,true,true,Producto clasificado de carton para patio y venta
+PACA_NACIONAL,PACA NACIONAL,fiber,CARTON,classified_stock,true,true,true,true,true,Producto clasificado de carton para patio y venta
+PAPEL_REVUELTO,PAPEL REVUELTO,fiber,PAPEL,classified_stock,true,true,true,true,true,Clasificacion comercial de papel
+PEDACERA,PEDACERA,other,MADERA,classified_stock,true,true,true,true,true,Clasificacion comercial de madera
+PERFIL_CON_PINTURA,PERFIL CON PINTURA,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+PERFIL_SIN_PINTURA,PERFIL SIN PINTURA,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+PESADO,PESADO,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+PLACA_DE_ALUMINIO,PLACA DE ALUMINIO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+PLACA_Y_ESTRUCTURA_CORTA,PLACA Y ESTRUCTURA CORTA,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+PLACA_Y_ESTRUCTURA_LARGA,PLACA Y ESTRUCTURA LARGA,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+PLASTICO_MIXTO,PLASTICO MIXTO,polymer,PLASTICO,classified_stock,true,true,true,true,true,Clasificacion comercial de plastico
+RADIADOR_DE_ALUMINIO,RADIADOR DE ALUMINIO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+RADIADOR_DE_COBRE,RADIADOR DE COBRE,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+RADIADOR_LATON,RADIADOR LATON,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+RADIADOR_PUNTA_DE_COBRE,RADIADOR PUNTA DE COBRE,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+REBABA,REBABA,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+REBABA_DE_BRONCE,REBABA DE BRONCE,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+RETORNO_INDUSTRIAL,RETORNO INDUSTRIAL,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+RETORNO_INDUSTRIAL_ALTO_RES,RETORNO INDUSTRIAL ALTO RES,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+RETORNO_INDUSTRIAL_ESPECIAL,RETORNO INDUSTRIAL ESPECIAL,metal,CHATARRA,classified_stock,true,true,true,true,true,Clasificacion comercial de chatarra
+REVUELTO,REVUELTO,fiber,PAPEL,general_input,false,true,false,false,true,Entrada comercial que suma a PAPEL
+RIN_CHICO,RIN CHICO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+RIN_DE_ALUMINIO,RIN DE ALUMINIO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+RIN_GRANDE,RIN GRANDE,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+TARIMA,TARIMA,other,MADERA,classified_stock,true,true,true,true,true,Clasificacion comercial de madera
+TRASTE,TRASTE,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+TUBO,TUBO,metal,METAL,classified_stock,true,true,true,true,true,Clasificacion comercial de metal
+UNICEL,UNICEL,polymer,PLASTICO,classified_stock,true,true,true,true,true,Clasificacion comercial de plastico

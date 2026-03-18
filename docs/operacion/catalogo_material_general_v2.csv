@@ -1,0 +1,7 @@
+code,name,active,notes
+CARTON,CARTON,true,Base general para compras y aperturas de carton
+CHATARRA,CHATARRA,true,Base general para compras y aperturas de chatarra
+METAL,METAL,true,Base general para compras y aperturas de metal
+PLASTICO,PLASTICO,true,Base general para compras y aperturas de plastico
+MADERA,MADERA,true,Base general para compras y aperturas de madera
+PAPEL,PAPEL,true,Base general para compras y aperturas de papel
