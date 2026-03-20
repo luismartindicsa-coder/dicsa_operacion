@@ -114,6 +114,13 @@ class _InventoryTransformationGridState
   int _activeGridColumn = 0;
   int _activeInsertColumn = 0;
 
+  bool get _usesBaleLanguage => widget.sourceGeneralCode == 'CARTON';
+  String get _unitsFieldLabel =>
+      _usesBaleLanguage ? 'Pacas (opcional)' : 'Unidades (opcional)';
+  String get _unitsHintText => _usesBaleLanguage ? 'Pacas' : 'Unidades';
+  String get _unitsHeaderLabel => _usesBaleLanguage ? 'PACAS' : 'UNIDADES';
+  String get _unitsValidationLabel => _usesBaleLanguage ? 'Pacas' : 'Unidades';
+
   @override
   void initState() {
     super.initState();
@@ -1190,8 +1197,8 @@ class _InventoryTransformationGridState
                       TextField(
                         controller: unitsC,
                         keyboardType: TextInputType.number,
-                        decoration: const InputDecoration(
-                          labelText: 'Unidades / pacas',
+                        decoration: InputDecoration(
+                          labelText: _unitsFieldLabel,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -1474,7 +1481,7 @@ class _InventoryTransformationGridState
       return 'Kg salida no puede ser mayor que kg entrada.';
     }
     if (units != null && units < 0) {
-      return 'Unidades / pacas no puede ser negativo.';
+      return '$_unitsValidationLabel no puede ser negativo.';
     }
     return null;
   }
@@ -1594,6 +1601,7 @@ class _InventoryTransformationGridState
         _TransformationHeaderRow(
           hasActiveFilter: _hasActiveFilter,
           onOpenFilter: _openColumnFilter,
+          unitsHeaderLabel: _unitsHeaderLabel,
         ),
         const SizedBox(height: 8),
         _buildFormCard(context),
@@ -1925,7 +1933,7 @@ class _InventoryTransformationGridState
                                   focusNode: _unitsFocusNode,
                                   keyboardType: TextInputType.number,
                                   decoration: _trGlassFieldDecoration(
-                                    hintText: 'Pacas / unidades',
+                                    hintText: _unitsHintText,
                                     suppressFocusedBorder: true,
                                     hideBorder: _activeInsertColumn == 5,
                                   ),
@@ -2259,6 +2267,7 @@ class _InventoryTransformationGridState
                           hovering: _hoveredRowIndex == index,
                           activeGridColumn: _activeGridColumn,
                           notesColumnWidth: notesColumnWidth,
+                          unitsHintText: _unitsHintText,
                           commercialOptions: _commercialOptions,
                           onHoverChanged: (hovering) {
                             setState(() {
@@ -2622,11 +2631,13 @@ class _TransformationTableHeader extends StatelessWidget {
   final bool Function(String columnId) hasActiveFilter;
   final Future<void> Function(String columnId, String label) onOpenFilter;
   final double notesColumnWidth;
+  final String unitsHeaderLabel;
 
   const _TransformationTableHeader({
     required this.hasActiveFilter,
     required this.onOpenFilter,
     required this.notesColumnWidth,
+    required this.unitsHeaderLabel,
   });
 
   @override
@@ -2675,11 +2686,11 @@ class _TransformationTableHeader extends StatelessWidget {
         ),
         const SizedBox(width: _kTrCellGap),
         _TransformationHeaderCell(
-          'UNIDADES',
+          unitsHeaderLabel,
           _kTrUnitsColW,
           style,
           active: hasActiveFilter('unidades'),
-          onFilter: () => onOpenFilter('unidades', 'UNIDADES'),
+          onFilter: () => onOpenFilter('unidades', unitsHeaderLabel),
         ),
         const SizedBox(width: _kTrCellGap),
         _TransformationHeaderCell(
@@ -2707,10 +2718,12 @@ class _TransformationTableHeader extends StatelessWidget {
 class _TransformationHeaderRow extends StatelessWidget {
   final bool Function(String columnId) hasActiveFilter;
   final Future<void> Function(String columnId, String label) onOpenFilter;
+  final String unitsHeaderLabel;
 
   const _TransformationHeaderRow({
     required this.hasActiveFilter,
     required this.onOpenFilter,
+    required this.unitsHeaderLabel,
   });
 
   @override
@@ -2736,6 +2749,7 @@ class _TransformationHeaderRow extends StatelessWidget {
                     hasActiveFilter: hasActiveFilter,
                     onOpenFilter: onOpenFilter,
                     notesColumnWidth: notesColumnWidth,
+                    unitsHeaderLabel: unitsHeaderLabel,
                   ),
                 ),
               ),
@@ -2811,6 +2825,7 @@ class _TransformationDataRow extends StatefulWidget {
   final bool hovering;
   final int activeGridColumn;
   final double notesColumnWidth;
+  final String unitsHintText;
   final List<_CommercialMaterialV2> commercialOptions;
   final ValueChanged<bool> onHoverChanged;
   final ValueChanged<int> onActivateColumn;
@@ -2842,6 +2857,7 @@ class _TransformationDataRow extends StatefulWidget {
     required this.hovering,
     required this.activeGridColumn,
     required this.notesColumnWidth,
+    required this.unitsHintText,
     required this.commercialOptions,
     required this.onHoverChanged,
     required this.onActivateColumn,
@@ -3508,7 +3524,7 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
                                             focusNode: _unitsFocusNode,
                                             keyboardType: TextInputType.number,
                                             decoration: _trGlassFieldDecoration(
-                                              hintText: 'Unidades',
+                                              hintText: widget.unitsHintText,
                                               suppressFocusedBorder: true,
                                               hideBorder:
                                                   widget.activeGridColumn == 5,

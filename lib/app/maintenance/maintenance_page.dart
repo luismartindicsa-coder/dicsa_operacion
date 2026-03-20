@@ -4209,14 +4209,16 @@ class _MaintenancePageState extends State<MaintenancePage>
 
     return Column(
       children: [
-        Row(
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
           children: [
             FilledButton.tonalIcon(
               onPressed: _addMaterial,
               icon: const Icon(Icons.add_rounded),
               label: const Text('Agregar material'),
             ),
-            const SizedBox(width: 8),
             Text(
               'Estimado: ${_fmtMoney(estTotal)} · Real: ${_fmtMoney(realTotal)}',
             ),

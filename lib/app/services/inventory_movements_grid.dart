@@ -822,7 +822,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         ? null
         : math.max(0, grossKg - (tareKg ?? 0)).toDouble();
     final commercial = _commercialByCode(_draft.commercialMaterialCode);
-    final resolvedMaterialId = commercial?.materialId ?? _draft.materialId;
+    final resolvedMaterialId = _draft.materialId ?? commercial?.materialId;
     final missingFields = <String>[];
     if (_draft.opDate == null) missingFields.add('Fecha');
     if (resolvedMaterialId == null) missingFields.add('Material general');

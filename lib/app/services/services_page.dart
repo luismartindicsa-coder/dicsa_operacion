@@ -15,6 +15,8 @@ import 'inventory_page.dart';
 import 'warehouse_page.dart';
 import 'weighings_page.dart';
 import 'services_shell.dart'; // ajusta el path si lo guardaste en /ui/ o /app/
+import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart'
+    as shared_picker;
 import '../shared/page_routes.dart';
 
 const double _kActionsW = 150; // prueba 150-170 si quieres más aire
@@ -35,10 +37,6 @@ class _PickerOption<T> {
   final T value;
   final String label;
   const _PickerOption({required this.value, required this.label});
-}
-
-class _FocusFirstPickerItemIntent extends Intent {
-  const _FocusFirstPickerItemIntent();
 }
 
 class _DateFilterDialogResult {
@@ -399,14 +397,18 @@ Future<T?> _showSearchablePickerDialog<T>(
   required List<_PickerOption<T>> options,
   T? initialValue,
 }) async {
-  return showDialog<T>(
-    context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.28),
-    builder: (_) => _SearchablePickerDialog<T>(
-      title: title,
-      options: options,
-      initialValue: initialValue,
-    ),
+  return shared_picker.showSearchablePickerDialog<T>(
+    context,
+    title: title,
+    initialValue: initialValue,
+    options: options
+        .map(
+          (option) => shared_picker.SearchablePickerOption<T>(
+            value: option.value,
+            label: option.label,
+          ),
+        )
+        .toList(growable: false),
   );
 }
 
@@ -491,50 +493,84 @@ Future<DateTime?> _showGlassDatePickerDialog(
                     surface: const Color(0xFFEAF2F9),
                   ),
                 ),
-                child: AlertDialog(
-                  backgroundColor: const Color(
-                    0xFFEAF2F9,
-                  ).withValues(alpha: 0.98),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(16),
-                    side: BorderSide(
-                      color: const Color(0xFF8AA9C2).withValues(alpha: 0.42),
+                child: Dialog(
+                  backgroundColor: Colors.transparent,
+                  insetPadding: const EdgeInsets.symmetric(
+                    horizontal: 24,
+                    vertical: 24,
+                  ),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 420),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(20),
+                      child: BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                          decoration: BoxDecoration(
+                            color: const Color(
+                              0xFFEAF2F9,
+                            ).withValues(alpha: 0.96),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.70),
+                            ),
+                          ),
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Selecciona fecha',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0B2B2B),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              SizedBox(
+                                width: 320,
+                                child: CalendarDatePicker(
+                                  key: ValueKey<DateTime>(tempDate),
+                                  initialDate: tempDate,
+                                  firstDate: firstDate,
+                                  lastDate: lastDate,
+                                  onDateChanged: (d) {
+                                    setInnerState(() {
+                                      tempDate = DateUtils.dateOnly(d);
+                                    });
+                                  },
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  OutlinedButton(
+                                    onPressed: () =>
+                                        Navigator.of(dialogContext).pop(),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilledButton(
+                                    style: FilledButton.styleFrom(
+                                      backgroundColor: const Color(0xFF6A99C7),
+                                      foregroundColor: Colors.white,
+                                    ),
+                                    onPressed: () => Navigator.of(
+                                      dialogContext,
+                                    ).pop(DateUtils.dateOnly(tempDate)),
+                                    child: const Text('Aceptar'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
-                  title: const Text('Selecciona fecha'),
-                  content: SizedBox(
-                    width: 320,
-                    child: CalendarDatePicker(
-                      key: ValueKey<DateTime>(tempDate),
-                      initialDate: tempDate,
-                      firstDate: firstDate,
-                      lastDate: lastDate,
-                      onDateChanged: (d) {
-                        setInnerState(() {
-                          tempDate = DateUtils.dateOnly(d);
-                        });
-                      },
-                    ),
-                  ),
-                  actions: [
-                    TextButton(
-                      style: TextButton.styleFrom(
-                        foregroundColor: const Color(0xFF2D5478),
-                      ),
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      child: const Text('Cancelar'),
-                    ),
-                    FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF6A99C7),
-                        foregroundColor: Colors.white,
-                      ),
-                      onPressed: () => Navigator.of(
-                        dialogContext,
-                      ).pop(DateUtils.dateOnly(tempDate)),
-                      child: const Text('Aceptar'),
-                    ),
-                  ],
                 ),
               ),
             ),
@@ -543,290 +579,6 @@ Future<DateTime?> _showGlassDatePickerDialog(
       );
     },
   );
-}
-
-class _SearchablePickerDialog<T> extends StatefulWidget {
-  final String title;
-  final List<_PickerOption<T>> options;
-  final T? initialValue;
-
-  const _SearchablePickerDialog({
-    required this.title,
-    required this.options,
-    required this.initialValue,
-  });
-
-  @override
-  State<_SearchablePickerDialog<T>> createState() =>
-      _SearchablePickerDialogState<T>();
-}
-
-class _SearchablePickerDialogState<T>
-    extends State<_SearchablePickerDialog<T>> {
-  String _query = '';
-  final FocusNode _searchFocusNode = FocusNode();
-  final List<FocusNode> _itemFocusNodes = <FocusNode>[];
-  int? _hoveredIndex;
-  int? _focusedIndex;
-
-  @override
-  void dispose() {
-    _searchFocusNode.dispose();
-    for (final node in _itemFocusNodes) {
-      node.dispose();
-    }
-    super.dispose();
-  }
-
-  void _syncItemFocusNodes(int count) {
-    while (_itemFocusNodes.length < count) {
-      _itemFocusNodes.add(FocusNode());
-    }
-    while (_itemFocusNodes.length > count) {
-      _itemFocusNodes.removeLast().dispose();
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final q = _query.trim().toLowerCase();
-    final filtered = q.isEmpty
-        ? widget.options
-        : widget.options
-              .where((o) => o.label.toLowerCase().contains(q))
-              .toList();
-    _syncItemFocusNodes(filtered.length);
-    final maxDialogHeight = MediaQuery.of(context).size.height * 0.70;
-
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
-      child: ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: 420, maxHeight: maxDialogHeight),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    const Color(0xFF9CC7E5).withValues(alpha: 0.44),
-                    const Color(0xFFDDEAF5).withValues(alpha: 0.40),
-                    const Color(0xFF8BE0CF).withValues(alpha: 0.30),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.12),
-                    blurRadius: 22,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
-              padding: const EdgeInsets.fromLTRB(14, 12, 14, 10),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    widget.title,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                      color: Color(0xFF0B2B2B),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Focus(
-                    onKeyEvent: (_, event) {
-                      if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                      if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
-                          _itemFocusNodes.isNotEmpty) {
-                        _itemFocusNodes.first.requestFocus();
-                        return KeyEventResult.handled;
-                      }
-                      return KeyEventResult.ignored;
-                    },
-                    child: Shortcuts(
-                      shortcuts: const <ShortcutActivator, Intent>{
-                        SingleActivator(LogicalKeyboardKey.arrowDown):
-                            _FocusFirstPickerItemIntent(),
-                      },
-                      child: Actions(
-                        actions: <Type, Action<Intent>>{
-                          _FocusFirstPickerItemIntent:
-                              CallbackAction<_FocusFirstPickerItemIntent>(
-                                onInvoke: (_) {
-                                  if (_itemFocusNodes.isNotEmpty) {
-                                    _itemFocusNodes.first.requestFocus();
-                                  }
-                                  return null;
-                                },
-                              ),
-                        },
-                        child: TextField(
-                          focusNode: _searchFocusNode,
-                          autofocus: true,
-                          decoration: _glassFieldDecoration(
-                            hintText: 'Buscar...',
-                          ),
-                          onChanged: (v) => setState(() => _query = v),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Expanded(
-                    child: filtered.isEmpty
-                        ? const Center(
-                            child: Text(
-                              'Sin resultados',
-                              style: TextStyle(fontWeight: FontWeight.w600),
-                            ),
-                          )
-                        : ListView.builder(
-                            itemCount: filtered.length,
-                            itemBuilder: (_, i) {
-                              final option = filtered[i];
-                              final selected =
-                                  option.value == widget.initialValue;
-                              final active =
-                                  _hoveredIndex == i || _focusedIndex == i;
-                              return Focus(
-                                focusNode: _itemFocusNodes[i],
-                                onFocusChange: (hasFocus) {
-                                  if (!mounted) return;
-                                  setState(() {
-                                    if (hasFocus) {
-                                      _focusedIndex = i;
-                                    } else if (_focusedIndex == i) {
-                                      _focusedIndex = null;
-                                    }
-                                  });
-                                },
-                                onKeyEvent: (_, event) {
-                                  if (event is! KeyDownEvent) {
-                                    return KeyEventResult.ignored;
-                                  }
-                                  final key = event.logicalKey;
-                                  if (key == LogicalKeyboardKey.arrowUp) {
-                                    if (i == 0) {
-                                      _searchFocusNode.requestFocus();
-                                    } else {
-                                      _itemFocusNodes[i - 1].requestFocus();
-                                    }
-                                    return KeyEventResult.handled;
-                                  }
-                                  if (key == LogicalKeyboardKey.arrowDown &&
-                                      i < _itemFocusNodes.length - 1) {
-                                    _itemFocusNodes[i + 1].requestFocus();
-                                    return KeyEventResult.handled;
-                                  }
-                                  if (key == LogicalKeyboardKey.enter ||
-                                      key == LogicalKeyboardKey.numpadEnter ||
-                                      key == LogicalKeyboardKey.space) {
-                                    Navigator.pop(context, option.value);
-                                    return KeyEventResult.handled;
-                                  }
-                                  return KeyEventResult.ignored;
-                                },
-                                child: MouseRegion(
-                                  onEnter: (_) =>
-                                      setState(() => _hoveredIndex = i),
-                                  onExit: (_) {
-                                    if (_hoveredIndex == i) {
-                                      setState(() => _hoveredIndex = null);
-                                    }
-                                  },
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 60),
-                                    curve: Curves.easeOutCubic,
-                                    margin: const EdgeInsets.symmetric(
-                                      vertical: 2,
-                                      horizontal: 2,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: active
-                                          ? const Color(
-                                              0xFFA9E8CF,
-                                            ).withValues(alpha: 0.48)
-                                          : Colors.transparent,
-                                      borderRadius: BorderRadius.circular(10),
-                                      border: Border.all(
-                                        color: active
-                                            ? const Color(
-                                                0xFF0B72FF,
-                                              ).withValues(alpha: 0.56)
-                                            : Colors.transparent,
-                                        width: active ? 1.0 : 0.8,
-                                      ),
-                                      boxShadow: active
-                                          ? [
-                                              BoxShadow(
-                                                color: const Color(
-                                                  0xFF75C8A5,
-                                                ).withValues(alpha: 0.22),
-                                                blurRadius: 10,
-                                                offset: const Offset(0, 3),
-                                              ),
-                                            ]
-                                          : const [],
-                                    ),
-                                    child: DecoratedBox(
-                                      decoration: BoxDecoration(
-                                        border: Border(
-                                          bottom: BorderSide(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.40,
-                                            ),
-                                            width: 1,
-                                          ),
-                                        ),
-                                      ),
-                                      child: ListTile(
-                                        dense: true,
-                                        selected: selected,
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                        ),
-                                        title: Text(
-                                          option.label,
-                                          maxLines: 1,
-                                          overflow: TextOverflow.ellipsis,
-                                        ),
-                                        trailing: selected
-                                            ? const Icon(
-                                                Icons.check,
-                                                size: 16,
-                                                color: Color(0xFF0B72FF),
-                                              )
-                                            : null,
-                                        onTap: () => Navigator.pop(
-                                          context,
-                                          option.value,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 class _TypeAheadDropdownField<T> extends StatefulWidget {
@@ -1094,7 +846,7 @@ class _ServicesPageState extends State<ServicesPage>
   // ===== catálogos (para dropdowns) =====
   bool _loadingCats = true;
   List<_Opt> _clients = []; // sites type='cliente'
-  List<_Opt> _materials = []; // materials (área LOGISTICA)
+  List<_Opt> _materials = []; // material_commercial_catalog_v2
   List<_Opt> _drivers = []; // employees is_driver=true
   List<_Opt> _vehicles = []; // vehicles status='activo'
 
@@ -1390,12 +1142,13 @@ class _ServicesPageState extends State<ServicesPage>
         .eq('is_active', true)
         .order('name');
 
-    // MATERIALES (área LOGISTICA) -> join via materials + areas
+    // MATERIALES -> catálogo comercial vivo desde backend (v2)
     final mats = await supa
-        .from('materials')
-        .select('id,name,areas(name)')
+        .from('material_commercial_catalog_v2')
+        .select('id,name,code')
         .eq('is_active', true)
-        .eq('areas.name', 'LOGISTICA')
+        .neq('classification_kind', 'legacy_alias')
+        .order('sort_order')
         .order('name');
 
     // CHOFERES
@@ -1478,8 +1231,10 @@ class _ServicesPageState extends State<ServicesPage>
     }
 
     final data = await supa
-        .from('v_services_grid')
-        .select('*')
+        .from('services')
+        .select(
+          'id,service_date,due_date,direction,status,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at',
+        )
         .order('service_date', ascending: false)
         .order('created_at', ascending: false);
 
@@ -2597,7 +2352,7 @@ class _ServicesPageState extends State<ServicesPage>
         if (!anyEditing) const MapEntry('edit', 'EDITAR SELECCION'),
         if (anyEditing) ...const [
           MapEntry('save', 'GUARDAR SELECCION'),
-          MapEntry('cancel', 'CANCELAR SELECCION'),
+          MapEntry('cancel', 'CANCELAR EDICION'),
         ],
         const MapEntry('delete', 'ELIMINAR SELECCION'),
       ];
@@ -2624,8 +2379,12 @@ class _ServicesPageState extends State<ServicesPage>
     return showMenu<String>(
       context: context,
       color: const Color(0xE6EAF2F9),
-      elevation: 6,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+      elevation: 8,
+      shadowColor: Colors.black.withValues(alpha: 0.12),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(18),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.72)),
+      ),
       position: RelativeRect.fromLTRB(
         globalPosition.dx,
         globalPosition.dy,
@@ -2660,6 +2419,8 @@ class _ServicesPageState extends State<ServicesPage>
         additive: false,
         ensureVisible: false,
       );
+    } else if (rowId != null) {
+      _setPrimarySelectedKeepBulk(rowId, ensureVisible: false);
     }
     final choice = await _showRowsContextMenu(globalPosition);
     if (choice == null || !mounted) return;
@@ -2671,16 +2432,20 @@ class _ServicesPageState extends State<ServicesPage>
         for (final state in states) {
           state.startEditingFromKeyboard();
         }
+        _rowsFocusNode.requestFocus();
         return;
       case 'save':
         if (states.isEmpty) return;
         await Future.wait(states.map((s) => s.saveFromKeyboard()));
+        if (!mounted) return;
+        _rowsFocusNode.requestFocus();
         return;
       case 'cancel':
         if (states.isEmpty) return;
         for (final state in states) {
           state.cancelEditingFromKeyboard();
         }
+        _rowsFocusNode.requestFocus();
         return;
       case 'delete':
         _handleDeleteOnSelectedRow();
@@ -2708,7 +2473,6 @@ class _ServicesPageState extends State<ServicesPage>
       'direction': _draft.direction,
       'status': _draft.status,
       'client_id': _draft.clientId,
-      'material_id': _draft.materialId,
       'driver_employee_id': _draft.driverEmployeeId,
       'vehicle_id': _draft.vehicleId,
       'notes': _draft.notes.trim().isEmpty ? null : _draft.notes.trim(),
@@ -3031,28 +2795,16 @@ class _ServicesPageState extends State<ServicesPage>
     required String? current,
     required String Function(String) format,
   }) async {
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: SizedBox(
-          width: 320,
-          child: ListView.builder(
-            shrinkWrap: true,
-            itemCount: options.length,
-            itemBuilder: (_, i) {
-              final value = options[i];
-              final selected = value == current;
-              return ListTile(
-                dense: true,
-                title: Text(format(value)),
-                trailing: selected ? const Icon(Icons.check, size: 18) : null,
-                onTap: () => Navigator.of(dialogContext).pop(value),
-              );
-            },
-          ),
-        ),
-      ),
+    return _showSearchablePickerDialog<String>(
+      context,
+      title: title,
+      initialValue: current,
+      options: options
+          .map(
+            (value) =>
+                _PickerOption<String>(value: value, label: format(value)),
+          )
+          .toList(growable: false),
     );
   }
 
@@ -3444,6 +3196,16 @@ class _ServicesPageState extends State<ServicesPage>
                                   return KeyEventResult.ignored;
                                 }
                                 final key = event.logicalKey;
+                                if (key == LogicalKeyboardKey.arrowLeft &&
+                                    _isDraftCommentCaretAtStart) {
+                                  _moveInsertColumn(-1);
+                                  return KeyEventResult.handled;
+                                }
+                                if (key == LogicalKeyboardKey.arrowRight &&
+                                    _isDraftCommentCaretAtEnd) {
+                                  _moveInsertColumn(1);
+                                  return KeyEventResult.handled;
+                                }
                                 if (key == LogicalKeyboardKey.enter ||
                                     key == LogicalKeyboardKey.numpadEnter) {
                                   unawaited(_insertDraft());
@@ -4391,7 +4153,20 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
     _dueDate = (r['due_date'] == null) ? null : widget.parseDate(r['due_date']);
 
     _clientId = r['client_id'] as String?;
-    _materialId = r['material_id'] as String?;
+    final rawMaterialId = r['material_id'] as String?;
+    final rawMaterialText =
+        ((r['material_type'] ?? r['material_name']) as String?)?.trim() ?? '';
+    _materialId = rawMaterialId;
+    if ((_materialId == null || _materialId!.isEmpty) &&
+        rawMaterialText.isNotEmpty) {
+      for (final option in widget.materials) {
+        if (option.label.trim().toUpperCase() ==
+            rawMaterialText.toUpperCase()) {
+          _materialId = option.id;
+          break;
+        }
+      }
+    }
 
     _direction = (r['direction'] as String?) ?? 'recoleccion';
     _status = (r['status'] as String?) ?? 'programado';
@@ -4550,30 +4325,16 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
     required String current,
     required String Function(String) format,
   }) async {
-    return showDialog<String>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: Text(title),
-          content: SizedBox(
-            width: 300,
-            child: ListView.builder(
-              shrinkWrap: true,
-              itemCount: options.length,
-              itemBuilder: (_, i) {
-                final value = options[i];
-                final selected = value == current;
-                return ListTile(
-                  dense: true,
-                  title: Text(format(value)),
-                  trailing: selected ? const Icon(Icons.check, size: 18) : null,
-                  onTap: () => Navigator.of(dialogContext).pop(value),
-                );
-              },
-            ),
-          ),
-        );
-      },
+    return _showSearchablePickerDialog<String>(
+      context,
+      title: title,
+      initialValue: current,
+      options: options
+          .map(
+            (value) =>
+                _PickerOption<String>(value: value, label: format(value)),
+          )
+          .toList(growable: false),
     );
   }
 
@@ -4584,12 +4345,11 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
       'direction': _direction,
       'status': _status,
       'client_id': _clientId,
-      'material_id': _materialId,
       'driver_employee_id': _driverId,
       'vehicle_id': _vehicleId,
       'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
 
-      // compat legacy si tu tabla aún los tiene NOT NULL
+      // En servicios el material es solo una referencia textual.
       'client_name': _labelOf(widget.clients, _clientId) ?? 'SIN_CLIENTE',
       'material_type':
           _labelOf(widget.materials, _materialId) ?? 'SIN_MATERIAL',
@@ -4644,13 +4404,13 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
     final hoverOnly = _hovering && !hasSelection;
     final highlighted = hasSelection || _hovering;
     final rowBg = _editing
-        ? const Color(0xFFCBEFE2)
+        ? const Color(0xFFDCEBFF)
         : hasSelection
         ? const Color(
             0xFF00A3FF,
           ).withValues(alpha: isPrimarySelected ? 0.16 : 0.13)
         : hoverOnly
-        ? const Color(0xFFE9F7EE)
+        ? const Color(0xFFEEF5FF)
         : Colors.white;
     Widget gridCellFrame(int columnIndex, Widget child) {
       final active =
@@ -4700,10 +4460,10 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
       final hovered = !_editing && _hoveredEditableColumn == col;
       final top = hasSelection
           ? const Color(0xFFD9EBFB).withValues(alpha: 0.64)
-          : const Color(0xFFDDEFE6).withValues(alpha: 0.84);
+          : const Color(0xFFEAF3FF).withValues(alpha: 0.92);
       final bottom = hasSelection
           ? const Color(0xFFCCE5FA).withValues(alpha: 0.42)
-          : const Color(0xFFCFE8DD).withValues(alpha: 0.56);
+          : const Color(0xFFDCEBFF).withValues(alpha: 0.72);
       return MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) {
@@ -4732,7 +4492,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
             boxShadow: hovered
                 ? [
                     BoxShadow(
-                      color: const Color(0xFF7FCBAA).withValues(alpha: 0.22),
+                      color: const Color(0xFF78B6F2).withValues(alpha: 0.20),
                       blurRadius: 9,
                       offset: const Offset(0, 3),
                     ),
@@ -5049,16 +4809,63 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                 SizedBox(
                                   width: _kCommentColW,
                                   child: _editing
-                                      ? TextField(
-                                          controller: _notes,
-                                          focusNode: _notesFocusNode,
-                                          decoration: _glassFieldDecoration(),
-                                          onTap: () {
-                                            widget.onActivateColumn(7);
-                                            if (!_notesFocusNode.hasFocus) {
-                                              _notesFocusNode.requestFocus();
+                                      ? Focus(
+                                          onKeyEvent: (_, event) {
+                                            if (event is! KeyDownEvent) {
+                                              return KeyEventResult.ignored;
                                             }
+                                            if (event.logicalKey ==
+                                                LogicalKeyboardKey.escape) {
+                                              cancelEditingFromKeyboard();
+                                              return KeyEventResult.handled;
+                                            }
+                                            if (event.logicalKey ==
+                                                    LogicalKeyboardKey
+                                                        .arrowLeft &&
+                                                isCommentCaretAtStart) {
+                                              widget.onActivateColumn(6);
+                                              return KeyEventResult.handled;
+                                            }
+                                            if (event.logicalKey ==
+                                                    LogicalKeyboardKey
+                                                        .arrowRight &&
+                                                isCommentCaretAtEnd) {
+                                              widget.onActivateColumn(8);
+                                              WidgetsBinding.instance
+                                                  .addPostFrameCallback((_) {
+                                                    if (!mounted) return;
+                                                    unawaited(
+                                                      activateGridCell(8),
+                                                    );
+                                                  });
+                                              return KeyEventResult.handled;
+                                            }
+                                            return KeyEventResult.ignored;
                                           },
+                                          child: TextField(
+                                            controller: _notes,
+                                            focusNode: _notesFocusNode,
+                                            textInputAction:
+                                                TextInputAction.done,
+                                            decoration: _glassFieldDecoration()
+                                                .copyWith(
+                                                  fillColor: Colors.white
+                                                      .withValues(alpha: 0.88),
+                                                  contentPadding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 10,
+                                                        vertical: 9,
+                                                      ),
+                                                ),
+                                            onTap: () {
+                                              widget.onActivateColumn(7);
+                                              if (!_notesFocusNode.hasFocus) {
+                                                _notesFocusNode.requestFocus();
+                                              }
+                                            },
+                                            onSubmitted: (_) =>
+                                                unawaited(saveFromKeyboard()),
+                                          ),
                                         )
                                       : previewEditableCell(
                                           col: 7,
@@ -5130,18 +4937,33 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                               width: 32,
                                               height: 32,
                                               decoration: BoxDecoration(
-                                                color: _hoverActionsButton
+                                                color:
+                                                    widget.isSelected ||
+                                                        widget.isChecked
+                                                    ? const Color(
+                                                        0xFF0B72FF,
+                                                      ).withValues(alpha: 0.10)
+                                                    : _hoverActionsButton
                                                     ? Colors.white.withValues(
-                                                        alpha: 0.62,
+                                                        alpha: 0.72,
                                                       )
                                                     : Colors.white.withValues(
-                                                        alpha: 0.42,
+                                                        alpha: 0.52,
                                                       ),
                                                 borderRadius:
                                                     BorderRadius.circular(999),
                                                 border: Border.all(
-                                                  color: Colors.white
-                                                      .withValues(alpha: 0.72),
+                                                  color:
+                                                      widget.isSelected ||
+                                                          widget.isChecked
+                                                      ? const Color(
+                                                          0xFF0B72FF,
+                                                        ).withValues(
+                                                          alpha: 0.28,
+                                                        )
+                                                      : Colors.white.withValues(
+                                                          alpha: 0.72,
+                                                        ),
                                                 ),
                                                 boxShadow: [
                                                   BoxShadow(
@@ -5165,9 +4987,14 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                                   ),
                                                 ],
                                               ),
-                                              child: const Icon(
+                                              child: Icon(
                                                 Icons.more_horiz,
                                                 size: 20,
+                                                color:
+                                                    widget.isSelected ||
+                                                        widget.isChecked
+                                                    ? const Color(0xFF0B72FF)
+                                                    : const Color(0xFF203447),
                                               ),
                                             ),
                                           ),
@@ -5205,15 +5032,24 @@ class _CellBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InputDecorator(
-      decoration: const InputDecoration(
-        isDense: true,
-        border: OutlineInputBorder(),
-        contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+      decoration: _glassFieldDecoration().copyWith(
+        fillColor: Colors.white.withValues(alpha: 0.88),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       ),
       child: Row(
         children: [
-          Expanded(child: Text(text, overflow: TextOverflow.ellipsis)),
-          Icon(icon, size: 16),
+          Expanded(
+            child: Text(
+              text,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF203447),
+              ),
+            ),
+          ),
+          Icon(icon, size: 16, color: const Color(0xFF48637E)),
         ],
       ),
     );
@@ -5465,34 +5301,60 @@ class _DropOptInline extends StatelessWidget {
       }
     }
 
-    return InkWell(
-      borderRadius: BorderRadius.circular(12),
-      onTap: () async {
-        onTapStart?.call();
-        final selected = await _showSearchablePickerDialog<String>(
-          context,
-          title: 'Seleccionar',
-          initialValue: safe,
-          options: items
-              .map((e) => _PickerOption<String>(value: e.id, label: e.label))
-              .toList(),
-        );
-        if (selected == null) return;
-        onChanged(selected);
+    Future<void> openPicker() async {
+      onTapStart?.call();
+      final selected = await _showSearchablePickerDialog<String>(
+        context,
+        title: 'Seleccionar',
+        initialValue: safe,
+        options: items
+            .map((e) => _PickerOption<String>(value: e.id, label: e.label))
+            .toList(),
+      );
+      if (selected == null) return;
+      onChanged(selected);
+    }
+
+    return Focus(
+      onKeyEvent: (_, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        final key = event.logicalKey;
+        if (key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.numpadEnter ||
+            key == LogicalKeyboardKey.space ||
+            key == LogicalKeyboardKey.arrowDown) {
+          unawaited(openPicker());
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
       },
-      child: InputDecorator(
-        decoration: _glassFieldDecoration(),
-        child: Row(
-          children: [
-            Expanded(
-              child: _FitText(
-                selectedLabel,
-                style: const TextStyle(fontSize: 14),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: openPicker,
+        child: InputDecorator(
+          decoration: _glassFieldDecoration().copyWith(
+            fillColor: Colors.white.withValues(alpha: 0.88),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: _FitText(
+                  selectedLabel,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF203447),
+                  ),
+                ),
               ),
-            ),
-            const SizedBox(width: 4),
-            const Icon(Icons.arrow_drop_down, size: 20),
-          ],
+              const SizedBox(width: 4),
+              const Icon(
+                Icons.arrow_drop_down,
+                size: 20,
+                color: Color(0xFF48637E),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -5520,39 +5382,62 @@ class _DropStrInline extends StatelessWidget {
     final safe = items.contains(value) ? value : null;
     final selectedItems = <String?>[null, ...items];
 
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onTapDown: (_) => onTapStart?.call(),
-      child: _TypeAheadDropdownField<String>(
-        value: safe,
-        labelOf: format,
-        menuMaxHeight: 320,
-        borderRadius: BorderRadius.circular(16),
-        dropdownColor: _kGlassMenuBg,
-        decoration: _glassFieldDecoration(),
-        selectedItemBuilder: (context) => selectedItems
-            .map(
-              (e) => Align(
-                alignment: Alignment.centerLeft,
-                child: _FitText(
-                  e == null ? '—' : format(e),
-                  style: const TextStyle(fontSize: 14),
+    return Focus(
+      onKeyEvent: (_, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        final key = event.logicalKey;
+        if (key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.numpadEnter ||
+            key == LogicalKeyboardKey.space) {
+          onTapStart?.call();
+          return KeyEventResult.ignored;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: GestureDetector(
+        behavior: HitTestBehavior.translucent,
+        onTapDown: (_) => onTapStart?.call(),
+        child: _TypeAheadDropdownField<String>(
+          value: safe,
+          labelOf: format,
+          menuMaxHeight: 320,
+          borderRadius: BorderRadius.circular(16),
+          dropdownColor: _kGlassMenuBg,
+          decoration: _glassFieldDecoration().copyWith(
+            fillColor: Colors.white.withValues(alpha: 0.88),
+          ),
+          selectedItemBuilder: (context) => selectedItems
+              .map(
+                (e) => Align(
+                  alignment: Alignment.centerLeft,
+                  child: _FitText(
+                    e == null ? '—' : format(e),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF203447),
+                    ),
+                  ),
                 ),
-              ),
-            )
-            .toList(),
-        items: selectedItems
-            .map(
-              (e) => DropdownMenuItem<String>(
-                value: e,
-                child: _FitText(
-                  e == null ? '—' : format(e),
-                  style: const TextStyle(fontSize: 14),
+              )
+              .toList(),
+          items: selectedItems
+              .map(
+                (e) => DropdownMenuItem<String>(
+                  value: e,
+                  child: _FitText(
+                    e == null ? '—' : format(e),
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF203447),
+                    ),
+                  ),
                 ),
-              ),
-            )
-            .toList(),
-        onChanged: onChanged,
+              )
+              .toList(),
+          onChanged: onChanged,
+        ),
       ),
     );
   }

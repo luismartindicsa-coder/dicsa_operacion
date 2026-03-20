@@ -33,8 +33,11 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
   final TextEditingController _generalFilterC = TextEditingController();
   final TextEditingController _commercialFilterC = TextEditingController();
   final TextEditingController _openingsFilterC = TextEditingController();
+  RealtimeChannel? _realtime;
 
   bool _loading = true;
+  bool _refreshing = false;
+  bool _pendingReload = false;
   bool _exporting = false;
   bool _generalOnlyPositive = false;
   bool _commercialOnlyPositive = false;
@@ -93,6 +96,7 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
     _commercialFilterC.addListener(_handleFilterChanged);
     _openingsFilterC.addListener(_handleFilterChanged);
     unawaited(_loadAll());
+    _setupRealtime();
   }
 
   @override
@@ -115,7 +119,49 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
     _publishTopBarData();
   }
 
+  void _setupRealtime() {
+    _realtime?.unsubscribe();
+    _realtime = supa
+        .channel('inventory-stock-v2-body')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'inventory_movements_v2',
+          callback: (_) => _requestReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'inventory_opening_balances_v2',
+          callback: (_) => _requestReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'material_general_catalog_v2',
+          callback: (_) => _requestReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'material_commercial_catalog_v2',
+          callback: (_) => _requestReload(),
+        )
+        .subscribe();
+  }
+
+  void _requestReload() {
+    if (!mounted) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    unawaited(_loadAll());
+  }
+
   Future<void> _loadAll() async {
+    if (_refreshing) return;
+    _refreshing = true;
     if (mounted) setState(() => _loading = true);
     try {
       final results = await Future.wait<dynamic>([
@@ -220,12 +266,18 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
     } catch (e) {
       _toast('No se pudo cargar inventario v2: $e');
     } finally {
+      _refreshing = false;
+      if (_pendingReload) {
+        _pendingReload = false;
+        _requestReload();
+      }
       if (mounted) setState(() => _loading = false);
     }
   }
 
   @override
   void dispose() {
+    _realtime?.unsubscribe();
     widget.controller.removeListener(_handleTabChanged);
     _generalFilterC.dispose();
     _commercialFilterC.dispose();

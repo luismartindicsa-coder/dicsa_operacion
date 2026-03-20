@@ -1941,7 +1941,9 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     double paperKg = 0;
     double plasticKg = 0;
     for (final row in rows) {
-      final material = (row['material'] ?? '').toString();
+      final material = _normalizeOperationalSummaryMaterial(
+        (row['material'] ?? '').toString(),
+      );
       final onHand = _num(row['on_hand_kg']) ?? 0;
       switch (material) {
         case 'CARDBOARD_BULK_NATIONAL':
@@ -1996,6 +1998,11 @@ class _InventoryStockPageState extends State<InventoryStockPage>
           (r) => _isMetalOperationalMaterial((r['material'] ?? '').toString()),
         )
         .toList();
+    final paperRows = rows
+        .where(
+          (r) => _isPaperOperationalMaterial((r['material'] ?? '').toString()),
+        )
+        .toList();
     final metalAggregate = metalRows.isEmpty
         ? null
         : <String, dynamic>{
@@ -2021,14 +2028,45 @@ class _InventoryStockPageState extends State<InventoryStockPage>
               (sum, r) => sum + (_num(r['on_hand_kg']) ?? 0),
             ),
           };
+    final paperAggregate = paperRows.isEmpty
+        ? null
+        : <String, dynamic>{
+            'material': 'PAPER',
+            'opening_kg': paperRows.fold<double>(
+              0,
+              (sum, r) => sum + (_num(r['opening_kg']) ?? 0),
+            ),
+            'net_movement_kg': paperRows.fold<double>(
+              0,
+              (sum, r) => sum + (_num(r['net_movement_kg']) ?? 0),
+            ),
+            'prod_in_kg': paperRows.fold<double>(
+              0,
+              (sum, r) => sum + (_num(r['prod_in_kg']) ?? 0),
+            ),
+            'prod_out_kg': paperRows.fold<double>(
+              0,
+              (sum, r) => sum + (_num(r['prod_out_kg']) ?? 0),
+            ),
+            'on_hand_kg': paperRows.fold<double>(
+              0,
+              (sum, r) => sum + (_num(r['on_hand_kg']) ?? 0),
+            ),
+          };
     final byMaterial = <String, Map<String, dynamic>>{
       for (final row in rows)
         if ((row['material'] ?? '').toString().isNotEmpty &&
-            !_isMetalOperationalMaterial((row['material'] ?? '').toString()))
-          (row['material'] as Object).toString(): row,
+            !_isMetalOperationalMaterial((row['material'] ?? '').toString()) &&
+            !_isPaperOperationalMaterial((row['material'] ?? '').toString()))
+          _normalizeOperationalSummaryMaterial(
+            (row['material'] as Object).toString(),
+          ): row,
     };
     if (metalAggregate != null) {
       byMaterial['METAL'] = metalAggregate;
+    }
+    if (paperAggregate != null) {
+      byMaterial['PAPER'] = paperAggregate;
     }
     final out = <Map<String, dynamic>>[];
     for (final material in _kInventorySummaryMaterials.map((m) => m.value)) {
@@ -2045,13 +2083,26 @@ class _InventoryStockPageState extends State<InventoryStockPage>
       );
     }
     for (final row in rows) {
-      final material = (row['material'] ?? '').toString();
+      final material = _normalizeOperationalSummaryMaterial(
+        (row['material'] ?? '').toString(),
+      );
       if (_isMetalOperationalMaterial(material)) continue;
+      if (_isPaperOperationalMaterial(material)) continue;
       if (!_kInventorySummaryMaterials.any((m) => m.value == material)) {
-        out.add(row);
+        out.add(<String, dynamic>{...row, 'material': material});
       }
     }
     return out;
+  }
+
+  String _normalizeOperationalSummaryMaterial(String material) {
+    switch (material.trim().toUpperCase()) {
+      case 'PAPEL_REVUELTO':
+      case 'REVUELTO':
+        return 'PAPER';
+      default:
+        return material;
+    }
   }
 
   bool _isMetalOperationalMaterial(String material) {
@@ -2062,6 +2113,17 @@ class _InventoryStockPageState extends State<InventoryStockPage>
       case 'METAL_COPPER':
       case 'METAL_BRASS':
       case 'METAL_OTHER':
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  bool _isPaperOperationalMaterial(String material) {
+    switch (material.trim().toUpperCase()) {
+      case 'PAPER':
+      case 'PAPEL_REVUELTO':
+      case 'REVUELTO':
         return true;
       default:
         return false;
@@ -8146,6 +8208,7 @@ ButtonStyle _cutOutlinedButtonStyle() {
 String _materialLabel(String? material) {
   if (material == null || material.isEmpty) return '-';
   if (material == 'METAL') return 'Metal';
+  if (material == 'PAPEL_REVUELTO' || material == 'REVUELTO') return 'Papel';
   for (final m in _kInventoryMaterials) {
     if (m.value == material) return m.label;
   }

@@ -2292,6 +2292,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
 
   final Map<String, double> _operationalOnHandKg = <String, double>{};
   final Map<String, double> _commercialOnHandKg = <String, double>{};
+  final Map<String, double> _commercialOnHandKgByGeneral = <String, double>{};
   final Map<String, double> _operationalOnHandBales = <String, double>{};
   final Map<String, double> _commercialOnHandBales = <String, double>{};
   final Map<String, _DashboardCommercialMaterialOption>
@@ -2542,6 +2543,18 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     return _isBaleOperationalMaterial(material) ? label : '$label en patio';
   }
 
+  bool _usesCommercialYardBalance(String material) {
+    switch (_normalizeOperational(material)) {
+      case 'CHATARRA':
+      case 'METAL':
+      case 'PLASTICO':
+      case 'MADERA':
+        return true;
+      default:
+        return false;
+    }
+  }
+
   Future<void> _reload({bool showLoader = false}) async {
     if (!mounted || _refreshing) return;
     _refreshing = true;
@@ -2616,6 +2629,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
               ),
           };
       final commercialOnHand = <String, double>{};
+      final commercialOnHandByGeneral = <String, double>{};
       final operationalBales = <String, double>{};
       final commercialBales = <String, double>{};
       final scrapByCommercial = <String, double>{};
@@ -2633,6 +2647,10 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
           (row['general_code'] ?? '').toString(),
         );
         commercialOnHand[code] = weightKg;
+        if (generalCode.isNotEmpty) {
+          commercialOnHandByGeneral[generalCode] =
+              (commercialOnHandByGeneral[generalCode] ?? 0) + weightKg;
+        }
         final movementIsBale =
             _isBaleOperationalMaterial(code) ||
             _isBaleCommercialMaterialCode(code);
@@ -2787,6 +2805,9 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         _commercialOnHandKg
           ..clear()
           ..addAll(commercialOnHand);
+        _commercialOnHandKgByGeneral
+          ..clear()
+          ..addAll(commercialOnHandByGeneral);
         _operationalOnHandBales
           ..clear()
           ..addAll(operationalBales);
@@ -2842,10 +2863,12 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       case 'operational_material':
         final material = _normalizeOperational((pref.material ?? '').trim());
         if (material.isEmpty) return null;
-        final fallbackCommercialKg = _commercialOnHandKg[material] ?? 0;
-        final kg = (_operationalOnHandKg[material] ?? 0) > 0
-            ? (_operationalOnHandKg[material] ?? 0)
-            : fallbackCommercialKg;
+        final operationalKg = _operationalOnHandKg[material] ?? 0;
+        final commercialKgByGeneral =
+            _commercialOnHandKgByGeneral[material] ?? 0;
+        final kg = _usesCommercialYardBalance(material)
+            ? operationalKg + commercialKgByGeneral
+            : (operationalKg > 0 ? operationalKg : commercialKgByGeneral);
         final isBale = _isBaleOperationalMaterial(material);
         final fallbackCommercialBales = _commercialOnHandBales[material] ?? 0;
         final baleCount = (_operationalOnHandBales[material] ?? 0) > 0

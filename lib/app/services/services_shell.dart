@@ -132,9 +132,9 @@ class _ServicesShellState extends State<ServicesShell>
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
                 child: Column(
                   children: [
-                    Row(
-                      children: [
-                        AnimatedBuilder(
+                    LayoutBuilder(
+                      builder: (context, constraints) {
+                        final navigationButton = AnimatedBuilder(
                           animation: _content,
                           builder: (context, child) => Opacity(
                             opacity: _content.value,
@@ -153,60 +153,88 @@ class _ServicesShellState extends State<ServicesShell>
                               },
                             ),
                           ),
-                        ),
-                        const Spacer(),
-                        _HeaderBrand(
-                          contentAnim: _content,
-                          title: resolvedTitle,
-                        ),
-                        const Spacer(),
-                        Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            AnimatedBuilder(
-                              animation: _content,
-                              builder: (context, child) => Opacity(
-                                opacity: _content.value,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 8),
-                                  child: _HeaderHelpButton(
-                                    onTap: () => _showUsageHelp(resolvedTitle),
-                                  ),
-                                ),
-                              ),
+                        );
+                        final helpButton = AnimatedBuilder(
+                          animation: _content,
+                          builder: (context, child) => Opacity(
+                            opacity: _content.value,
+                            child: _HeaderHelpButton(
+                              onTap: () => _showUsageHelp(resolvedTitle),
                             ),
-                            if (widget.onHeaderGuide != null)
-                              AnimatedBuilder(
+                          ),
+                        );
+                        final guideButton = widget.onHeaderGuide == null
+                            ? null
+                            : AnimatedBuilder(
                                 animation: _content,
                                 builder: (context, child) => Opacity(
                                   opacity: _content.value,
-                                  child: Padding(
-                                    padding: const EdgeInsets.only(right: 8),
-                                    child: _HeaderActionButton(
-                                      label: widget.headerGuideLabel ?? 'Flujo',
-                                      icon: Icons.account_tree_rounded,
-                                      onTap: () async =>
-                                          widget.onHeaderGuide!(),
-                                    ),
+                                  child: _HeaderActionButton(
+                                    label: widget.headerGuideLabel ?? 'Flujo',
+                                    icon: Icons.account_tree_rounded,
+                                    onTap: () async => widget.onHeaderGuide!(),
                                   ),
                                 ),
+                              );
+                        final logoutButton = AnimatedBuilder(
+                          animation: _content,
+                          builder: (context, child) => Opacity(
+                            opacity: _content.value,
+                            child: _HeaderActionButton(
+                              label: 'Cerrar sesión',
+                              icon: Icons.logout_rounded,
+                              onTap: widget.onLogout == null
+                                  ? null
+                                  : () async => widget.onLogout!(),
+                            ),
+                          ),
+                        );
+                        final moveLogoutBelow = constraints.maxWidth < 980;
+                        final topActionButtons = Wrap(
+                          spacing: 8,
+                          runSpacing: 8,
+                          alignment: WrapAlignment.end,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            helpButton,
+                            if (guideButton != null) ...[guideButton],
+                            if (!moveLogoutBelow) logoutButton,
+                          ],
+                        );
+
+                        return SizedBox(
+                          height: moveLogoutBelow ? 104 : 56,
+                          child: Stack(
+                            children: [
+                              Align(
+                                alignment: Alignment.topLeft,
+                                child: navigationButton,
                               ),
-                            AnimatedBuilder(
-                              animation: _content,
-                              builder: (context, child) => Opacity(
-                                opacity: _content.value,
-                                child: _HeaderActionButton(
-                                  label: 'Cerrar sesión',
-                                  icon: Icons.logout_rounded,
-                                  onTap: widget.onLogout == null
-                                      ? null
-                                      : () async => widget.onLogout!(),
+                              Align(
+                                alignment: Alignment.topCenter,
+                                child: _HeaderBrand(
+                                  contentAnim: _content,
+                                  title: resolvedTitle,
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      ],
+                              Align(
+                                alignment: Alignment.topRight,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    topActionButtons,
+                                    if (moveLogoutBelow) ...[
+                                      const SizedBox(height: 8),
+                                      logoutButton,
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
                     ),
                     const SizedBox(height: 12),
                     if (widget.topContent != null)

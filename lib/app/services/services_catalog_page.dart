@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../shared/app_ui/app_ui_widgets.dart';
+
 String _stripAccents(String input) {
   const map = <String, String>{
     'á': 'a',
@@ -274,6 +276,59 @@ Widget _catalogGlassDialogScaffold({
   );
 }
 
+Future<String?> _showCatalogSimpleNameEditDialog(
+  BuildContext context, {
+  required String title,
+  required String initialValue,
+  String hintText = 'Nombre',
+}) async {
+  final input = TextEditingController(text: _normalizeName(initialValue));
+  final result = await showDialog<String>(
+    context: context,
+    builder: (dialogContext) => _catalogGlassDialogScaffold(
+      title: title,
+      maxWidth: 560,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          TextField(
+            controller: input,
+            autofocus: true,
+            inputFormatters: [
+              FilteringTextInputFormatter.singleLineFormatter,
+              _NameInputFormatter(),
+            ],
+            decoration: _catalogEditDialogFieldDecoration(hintText: hintText),
+            onSubmitted: (_) =>
+                Navigator.pop(dialogContext, _normalizeName(input.text)),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              OutlinedButton(
+                style: _catalogFilterOutlinedButtonStyle(),
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancelar'),
+              ),
+              const SizedBox(width: 8),
+              FilledButton(
+                style: _catalogFilterFilledButtonStyle(),
+                onPressed: () =>
+                    Navigator.pop(dialogContext, _normalizeName(input.text)),
+                child: const Text('Guardar'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+  input.dispose();
+  return result;
+}
+
 Widget _catalogInputPanel({required Widget child}) {
   return Card(
     elevation: 0.4,
@@ -525,6 +580,18 @@ class _CatalogPickerField<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return Focus(
       focusNode: focusNode,
+      onKeyEvent: (_, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        final key = event.logicalKey;
+        if (key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.numpadEnter ||
+            key == LogicalKeyboardKey.space ||
+            key == LogicalKeyboardKey.arrowDown) {
+          unawaited(_open(context));
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () => _open(context),
@@ -1757,6 +1824,35 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     }
   }
 
+  Future<void> _updateCommercialMaterialNameInline(
+    Map<String, dynamic> row,
+    String raw,
+  ) async {
+    final id = row['id']?.toString();
+    final code = row['code']?.toString();
+    if (id == null || id.isEmpty || code == null || code.isEmpty) return;
+    final newName = _normalizeName(raw);
+    if (newName.isEmpty) {
+      _toast('El nombre no puede estar vacío');
+      return;
+    }
+    if (_commercialMaterialNameExists(newName, excludingCode: code)) {
+      _toast('El material comercial ya existe');
+      return;
+    }
+    try {
+      await supa
+          .from('material_commercial_catalog_v2')
+          .update({'name': newName})
+          .eq('id', id);
+      _changed = true;
+      _toast('Material comercial actualizado');
+      await _loadData();
+    } on PostgrestException catch (e) {
+      _toast('No se pudo actualizar material comercial: ${e.message}');
+    }
+  }
+
   Future<void> _addClient() async {
     await _addClientFromValue(_clientNameC.text, clearInput: true);
   }
@@ -1827,36 +1923,10 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   Future<void> _editClient(Map<String, dynamic> row) async {
     final id = row['id']?.toString();
     if (id == null) return;
-    final input = TextEditingController(
-      text: _normalizeName('${row['name'] ?? ''}'),
-    );
-    final newName = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Editar Empresa'),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          inputFormatters: [
-            FilteringTextInputFormatter.singleLineFormatter,
-            _NameInputFormatter(),
-          ],
-          decoration: const InputDecoration(hintText: 'Nombre'),
-          onSubmitted: (_) =>
-              Navigator.pop(dialogContext, _normalizeName(input.text)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, _normalizeName(input.text)),
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
+    final newName = await _showCatalogSimpleNameEditDialog(
+      context,
+      title: 'Editar Empresa',
+      initialValue: '${row['name'] ?? ''}',
     );
     if (newName == null) return;
     if (newName.isEmpty) {
@@ -2031,36 +2101,10 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   Future<void> _editDriver(Map<String, dynamic> row) async {
     final id = row['id']?.toString();
     if (id == null) return;
-    final input = TextEditingController(
-      text: _normalizeName('${row['name'] ?? ''}'),
-    );
-    final result = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Editar Chofer'),
-        content: TextField(
-          controller: input,
-          autofocus: true,
-          inputFormatters: [
-            FilteringTextInputFormatter.singleLineFormatter,
-            _NameInputFormatter(),
-          ],
-          decoration: const InputDecoration(hintText: 'Nombre'),
-          onSubmitted: (_) =>
-              Navigator.pop(dialogContext, _normalizeName(input.text)),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () =>
-                Navigator.pop(dialogContext, _normalizeName(input.text)),
-            child: const Text('Guardar'),
-          ),
-        ],
-      ),
+    final result = await _showCatalogSimpleNameEditDialog(
+      context,
+      title: 'Editar Chofer',
+      initialValue: '${row['name'] ?? ''}',
     );
     if (result == null) return;
     final newName = result;
@@ -2845,6 +2889,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     );
   }
 
+  // ignore: unused_element
   Widget _buildOpeningTemplatesTab(InputDecoration fieldDecoration) {
     final commercialOptions = _openingTemplateCommercialOptionsForMaterial(
       _openingTemplateMaterial,
@@ -3121,36 +3166,45 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   Widget _buildCatalogTabs(InputDecoration fieldDecoration) {
     if (widget.module == OperationsCatalogModule.all) {
       return DefaultTabController(
-        length: 6,
+        length: 5,
         child: _buildAllCatalogTabs(fieldDecoration),
       );
     }
     final tabs = _catalogTabSpecs(fieldDecoration);
     return DefaultTabController(
       length: tabs.length,
-      child: Column(
-        children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.28),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.56)),
-            ),
-            child: TabBar(
-              isScrollable: true,
-              tabAlignment: TabAlignment.start,
-              labelColor: const Color(0xFF0B2B2B),
-              unselectedLabelColor: const Color(0xCC314747),
-              indicatorColor: const Color(0xFF2A9D8F),
-              indicatorSize: TabBarIndicatorSize.label,
-              tabs: [for (final t in tabs) Tab(text: t.label)],
-            ),
-          ),
-          const SizedBox(height: 12),
-          Expanded(
-            child: TabBarView(children: [for (final t in tabs) t.child]),
-          ),
-        ],
+      child: Builder(
+        builder: (context) {
+          final controller = DefaultTabController.of(context);
+          final items = <AppFolderTabItem>[
+            for (final tab in tabs)
+              AppFolderTabItem(
+                label: tab.label,
+                icon: switch (tab.label) {
+                  'Chofer' => Icons.badge_rounded,
+                  'Unidad' => Icons.local_shipping_rounded,
+                  'Empresa' => Icons.apartment_rounded,
+                  'Material general' => Icons.playlist_add_check_rounded,
+                  'Material comercial' => Icons.inventory_2_rounded,
+                  _ => Icons.grid_view_rounded,
+                },
+              ),
+          ];
+          return Column(
+            children: [
+              AppFolderTabs(
+                items: items,
+                controller: controller,
+                maxWidth: tabs.length <= 2 ? 520 : 980,
+                showBottomRail: false,
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: TabBarView(children: [for (final t in tabs) t.child]),
+              ),
+            ],
+          );
+        },
       ),
     );
   }
@@ -3297,10 +3351,6 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
             label: 'Material comercial',
             child: _buildCommercialMaterialsTab(fieldDecoration),
           ),
-          _CatalogTabSpec(
-            label: 'Material operativo',
-            child: _buildOpeningTemplatesTab(fieldDecoration),
-          ),
         ];
       case OperationsCatalogModule.all:
         return const [];
@@ -3308,157 +3358,164 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   }
 
   Widget _buildAllCatalogTabs(InputDecoration fieldDecoration) {
-    return Column(
-      children: [
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.28),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.56)),
-          ),
-          child: const TabBar(
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            labelColor: Color(0xFF0B2B2B),
-            unselectedLabelColor: Color(0xCC314747),
-            indicatorColor: Color(0xFF2A9D8F),
-            indicatorSize: TabBarIndicatorSize.label,
-            tabs: [
-              Tab(text: 'Material general'),
-              Tab(text: 'Empresas'),
-              Tab(text: 'Choferes'),
-              Tab(text: 'Unidades'),
-              Tab(text: 'Material comercial'),
-              Tab(text: 'Plantilla apertura'),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-        Expanded(
-          child: TabBarView(
-            children: [
-              _buildCatalogModuleCard(
-                title: 'Materiales Generales',
-                controller: _materialNameC,
-                hintText: 'Nombre del material general',
-                onAdd: _addMaterial,
-                saving: _savingMaterial,
-                addIcon: Icons.playlist_add_check,
-                addLabel: 'Agregar Material',
-                onOpenInactive: () => _openInactiveCatalogDialog(
-                  title: 'Materiales inactivos',
-                  emptyText: 'Sin materiales inactivos',
-                  loader: _loadInactiveMaterials,
-                  onReactivate: _reactivateMaterial,
+    return Builder(
+      builder: (context) {
+        final controller = DefaultTabController.of(context);
+        return Column(
+          children: [
+            AppFolderTabs(
+              controller: controller,
+              maxWidth: 1220,
+              showBottomRail: false,
+              items: const [
+                AppFolderTabItem(
+                  label: 'Material general',
+                  icon: Icons.playlist_add_check_rounded,
                 ),
-                inactiveLabel: 'Materiales inactivos',
-                rows: _materials,
-                emptyText: 'Sin materiales',
-                subtitleOf: (row) {
-                  final code = (row['code'] ?? '').toString().trim();
-                  final notes = (row['notes'] ?? '').toString().trim();
-                  if (code.isEmpty && notes.isEmpty) return null;
-                  if (code.isNotEmpty && notes.isNotEmpty) {
-                    return 'Codigo: $code · $notes';
-                  }
-                  if (code.isNotEmpty) return 'Codigo: $code';
-                  return notes;
-                },
-                onEdit: _editMaterial,
-                onInlineEdit: _updateMaterialNameInline,
-                onDelete: _deleteMaterial,
-                onInlineInsert: _addMaterialFromValue,
-                onDeleteMany: _deleteMaterialsBulk,
-                fieldDecoration: fieldDecoration,
-              ),
-              _buildCatalogModuleCard(
-                title: 'Empresas (CLIENTE)',
-                controller: _clientNameC,
-                hintText: 'Nombre de la empresa',
-                onAdd: _addClient,
-                saving: _savingClient,
-                addIcon: Icons.add_business,
-                addLabel: 'Agregar Empresa',
-                onOpenInactive: () => _openInactiveCatalogDialog(
-                  title: 'Empresas inactivas',
-                  emptyText: 'Sin empresas inactivas',
-                  loader: _loadInactiveClients,
-                  onReactivate: _reactivateClient,
+                AppFolderTabItem(
+                  label: 'Empresas',
+                  icon: Icons.apartment_rounded,
                 ),
-                inactiveLabel: 'Ver inactivas',
-                rows: _clients,
-                emptyText: 'Sin empresas',
-                subtitleOf: (_) => null,
-                onEdit: _editClient,
-                onInlineEdit: _updateClientNameInline,
-                onDelete: _deleteClient,
-                onInlineInsert: _addClientFromValue,
-                onDeleteMany: _deleteClientsBulk,
-                fieldDecoration: fieldDecoration,
-              ),
-              _buildCatalogModuleCard(
-                title: 'Choferes',
-                controller: _driverNameC,
-                hintText: 'Nombre del chofer',
-                onAdd: _addDriver,
-                saving: _savingDriver,
-                addIcon: Icons.badge,
-                addLabel: 'Agregar Chofer',
-                onOpenInactive: () => _openInactiveCatalogDialog(
-                  title: 'Choferes inactivos',
-                  emptyText: 'Sin choferes inactivos',
-                  loader: _loadInactiveDrivers,
-                  onReactivate: _reactivateDriver,
+                AppFolderTabItem(label: 'Choferes', icon: Icons.badge_rounded),
+                AppFolderTabItem(
+                  label: 'Unidades',
+                  icon: Icons.local_shipping_rounded,
                 ),
-                inactiveLabel: 'Ver inactivos',
-                rows: _drivers,
-                emptyText: 'Sin choferes',
-                subtitleOf: (_) => null,
-                onEdit: _editDriver,
-                onInlineEdit: _updateDriverNameInline,
-                onDelete: _deleteDriver,
-                onInlineInsert: _addDriverFromValue,
-                onDeleteMany: _deleteDriversBulk,
-                fieldDecoration: fieldDecoration,
-              ),
-              _buildCatalogModuleCard(
-                title: 'Unidades',
-                controller: _vehicleCodeC,
-                hintText: 'Código de la unidad (opcional: CODIGO | SERIE)',
-                onAdd: _addVehicle,
-                saving: _savingVehicle,
-                addIcon: Icons.local_shipping,
-                addLabel: 'Agregar Unidad',
-                onOpenInactive: () => _openInactiveCatalogDialog(
-                  title: 'Unidades fuera de servicio',
-                  emptyText: 'Sin unidades fuera de servicio',
-                  loader: _loadInactiveVehicles,
-                  onReactivate: _reactivateVehicle,
+                AppFolderTabItem(
+                  label: 'Material comercial',
+                  icon: Icons.inventory_2_rounded,
                 ),
-                inactiveLabel: 'Fuera de servicio',
-                rows: _vehicles,
-                emptyText: 'Sin unidades',
-                subtitleOf: (row) {
-                  final serial = (row['serial_number'] ?? '').toString().trim();
-                  return serial.isEmpty ? null : 'Serie: $serial';
-                },
-                onEdit: _editVehicle,
-                onInlineEdit: _updateVehicleCodeInline,
-                onDelete: _deleteVehicle,
-                onInlineInsert: _addVehicleFromValue,
-                onDeleteMany: _deleteVehiclesBulk,
-                deleteTooltip: 'Enviar a fuera de servicio',
-                fieldDecoration: fieldDecoration,
-                secondaryColumnHeader: 'SERIE',
-                secondaryColumnValueOf: (row) =>
-                    (row['serial_number'] ?? '').toString(),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Expanded(
+              child: TabBarView(
+                children: [
+                  _buildCatalogModuleCard(
+                    title: 'Materiales Generales',
+                    controller: _materialNameC,
+                    hintText: 'Nombre del material general',
+                    onAdd: _addMaterial,
+                    saving: _savingMaterial,
+                    addIcon: Icons.playlist_add_check,
+                    addLabel: 'Agregar Material',
+                    onOpenInactive: () => _openInactiveCatalogDialog(
+                      title: 'Materiales inactivos',
+                      emptyText: 'Sin materiales inactivos',
+                      loader: _loadInactiveMaterials,
+                      onReactivate: _reactivateMaterial,
+                    ),
+                    inactiveLabel: 'Materiales inactivos',
+                    rows: _materials,
+                    emptyText: 'Sin materiales',
+                    subtitleOf: (row) {
+                      final code = (row['code'] ?? '').toString().trim();
+                      final notes = (row['notes'] ?? '').toString().trim();
+                      if (code.isEmpty && notes.isEmpty) return null;
+                      if (code.isNotEmpty && notes.isNotEmpty) {
+                        return 'Codigo: $code · $notes';
+                      }
+                      if (code.isNotEmpty) return 'Codigo: $code';
+                      return notes;
+                    },
+                    onEdit: _editMaterial,
+                    onInlineEdit: _updateMaterialNameInline,
+                    onDelete: _deleteMaterial,
+                    onInlineInsert: _addMaterialFromValue,
+                    onDeleteMany: _deleteMaterialsBulk,
+                    fieldDecoration: fieldDecoration,
+                  ),
+                  _buildCatalogModuleCard(
+                    title: 'Empresas (CLIENTE)',
+                    controller: _clientNameC,
+                    hintText: 'Nombre de la empresa',
+                    onAdd: _addClient,
+                    saving: _savingClient,
+                    addIcon: Icons.add_business,
+                    addLabel: 'Agregar Empresa',
+                    onOpenInactive: () => _openInactiveCatalogDialog(
+                      title: 'Empresas inactivas',
+                      emptyText: 'Sin empresas inactivas',
+                      loader: _loadInactiveClients,
+                      onReactivate: _reactivateClient,
+                    ),
+                    inactiveLabel: 'Ver inactivas',
+                    rows: _clients,
+                    emptyText: 'Sin empresas',
+                    subtitleOf: (_) => null,
+                    onEdit: _editClient,
+                    onInlineEdit: _updateClientNameInline,
+                    onDelete: _deleteClient,
+                    onInlineInsert: _addClientFromValue,
+                    onDeleteMany: _deleteClientsBulk,
+                    fieldDecoration: fieldDecoration,
+                  ),
+                  _buildCatalogModuleCard(
+                    title: 'Choferes',
+                    controller: _driverNameC,
+                    hintText: 'Nombre del chofer',
+                    onAdd: _addDriver,
+                    saving: _savingDriver,
+                    addIcon: Icons.badge,
+                    addLabel: 'Agregar Chofer',
+                    onOpenInactive: () => _openInactiveCatalogDialog(
+                      title: 'Choferes inactivos',
+                      emptyText: 'Sin choferes inactivos',
+                      loader: _loadInactiveDrivers,
+                      onReactivate: _reactivateDriver,
+                    ),
+                    inactiveLabel: 'Ver inactivos',
+                    rows: _drivers,
+                    emptyText: 'Sin choferes',
+                    subtitleOf: (_) => null,
+                    onEdit: _editDriver,
+                    onInlineEdit: _updateDriverNameInline,
+                    onDelete: _deleteDriver,
+                    onInlineInsert: _addDriverFromValue,
+                    onDeleteMany: _deleteDriversBulk,
+                    fieldDecoration: fieldDecoration,
+                  ),
+                  _buildCatalogModuleCard(
+                    title: 'Unidades',
+                    controller: _vehicleCodeC,
+                    hintText: 'Código de la unidad (opcional: CODIGO | SERIE)',
+                    onAdd: _addVehicle,
+                    saving: _savingVehicle,
+                    addIcon: Icons.local_shipping,
+                    addLabel: 'Agregar Unidad',
+                    onOpenInactive: () => _openInactiveCatalogDialog(
+                      title: 'Unidades fuera de servicio',
+                      emptyText: 'Sin unidades fuera de servicio',
+                      loader: _loadInactiveVehicles,
+                      onReactivate: _reactivateVehicle,
+                    ),
+                    inactiveLabel: 'Fuera de servicio',
+                    rows: _vehicles,
+                    emptyText: 'Sin unidades',
+                    subtitleOf: (row) {
+                      final serial = (row['serial_number'] ?? '')
+                          .toString()
+                          .trim();
+                      return serial.isEmpty ? null : 'Serie: $serial';
+                    },
+                    onEdit: _editVehicle,
+                    onInlineEdit: _updateVehicleCodeInline,
+                    onDelete: _deleteVehicle,
+                    onInlineInsert: _addVehicleFromValue,
+                    onDeleteMany: _deleteVehiclesBulk,
+                    deleteTooltip: 'Enviar a fuera de servicio',
+                    fieldDecoration: fieldDecoration,
+                    secondaryColumnHeader: 'SERIE',
+                    secondaryColumnValueOf: (row) =>
+                        (row['serial_number'] ?? '').toString(),
+                  ),
+                  _buildCommercialMaterialsTab(fieldDecoration),
+                ],
               ),
-              _buildCommercialMaterialsTab(fieldDecoration),
-              _buildOpeningTemplatesTab(fieldDecoration),
-            ],
-          ),
-        ),
-      ],
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -3720,13 +3777,19 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
           ),
           const SizedBox(height: 14),
           Expanded(
-            child: _CatalogList(
+            child: _CatalogContractTable(
               rows: filteredRows,
               emptyText: 'Sin materiales comerciales',
               subtitleOf: subtitleOf,
               onEdit: _editCommercialMaterial,
+              onInlineEdit: _updateCommercialMaterialNameInline,
               onDelete: _deleteCommercialMaterial,
+              onInlineInsert: (_) async {},
               onDeleteMany: _deleteCommercialMaterialsBulk,
+              insertHintText: 'Nombre del material comercial',
+              secondaryColumnHeader: 'CODIGO',
+              secondaryColumnValueOf: (row) => (row['code'] ?? '').toString(),
+              showInsertRow: false,
             ),
           ),
         ],
@@ -3892,6 +3955,7 @@ class _CatalogContractTable extends StatefulWidget {
   final String insertHintText;
   final String? secondaryColumnHeader;
   final String Function(Map<String, dynamic> row)? secondaryColumnValueOf;
+  final bool showInsertRow;
 
   const _CatalogContractTable({
     required this.rows,
@@ -3906,6 +3970,7 @@ class _CatalogContractTable extends StatefulWidget {
     required this.insertHintText,
     this.secondaryColumnHeader,
     this.secondaryColumnValueOf,
+    this.showInsertRow = true,
   });
 
   @override
@@ -3943,7 +4008,9 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _focusNode.requestFocus();
-      _insertFocusNode.requestFocus();
+      if (widget.showInsertRow) {
+        _insertFocusNode.requestFocus();
+      }
     });
   }
 
@@ -3973,7 +4040,7 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
       _selectedRowIds.clear();
       _editingRowIds.clear();
       _activeEditingRowId = null;
-      _insertActive = true;
+      _insertActive = widget.showInsertRow;
       return;
     }
     _selectedIndex = _selectedIndex.clamp(0, rows.length - 1);
@@ -3994,7 +4061,7 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
     if (_editingRowIds.isNotEmpty && _activeEditingRowId == null) {
       _activeEditingRowId = _editingRowIds.first;
     }
-    if (_editingRowIds.isEmpty && !_insertActive) {
+    if (_editingRowIds.isEmpty && !_insertActive && widget.showInsertRow) {
       _insertActive = rows.isEmpty;
     }
     if (mounted) setState(() {});
@@ -4376,6 +4443,15 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
   }
 
   void _activateInsertRow() {
+    if (!widget.showInsertRow) {
+      setState(() {
+        _insertActive = false;
+        _selectedRowIds.clear();
+        _selectionAnchorIndex = null;
+      });
+      _focusNode.requestFocus();
+      return;
+    }
     setState(() {
       _insertActive = true;
       _selectedRowIds.clear();
@@ -4717,6 +4793,7 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
 
     final rows = _visibleRows;
     if (rows.isEmpty) {
+      if (!widget.showInsertRow) return KeyEventResult.ignored;
       if (key == LogicalKeyboardKey.enter ||
           key == LogicalKeyboardKey.numpadEnter) {
         unawaited(_insertFromRow());
@@ -4756,13 +4833,27 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
   }
 
   Widget _actionButtonForRow(int visibleIndex, Map<String, dynamic> row) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: () => unawaited(_showRowActionsMenu(visibleIndex, row)),
-      child: const SizedBox(
-        width: 32,
-        height: 32,
-        child: Icon(Icons.more_horiz),
+    return Builder(
+      builder: (context) => InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () {
+          final box = context.findRenderObject() as RenderBox?;
+          final globalPosition = box?.localToGlobal(
+            Offset(box.size.width * 0.5, box.size.height),
+          );
+          unawaited(
+            _showRowActionsMenu(
+              visibleIndex,
+              row,
+              globalPosition: globalPosition,
+            ),
+          );
+        },
+        child: const SizedBox(
+          width: 32,
+          height: 32,
+          child: Icon(Icons.more_horiz),
+        ),
       ),
     );
   }
@@ -4789,7 +4880,11 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
         behavior: HitTestBehavior.translucent,
         onTap: () {
           _focusNode.requestFocus();
-          _activateInsertRow();
+          if (widget.showInsertRow) {
+            _activateInsertRow();
+          } else if (_selectedRowIds.isNotEmpty) {
+            setState(() => _selectedRowIds.clear());
+          }
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
@@ -4957,103 +5052,107 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                 ),
               ),
               const SizedBox(height: 6),
-              Card(
-                elevation: 0.4,
-                color: _insertActive
-                    ? const Color(0xFFD9ECFA)
-                    : const Color(0xFFE7F1F8),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(
-                    color: _insertActive
-                        ? const Color(0xFF3C8DCC).withValues(alpha: 0.55)
-                        : Colors.transparent,
+              if (widget.showInsertRow) ...[
+                Card(
+                  elevation: 0.4,
+                  color: _insertActive
+                      ? const Color(0xFFD9ECFA)
+                      : const Color(0xFFE7F1F8),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    side: BorderSide(
+                      color: _insertActive
+                          ? const Color(0xFF3C8DCC).withValues(alpha: 0.55)
+                          : Colors.transparent,
+                    ),
                   ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 12,
-                    vertical: 10,
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: ConstrainedBox(
-                            constraints: const BoxConstraints(
-                              maxWidth: editableCellMaxWidth,
-                            ),
-                            child: TextField(
-                              focusNode: _insertFocusNode,
-                              controller: _insertController,
-                              inputFormatters: [
-                                FilteringTextInputFormatter.singleLineFormatter,
-                                _NameInputFormatter(),
-                              ],
-                              onChanged: (_) => setState(() {}),
-                              onTap: () {
-                                _focusNode.requestFocus();
-                                _activateInsertRow();
-                              },
-                              onSubmitted: (_) => _insertFromRow(),
-                              onTapOutside: (event) {
-                                if (event.kind == PointerDeviceKind.mouse &&
-                                    event.buttons == kSecondaryButton) {
-                                  return;
-                                }
-                              },
-                              decoration: _catalogContractGlassFieldDecoration(
-                                hintText: widget.insertHintText,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(
+                                maxWidth: editableCellMaxWidth,
                               ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Tooltip(
-                        message: 'AGREGAR',
-                        child: InkWell(
-                          borderRadius: BorderRadius.circular(10),
-                          onTap: canInsert
-                              ? () => unawaited(_insertFromRow())
-                              : null,
-                          child: Container(
-                            width: 34,
-                            height: 34,
-                            decoration: BoxDecoration(
-                              color: canInsert
-                                  ? const Color(
-                                      0xFF19C37D,
-                                    ).withValues(alpha: 0.92)
-                                  : Colors.white.withValues(alpha: 0.35),
-                              borderRadius: BorderRadius.circular(10),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.52),
-                              ),
-                            ),
-                            child: _inserting
-                                ? const Padding(
-                                    padding: EdgeInsets.all(8),
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
+                              child: TextField(
+                                focusNode: _insertFocusNode,
+                                controller: _insertController,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter
+                                      .singleLineFormatter,
+                                  _NameInputFormatter(),
+                                ],
+                                onChanged: (_) => setState(() {}),
+                                onTap: () {
+                                  _focusNode.requestFocus();
+                                  _activateInsertRow();
+                                },
+                                onSubmitted: (_) => _insertFromRow(),
+                                onTapOutside: (event) {
+                                  if (event.kind == PointerDeviceKind.mouse &&
+                                      event.buttons == kSecondaryButton) {
+                                    return;
+                                  }
+                                },
+                                decoration:
+                                    _catalogContractGlassFieldDecoration(
+                                      hintText: widget.insertHintText,
                                     ),
-                                  )
-                                : Icon(
-                                    Icons.add,
-                                    size: 18,
-                                    color: canInsert
-                                        ? Colors.white
-                                        : const Color(0xFF0B2B2B),
-                                  ),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(width: 10),
+                        Tooltip(
+                          message: 'AGREGAR',
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(10),
+                            onTap: canInsert
+                                ? () => unawaited(_insertFromRow())
+                                : null,
+                            child: Container(
+                              width: 34,
+                              height: 34,
+                              decoration: BoxDecoration(
+                                color: canInsert
+                                    ? const Color(
+                                        0xFF19C37D,
+                                      ).withValues(alpha: 0.92)
+                                    : Colors.white.withValues(alpha: 0.35),
+                                borderRadius: BorderRadius.circular(10),
+                                border: Border.all(
+                                  color: Colors.white.withValues(alpha: 0.52),
+                                ),
+                              ),
+                              child: _inserting
+                                  ? const Padding(
+                                      padding: EdgeInsets.all(8),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Icon(
+                                      Icons.add,
+                                      size: 18,
+                                      color: canInsert
+                                          ? Colors.white
+                                          : const Color(0xFF0B2B2B),
+                                    ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 6),
+                const SizedBox(height: 6),
+              ],
               Expanded(
                 child: rows.isEmpty
                     ? Center(
@@ -5093,13 +5192,11 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                             final hoverOnly = hovered && !hasSelection;
                             final highlighted = hasSelection || hovered;
                             final rowBg = editing
-                                ? const Color(0xFFCBEFE2)
+                                ? const Color(0xFFDDEBFF)
                                 : hasSelection
-                                ? _kCatalogTableSelectionAccent.withValues(
-                                    alpha: primarySelected ? 0.16 : 0.13,
-                                  )
+                                ? const Color(0xFFDCEBFF)
                                 : hoverOnly
-                                ? const Color(0xFFE9F7EE)
+                                ? const Color(0xFFEEF5FF)
                                 : Colors.white;
                             return MouseRegion(
                               key: rowId == null
@@ -5228,50 +5325,126 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                                                         editing &&
                                                             editController !=
                                                                 null
-                                                        ? TextField(
-                                                            focusNode:
-                                                                _focusNodeForRow(
-                                                                  rowId,
-                                                                ),
-                                                            controller:
-                                                                editController,
-                                                            inputFormatters: [
-                                                              FilteringTextInputFormatter
-                                                                  .singleLineFormatter,
-                                                              _NameInputFormatter(),
-                                                            ],
-                                                            onTap: () {
-                                                              _focusNode
-                                                                  .requestFocus();
-                                                              setState(() {
-                                                                _insertActive =
-                                                                    false;
-                                                                _activeEditingRowId =
-                                                                    rowId;
-                                                                _selectedIndex =
-                                                                    i;
-                                                              });
-                                                            },
-                                                            onTapOutside: (event) {
-                                                              if (event.kind ==
-                                                                      PointerDeviceKind
-                                                                          .mouse &&
-                                                                  event.buttons ==
-                                                                      kSecondaryButton) {
-                                                                return;
+                                                        ? Focus(
+                                                            onKeyEvent: (_, event) {
+                                                              if (event
+                                                                  is! KeyDownEvent) {
+                                                                return KeyEventResult
+                                                                    .ignored;
                                                               }
-                                                              _cancelEditing();
+                                                              if (event
+                                                                      .logicalKey ==
+                                                                  LogicalKeyboardKey
+                                                                      .escape) {
+                                                                _cancelEditing();
+                                                                _focusNode
+                                                                    .requestFocus();
+                                                                return KeyEventResult
+                                                                    .handled;
+                                                              }
+                                                              return KeyEventResult
+                                                                  .ignored;
                                                             },
-                                                            decoration: _catalogContractGlassFieldDecoration()
-                                                                .copyWith(
-                                                                  contentPadding:
-                                                                      const EdgeInsets.symmetric(
-                                                                        horizontal:
-                                                                            6,
-                                                                        vertical:
-                                                                            7,
+                                                            child: TextField(
+                                                              focusNode:
+                                                                  _focusNodeForRow(
+                                                                    rowId,
+                                                                  ),
+                                                              controller:
+                                                                  editController,
+                                                              textInputAction:
+                                                                  TextInputAction
+                                                                      .done,
+                                                              inputFormatters: [
+                                                                FilteringTextInputFormatter
+                                                                    .singleLineFormatter,
+                                                                _NameInputFormatter(),
+                                                              ],
+                                                              onTap: () {
+                                                                final rowFocus =
+                                                                    _focusNodeForRow(
+                                                                      rowId,
+                                                                    );
+                                                                if (!rowFocus
+                                                                    .hasFocus) {
+                                                                  rowFocus
+                                                                      .requestFocus();
+                                                                }
+                                                                if (_insertActive ||
+                                                                    _activeEditingRowId !=
+                                                                        rowId ||
+                                                                    _selectedIndex !=
+                                                                        i) {
+                                                                  setState(() {
+                                                                    _insertActive =
+                                                                        false;
+                                                                    _activeEditingRowId =
+                                                                        rowId;
+                                                                    _selectedIndex =
+                                                                        i;
+                                                                  });
+                                                                }
+                                                              },
+                                                              onSubmitted: (_) =>
+                                                                  _saveEditingRows(),
+                                                              onTapOutside: (event) {
+                                                                if (event.kind ==
+                                                                        PointerDeviceKind
+                                                                            .mouse &&
+                                                                    event.buttons ==
+                                                                        kSecondaryButton) {
+                                                                  return;
+                                                                }
+                                                                _cancelEditing();
+                                                              },
+                                                              decoration: _catalogContractGlassFieldDecoration().copyWith(
+                                                                fillColor: Colors
+                                                                    .white
+                                                                    .withValues(
+                                                                      alpha:
+                                                                          0.86,
+                                                                    ),
+                                                                border: OutlineInputBorder(
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        10,
                                                                       ),
+                                                                  borderSide:
+                                                                      BorderSide
+                                                                          .none,
                                                                 ),
+                                                                enabledBorder: OutlineInputBorder(
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        10,
+                                                                      ),
+                                                                  borderSide:
+                                                                      BorderSide
+                                                                          .none,
+                                                                ),
+                                                                focusedBorder: OutlineInputBorder(
+                                                                  borderRadius:
+                                                                      BorderRadius.circular(
+                                                                        10,
+                                                                      ),
+                                                                  borderSide: BorderSide(
+                                                                    color: _kCatalogTableSelectionAccent
+                                                                        .withValues(
+                                                                          alpha:
+                                                                              0.42,
+                                                                        ),
+                                                                    width: 1,
+                                                                  ),
+                                                                ),
+                                                                contentPadding:
+                                                                    const EdgeInsets.symmetric(
+                                                                      horizontal:
+                                                                          8,
+                                                                      vertical:
+                                                                          7,
+                                                                    ),
+                                                              ),
+                                                            ),
                                                           )
                                                         : Column(
                                                             mainAxisSize:
@@ -5711,13 +5884,49 @@ class _CatalogListState extends State<_CatalogList> {
     Map<String, dynamic> row, {
     bool compact = false,
   }) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(10),
-      onTap: () => unawaited(_showRowActionsMenu(index, row)),
-      child: SizedBox(
-        width: compact ? 30 : 32,
-        height: compact ? 30 : 32,
-        child: const Icon(Icons.more_horiz, color: Color(0xFF0B2B2B)),
+    final rowId = _rowId(row);
+    final selected = rowId != null && _selectedRowIds.contains(rowId);
+    return Builder(
+      builder: (context) => InkWell(
+        borderRadius: BorderRadius.circular(10),
+        onTap: () {
+          final box = context.findRenderObject() as RenderBox?;
+          final globalPosition = box?.localToGlobal(
+            Offset(box.size.width * 0.5, box.size.height),
+          );
+          unawaited(
+            _showRowActionsMenu(index, row, globalPosition: globalPosition),
+          );
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 140),
+          curve: Curves.easeOutCubic,
+          width: compact ? 30 : 32,
+          height: compact ? 30 : 32,
+          decoration: BoxDecoration(
+            color: selected
+                ? _kCatalogTableSelectionAccent.withValues(alpha: 0.12)
+                : Colors.white.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: selected
+                  ? _kCatalogTableSelectionAccent.withValues(alpha: 0.34)
+                  : Colors.white.withValues(alpha: 0.66),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: selected ? 0.12 : 0.06),
+                blurRadius: selected ? 10 : 6,
+                offset: const Offset(0, 3),
+              ),
+            ],
+          ),
+          child: Icon(
+            Icons.more_horiz,
+            size: compact ? 18 : 19,
+            color: const Color(0xFF0B2B2B),
+          ),
+        ),
       ),
     );
   }
@@ -5987,6 +6196,8 @@ class _CatalogListState extends State<_CatalogList> {
     if (key == LogicalKeyboardKey.escape) {
       if (_selectedRowIds.length > 1) {
         _selectIndex(_selectedIndex, ensureVisible: false);
+      } else if (_selectedRowIds.isNotEmpty) {
+        setState(() => _selectedRowIds.clear());
       } else {
         node.unfocus();
       }
@@ -6004,7 +6215,11 @@ class _CatalogListState extends State<_CatalogList> {
         behavior: HitTestBehavior.translucent,
         onTap: () {
           _focusNode.requestFocus();
-          _selectIndex(_selectedIndex, ensureVisible: false);
+          if (_selectedRowIds.isEmpty && widget.rows.isNotEmpty) {
+            _selectIndex(_selectedIndex, ensureVisible: false);
+          } else {
+            setState(() => _selectedRowIds.clear());
+          }
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
@@ -6148,11 +6363,9 @@ class _CatalogListState extends State<_CatalogList> {
                             final hoverOnly = hovered && !hasSelection;
                             final highlighted = hasSelection || hovered;
                             final rowBg = hasSelection
-                                ? _kCatalogTableSelectionAccent.withValues(
-                                    alpha: primarySelected ? 0.16 : 0.13,
-                                  )
+                                ? const Color(0xFFDCEBFF)
                                 : hoverOnly
-                                ? const Color(0xFFE9F7EE)
+                                ? const Color(0xFFEEF5FF)
                                 : Colors.white;
                             return MouseRegion(
                               key: rowId == null
@@ -6183,6 +6396,11 @@ class _CatalogListState extends State<_CatalogList> {
                                         globalPosition: details.globalPosition,
                                       ),
                                     );
+                                  },
+                                  onDoubleTap: () {
+                                    _focusNode.requestFocus();
+                                    _selectIndex(i, ensureVisible: false);
+                                    unawaited(widget.onEdit(row));
                                   },
                                   child: LayoutBuilder(
                                     builder: (context, constraints) {
@@ -6319,7 +6537,7 @@ class _GlassCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.58),
+        color: const Color(0xFFEAF4FF).withValues(alpha: 0.78),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Colors.white.withValues(alpha: 0.75)),
       ),
