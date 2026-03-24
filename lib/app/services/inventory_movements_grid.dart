@@ -4621,11 +4621,8 @@ class _MovementDataRowState extends State<_MovementDataRow> {
       return;
     }
     final commercial = _commercialByCode(_commercialMaterialCode);
-    final invCode = (commercial?.inventoryMaterial ?? '').trim().toUpperCase();
-    if (commercial == null || invCode.isEmpty) {
-      _toast(
-        'El material comercial seleccionado no tiene material operativo configurado en catálogo.',
-      );
+    if (commercial == null) {
+      _toast('Material comercial no válido para actualizar');
       return;
     }
     final totalAmountKg = _rowTotalAmountKg(
@@ -4636,7 +4633,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
     final patch = <String, dynamic>{
       'op_date': _fmtDbDate(_opDate),
       'material_id': _material,
-      'material': invCode,
+      'material': selectedMaterial.inventoryGeneralCode,
       'weight_kg': netKg,
       'gross_kg': grossKg,
       'tare_kg': tareKg,
