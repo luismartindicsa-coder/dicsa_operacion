@@ -14,6 +14,9 @@ import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
+import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
+import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import 'inventory_page.dart';
 import 'services_page.dart';
 import 'services_shell.dart';
@@ -40,6 +43,9 @@ const List<String> _kWarehouseCutStatuses = <String>[
   'en_revision',
   'cerrado',
 ];
+
+const double _kWarehouseInventoryActionsW = 42;
+const double _kWarehouseCutLinesActionsW = 42;
 
 class WarehousePage extends StatefulWidget {
   const WarehousePage({super.key});
@@ -954,26 +960,31 @@ class _WarehousePageState extends State<WarehousePage>
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Capturar conteo fisico'),
-        content: TextField(
-          controller: c,
-          keyboardType: const TextInputType.numberWithOptions(decimal: true),
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp(r'[0-9\.]')),
+      builder: (dialogContext) => ContractConfirmDialogKeyHandler(
+        onCancel: () => Navigator.pop(dialogContext, false),
+        onConfirm: () => Navigator.pop(dialogContext, true),
+        child: AlertDialog(
+          title: const Text('Capturar conteo fisico'),
+          content: TextField(
+            controller: c,
+            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9\.]')),
+            ],
+            decoration: const InputDecoration(labelText: 'Stock fisico'),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              autofocus: true,
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Guardar'),
+            ),
           ],
-          decoration: const InputDecoration(labelText: 'Stock fisico'),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Guardar'),
-          ),
-        ],
       ),
     );
 
@@ -1621,125 +1632,132 @@ class _WarehousePageState extends State<WarehousePage>
                                     horizontal: 10,
                                     vertical: 8,
                                   ),
-                                  child: Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 120,
-                                        child: Text(
-                                          '${row['code'] ?? '-'}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: 240,
-                                        child: Text(
-                                          '${row['name'] ?? '-'}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: 120,
-                                        child: Text(
-                                          _labelCategory(
-                                            (row['category'] ?? '').toString(),
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: 90,
-                                        child: Text('${row['unit'] ?? '-'}'),
-                                      ),
-                                      SizedBox(
-                                        width: 90,
-                                        child: Text(
-                                          _fmtQty(
-                                            _toNum(row['current_stock']) ?? 0,
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: 90,
-                                        child: Text(
-                                          _fmtQty(
-                                            _toNum(row['minimum_stock']) ?? 0,
-                                          ),
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: 160,
-                                        child: Text(
-                                          '${row['location'] ?? '-'}',
-                                        ),
-                                      ),
-                                      SizedBox(
-                                        width: 130,
-                                        child: Align(
-                                          alignment: Alignment.centerLeft,
-                                          child: Container(
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 4,
+                                  child: ContractGridScaledRow(
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(
+                                          width: 120,
+                                          child: Text(
+                                            '${row['code'] ?? '-'}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w800,
                                             ),
-                                            decoration: BoxDecoration(
-                                              color: _stockStateColor(
-                                                state,
-                                              ).withValues(alpha: 0.14),
-                                              borderRadius:
-                                                  BorderRadius.circular(10),
-                                              border: Border.all(
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 240,
+                                          child: Text(
+                                            '${row['name'] ?? '-'}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 120,
+                                          child: Text(
+                                            _labelCategory(
+                                              (row['category'] ?? '')
+                                                  .toString(),
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 90,
+                                          child: Text('${row['unit'] ?? '-'}'),
+                                        ),
+                                        SizedBox(
+                                          width: 90,
+                                          child: Text(
+                                            _fmtQty(
+                                              _toNum(row['current_stock']) ?? 0,
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 90,
+                                          child: Text(
+                                            _fmtQty(
+                                              _toNum(row['minimum_stock']) ?? 0,
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 160,
+                                          child: Text(
+                                            '${row['location'] ?? '-'}',
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 130,
+                                          child: Align(
+                                            alignment: Alignment.centerLeft,
+                                            child: Container(
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                    horizontal: 8,
+                                                    vertical: 4,
+                                                  ),
+                                              decoration: BoxDecoration(
                                                 color: _stockStateColor(
                                                   state,
-                                                ).withValues(alpha: 0.45),
+                                                ).withValues(alpha: 0.14),
+                                                borderRadius:
+                                                    BorderRadius.circular(10),
+                                                border: Border.all(
+                                                  color: _stockStateColor(
+                                                    state,
+                                                  ).withValues(alpha: 0.45),
+                                                ),
                                               ),
-                                            ),
-                                            child: Text(
-                                              _stockStateLabel(state),
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w800,
-                                                color: _stockStateColor(state),
+                                              child: Text(
+                                                _stockStateLabel(state),
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w800,
+                                                  color: _stockStateColor(
+                                                    state,
+                                                  ),
+                                                ),
                                               ),
                                             ),
                                           ),
                                         ),
-                                      ),
-                                      SizedBox(
-                                        width: 150,
-                                        child: Wrap(
-                                          spacing: 4,
-                                          children: [
-                                            TextButton(
-                                              onPressed: _saving
-                                                  ? null
-                                                  : () =>
-                                                        _registerMovementForItem(
-                                                          rowId,
-                                                          'entrada',
-                                                        ),
-                                              child: const Text('Entrada'),
-                                            ),
-                                            TextButton(
-                                              onPressed: _saving
-                                                  ? null
-                                                  : () =>
-                                                        _registerMovementForItem(
-                                                          rowId,
-                                                          'salida',
-                                                        ),
-                                              child: const Text('Salida'),
-                                            ),
-                                          ],
+                                        SizedBox(
+                                          width: 150,
+                                          child: Wrap(
+                                            spacing: 4,
+                                            children: [
+                                              TextButton(
+                                                onPressed: _saving
+                                                    ? null
+                                                    : () =>
+                                                          _registerMovementForItem(
+                                                            rowId,
+                                                            'entrada',
+                                                          ),
+                                                child: const Text('Entrada'),
+                                              ),
+                                              TextButton(
+                                                onPressed: _saving
+                                                    ? null
+                                                    : () =>
+                                                          _registerMovementForItem(
+                                                            rowId,
+                                                            'salida',
+                                                          ),
+                                                child: const Text('Salida'),
+                                              ),
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                      SizedBox(
-                                        width: 42,
-                                        child: Align(
-                                          alignment: Alignment.centerRight,
-                                          child: _WarehouseRowActionsButton(
+                                        AnchoredActionSlot(
+                                          width: _kWarehouseInventoryActionsW,
+                                          trailingWidth:
+                                              _kWarehouseInventoryActionsW,
+                                          leading: const SizedBox.shrink(),
+                                          trailing: _WarehouseRowActionsButton(
                                             onTapDown: (globalPosition) {
                                               unawaited(
                                                 _openInventoryRowContextMenu(
@@ -1750,8 +1768,8 @@ class _WarehousePageState extends State<WarehousePage>
                                             },
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -2392,23 +2410,28 @@ class _WarehousePageState extends State<WarehousePage>
     }
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Eliminar movimientos'),
-        content: Text(
-          selectedIds.length > 1
-              ? 'Se eliminaran ${selectedIds.length} movimientos seleccionados. ¿Continuar?'
-              : 'Se eliminara el movimiento seleccionado. ¿Continuar?',
+      builder: (dialogContext) => ContractConfirmDialogKeyHandler(
+        onCancel: () => Navigator.pop(dialogContext, false),
+        onConfirm: () => Navigator.pop(dialogContext, true),
+        child: AlertDialog(
+          title: const Text('Eliminar movimientos'),
+          content: Text(
+            selectedIds.length > 1
+                ? 'Se eliminaran ${selectedIds.length} movimientos seleccionados. ¿Continuar?'
+                : 'Se eliminara el movimiento seleccionado. ¿Continuar?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              autofocus: true,
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Eliminar'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Eliminar'),
-          ),
-        ],
       ),
     );
     if (ok != true) return;
@@ -2779,74 +2802,83 @@ class _WarehousePageState extends State<WarehousePage>
                                     horizontal: 10,
                                     vertical: 8,
                                   ),
-                                  child: Row(
-                                    children: [
-                                      SizedBox(
-                                        width: 290,
-                                        child: Text(
-                                          '${item['code'] ?? '-'} - ${item['name'] ?? '-'}',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
+                                  child: ContractGridScaledRow(
+                                    child: Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        SizedBox(
+                                          width: 290,
+                                          child: Text(
+                                            '${item['code'] ?? '-'} - ${item['name'] ?? '-'}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      SizedBox(
-                                        width: 130,
-                                        child: Text(
-                                          _fmtQty(
-                                            _toNum(row['system_stock']) ?? 0,
+                                        SizedBox(
+                                          width: 130,
+                                          child: Text(
+                                            _fmtQty(
+                                              _toNum(row['system_stock']) ?? 0,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      SizedBox(
-                                        width: 130,
-                                        child: Text(
-                                          _fmtQty(
-                                            _toNum(row['physical_stock']) ?? 0,
+                                        SizedBox(
+                                          width: 130,
+                                          child: Text(
+                                            _fmtQty(
+                                              _toNum(row['physical_stock']) ??
+                                                  0,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      SizedBox(
-                                        width: 130,
-                                        child: Text(
-                                          _fmtQty(diff),
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.w800,
-                                            color: diff == 0
-                                                ? const Color(0xFF2E7D32)
-                                                : const Color(0xFFC62828),
+                                        SizedBox(
+                                          width: 130,
+                                          child: Text(
+                                            _fmtQty(diff),
+                                            style: TextStyle(
+                                              fontWeight: FontWeight.w800,
+                                              color: diff == 0
+                                                  ? const Color(0xFF2E7D32)
+                                                  : const Color(0xFFC62828),
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      SizedBox(
-                                        width: 170,
-                                        child: Text(
-                                          (row['adjustment_applied']
-                                                      as bool?) ==
-                                                  true
-                                              ? 'Aplicado'
-                                              : 'Pendiente',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
+                                        SizedBox(
+                                          width: 170,
+                                          child: Text(
+                                            (row['adjustment_applied']
+                                                        as bool?) ==
+                                                    true
+                                                ? 'Aplicado'
+                                                : 'Pendiente',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w700,
+                                            ),
                                           ),
                                         ),
-                                      ),
-                                      SizedBox(
-                                        width: 170,
-                                        child: TextButton.icon(
-                                          onPressed: _saving
-                                              ? null
-                                              : () =>
-                                                    _capturePhysicalStock(row),
-                                          icon: const Icon(Icons.edit_rounded),
-                                          label: const Text('Capturar fisico'),
+                                        SizedBox(
+                                          width: 170,
+                                          child: TextButton.icon(
+                                            onPressed: _saving
+                                                ? null
+                                                : () => _capturePhysicalStock(
+                                                    row,
+                                                  ),
+                                            icon: const Icon(
+                                              Icons.edit_rounded,
+                                            ),
+                                            label: const Text(
+                                              'Capturar fisico',
+                                            ),
+                                          ),
                                         ),
-                                      ),
-                                      SizedBox(
-                                        width: 42,
-                                        child: Align(
-                                          alignment: Alignment.centerRight,
-                                          child: _WarehouseRowActionsButton(
+                                        AnchoredActionSlot(
+                                          width: _kWarehouseCutLinesActionsW,
+                                          trailingWidth:
+                                              _kWarehouseCutLinesActionsW,
+                                          leading: const SizedBox.shrink(),
+                                          trailing: _WarehouseRowActionsButton(
                                             onTapDown: (globalPosition) {
                                               unawaited(
                                                 _openCutLineContextMenu(
@@ -2857,8 +2889,8 @@ class _WarehousePageState extends State<WarehousePage>
                                             },
                                           ),
                                         ),
-                                      ),
-                                    ],
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),

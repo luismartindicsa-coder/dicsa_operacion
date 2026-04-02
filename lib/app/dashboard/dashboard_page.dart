@@ -2543,16 +2543,11 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     return _isBaleOperationalMaterial(material) ? label : '$label en patio';
   }
 
-  bool _usesCommercialYardBalance(String material) {
-    switch (_normalizeOperational(material)) {
-      case 'CHATARRA':
-      case 'METAL':
-      case 'PLASTICO':
-      case 'MADERA':
-        return true;
-      default:
-        return false;
-    }
+  double _yardKgForOperationalMaterial(String material) {
+    final normalized = _normalizeOperational(material);
+    final operationalKg = _operationalOnHandKg[normalized] ?? 0;
+    final commercialKg = _commercialOnHandKgByGeneral[normalized] ?? 0;
+    return operationalKg + commercialKg;
   }
 
   Future<void> _reload({bool showLoader = false}) async {
@@ -2569,11 +2564,13 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       final responses = await Future.wait<dynamic>([
         _supa
             .from('v_inventory_general_balance_v2')
-            .select('code,name,opening_kg,movement_kg,on_hand_kg'),
+            .select(
+              'code,name,opening_kg,movement_kg,on_hand_kg,opening_units,movement_units,on_hand_units',
+            ),
         _supa
             .from('v_inventory_commercial_balance_v2')
             .select(
-              'code,name,family,general_code,opening_kg,movement_kg,on_hand_kg',
+              'code,name,family,general_code,opening_kg,movement_kg,on_hand_kg,on_hand_units',
             ),
         _supa
             .from('material_commercial_catalog_v2')
@@ -2654,8 +2651,13 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         final movementIsBale =
             _isBaleOperationalMaterial(code) ||
             _isBaleCommercialMaterialCode(code);
-        if (movementIsBale && _kDashboardOutgoingBaleAvgKg > 0) {
-          commercialBales[code] = weightKg / _kDashboardOutgoingBaleAvgKg;
+        final onHandUnits = _num(row['on_hand_units']);
+        if (movementIsBale) {
+          commercialBales[code] = onHandUnits > 0
+              ? onHandUnits
+              : (_kDashboardOutgoingBaleAvgKg > 0
+                    ? weightKg / _kDashboardOutgoingBaleAvgKg
+                    : 0);
         }
         if (generalCode == 'CHATARRA') {
           scrapByCommercial[code] = weightKg;
@@ -2863,12 +2865,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       case 'operational_material':
         final material = _normalizeOperational((pref.material ?? '').trim());
         if (material.isEmpty) return null;
-        final operationalKg = _operationalOnHandKg[material] ?? 0;
-        final commercialKgByGeneral =
-            _commercialOnHandKgByGeneral[material] ?? 0;
-        final kg = _usesCommercialYardBalance(material)
-            ? operationalKg + commercialKgByGeneral
-            : (operationalKg > 0 ? operationalKg : commercialKgByGeneral);
+        final kg = _yardKgForOperationalMaterial(material);
         final isBale = _isBaleOperationalMaterial(material);
         final fallbackCommercialBales = _commercialOnHandBales[material] ?? 0;
         final baleCount = (_operationalOnHandBales[material] ?? 0) > 0

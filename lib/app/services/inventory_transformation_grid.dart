@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' show ImageFilter;
 
@@ -10,7 +8,12 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../shared/archetypes/auxiliary_surfaces/auxiliary_surfaces.dart';
+import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
+import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
+import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
+import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/utils/csv_file_save.dart';
 import 'inventory_movements_grid.dart';
 
 const double _kTrDateColW = 92;
@@ -42,9 +45,6 @@ const double _kTrFixedColsW =
 double _trNotesColWFor(double availableWidth) =>
     math.max(_kTrNotesColW, availableWidth - _kTrFixedColsW);
 
-double _trTableContentWFor(double availableWidth) =>
-    _kTrFixedColsW + _trNotesColWFor(availableWidth);
-
 class InventoryTransformationGrid extends StatefulWidget {
   final String sourceGeneralCode;
   final String title;
@@ -69,6 +69,10 @@ class InventoryTransformationGrid extends StatefulWidget {
 class _InventoryTransformationGridState
     extends State<InventoryTransformationGrid> {
   final SupabaseClient supa = Supabase.instance.client;
+  final ScrollController _rowsScrollController = ScrollController();
+  final GlobalKey _rowsViewportKey = GlobalKey(
+    debugLabel: 'transformation_rows_viewport',
+  );
   final FocusNode _insertFocusNode = FocusNode(
     debugLabel: 'transformation_insert_row_focus',
   );
@@ -102,7 +106,11 @@ class _InventoryTransformationGridState
   bool _hoverInsertAddButton = false;
   bool _bulkDeleting = false;
   bool _dragSelectingRows = false;
+  bool _pointerDownAdditiveSelection = false;
   int? _dragSelectionAnchorIndex;
+  Offset? _dragPointerLocal;
+  Timer? _dragAutoScrollTimer;
+  double _dragAutoScrollVelocity = 0;
   final Set<String> _selectedRowKeys = <String>{};
   final Map<String, GlobalKey<_TransformationDataRowState>> _rowKeys =
       <String, GlobalKey<_TransformationDataRowState>>{};
@@ -113,10 +121,12 @@ class _InventoryTransformationGridState
   int? _hoveredRowIndex;
   int _activeGridColumn = 0;
   int _activeInsertColumn = 0;
+  int _currentPage = 0;
+  int _pageSize = 40;
 
   bool get _usesBaleLanguage => widget.sourceGeneralCode == 'CARTON';
   String get _unitsFieldLabel =>
-      _usesBaleLanguage ? 'Pacas (opcional)' : 'Unidades (opcional)';
+      _usesBaleLanguage ? 'Pacas contadas' : 'Unidades (opcional)';
   String get _unitsHintText => _usesBaleLanguage ? 'Pacas' : 'Unidades';
   String get _unitsHeaderLabel => _usesBaleLanguage ? 'PACAS' : 'UNIDADES';
   String get _unitsValidationLabel => _usesBaleLanguage ? 'Pacas' : 'Unidades';
@@ -155,6 +165,8 @@ class _InventoryTransformationGridState
     _unitsFocusNode.dispose();
     _inputKgFocusNode.dispose();
     _notesFocusNode.dispose();
+    _dragAutoScrollTimer?.cancel();
+    _rowsScrollController.dispose();
     super.dispose();
   }
 
@@ -212,8 +224,28 @@ class _InventoryTransformationGridState
   List<_TransformationRowVm> get _filteredRows =>
       _rows.where((row) => _matchesFilters(row)).toList();
 
+  List<_TransformationRowVm> get _visibleRows {
+    final filtered = _filteredRows;
+    final start = _currentPage * _pageSize;
+    if (start >= filtered.length) return <_TransformationRowVm>[];
+    final end = math.min(start + _pageSize, filtered.length);
+    return filtered.sublist(start, end);
+  }
+
+  int get _totalPages {
+    final total = _filteredRows.length;
+    if (total == 0) return 1;
+    return ((total - 1) ~/ _pageSize) + 1;
+  }
+
+  void _clampCurrentPage() {
+    final maxPage = _totalPages - 1;
+    if (_currentPage > maxPage) _currentPage = maxPage;
+    if (_currentPage < 0) _currentPage = 0;
+  }
+
   void _selectRow(int index, {bool requestFocus = true}) {
-    final visibleRows = _filteredRows;
+    final visibleRows = _visibleRows;
     if (visibleRows.isEmpty) return;
     final normalized = index.clamp(0, visibleRows.length - 1);
     final rowKey = visibleRows[normalized].selectionKey;
@@ -234,13 +266,14 @@ class _InventoryTransformationGridState
     if (!requestFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _scrollSelectionIntoView(rowKey);
       FocusManager.instance.primaryFocus?.unfocus();
       _rowsFocusNode.requestFocus();
     });
   }
 
   void _moveSelectedRow(int delta) {
-    if (_filteredRows.isEmpty) return;
+    if (_visibleRows.isEmpty) return;
     _selectRow((_selectedRowIndex ?? 0) + delta);
   }
 
@@ -253,7 +286,7 @@ class _InventoryTransformationGridState
   }
 
   void _toggleRowSelection(int index, {required bool additive}) {
-    final visibleRows = _filteredRows;
+    final visibleRows = _visibleRows;
     if (visibleRows.isEmpty) return;
     final normalized = index.clamp(0, visibleRows.length - 1);
     final rowKey = visibleRows[normalized].selectionKey;
@@ -283,9 +316,21 @@ class _InventoryTransformationGridState
     _notifyTopBar();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _scrollSelectionIntoView(rowKey);
       FocusManager.instance.primaryFocus?.unfocus();
       _rowsFocusNode.requestFocus();
     });
+  }
+
+  void _scrollSelectionIntoView(String selectionKey) {
+    final context = _rowKeys[selectionKey]?.currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 140),
+      curve: Curves.easeOutCubic,
+      alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
+    );
   }
 
   Future<void> _deleteSelectedRows() async {
@@ -296,21 +341,26 @@ class _InventoryTransformationGridState
     if (selectedRows.isEmpty) return;
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Eliminar selección'),
-        content: Text(
-          '¿Eliminar ${selectedRows.length} registro${selectedRows.length == 1 ? '' : 's'} de transformación?',
+      builder: (context) => ContractConfirmDialogKeyHandler(
+        onCancel: () => Navigator.of(context).pop(false),
+        onConfirm: () => Navigator.of(context).pop(true),
+        child: AlertDialog(
+          title: const Text('Eliminar selección'),
+          content: Text(
+            '¿Eliminar ${selectedRows.length} registro${selectedRows.length == 1 ? '' : 's'} de transformación?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              autofocus: true,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Eliminar'),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Eliminar'),
-          ),
-        ],
       ),
     );
     if (confirm != true) return;
@@ -467,7 +517,7 @@ class _InventoryTransformationGridState
   }
 
   void _focusRowsFromInsert() {
-    if (_filteredRows.isEmpty) return;
+    if (_visibleRows.isEmpty) return;
     _selectRow(_selectedRowIndex ?? 0);
   }
 
@@ -496,7 +546,7 @@ class _InventoryTransformationGridState
   }
 
   _TransformationDataRowState? _selectedRowState() {
-    final visibleRows = _filteredRows;
+    final visibleRows = _visibleRows;
     final index = _selectedRowIndex;
     if (index == null || index < 0 || index >= visibleRows.length) return null;
     return _rowKeys[visibleRows[index].selectionKey]?.currentState;
@@ -504,7 +554,7 @@ class _InventoryTransformationGridState
 
   List<_TransformationDataRowState> _selectedRowStates() {
     final states = <_TransformationDataRowState>[];
-    for (final row in _filteredRows) {
+    for (final row in _visibleRows) {
       if (!_selectedRowKeys.contains(row.selectionKey)) continue;
       final state = _rowKeys[row.selectionKey]?.currentState;
       if (state != null) states.add(state);
@@ -525,7 +575,7 @@ class _InventoryTransformationGridState
   }
 
   int? _rowIndexAtGlobalPosition(Offset globalPosition) {
-    final visibleRows = _filteredRows;
+    final visibleRows = _visibleRows;
     for (var i = 0; i < visibleRows.length; i++) {
       final key = _rowKeys[visibleRows[i].selectionKey];
       final context = key?.currentContext;
@@ -541,7 +591,7 @@ class _InventoryTransformationGridState
 
   void _selectDraggedRange(int currentIndex) {
     final anchor = _dragSelectionAnchorIndex;
-    final visibleRows = _filteredRows;
+    final visibleRows = _visibleRows;
     if (anchor == null || visibleRows.isEmpty) return;
     final start = math.min(anchor, currentIndex);
     final end = math.max(anchor, currentIndex);
@@ -557,6 +607,7 @@ class _InventoryTransformationGridState
   }
 
   void _handleRowsPointerDown(PointerDownEvent event) {
+    _pointerDownAdditiveSelection = _isAdditiveSelectionPressed();
     if (event.kind != PointerDeviceKind.mouse ||
         event.buttons != kPrimaryButton) {
       return;
@@ -566,12 +617,16 @@ class _InventoryTransformationGridState
     if (rowIndex == null) return;
     _dragSelectingRows = true;
     _dragSelectionAnchorIndex = rowIndex;
+    _dragPointerLocal = _globalToRowsLocal(event.position);
+    _updateDragAutoScroll();
     _selectDraggedRange(rowIndex);
   }
 
   void _handleRowsPointerMove(PointerMoveEvent event) {
     if (!_dragSelectingRows) return;
-    final rowIndex = _rowIndexAtGlobalPosition(event.position);
+    _dragPointerLocal = _globalToRowsLocal(event.position);
+    _updateDragAutoScroll();
+    final rowIndex = _rowIndexForDragPosition(event.position);
     if (rowIndex == null) return;
     _selectDraggedRange(rowIndex);
   }
@@ -579,6 +634,98 @@ class _InventoryTransformationGridState
   void _finishRowsPointerSelection() {
     _dragSelectingRows = false;
     _dragSelectionAnchorIndex = null;
+    _dragPointerLocal = null;
+    _dragAutoScrollVelocity = 0;
+    _dragAutoScrollTimer?.cancel();
+    _dragAutoScrollTimer = null;
+    _pointerDownAdditiveSelection = false;
+  }
+
+  Offset? _globalToRowsLocal(Offset globalPosition) {
+    final box =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) return null;
+    return box.globalToLocal(globalPosition);
+  }
+
+  int? _rowIndexForDragPosition(Offset globalPosition) {
+    final exactIndex = _rowIndexAtGlobalPosition(globalPosition);
+    if (exactIndex != null) return exactIndex;
+    final visibleRows = _visibleRows;
+    final local = _globalToRowsLocal(globalPosition);
+    if (visibleRows.isEmpty || local == null) return null;
+    final box =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return null;
+    if (local.dy < 0) return 0;
+    if (local.dy > box.size.height) return visibleRows.length - 1;
+    return null;
+  }
+
+  void _updateDragAutoScroll() {
+    if (!_dragSelectingRows || _dragPointerLocal == null) {
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    final box =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      _dragAutoScrollVelocity = 0;
+      return;
+    }
+    const edge = 36.0;
+    const maxStep = 18.0;
+    final y = _dragPointerLocal!.dy;
+    if (y < edge) {
+      _dragAutoScrollVelocity = -((edge - y) / edge).clamp(0.0, 1.0) * maxStep;
+    } else if (y > box.size.height - edge) {
+      _dragAutoScrollVelocity =
+          ((y - (box.size.height - edge)) / edge).clamp(0.0, 1.0) * maxStep;
+    } else {
+      _dragAutoScrollVelocity = 0;
+    }
+    if (_dragAutoScrollVelocity == 0) {
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    _dragAutoScrollTimer ??= Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _tickDragAutoScroll(),
+    );
+  }
+
+  void _tickDragAutoScroll() {
+    if (!_dragSelectingRows ||
+        _dragAutoScrollVelocity == 0 ||
+        !_rowsScrollController.hasClients) {
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    final position = _rowsScrollController.position;
+    final next = (position.pixels + _dragAutoScrollVelocity).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if (next == position.pixels) return;
+    _rowsScrollController.jumpTo(next);
+    final pointerLocal = _dragPointerLocal;
+    if (pointerLocal == null) return;
+    final box =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) return;
+    final clampedLocal = Offset(
+      pointerLocal.dx.clamp(0.0, box.size.width),
+      pointerLocal.dy.clamp(0.0, box.size.height),
+    );
+    final global = box.localToGlobal(clampedLocal);
+    final rowIndex = _rowIndexForDragPosition(global);
+    if (rowIndex != null) {
+      _selectDraggedRange(rowIndex);
+    }
   }
 
   bool _caretAtStart(TextEditingController c, FocusNode f) {
@@ -737,7 +884,7 @@ class _InventoryTransformationGridState
   }
 
   void _syncSelectionWithVisibleRows() {
-    final visibleRows = _filteredRows;
+    final visibleRows = _visibleRows;
     final visibleKeys = visibleRows.map((row) => row.selectionKey).toSet();
     _selectedRowKeys.removeWhere((key) => !visibleKeys.contains(key));
     if (visibleRows.isEmpty || _selectedRowKeys.isEmpty) {
@@ -780,6 +927,7 @@ class _InventoryTransformationGridState
           _columnDateRangeFilters[columnId] = result.range!;
         }
         _columnValueFilters.remove(columnId);
+        _clampCurrentPage();
         _syncSelectionWithVisibleRows();
       });
       _notifyTopBar();
@@ -800,6 +948,7 @@ class _InventoryTransformationGridState
         _columnValueFilters[columnId] = result.selectedValues;
       }
       _columnDateRangeFilters.remove(columnId);
+      _clampCurrentPage();
       _syncSelectionWithVisibleRows();
     });
     _notifyTopBar();
@@ -940,6 +1089,7 @@ class _InventoryTransformationGridState
       _selectedRowKeys.removeWhere(
         (key) => !rows.any((row) => row.selectionKey == key),
       );
+      _clampCurrentPage();
       _syncSelectionWithVisibleRows();
     });
   }
@@ -954,6 +1104,7 @@ class _InventoryTransformationGridState
     final outputKg = _toDouble(_outputKgC.text);
     final units = int.tryParse(_unitsC.text.trim());
     final validationError = _validateTransformationValues(
+      commercialId: _commercialId,
       inputKg: inputKg,
       outputKg: outputKg,
       units: units,
@@ -1023,6 +1174,7 @@ class _InventoryTransformationGridState
       return;
     }
     final validationError = _validateTransformationValues(
+      commercialId: commercialId,
       inputKg: inputKg,
       outputKg: outputKg,
       units: units,
@@ -1229,6 +1381,7 @@ class _InventoryTransformationGridState
                   return;
                 }
                 final validationError = _validateTransformationValues(
+                  commercialId: commercialId,
                   inputKg: inputKg,
                   outputKg: outputKg,
                   units: units,
@@ -1297,19 +1450,24 @@ class _InventoryTransformationGridState
   Future<void> _deleteRow(_TransformationRowVm row) async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Eliminar transformación'),
-        content: const Text('¿Eliminar este registro?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Eliminar'),
-          ),
-        ],
+      builder: (context) => ContractConfirmDialogKeyHandler(
+        onCancel: () => Navigator.of(context).pop(false),
+        onConfirm: () => Navigator.of(context).pop(true),
+        child: AlertDialog(
+          title: const Text('Eliminar transformación'),
+          content: const Text('¿Eliminar este registro?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              autofocus: true,
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Eliminar'),
+            ),
+          ],
+        ),
       ),
     );
     if (confirm != true) return;
@@ -1396,11 +1554,12 @@ class _InventoryTransformationGridState
   }
 
   void _notifyTopBar() {
-    final totalOutputKg = _rows.fold<double>(
+    final filteredRows = _filteredRows;
+    final totalOutputKg = filteredRows.fold<double>(
       0,
       (sum, row) => sum + row.outputWeightKg,
     );
-    final selectedRows = _rows
+    final selectedRows = filteredRows
         .where((row) => _selectedRowKeys.contains(row.selectionKey))
         .toList();
     final selectedKgSum = selectedRows.fold<double>(
@@ -1416,7 +1575,7 @@ class _InventoryTransformationGridState
         metricIcon: widget.metricIcon,
         metricLabel: 'KG ${widget.title.toUpperCase()} CLASIFICADO',
         metricValue: _fmtCount(totalOutputKg),
-        metricSubtitle: '${_rows.length} registros',
+        metricSubtitle: 'Filtrado (${_fmtInt(filteredRows.length)} registros)',
         exportingCsv: _exporting,
         gridEditMode: false,
         canToggleGridEdit: false,
@@ -1467,6 +1626,7 @@ class _InventoryTransformationGridState
   }
 
   String? _validateTransformationValues({
+    required String? commercialId,
     required double? inputKg,
     required double? outputKg,
     required int? units,
@@ -1479,6 +1639,14 @@ class _InventoryTransformationGridState
     }
     if (inputKg != null && outputKg > inputKg) {
       return 'Kg salida no puede ser mayor que kg entrada.';
+    }
+    final commercialCode = _commercialOptions
+        .where((option) => option.id == commercialId)
+        .map((option) => option.code)
+        .fold<String?>(null, (_, code) => code);
+    if (isCountedBaleCommercialCode(commercialCode) &&
+        (units == null || units <= 0)) {
+      return '$_unitsValidationLabel es obligatorio para pacas contadas.';
     }
     if (units != null && units < 0) {
       return '$_unitsValidationLabel no puede ser negativo.';
@@ -1519,27 +1687,17 @@ class _InventoryTransformationGridState
   }
 
   String _fmtCount(double value) => value.toStringAsFixed(2);
+  String _fmtInt(int value) => value.toString();
 
   String _sourceModeLabel(String value) =>
       value == 'DIRECT' ? 'Directo' : 'Mezclado';
 
-  Future<String?> _writeDownloadsFile(String fileName, String content) async {
-    final home = Platform.environment['HOME'];
-    if (home == null || home.isEmpty) return null;
-    final dirs = <Directory>[
-      Directory('$home/Downloads'),
-      Directory('$home/Descargas'),
-    ];
-    for (final dir in dirs) {
-      try {
-        if (!dir.existsSync()) dir.createSync(recursive: true);
-        final file = File('${dir.path}/$fileName');
-        await file.writeAsString(content, encoding: utf8);
-        return file.path;
-      } catch (_) {}
-    }
-    return null;
-  }
+  Future<String?> _writeDownloadsFile(String fileName, String content) =>
+      saveCsvFile(
+        fileName: fileName,
+        content: content,
+        dialogTitle: 'Guardar CSV de transformacion',
+      );
 
   String _csvEscape(Object? value) {
     if (value == null) return '';
@@ -1607,6 +1765,8 @@ class _InventoryTransformationGridState
         _buildFormCard(context),
         const SizedBox(height: 12),
         Expanded(child: _buildRowsCard(context)),
+        const SizedBox(height: 8),
+        _buildPaginationCard(),
       ],
     );
   }
@@ -1644,9 +1804,6 @@ class _InventoryTransformationGridState
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: LayoutBuilder(
             builder: (context, constraints) {
-              final tableContentWidth = _trTableContentWFor(
-                constraints.maxWidth,
-              );
               final notesColWidth = _trNotesColWFor(constraints.maxWidth);
               Widget frame(int col, Widget child) {
                 final active = _activeInsertColumn == col;
@@ -1676,431 +1833,407 @@ class _InventoryTransformationGridState
 
               return SizedBox(
                 width: constraints.maxWidth,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: SizedBox(
-                    width: tableContentWidth,
-                    child: Focus(
-                      focusNode: _insertFocusNode,
-                      onKeyEvent: (_, event) {
-                        if (event is! KeyDownEvent) {
+                child: ContractGridScaledRow(
+                  child: Focus(
+                    focusNode: _insertFocusNode,
+                    onKeyEvent: (_, event) {
+                      if (event is! KeyDownEvent) {
+                        return KeyEventResult.ignored;
+                      }
+                      final key = event.logicalKey;
+                      if (key == LogicalKeyboardKey.arrowLeft) {
+                        if (_outputKgFocusNode.hasFocus &&
+                            !_caretAtStart(_outputKgC, _outputKgFocusNode)) {
                           return KeyEventResult.ignored;
                         }
-                        final key = event.logicalKey;
-                        if (key == LogicalKeyboardKey.arrowLeft) {
-                          if (_outputKgFocusNode.hasFocus &&
-                              !_caretAtStart(_outputKgC, _outputKgFocusNode)) {
-                            return KeyEventResult.ignored;
-                          }
-                          if (_unitsFocusNode.hasFocus &&
-                              !_caretAtStart(_unitsC, _unitsFocusNode)) {
-                            return KeyEventResult.ignored;
-                          }
-                          if (_inputKgFocusNode.hasFocus &&
-                              !_caretAtStart(_inputKgC, _inputKgFocusNode)) {
-                            return KeyEventResult.ignored;
-                          }
-                          if (_notesFocusNode.hasFocus &&
-                              !_caretAtStart(_notesC, _notesFocusNode)) {
-                            return KeyEventResult.ignored;
-                          }
-                          _moveInsertColumn(-1);
+                        if (_unitsFocusNode.hasFocus &&
+                            !_caretAtStart(_unitsC, _unitsFocusNode)) {
+                          return KeyEventResult.ignored;
+                        }
+                        if (_inputKgFocusNode.hasFocus &&
+                            !_caretAtStart(_inputKgC, _inputKgFocusNode)) {
+                          return KeyEventResult.ignored;
+                        }
+                        if (_notesFocusNode.hasFocus &&
+                            !_caretAtStart(_notesC, _notesFocusNode)) {
+                          return KeyEventResult.ignored;
+                        }
+                        _moveInsertColumn(-1);
+                        return KeyEventResult.handled;
+                      }
+                      if (key == LogicalKeyboardKey.arrowRight) {
+                        if (_outputKgFocusNode.hasFocus &&
+                            !_caretAtEnd(_outputKgC, _outputKgFocusNode)) {
+                          return KeyEventResult.ignored;
+                        }
+                        if (_unitsFocusNode.hasFocus &&
+                            !_caretAtEnd(_unitsC, _unitsFocusNode)) {
+                          return KeyEventResult.ignored;
+                        }
+                        if (_inputKgFocusNode.hasFocus &&
+                            !_caretAtEnd(_inputKgC, _inputKgFocusNode)) {
+                          return KeyEventResult.ignored;
+                        }
+                        if (_notesFocusNode.hasFocus &&
+                            !_caretAtEnd(_notesC, _notesFocusNode)) {
+                          return KeyEventResult.ignored;
+                        }
+                        _moveInsertColumn(1);
+                        return KeyEventResult.handled;
+                      }
+                      if (key == LogicalKeyboardKey.escape) {
+                        FocusManager.instance.primaryFocus?.unfocus();
+                        _insertFocusNode.requestFocus();
+                        return KeyEventResult.handled;
+                      }
+                      if (key == LogicalKeyboardKey.arrowUp) {
+                        return KeyEventResult.handled;
+                      }
+                      if (key == LogicalKeyboardKey.arrowDown) {
+                        _focusRowsFromInsert();
+                        return KeyEventResult.handled;
+                      }
+                      if (key == LogicalKeyboardKey.delete ||
+                          key == LogicalKeyboardKey.backspace) {
+                        if (_isInsertTextFocused) {
+                          return KeyEventResult.ignored;
+                        }
+                        _clearActiveInsertCell();
+                        return KeyEventResult.handled;
+                      }
+                      if (key == LogicalKeyboardKey.space) {
+                        if (_isInsertTextFocused) {
+                          return KeyEventResult.ignored;
+                        }
+                        unawaited(_activateInsertCellFromKeyboard());
+                        return KeyEventResult.handled;
+                      }
+                      if (key == LogicalKeyboardKey.enter ||
+                          key == LogicalKeyboardKey.numpadEnter) {
+                        if (_isInsertTextFocused &&
+                            _activeInsertColumn >= 4 &&
+                            _activeInsertColumn <= 7) {
+                          unawaited(_insert());
                           return KeyEventResult.handled;
                         }
-                        if (key == LogicalKeyboardKey.arrowRight) {
-                          if (_outputKgFocusNode.hasFocus &&
-                              !_caretAtEnd(_outputKgC, _outputKgFocusNode)) {
-                            return KeyEventResult.ignored;
-                          }
-                          if (_unitsFocusNode.hasFocus &&
-                              !_caretAtEnd(_unitsC, _unitsFocusNode)) {
-                            return KeyEventResult.ignored;
-                          }
-                          if (_inputKgFocusNode.hasFocus &&
-                              !_caretAtEnd(_inputKgC, _inputKgFocusNode)) {
-                            return KeyEventResult.ignored;
-                          }
-                          if (_notesFocusNode.hasFocus &&
-                              !_caretAtEnd(_notesC, _notesFocusNode)) {
-                            return KeyEventResult.ignored;
-                          }
-                          _moveInsertColumn(1);
-                          return KeyEventResult.handled;
-                        }
-                        if (key == LogicalKeyboardKey.escape) {
-                          FocusManager.instance.primaryFocus?.unfocus();
-                          _insertFocusNode.requestFocus();
-                          return KeyEventResult.handled;
-                        }
-                        if (key == LogicalKeyboardKey.arrowUp) {
-                          return KeyEventResult.handled;
-                        }
-                        if (key == LogicalKeyboardKey.arrowDown) {
-                          _focusRowsFromInsert();
-                          return KeyEventResult.handled;
-                        }
-                        if (key == LogicalKeyboardKey.delete ||
-                            key == LogicalKeyboardKey.backspace) {
-                          if (_isInsertTextFocused) {
-                            return KeyEventResult.ignored;
-                          }
-                          _clearActiveInsertCell();
-                          return KeyEventResult.handled;
-                        }
-                        if (key == LogicalKeyboardKey.space) {
-                          if (_isInsertTextFocused) {
-                            return KeyEventResult.ignored;
-                          }
-                          unawaited(_activateInsertCellFromKeyboard());
-                          return KeyEventResult.handled;
-                        }
-                        if (key == LogicalKeyboardKey.enter ||
-                            key == LogicalKeyboardKey.numpadEnter) {
-                          if (_isInsertTextFocused &&
-                              _activeInsertColumn >= 4 &&
-                              _activeInsertColumn <= 7) {
-                            unawaited(_insert());
-                            return KeyEventResult.handled;
-                          }
-                          unawaited(_activateInsertCellFromKeyboard());
-                          return KeyEventResult.handled;
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      child: Row(
-                        children: [
-                          _TransformationFieldShell(
-                            width: _kTrDateColW,
-                            child: frame(
-                              0,
-                              _TransformationInlineDateField(
-                                value: _opDate,
-                                active: _activeInsertColumn == 0,
-                                onTap: () async {
-                                  _setActiveInsertColumn(0);
-                                  final picked =
-                                      await _showTrKeyboardDatePickerDialog(
-                                        context: context,
-                                        initialDate: _opDate,
-                                        firstDate: DateTime(2024, 1, 1),
-                                        lastDate: DateTime(2035, 12, 31),
-                                      );
-                                  if (picked == null || !mounted) return;
-                                  setState(
-                                    () => _opDate = DateUtils.dateOnly(picked),
-                                  );
-                                },
-                              ),
+                        unawaited(_activateInsertCellFromKeyboard());
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _TransformationFieldShell(
+                          width: _kTrDateColW,
+                          child: frame(
+                            0,
+                            _TransformationInlineDateField(
+                              value: _opDate,
+                              active: _activeInsertColumn == 0,
+                              onTap: () async {
+                                _setActiveInsertColumn(0);
+                                final picked =
+                                    await _showTrKeyboardDatePickerDialog(
+                                      context: context,
+                                      initialDate: _opDate,
+                                      firstDate: DateTime(2024, 1, 1),
+                                      lastDate: DateTime(2035, 12, 31),
+                                    );
+                                if (picked == null || !mounted) return;
+                                setState(
+                                  () => _opDate = DateUtils.dateOnly(picked),
+                                );
+                              },
                             ),
                           ),
-                          const SizedBox(width: _kTrCellGap),
-                          _TransformationFieldShell(
-                            width: _kTrShiftColW,
-                            child: frame(
-                              1,
-                              _TransformationInlinePickerField(
-                                label: _shift == 'DAY' ? 'Día' : 'Noche',
-                                active: _activeInsertColumn == 1,
-                                onTap: () async {
-                                  _setActiveInsertColumn(1);
-                                  final value =
-                                      await showSearchablePickerDialog(
-                                        context,
-                                        title: 'Selecciona turno',
-                                        options: const [
-                                          SearchablePickerOption(
-                                            value: 'DAY',
-                                            label: 'Día',
-                                          ),
-                                          SearchablePickerOption(
-                                            value: 'NIGHT',
-                                            label: 'Noche',
-                                          ),
-                                        ],
-                                        initialValue: _shift,
-                                      );
-                                  if (value == null || !mounted) return;
-                                  setState(() => _shift = value);
-                                },
-                              ),
+                        ),
+                        const SizedBox(width: _kTrCellGap),
+                        _TransformationFieldShell(
+                          width: _kTrShiftColW,
+                          child: frame(
+                            1,
+                            _TransformationInlinePickerField(
+                              label: _shift == 'DAY' ? 'Día' : 'Noche',
+                              active: _activeInsertColumn == 1,
+                              onTap: () async {
+                                _setActiveInsertColumn(1);
+                                final value = await showSearchablePickerDialog(
+                                  context,
+                                  title: 'Selecciona turno',
+                                  options: const [
+                                    SearchablePickerOption(
+                                      value: 'DAY',
+                                      label: 'Día',
+                                    ),
+                                    SearchablePickerOption(
+                                      value: 'NIGHT',
+                                      label: 'Noche',
+                                    ),
+                                  ],
+                                  initialValue: _shift,
+                                );
+                                if (value == null || !mounted) return;
+                                setState(() => _shift = value);
+                              },
                             ),
                           ),
-                          const SizedBox(width: _kTrCellGap),
-                          _TransformationFieldShell(
-                            width: _kTrSourceColW,
-                            child: frame(
-                              2,
-                              _TransformationInlinePickerField(
-                                label: _sourceModeLabel(_sourceMode),
-                                active: _activeInsertColumn == 2,
-                                onTap: () async {
-                                  _setActiveInsertColumn(2);
-                                  final value =
-                                      await showSearchablePickerDialog(
-                                        context,
-                                        title: 'Selecciona origen',
-                                        options: const [
-                                          SearchablePickerOption(
-                                            value: 'MIXED',
-                                            label: 'Mezclado',
-                                          ),
-                                          SearchablePickerOption(
-                                            value: 'DIRECT',
-                                            label: 'Directo',
-                                          ),
-                                        ],
-                                        initialValue: _sourceMode,
-                                      );
-                                  if (value == null || !mounted) return;
-                                  setState(() => _sourceMode = value);
-                                },
-                              ),
+                        ),
+                        const SizedBox(width: _kTrCellGap),
+                        _TransformationFieldShell(
+                          width: _kTrSourceColW,
+                          child: frame(
+                            2,
+                            _TransformationInlinePickerField(
+                              label: _sourceModeLabel(_sourceMode),
+                              active: _activeInsertColumn == 2,
+                              onTap: () async {
+                                _setActiveInsertColumn(2);
+                                final value = await showSearchablePickerDialog(
+                                  context,
+                                  title: 'Selecciona origen',
+                                  options: const [
+                                    SearchablePickerOption(
+                                      value: 'MIXED',
+                                      label: 'Mezclado',
+                                    ),
+                                    SearchablePickerOption(
+                                      value: 'DIRECT',
+                                      label: 'Directo',
+                                    ),
+                                  ],
+                                  initialValue: _sourceMode,
+                                );
+                                if (value == null || !mounted) return;
+                                setState(() => _sourceMode = value);
+                              },
                             ),
                           ),
-                          const SizedBox(width: _kTrCellGap),
-                          _TransformationFieldShell(
-                            width: _kTrCommercialColW,
-                            child: frame(
-                              3,
-                              _TransformationInlinePickerField(
-                                label: _commercialName(_commercialId),
-                                active: _activeInsertColumn == 3,
-                                onTap: () async {
-                                  _setActiveInsertColumn(3);
-                                  final value =
-                                      await showSearchablePickerDialog(
-                                        context,
-                                        title:
-                                            'Selecciona material clasificado',
-                                        options: _commercialOptions
-                                            .map(
-                                              (item) => SearchablePickerOption(
-                                                value: item.id,
-                                                label: item.name,
-                                              ),
-                                            )
-                                            .toList(),
-                                        initialValue: _commercialId,
-                                      );
-                                  if (value == null || !mounted) return;
-                                  setState(() => _commercialId = value);
-                                },
-                              ),
+                        ),
+                        const SizedBox(width: _kTrCellGap),
+                        _TransformationFieldShell(
+                          width: _kTrCommercialColW,
+                          child: frame(
+                            3,
+                            _TransformationInlinePickerField(
+                              label: _commercialName(_commercialId),
+                              active: _activeInsertColumn == 3,
+                              onTap: () async {
+                                _setActiveInsertColumn(3);
+                                final value = await showSearchablePickerDialog(
+                                  context,
+                                  title: 'Selecciona material clasificado',
+                                  options: _commercialOptions
+                                      .map(
+                                        (item) => SearchablePickerOption(
+                                          value: item.id,
+                                          label: item.name,
+                                        ),
+                                      )
+                                      .toList(),
+                                  initialValue: _commercialId,
+                                );
+                                if (value == null || !mounted) return;
+                                setState(() => _commercialId = value);
+                              },
                             ),
                           ),
-                          const SizedBox(width: _kTrCellGap),
-                          _TransformationFieldShell(
-                            width: _kTrOutputColW,
-                            child: frame(
-                              4,
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
+                        ),
+                        const SizedBox(width: _kTrCellGap),
+                        _TransformationFieldShell(
+                          width: _kTrOutputColW,
+                          child: frame(
+                            4,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: TextField(
+                                controller: _outputKgC,
+                                focusNode: _outputKgFocusNode,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: _trGlassFieldDecoration(
+                                  hintText: 'Kg salida',
+                                  suppressFocusedBorder: true,
+                                  hideBorder: _activeInsertColumn == 4,
                                 ),
-                                child: TextField(
-                                  controller: _outputKgC,
-                                  focusNode: _outputKgFocusNode,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
+                                onTap: () => _setActiveInsertColumn(
+                                  4,
+                                  requestFocus: false,
+                                ),
+                                onSubmitted: (_) => _insert(),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: _kTrCellGap),
+                        _TransformationFieldShell(
+                          width: _kTrUnitsColW,
+                          child: frame(
+                            5,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: TextField(
+                                controller: _unitsC,
+                                focusNode: _unitsFocusNode,
+                                keyboardType: TextInputType.number,
+                                decoration: _trGlassFieldDecoration(
+                                  hintText: _unitsHintText,
+                                  suppressFocusedBorder: true,
+                                  hideBorder: _activeInsertColumn == 5,
+                                ),
+                                onTap: () => _setActiveInsertColumn(
+                                  5,
+                                  requestFocus: false,
+                                ),
+                                onSubmitted: (_) => _insert(),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: _kTrCellGap),
+                        _TransformationFieldShell(
+                          width: _kTrInputColW,
+                          child: frame(
+                            6,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: TextField(
+                                controller: _inputKgC,
+                                focusNode: _inputKgFocusNode,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: _trGlassFieldDecoration(
+                                  hintText: 'Consumo',
+                                  suppressFocusedBorder: true,
+                                  hideBorder: _activeInsertColumn == 6,
+                                ),
+                                onTap: () => _setActiveInsertColumn(
+                                  6,
+                                  requestFocus: false,
+                                ),
+                                onSubmitted: (_) => _insert(),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: _kTrCellGap),
+                        _TransformationFieldShell(
+                          width: notesColWidth,
+                          child: frame(
+                            7,
+                            Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: TextField(
+                                controller: _notesC,
+                                focusNode: _notesFocusNode,
+                                decoration: _trGlassFieldDecoration(
+                                  hintText: 'Comentario / notas',
+                                  suppressFocusedBorder: true,
+                                  hideBorder: _activeInsertColumn == 7,
+                                ),
+                                onTap: () => _setActiveInsertColumn(
+                                  7,
+                                  requestFocus: false,
+                                ),
+                                onSubmitted: (_) => _insert(),
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: _kTrActionsGap),
+                        AnchoredActionSlot(
+                          width: _kTrActionsColW,
+                          trailingWidth: _kTrActionButtonW,
+                          leading: const SizedBox.shrink(),
+                          trailing: frame(
+                            8,
+                            SizedBox(
+                              width: _kTrActionButtonW,
+                              height: 34,
+                              child: Tooltip(
+                                message: 'AGREGAR',
+                                child: MouseRegion(
+                                  onEnter: (_) => setState(
+                                    () => _hoverInsertAddButton = true,
+                                  ),
+                                  onExit: (_) => setState(
+                                    () => _hoverInsertAddButton = false,
+                                  ),
+                                  child: InkWell(
+                                    borderRadius: BorderRadius.circular(10),
+                                    onTap: _saving
+                                        ? null
+                                        : () {
+                                            _setActiveInsertColumn(8);
+                                            unawaited(_insert());
+                                          },
+                                    child: AnimatedContainer(
+                                      duration: const Duration(
+                                        milliseconds: 120,
                                       ),
-                                  decoration: _trGlassFieldDecoration(
-                                    hintText: 'Kg salida',
-                                    suppressFocusedBorder: true,
-                                    hideBorder: _activeInsertColumn == 4,
-                                  ),
-                                  onTap: () => _setActiveInsertColumn(
-                                    4,
-                                    requestFocus: false,
-                                  ),
-                                  onSubmitted: (_) => _insert(),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: _kTrCellGap),
-                          _TransformationFieldShell(
-                            width: _kTrUnitsColW,
-                            child: frame(
-                              5,
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
-                                ),
-                                child: TextField(
-                                  controller: _unitsC,
-                                  focusNode: _unitsFocusNode,
-                                  keyboardType: TextInputType.number,
-                                  decoration: _trGlassFieldDecoration(
-                                    hintText: _unitsHintText,
-                                    suppressFocusedBorder: true,
-                                    hideBorder: _activeInsertColumn == 5,
-                                  ),
-                                  onTap: () => _setActiveInsertColumn(
-                                    5,
-                                    requestFocus: false,
-                                  ),
-                                  onSubmitted: (_) => _insert(),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: _kTrCellGap),
-                          _TransformationFieldShell(
-                            width: _kTrInputColW,
-                            child: frame(
-                              6,
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
-                                ),
-                                child: TextField(
-                                  controller: _inputKgC,
-                                  focusNode: _inputKgFocusNode,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  decoration: _trGlassFieldDecoration(
-                                    hintText: 'Consumo',
-                                    suppressFocusedBorder: true,
-                                    hideBorder: _activeInsertColumn == 6,
-                                  ),
-                                  onTap: () => _setActiveInsertColumn(
-                                    6,
-                                    requestFocus: false,
-                                  ),
-                                  onSubmitted: (_) => _insert(),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: _kTrCellGap),
-                          _TransformationFieldShell(
-                            width: notesColWidth,
-                            child: frame(
-                              7,
-                              Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
-                                ),
-                                child: TextField(
-                                  controller: _notesC,
-                                  focusNode: _notesFocusNode,
-                                  decoration: _trGlassFieldDecoration(
-                                    hintText: 'Comentario / notas',
-                                    suppressFocusedBorder: true,
-                                    hideBorder: _activeInsertColumn == 7,
-                                  ),
-                                  onTap: () => _setActiveInsertColumn(
-                                    7,
-                                    requestFocus: false,
-                                  ),
-                                  onSubmitted: (_) => _insert(),
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: _kTrActionsGap),
-                          SizedBox(
-                            width: _kTrActionsColW,
-                            child: Align(
-                              alignment: Alignment.centerRight,
-                              child: frame(
-                                8,
-                                SizedBox(
-                                  width: _kTrActionButtonW,
-                                  height: 34,
-                                  child: Tooltip(
-                                    message: 'AGREGAR',
-                                    child: MouseRegion(
-                                      onEnter: (_) => setState(
-                                        () => _hoverInsertAddButton = true,
-                                      ),
-                                      onExit: (_) => setState(
-                                        () => _hoverInsertAddButton = false,
-                                      ),
-                                      child: InkWell(
+                                      curve: Curves.easeOutCubic,
+                                      decoration: BoxDecoration(
+                                        color: _saving
+                                            ? Colors.white.withValues(
+                                                alpha: 0.35,
+                                              )
+                                            : const Color(
+                                                0xFF19C37D,
+                                              ).withValues(alpha: 0.92),
                                         borderRadius: BorderRadius.circular(10),
-                                        onTap: _saving
-                                            ? null
-                                            : () {
-                                                _setActiveInsertColumn(8);
-                                                unawaited(_insert());
-                                              },
-                                        child: AnimatedContainer(
-                                          duration: const Duration(
-                                            milliseconds: 120,
-                                          ),
-                                          curve: Curves.easeOutCubic,
-                                          decoration: BoxDecoration(
-                                            color: _saving
-                                                ? Colors.white.withValues(
-                                                    alpha: 0.35,
-                                                  )
-                                                : const Color(
-                                                    0xFF19C37D,
-                                                  ).withValues(alpha: 0.92),
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.52,
-                                              ),
-                                            ),
-                                            boxShadow:
-                                                _hoverInsertAddButton &&
-                                                    !_saving
-                                                ? [
-                                                    BoxShadow(
-                                                      color: Colors.black
-                                                          .withValues(
-                                                            alpha: 0.16,
-                                                          ),
-                                                      blurRadius: 14,
-                                                      offset: const Offset(
-                                                        0,
-                                                        7,
-                                                      ),
-                                                    ),
-                                                  ]
-                                                : [
-                                                    BoxShadow(
-                                                      color: Colors.black
-                                                          .withValues(
-                                                            alpha: 0.08,
-                                                          ),
-                                                      blurRadius: 8,
-                                                      offset: const Offset(
-                                                        0,
-                                                        4,
-                                                      ),
-                                                    ),
-                                                  ],
-                                          ),
-                                          child: Center(
-                                            child: _saving
-                                                ? const SizedBox(
-                                                    width: 16,
-                                                    height: 16,
-                                                    child:
-                                                        CircularProgressIndicator(
-                                                          strokeWidth: 2,
-                                                        ),
-                                                  )
-                                                : Icon(
-                                                    Icons.add,
-                                                    size: 18,
-                                                    color: _hoverInsertAddButton
-                                                        ? Colors.white
-                                                        : const Color(
-                                                            0xFFF6FEFB,
-                                                          ),
-                                                  ),
+                                        border: Border.all(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.52,
                                           ),
                                         ),
+                                        boxShadow:
+                                            _hoverInsertAddButton && !_saving
+                                            ? [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.16),
+                                                  blurRadius: 14,
+                                                  offset: const Offset(0, 7),
+                                                ),
+                                              ]
+                                            : [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.08),
+                                                  blurRadius: 8,
+                                                  offset: const Offset(0, 4),
+                                                ),
+                                              ],
+                                      ),
+                                      child: Center(
+                                        child: _saving
+                                            ? const SizedBox(
+                                                width: 16,
+                                                height: 16,
+                                                child:
+                                                    CircularProgressIndicator(
+                                                      strokeWidth: 2,
+                                                    ),
+                                              )
+                                            : Icon(
+                                                Icons.add,
+                                                size: 18,
+                                                color: _hoverInsertAddButton
+                                                    ? Colors.white
+                                                    : const Color(0xFFF6FEFB),
+                                              ),
                                       ),
                                     ),
                                   ),
@@ -2108,8 +2241,8 @@ class _InventoryTransformationGridState
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -2127,6 +2260,12 @@ class _InventoryTransformationGridState
         child: const Center(
           child: Text('Sin transformaciones registradas para esta familia'),
         ),
+      );
+    }
+
+    if (_filteredRows.isEmpty) {
+      return ContractGlassCard(
+        child: const Center(child: Text('Sin registros para el filtro actual')),
       );
     }
 
@@ -2203,7 +2342,7 @@ class _InventoryTransformationGridState
               return KeyEventResult.handled;
             }
             final selectedIndex = _selectedRowIndex;
-            final visibleRows = _filteredRows;
+            final visibleRows = _visibleRows;
             if (selectedIndex == null || selectedIndex >= visibleRows.length) {
               return KeyEventResult.handled;
             }
@@ -2244,108 +2383,198 @@ class _InventoryTransformationGridState
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final notesColumnWidth = _trNotesColWFor(
-                      constraints.maxWidth,
-                    );
-                    final visibleRows = _filteredRows;
-                    return ListView.separated(
-                      padding: const EdgeInsets.only(bottom: 12),
-                      itemCount: visibleRows.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 10),
-                      itemBuilder: (context, index) {
-                        final row = visibleRows[index];
-                        return _TransformationDataRow(
-                          key: _rowKey(row.selectionKey),
-                          row: row,
-                          selected:
-                              _selectedRowKeys.contains(row.selectionKey) &&
-                              _selectedRowIndex == index,
-                          checked: _selectedRowKeys.contains(row.selectionKey),
-                          selectedCount: _selectedRowKeys.length,
-                          hovering: _hoveredRowIndex == index,
-                          activeGridColumn: _activeGridColumn,
-                          notesColumnWidth: notesColumnWidth,
-                          unitsHintText: _unitsHintText,
-                          commercialOptions: _commercialOptions,
-                          onHoverChanged: (hovering) {
-                            setState(() {
-                              _hoveredRowIndex = hovering ? index : null;
-                            });
-                          },
-                          onActivateColumn: (col) {
-                            setState(() => _activeGridColumn = col);
-                            _notifyTopBar();
-                          },
-                          onEditStateChanged: _notifyTopBar,
-                          onTap: () => _toggleRowSelection(
-                            index,
-                            additive: _isAdditiveSelectionPressed(),
-                          ),
-                          onDoubleTap: () {
-                            _toggleRowSelection(index, additive: false);
-                            setState(() => _activeGridColumn = 0);
-                          },
-                          onSecondaryTapDown: (details) {
-                            final alreadySelected = _selectedRowKeys.contains(
+                child: Container(
+                  key: _rowsViewportKey,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final notesColumnWidth = _trNotesColWFor(
+                        constraints.maxWidth,
+                      );
+                      final visibleRows = _visibleRows;
+                      return ListView.separated(
+                        controller: _rowsScrollController,
+                        padding: const EdgeInsets.only(bottom: 12),
+                        itemCount: visibleRows.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final row = visibleRows[index];
+                          return _TransformationDataRow(
+                            key: _rowKey(row.selectionKey),
+                            row: row,
+                            selected:
+                                _selectedRowKeys.contains(row.selectionKey) &&
+                                _selectedRowIndex == index,
+                            checked: _selectedRowKeys.contains(
                               row.selectionKey,
-                            );
-                            if (!alreadySelected) {
+                            ),
+                            selectedCount: _selectedRowKeys.length,
+                            hovering: _hoveredRowIndex == index,
+                            activeGridColumn: _activeGridColumn,
+                            notesColumnWidth: notesColumnWidth,
+                            unitsHintText: _unitsHintText,
+                            commercialOptions: _commercialOptions,
+                            onHoverChanged: (hovering) {
+                              setState(() {
+                                _hoveredRowIndex = hovering ? index : null;
+                              });
+                            },
+                            onActivateColumn: (col) {
+                              setState(() => _activeGridColumn = col);
+                              _notifyTopBar();
+                            },
+                            onEditStateChanged: _notifyTopBar,
+                            onTap: () => _toggleRowSelection(
+                              index,
+                              additive:
+                                  _pointerDownAdditiveSelection ||
+                                  _isAdditiveSelectionPressed(),
+                            ),
+                            onDoubleTap: () {
                               _toggleRowSelection(index, additive: false);
-                            }
-                            unawaited(
-                              _openRowContextMenu(row, details.globalPosition),
-                            );
-                          },
-                          onOpenActions: (position) {
-                            final alreadySelected = _selectedRowKeys.contains(
-                              row.selectionKey,
-                            );
-                            if (!alreadySelected) {
+                              setState(() => _activeGridColumn = 0);
+                            },
+                            onSecondaryTapDown: (details) {
+                              final alreadySelected = _selectedRowKeys.contains(
+                                row.selectionKey,
+                              );
+                              if (!alreadySelected) {
+                                _toggleRowSelection(index, additive: false);
+                              }
+                              unawaited(
+                                _openRowContextMenu(
+                                  row,
+                                  details.globalPosition,
+                                ),
+                              );
+                            },
+                            onOpenActions: (position) {
+                              final alreadySelected = _selectedRowKeys.contains(
+                                row.selectionKey,
+                              );
+                              if (!alreadySelected) {
+                                _toggleRowSelection(index, additive: false);
+                              }
+                              unawaited(_openRowContextMenu(row, position));
+                            },
+                            onEdit: () async {
                               _toggleRowSelection(index, additive: false);
-                            }
-                            unawaited(_openRowContextMenu(row, position));
-                          },
-                          onEdit: () async {
-                            _toggleRowSelection(index, additive: false);
-                            setState(() => _activeGridColumn = 0);
-                            final state = _rowKey(
-                              row.selectionKey,
-                            ).currentState;
-                            state?.startEditingFromKeyboard();
-                            await state?.activateGridCell(0);
-                          },
-                          onDelete: () => _deleteRow(row),
-                          onUpdate:
-                              (
-                                opDate,
-                                shift,
-                                sourceMode,
-                                commercialId,
-                                inputKg,
-                                outputKg,
-                                units,
-                                notes,
-                              ) => _updateRow(
-                                row,
-                                opDate: opDate,
-                                shift: shift,
-                                sourceMode: sourceMode,
-                                commercialId: commercialId,
-                                inputKg: inputKg,
-                                outputKg: outputKg,
-                                units: units,
-                                notes: notes,
-                              ),
-                        );
-                      },
-                    );
-                  },
+                              setState(() => _activeGridColumn = 0);
+                              final state = _rowKey(
+                                row.selectionKey,
+                              ).currentState;
+                              state?.startEditingFromKeyboard();
+                              await state?.activateGridCell(0);
+                            },
+                            onDelete: () => _deleteRow(row),
+                            onUpdate:
+                                (
+                                  opDate,
+                                  shift,
+                                  sourceMode,
+                                  commercialId,
+                                  inputKg,
+                                  outputKg,
+                                  units,
+                                  notes,
+                                ) => _updateRow(
+                                  row,
+                                  opDate: opDate,
+                                  shift: shift,
+                                  sourceMode: sourceMode,
+                                  commercialId: commercialId,
+                                  inputKg: inputKg,
+                                  outputKg: outputKg,
+                                  units: units,
+                                  notes: notes,
+                                ),
+                          );
+                        },
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPaginationCard() {
+    return Card(
+      elevation: 0,
+      color: Colors.white.withValues(alpha: 0.30),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          children: [
+            OutlinedButton.icon(
+              style: _trFilterOutlinedButtonStyle(),
+              onPressed: _currentPage > 0
+                  ? () {
+                      setState(() {
+                        _currentPage--;
+                        _clampCurrentPage();
+                        _syncSelectionWithVisibleRows();
+                      });
+                      _notifyTopBar();
+                    }
+                  : null,
+              icon: const Icon(Icons.chevron_left),
+              label: const Text('Anterior'),
+            ),
+            Text(
+              'Página ${_fmtInt(_currentPage + 1)} de ${_fmtInt(_totalPages)}',
+            ),
+            OutlinedButton.icon(
+              style: _trFilterOutlinedButtonStyle(),
+              onPressed: _currentPage < _totalPages - 1
+                  ? () {
+                      setState(() {
+                        _currentPage++;
+                        _clampCurrentPage();
+                        _syncSelectionWithVisibleRows();
+                      });
+                      _notifyTopBar();
+                    }
+                  : null,
+              icon: const Icon(Icons.chevron_right),
+              label: const Text('Siguiente'),
+            ),
+            const Text('Filas/pág:'),
+            SizedBox(
+              width: 90,
+              child: DropdownButtonFormField<int>(
+                initialValue: _pageSize,
+                isDense: true,
+                decoration: _trGlassFieldDecoration(),
+                items: const [40, 80, 120]
+                    .map(
+                      (value) => DropdownMenuItem<int>(
+                        value: value,
+                        child: Text('$value'),
+                      ),
+                    )
+                    .toList(),
+                onChanged: (value) {
+                  if (value == null) return;
+                  setState(() {
+                    _pageSize = value;
+                    _currentPage = 0;
+                    _clampCurrentPage();
+                    _syncSelectionWithVisibleRows();
+                  });
+                  _notifyTopBar();
+                },
+              ),
+            ),
+            Text('Total: ${_fmtInt(_filteredRows.length)}'),
+          ],
         ),
       ),
     );
@@ -2736,21 +2965,15 @@ class _TransformationHeaderRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final tableContentWidth = _trTableContentWFor(constraints.maxWidth);
             final notesColumnWidth = _trNotesColWFor(constraints.maxWidth);
             return SizedBox(
               width: constraints.maxWidth,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: SizedBox(
-                  width: tableContentWidth,
-                  child: _TransformationTableHeader(
-                    hasActiveFilter: hasActiveFilter,
-                    onOpenFilter: onOpenFilter,
-                    notesColumnWidth: notesColumnWidth,
-                    unitsHeaderLabel: unitsHeaderLabel,
-                  ),
+              child: ContractGridScaledRow(
+                child: _TransformationTableHeader(
+                  hasActiveFilter: hasActiveFilter,
+                  onOpenFilter: onOpenFilter,
+                  notesColumnWidth: notesColumnWidth,
+                  unitsHeaderLabel: unitsHeaderLabel,
                 ),
               ),
             );
@@ -3181,69 +3404,11 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
       final active =
           _editing && widget.selected && widget.activeGridColumn == col;
       final hoveredEditable = !_editing && _hoveredEditableColumn == col;
-      return DecoratedBox(
-        position: DecorationPosition.background,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: hoveredEditable
-              ? LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    (hasSelection
-                            ? const Color(0xFFD9E8F6)
-                            : const Color(0xFFE5F2EC))
-                        .withValues(alpha: 0.78),
-                    (hasSelection
-                            ? const Color(0xFFCCE0F2)
-                            : const Color(0xFFD4E7DE))
-                        .withValues(alpha: 0.64),
-                  ],
-                )
-              : null,
-          color: active
-              ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
-              : Colors.transparent,
-          border: Border.all(
-            color: active
-                ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
-                : Colors.transparent,
-            width: active ? 1.05 : 1.0,
-          ),
-          boxShadow: hoveredEditable
-              ? [
-                  BoxShadow(
-                    color:
-                        (hasSelection
-                                ? const Color(0xFF6A8FAE)
-                                : const Color(0xFF6C8F84))
-                            .withValues(alpha: 0.18),
-                    blurRadius: 2.2,
-                    spreadRadius: -3.0,
-                    offset: const Offset(0, 0.8),
-                  ),
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.22),
-                    blurRadius: 1.1,
-                    spreadRadius: -3.1,
-                    offset: const Offset(0, -0.5),
-                  ),
-                ]
-              : null,
-        ),
-        child: DecoratedBox(
-          position: DecorationPosition.foreground,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: active
-                  ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
-                  : Colors.transparent,
-              width: active ? 1.05 : 1.0,
-            ),
-          ),
-          child: child,
-        ),
+      return ContractEditableHoverCapsule(
+        hovered: hoveredEditable,
+        active: active,
+        selectedContext: hasSelection,
+        child: child,
       );
     }
 
@@ -3318,417 +3483,389 @@ class _TransformationDataRowState extends State<_TransformationDataRow> {
                 ),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
-                    final tableContentWidth = _trTableContentWFor(
-                      constraints.maxWidth,
-                    );
                     final notesColumnWidth = _trNotesColWFor(
                       constraints.maxWidth,
                     );
                     return SizedBox(
                       width: constraints.maxWidth,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: SizedBox(
-                          width: tableContentWidth,
-                          child: Row(
-                            children: [
-                              frame(
-                                0,
-                                SizedBox(
-                                  width: _kTrDateColW,
-                                  child: _editing
-                                      ? _TransformationInlineDateField(
-                                          value: _opDate,
-                                          active: widget.activeGridColumn == 0,
-                                          onTap: () async {
-                                            widget.onActivateColumn(0);
-                                            await activateGridCell(0);
-                                          },
-                                        )
-                                      : previewEditableCell(
-                                          col: 0,
-                                          child: _TransformationReadonlyCell(
-                                            width: _kTrDateColW,
-                                            child: Text(
-                                              _fmtUiDate(_opDate),
-                                              style: bodyStyle,
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: _kTrCellGap),
-                              frame(
-                                1,
-                                SizedBox(
-                                  width: _kTrShiftColW,
-                                  child: _editing
-                                      ? _TransformationInlinePickerField(
-                                          label: shiftLabel,
-                                          active: widget.activeGridColumn == 1,
-                                          onTap: () async {
-                                            widget.onActivateColumn(1);
-                                            await activateGridCell(1);
-                                          },
-                                        )
-                                      : previewEditableCell(
-                                          col: 1,
-                                          child: _TransformationReadonlyCell(
-                                            width: _kTrShiftColW,
-                                            child: Builder(
-                                              builder: (_) {
-                                                final palette =
-                                                    _shiftChipColors();
-                                                return _TransformationPillTag(
-                                                  label: shiftLabel,
-                                                  background: palette.bg,
-                                                  foreground: palette.fg,
-                                                  horizontalPadding: 10,
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: _kTrCellGap),
-                              frame(
-                                2,
-                                SizedBox(
-                                  width: _kTrSourceColW,
-                                  child: _editing
-                                      ? _TransformationInlinePickerField(
-                                          label: _sourceModeLabel(_sourceMode),
-                                          active: widget.activeGridColumn == 2,
-                                          onTap: () async {
-                                            widget.onActivateColumn(2);
-                                            await activateGridCell(2);
-                                          },
-                                        )
-                                      : previewEditableCell(
-                                          col: 2,
-                                          child: _TransformationReadonlyCell(
-                                            width: _kTrSourceColW,
-                                            child: Builder(
-                                              builder: (_) {
-                                                final palette =
-                                                    _sourceModeChipColors();
-                                                return _TransformationPillTag(
-                                                  label: _sourceModeLabel(
-                                                    _sourceMode,
-                                                  ),
-                                                  background: palette.bg,
-                                                  foreground: palette.fg,
-                                                  horizontalPadding: 10,
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: _kTrCellGap),
-                              frame(
-                                3,
-                                SizedBox(
-                                  width: _kTrCommercialColW,
-                                  child: _editing
-                                      ? _TransformationInlinePickerField(
-                                          label: _commercialName(_commercialId),
-                                          active: widget.activeGridColumn == 3,
-                                          onTap: () async {
-                                            widget.onActivateColumn(3);
-                                            await activateGridCell(3);
-                                          },
-                                        )
-                                      : previewEditableCell(
-                                          col: 3,
-                                          child: _TransformationReadonlyCell(
-                                            width: _kTrCommercialColW,
-                                            child: Builder(
-                                              builder: (_) {
-                                                final palette =
-                                                    _commercialChipColors();
-                                                return Align(
-                                                  alignment:
-                                                      Alignment.centerLeft,
-                                                  child: _TransformationPillTag(
-                                                    label: _commercialName(
-                                                      _commercialId,
-                                                    ),
-                                                    background: palette.bg,
-                                                    foreground: palette.fg,
-                                                    horizontalPadding: 10,
-                                                  ),
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: _kTrCellGap),
-                              frame(
-                                4,
-                                SizedBox(
-                                  width: _kTrOutputColW,
-                                  child: _editing
-                                      ? Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                          ),
-                                          child: TextField(
-                                            controller: _outputKgC,
-                                            focusNode: _outputKgFocusNode,
-                                            keyboardType:
-                                                const TextInputType.numberWithOptions(
-                                                  decimal: true,
-                                                ),
-                                            decoration: _trGlassFieldDecoration(
-                                              hintText: 'Kg salida',
-                                              suppressFocusedBorder: true,
-                                              hideBorder:
-                                                  widget.activeGridColumn == 4,
-                                            ),
-                                            onTap: () =>
-                                                widget.onActivateColumn(4),
-                                            onSubmitted: (_) =>
-                                                unawaited(_save()),
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 4,
-                                          child: _TransformationReadonlyCell(
-                                            width: _kTrOutputColW,
-                                            child: Text(
-                                              '${(_toDouble(_outputKgC.text) ?? 0).toStringAsFixed(2)} kg',
-                                              style: bodyStyle,
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: _kTrCellGap),
-                              frame(
-                                5,
-                                SizedBox(
-                                  width: _kTrUnitsColW,
-                                  child: _editing
-                                      ? Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                          ),
-                                          child: TextField(
-                                            controller: _unitsC,
-                                            focusNode: _unitsFocusNode,
-                                            keyboardType: TextInputType.number,
-                                            decoration: _trGlassFieldDecoration(
-                                              hintText: widget.unitsHintText,
-                                              suppressFocusedBorder: true,
-                                              hideBorder:
-                                                  widget.activeGridColumn == 5,
-                                            ),
-                                            onTap: () =>
-                                                widget.onActivateColumn(5),
-                                            onSubmitted: (_) =>
-                                                unawaited(_save()),
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 5,
-                                          child: _TransformationReadonlyCell(
-                                            width: _kTrUnitsColW,
-                                            child: _TransformationPillTag(
-                                              label: _unitsC.text.trim().isEmpty
-                                                  ? '—'
-                                                  : _unitsC.text.trim(),
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: _kTrCellGap),
-                              frame(
-                                6,
-                                SizedBox(
-                                  width: _kTrInputColW,
-                                  child: _editing
-                                      ? Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                          ),
-                                          child: TextField(
-                                            controller: _inputKgC,
-                                            focusNode: _inputKgFocusNode,
-                                            keyboardType:
-                                                const TextInputType.numberWithOptions(
-                                                  decimal: true,
-                                                ),
-                                            decoration: _trGlassFieldDecoration(
-                                              hintText: 'Consumo',
-                                              suppressFocusedBorder: true,
-                                              hideBorder:
-                                                  widget.activeGridColumn == 6,
-                                            ),
-                                            onTap: () =>
-                                                widget.onActivateColumn(6),
-                                            onSubmitted: (_) =>
-                                                unawaited(_save()),
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 6,
-                                          child: _TransformationReadonlyCell(
-                                            width: _kTrInputColW,
-                                            child: Text(
-                                              '${(_toDouble(_inputKgC.text) ?? 0).toStringAsFixed(2)} kg',
-                                              style: subtleStyle,
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: _kTrCellGap),
-                              frame(
-                                7,
-                                SizedBox(
-                                  width: notesColumnWidth,
-                                  child: _editing
-                                      ? Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                          ),
-                                          child: TextField(
-                                            controller: _notesC,
-                                            focusNode: _notesFocusNode,
-                                            decoration: _trGlassFieldDecoration(
-                                              hintText: 'Comentario / notas',
-                                              suppressFocusedBorder: true,
-                                              hideBorder:
-                                                  widget.activeGridColumn == 7,
-                                            ),
-                                            onTap: () =>
-                                                widget.onActivateColumn(7),
-                                            onSubmitted: (_) =>
-                                                unawaited(_save()),
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 7,
-                                          child: _TransformationReadonlyCell(
-                                            width: notesColumnWidth,
-                                            showDivider: false,
-                                            child: Text(
-                                              _notesC.text.trim().isEmpty
-                                                  ? 'Sin notas'
-                                                  : _notesC.text.trim(),
-                                              style: subtleStyle,
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: _kTrActionsGap),
+                      child: ContractGridScaledRow(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            frame(
+                              0,
                               SizedBox(
-                                width: _kTrActionsColW,
-                                child: Row(
-                                  mainAxisAlignment: MainAxisAlignment.end,
-                                  children: [
-                                    if (_editing)
-                                      FilledButton(
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: const Color(
-                                            0xFF6A99C7,
-                                          ),
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 10,
-                                            vertical: 8,
-                                          ),
-                                          textStyle: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w800,
+                                width: _kTrDateColW,
+                                child: _editing
+                                    ? _TransformationInlineDateField(
+                                        value: _opDate,
+                                        active: widget.activeGridColumn == 0,
+                                        onTap: () async {
+                                          widget.onActivateColumn(0);
+                                          await activateGridCell(0);
+                                        },
+                                      )
+                                    : previewEditableCell(
+                                        col: 0,
+                                        child: _TransformationReadonlyCell(
+                                          width: _kTrDateColW,
+                                          child: Text(
+                                            _fmtUiDate(_opDate),
+                                            style: bodyStyle,
                                           ),
                                         ),
-                                        onPressed: _save,
-                                        child: const Text('ACTUALIZAR'),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: _kTrCellGap),
+                            frame(
+                              1,
+                              SizedBox(
+                                width: _kTrShiftColW,
+                                child: _editing
+                                    ? _TransformationInlinePickerField(
+                                        label: shiftLabel,
+                                        active: widget.activeGridColumn == 1,
+                                        onTap: () async {
+                                          widget.onActivateColumn(1);
+                                          await activateGridCell(1);
+                                        },
                                       )
-                                    else
-                                      Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.end,
-                                        children: [
-                                          SizedBox(
-                                            width: _kTrActionsColW - 36,
-                                            child: Align(
-                                              alignment: Alignment.centerRight,
-                                              child: Container(
-                                                padding:
-                                                    const EdgeInsets.symmetric(
-                                                      horizontal: 10,
-                                                      vertical: 6,
-                                                    ),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.white
-                                                      .withValues(alpha: 0.42),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                        999,
-                                                      ),
-                                                ),
-                                                child: FittedBox(
-                                                  fit: BoxFit.scaleDown,
-                                                  child: Text(
-                                                    '${(_toDouble(_outputKgC.text) ?? 0).toStringAsFixed(1)} kg',
-                                                    style: const TextStyle(
-                                                      fontSize: 11,
-                                                      fontWeight:
-                                                          FontWeight.w800,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          ),
-                                          const SizedBox(width: 4),
-                                          Builder(
-                                            builder: (menuContext) {
-                                              return _TransformationActionsButton(
-                                                iconColor: multiContext
-                                                    ? const Color(0xFF2D5478)
-                                                    : const Color(0xFF20364E),
-                                                onOpen: () {
-                                                  final box =
-                                                      menuContext
-                                                              .findRenderObject()
-                                                          as RenderBox?;
-                                                  if (box == null) return;
-                                                  final origin = box
-                                                      .localToGlobal(
-                                                        Offset.zero,
-                                                      );
-                                                  widget.onOpenActions(
-                                                    Offset(
-                                                      origin.dx,
-                                                      origin.dy +
-                                                          box.size.height +
-                                                          4,
-                                                    ),
-                                                  );
-                                                },
+                                    : previewEditableCell(
+                                        col: 1,
+                                        child: _TransformationReadonlyCell(
+                                          width: _kTrShiftColW,
+                                          child: Builder(
+                                            builder: (_) {
+                                              final palette =
+                                                  _shiftChipColors();
+                                              return _TransformationPillTag(
+                                                label: shiftLabel,
+                                                background: palette.bg,
+                                                foreground: palette.fg,
+                                                horizontalPadding: 10,
                                               );
                                             },
                                           ),
-                                        ],
+                                        ),
                                       ),
-                                  ],
-                                ),
                               ),
-                            ],
-                          ),
+                            ),
+                            const SizedBox(width: _kTrCellGap),
+                            frame(
+                              2,
+                              SizedBox(
+                                width: _kTrSourceColW,
+                                child: _editing
+                                    ? _TransformationInlinePickerField(
+                                        label: _sourceModeLabel(_sourceMode),
+                                        active: widget.activeGridColumn == 2,
+                                        onTap: () async {
+                                          widget.onActivateColumn(2);
+                                          await activateGridCell(2);
+                                        },
+                                      )
+                                    : previewEditableCell(
+                                        col: 2,
+                                        child: _TransformationReadonlyCell(
+                                          width: _kTrSourceColW,
+                                          child: Builder(
+                                            builder: (_) {
+                                              final palette =
+                                                  _sourceModeChipColors();
+                                              return _TransformationPillTag(
+                                                label: _sourceModeLabel(
+                                                  _sourceMode,
+                                                ),
+                                                background: palette.bg,
+                                                foreground: palette.fg,
+                                                horizontalPadding: 10,
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: _kTrCellGap),
+                            frame(
+                              3,
+                              SizedBox(
+                                width: _kTrCommercialColW,
+                                child: _editing
+                                    ? _TransformationInlinePickerField(
+                                        label: _commercialName(_commercialId),
+                                        active: widget.activeGridColumn == 3,
+                                        onTap: () async {
+                                          widget.onActivateColumn(3);
+                                          await activateGridCell(3);
+                                        },
+                                      )
+                                    : previewEditableCell(
+                                        col: 3,
+                                        child: _TransformationReadonlyCell(
+                                          width: _kTrCommercialColW,
+                                          child: Builder(
+                                            builder: (_) {
+                                              final palette =
+                                                  _commercialChipColors();
+                                              return Align(
+                                                alignment: Alignment.centerLeft,
+                                                child: _TransformationPillTag(
+                                                  label: _commercialName(
+                                                    _commercialId,
+                                                  ),
+                                                  background: palette.bg,
+                                                  foreground: palette.fg,
+                                                  horizontalPadding: 10,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: _kTrCellGap),
+                            frame(
+                              4,
+                              SizedBox(
+                                width: _kTrOutputColW,
+                                child: _editing
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: TextField(
+                                          controller: _outputKgC,
+                                          focusNode: _outputKgFocusNode,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration: _trGlassFieldDecoration(
+                                            hintText: 'Kg salida',
+                                            suppressFocusedBorder: true,
+                                            hideBorder:
+                                                widget.activeGridColumn == 4,
+                                          ),
+                                          onTap: () =>
+                                              widget.onActivateColumn(4),
+                                          onSubmitted: (_) =>
+                                              unawaited(_save()),
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 4,
+                                        child: _TransformationReadonlyCell(
+                                          width: _kTrOutputColW,
+                                          child: Text(
+                                            '${(_toDouble(_outputKgC.text) ?? 0).toStringAsFixed(2)} kg',
+                                            style: bodyStyle,
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: _kTrCellGap),
+                            frame(
+                              5,
+                              SizedBox(
+                                width: _kTrUnitsColW,
+                                child: _editing
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: TextField(
+                                          controller: _unitsC,
+                                          focusNode: _unitsFocusNode,
+                                          keyboardType: TextInputType.number,
+                                          decoration: _trGlassFieldDecoration(
+                                            hintText: widget.unitsHintText,
+                                            suppressFocusedBorder: true,
+                                            hideBorder:
+                                                widget.activeGridColumn == 5,
+                                          ),
+                                          onTap: () =>
+                                              widget.onActivateColumn(5),
+                                          onSubmitted: (_) =>
+                                              unawaited(_save()),
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 5,
+                                        child: _TransformationReadonlyCell(
+                                          width: _kTrUnitsColW,
+                                          child: _TransformationPillTag(
+                                            label: _unitsC.text.trim().isEmpty
+                                                ? '—'
+                                                : _unitsC.text.trim(),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: _kTrCellGap),
+                            frame(
+                              6,
+                              SizedBox(
+                                width: _kTrInputColW,
+                                child: _editing
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: TextField(
+                                          controller: _inputKgC,
+                                          focusNode: _inputKgFocusNode,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration: _trGlassFieldDecoration(
+                                            hintText: 'Consumo',
+                                            suppressFocusedBorder: true,
+                                            hideBorder:
+                                                widget.activeGridColumn == 6,
+                                          ),
+                                          onTap: () =>
+                                              widget.onActivateColumn(6),
+                                          onSubmitted: (_) =>
+                                              unawaited(_save()),
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 6,
+                                        child: _TransformationReadonlyCell(
+                                          width: _kTrInputColW,
+                                          child: Text(
+                                            '${(_toDouble(_inputKgC.text) ?? 0).toStringAsFixed(2)} kg',
+                                            style: subtleStyle,
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: _kTrCellGap),
+                            frame(
+                              7,
+                              SizedBox(
+                                width: notesColumnWidth,
+                                child: _editing
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: TextField(
+                                          controller: _notesC,
+                                          focusNode: _notesFocusNode,
+                                          decoration: _trGlassFieldDecoration(
+                                            hintText: 'Comentario / notas',
+                                            suppressFocusedBorder: true,
+                                            hideBorder:
+                                                widget.activeGridColumn == 7,
+                                          ),
+                                          onTap: () =>
+                                              widget.onActivateColumn(7),
+                                          onSubmitted: (_) =>
+                                              unawaited(_save()),
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 7,
+                                        child: _TransformationReadonlyCell(
+                                          width: notesColumnWidth,
+                                          showDivider: false,
+                                          child: Text(
+                                            _notesC.text.trim().isEmpty
+                                                ? 'Sin notas'
+                                                : _notesC.text.trim(),
+                                            style: subtleStyle,
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: _kTrActionsGap),
+                            AnchoredActionSlot(
+                              width: _kTrActionsColW,
+                              trailingWidth: _kTrActionButtonW,
+                              gap: 4,
+                              leading: _editing
+                                  ? FilledButton(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: const Color(
+                                          0xFF6A99C7,
+                                        ),
+                                        foregroundColor: Colors.white,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 8,
+                                        ),
+                                        textStyle: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                      onPressed: _save,
+                                      child: const Text('ACTUALIZAR'),
+                                    )
+                                  : Align(
+                                      alignment: Alignment.centerRight,
+                                      child: Container(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 10,
+                                          vertical: 6,
+                                        ),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white.withValues(
+                                            alpha: 0.42,
+                                          ),
+                                          borderRadius: BorderRadius.circular(
+                                            999,
+                                          ),
+                                        ),
+                                        child: FittedBox(
+                                          fit: BoxFit.scaleDown,
+                                          child: Text(
+                                            '${(_toDouble(_outputKgC.text) ?? 0).toStringAsFixed(1)} kg',
+                                            style: const TextStyle(
+                                              fontSize: 11,
+                                              fontWeight: FontWeight.w800,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                              trailing: Builder(
+                                builder: (menuContext) {
+                                  return _TransformationActionsButton(
+                                    iconColor: multiContext
+                                        ? const Color(0xFF2D5478)
+                                        : const Color(0xFF20364E),
+                                    onOpen: () {
+                                      final box =
+                                          menuContext.findRenderObject()
+                                              as RenderBox?;
+                                      if (box == null) return;
+                                      final origin = box.localToGlobal(
+                                        Offset.zero,
+                                      );
+                                      widget.onOpenActions(
+                                        Offset(
+                                          origin.dx,
+                                          origin.dy + box.size.height + 4,
+                                        ),
+                                      );
+                                    },
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );

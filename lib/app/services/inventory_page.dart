@@ -2,7 +2,6 @@
 
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -18,10 +17,12 @@ import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../shared/page_routes.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
+import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
 import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
+import '../shared/utils/csv_file_save.dart';
 import 'inventory_movements_grid.dart';
 import 'inventory_stock_v2_body.dart';
 import 'inventory_transformation_grid.dart';
@@ -241,19 +242,24 @@ Future<void> showProductionUsageGuideDialog(BuildContext context) {
 Future<void> _inventoryLogoutFlow(BuildContext context) async {
   final ok = await showDialog<bool>(
     context: context,
-    builder: (dialogContext) => AlertDialog(
-      title: const Text('Cerrar sesión'),
-      content: const Text('¿Seguro que deseas cerrar tu sesión?'),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(dialogContext, false),
-          child: const Text('Cancelar'),
-        ),
-        FilledButton(
-          onPressed: () => Navigator.pop(dialogContext, true),
-          child: const Text('Cerrar sesión'),
-        ),
-      ],
+    builder: (dialogContext) => ContractConfirmDialogKeyHandler(
+      onCancel: () => Navigator.pop(dialogContext, false),
+      onConfirm: () => Navigator.pop(dialogContext, true),
+      child: AlertDialog(
+        title: const Text('Cerrar sesión'),
+        content: const Text('¿Seguro que deseas cerrar tu sesión?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            autofocus: true,
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Cerrar sesión'),
+          ),
+        ],
+      ),
     ),
   );
   if (ok != true) return;
@@ -1404,47 +1410,12 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     return needsQuotes ? '"$escaped"' : escaped;
   }
 
-  Future<String?> _saveCsvToDownloads(String fileName, String content) async {
-    final env = Platform.environment;
-    final targetDirs = <Directory>[];
-    if (Platform.isWindows) {
-      final userProfile = env['USERPROFILE'];
-      final homeDrive = env['HOMEDRIVE'];
-      final homePath = env['HOMEPATH'];
-      final oneDrive = env['OneDrive'];
-      if (userProfile != null && userProfile.isNotEmpty) {
-        targetDirs.add(Directory('$userProfile\\Downloads'));
-      }
-      if (oneDrive != null && oneDrive.isNotEmpty) {
-        targetDirs.add(Directory('$oneDrive\\Downloads'));
-      }
-      if (homeDrive != null &&
-          homeDrive.isNotEmpty &&
-          homePath != null &&
-          homePath.isNotEmpty) {
-        targetDirs.add(Directory('$homeDrive$homePath\\Downloads'));
-      }
-    } else {
-      final home = env['HOME'];
-      if (home != null && home.isNotEmpty) {
-        targetDirs.add(Directory('$home/Downloads'));
-        targetDirs.add(Directory('$home/Descargas'));
-      }
-    }
-    Object? lastError;
-    for (final dir in targetDirs) {
-      try {
-        if (!dir.existsSync()) dir.createSync(recursive: true);
-        final file = File('${dir.path}/$fileName');
-        await file.writeAsString(content, encoding: utf8);
-        return file.path;
-      } catch (e) {
-        lastError = e;
-      }
-    }
-    _toast('No se pudo guardar en Descargas: ${lastError ?? 'sin detalle'}');
-    return null;
-  }
+  Future<String?> _saveCsvToDownloads(String fileName, String content) =>
+      saveCsvFile(
+        fileName: fileName,
+        content: content,
+        dialogTitle: 'Guardar CSV de inventario',
+      );
 
   Future<void> _exportInventoryDetailsCsv() async {
     if (_exportingCsv) return;
@@ -1483,8 +1454,6 @@ class _InventoryStockPageState extends State<InventoryStockPage>
         sb.toString(),
       );
       if (path != null) _toast('CSV exportado en: $path');
-    } on FileSystemException catch (e) {
-      _toast('No se pudo guardar CSV: ${e.message}');
     } catch (e) {
       _toast('No se pudo exportar CSV: $e');
     } finally {
@@ -1537,8 +1506,6 @@ class _InventoryStockPageState extends State<InventoryStockPage>
         sb.toString(),
       );
       if (path != null) _toast('CSV exportado en: $path');
-    } on FileSystemException catch (e) {
-      _toast('No se pudo guardar CSV: ${e.message}');
     } catch (e) {
       _toast('No se pudo exportar CSV: $e');
     } finally {
@@ -2544,21 +2511,9 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     }
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => Focus(
-        autofocus: true,
-        onKeyEvent: (_, event) {
-          if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          if (event.logicalKey == LogicalKeyboardKey.escape) {
-            Navigator.pop(dialogContext, false);
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.enter ||
-              event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-            Navigator.pop(dialogContext, true);
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
+      builder: (dialogContext) => ContractConfirmDialogKeyHandler(
+        onCancel: () => Navigator.pop(dialogContext, false),
+        onConfirm: () => Navigator.pop(dialogContext, true),
         child: AlertDialog(
           title: const Text('Eliminar opening balance'),
           content: Text(
@@ -2608,21 +2563,9 @@ class _InventoryStockPageState extends State<InventoryStockPage>
 
     final ok = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => Focus(
-        autofocus: true,
-        onKeyEvent: (_, event) {
-          if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          if (event.logicalKey == LogicalKeyboardKey.escape) {
-            Navigator.pop(dialogContext, false);
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.enter ||
-              event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-            Navigator.pop(dialogContext, true);
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
+      builder: (dialogContext) => ContractConfirmDialogKeyHandler(
+        onCancel: () => Navigator.pop(dialogContext, false),
+        onConfirm: () => Navigator.pop(dialogContext, true),
         child: AlertDialog(
           title: const Text('Eliminar selección'),
           content: Text('¿Eliminar ${ids.length} renglones de apertura?'),

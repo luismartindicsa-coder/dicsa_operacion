@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -10,7 +9,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-const double _kInvActionsW = 150;
+import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
+import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
+import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
+import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
+import '../shared/utils/csv_file_save.dart';
+
+const double _kInvActionsW = 168;
 const double _kInvKgColW = 110;
 const double _kInvGrossColW = 110;
 const double _kInvTareColW = 110;
@@ -20,25 +25,16 @@ const double _kInvAmountColW = 120;
 const double _kInvCounterpartyColW = 220;
 const double _kInvRefColW = 180;
 const double _kInvNotesColW = 240;
-const double _kInvTableContentW =
-    90 +
-    190 +
-    _kInvCounterpartyColW +
-    190 +
-    140 +
-    _kInvRefColW +
-    _kInvGrossColW +
-    _kInvTareColW +
-    _kInvKgColW +
-    _kInvHumidityColW +
-    _kInvTrashColW +
-    _kInvAmountColW +
-    _kInvNotesColW +
-    10 +
-    _kInvActionsW;
 
 const Color _kInvFilterAccent = Color(0xFF5D7F9E);
 const Color _kInvFilterAccentSoft = Color(0xFFDCE7F2);
+
+bool isCountedBaleCommercialCode(String? code) {
+  final normalized = (code ?? '').trim().toUpperCase();
+  return normalized.startsWith('PACA_') ||
+      normalized == 'CAPLE' ||
+      normalized == 'PACA CAPLE';
+}
 
 class InventoryGridTopBarData {
   final IconData metricIcon;
@@ -489,6 +485,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       counterpartySiteId: null,
       driverEmployeeId: null,
       vehicleId: null,
+      unitCount: null,
       reference: '',
       notes: '',
       commercialMaterialCode: null,
@@ -857,6 +854,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         inventoryGeneralCode: materialOpt.inventoryGeneralCode,
         commercialMaterialCode: _draft.commercialMaterialCode,
         movementReason: _draft.movementReason,
+        unitCount: _draft.unitCount,
       );
       if (extrasError != null) {
         _toast(extrasError);
@@ -893,6 +891,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                     'trash_kg': _parseNum(_draftTrashC.text),
                     'total_amount_kg': totalAmountKg,
                     'movement_reason': _draft.movementReason,
+                    'unit_count': _draft.unitCount,
                     'scale_ticket': _draft.scaleTicket.trim().isEmpty
                         ? null
                         : _draft.scaleTicket.trim(),
@@ -913,6 +912,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                     'flow': 'OUT',
                     'commercial_material_id': commercial.id,
                     'origin_type': 'SALE',
+                    'unit_count': _draft.unitCount,
                     'weight_kg': netKg,
                     'gross_kg': grossKg,
                     'tare_kg': tareKg,
@@ -1050,6 +1050,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
               'vehicle_id': patch['vehicle_id'],
               'counterparty': patch['counterparty'],
               'movement_reason': patch['movement_reason'],
+              'unit_count': patch['unit_count'],
               'scale_ticket': patch['scale_ticket'],
               'reference': patch['reference'],
               'notes': patch['notes'],
@@ -1069,6 +1070,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
               'driver_employee_id': patch['driver_employee_id'],
               'vehicle_id': patch['vehicle_id'],
               'counterparty': patch['counterparty'],
+              'unit_count': patch['unit_count'],
               'scale_ticket': patch['scale_ticket'],
               'reference': patch['reference'],
               'notes': patch['notes'],
@@ -1163,6 +1165,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         'counterparty',
         'commercial_material_code',
         'movement_reason',
+        'unit_count',
         'scale_ticket',
         'reference',
         'notes',
@@ -1198,31 +1201,12 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
         .toList();
   }
 
-  Future<String?> _writeDownloadsFile(String fileName, String content) async {
-    final env = Platform.environment;
-    final dirs = <Directory>[];
-    if (Platform.isWindows) {
-      final userProfile = env['USERPROFILE'];
-      if (userProfile != null && userProfile.isNotEmpty) {
-        dirs.add(Directory('$userProfile\\Downloads'));
-      }
-    } else {
-      final home = env['HOME'];
-      if (home != null && home.isNotEmpty) {
-        dirs.add(Directory('$home/Downloads'));
-        dirs.add(Directory('$home/Descargas'));
-      }
-    }
-    for (final dir in dirs) {
-      try {
-        if (!dir.existsSync()) dir.createSync(recursive: true);
-        final file = File('${dir.path}/$fileName');
-        await file.writeAsString(content, encoding: utf8);
-        return file.path;
-      } catch (_) {}
-    }
-    return null;
-  }
+  Future<String?> _writeDownloadsFile(String fileName, String content) =>
+      saveCsvFile(
+        fileName: fileName,
+        content: content,
+        dialogTitle: 'Guardar CSV de movimientos',
+      );
 
   String? _labelOf(List<_InvOpt> list, String? id) {
     if (id == null) return null;
@@ -1234,7 +1218,8 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
 
   bool get _draftHasExtras =>
       (_draft.commercialMaterialCode?.isNotEmpty ?? false) ||
-      (_draft.movementReason?.isNotEmpty ?? false);
+      (_draft.movementReason?.isNotEmpty ?? false) ||
+      _draft.unitCount != null;
 
   Future<void> _editDraftExtras() async {
     final result = await _showMovementExtrasDialog(
@@ -1250,6 +1235,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       commercialOptions: _commercialOptionsForMaterial(_draft.materialId),
       initialCommercialMaterialCode: _draft.commercialMaterialCode,
       initialMovementReason: _draft.movementReason,
+      initialUnitCount: _draft.unitCount,
       initialGrossKg: null,
       initialTareKg: null,
       initialNetKg: null,
@@ -1261,6 +1247,7 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
       _draft = _draft.copyWith(
         commercialMaterialCode: result.commercialMaterialCode,
         movementReason: result.movementReason,
+        unitCount: result.unitCount,
       );
     });
   }
@@ -3072,527 +3059,488 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
                 },
                 child: SizedBox(
                   width: constraints.maxWidth,
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: SizedBox(
-                      width: _kInvTableContentW,
-                      child: Row(
-                        children: [
-                          frame(
-                            0,
-                            SizedBox(
-                              width: 90,
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () async {
-                                  _setActiveInsertColumn(0);
-                                  final d = await _pickDate(_draft.opDate);
-                                  if (!mounted || d == null) return;
-                                  setState(
-                                    () => _draft = _draft.copyWith(
-                                      opDate: DateUtils.dateOnly(d),
+                  child: ContractGridScaledRow(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        frame(
+                          0,
+                          SizedBox(
+                            width: 90,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () async {
+                                _setActiveInsertColumn(0);
+                                final d = await _pickDate(_draft.opDate);
+                                if (!mounted || d == null) return;
+                                setState(
+                                  () => _draft = _draft.copyWith(
+                                    opDate: DateUtils.dateOnly(d),
+                                  ),
+                                );
+                              },
+                              child: InputDecorator(
+                                decoration: _invGlassFieldDecoration(),
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 2,
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          _draft.opDate == null
+                                              ? '—'
+                                              : _fmtUiDate(_draft.opDate!),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                      ),
+                                      const Icon(
+                                        Icons.calendar_month,
+                                        size: 16,
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          1,
+                          SizedBox(
+                            width: _kInvRefColW,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: TextField(
+                                controller: _draftReferenceC,
+                                focusNode: _insertReferenceFocusNode,
+                                decoration: _invGlassFieldDecoration(
+                                  hintText: 'Ticket / folio',
+                                  suppressFocusedBorder: true,
+                                  hideBorder: _activeInsertColumn == 1,
+                                ),
+                                onTap: () => _setActiveInsertColumn(
+                                  1,
+                                  requestFocus: false,
+                                ),
+                                onChanged: (t) => setState(
+                                  () => _draft = _draft.copyWith(reference: t),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          2,
+                          SizedBox(
+                            width: 190,
+                            child: _InvDropOptInline(
+                              valueId: _draft.materialId,
+                              items: _materials
+                                  .map((m) => _InvOpt(id: m.id, label: m.name))
+                                  .toList(),
+                              onTapStart: () => _setActiveInsertColumn(2),
+                              onChanged: (v) => setState(
+                                () => _draft = _draft.copyWith(materialId: v),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          3,
+                          SizedBox(
+                            width: _kInvCounterpartyColW,
+                            child: _InvDropOptInline(
+                              valueId: _draft.counterpartySiteId,
+                              items: _counterparties,
+                              onTapStart: () => _setActiveInsertColumn(3),
+                              onChanged: (v) => setState(
+                                () => _draft = _draft.copyWith(
+                                  counterpartySiteId: v,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          4,
+                          SizedBox(
+                            width: 190,
+                            child: _InvDropOptInline(
+                              valueId: _draft.driverEmployeeId,
+                              items: _drivers,
+                              onTapStart: () => _setActiveInsertColumn(4),
+                              onChanged: (v) => setState(
+                                () => _draft = _draft.copyWith(
+                                  driverEmployeeId: v,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          5,
+                          SizedBox(
+                            width: 140,
+                            child: _InvDropOptInline(
+                              valueId: _draft.vehicleId,
+                              items: _vehicles,
+                              onTapStart: () => _setActiveInsertColumn(5),
+                              onChanged: (v) => setState(
+                                () => _draft = _draft.copyWith(vehicleId: v),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          6,
+                          SizedBox(
+                            width: _kInvGrossColW,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: TextField(
+                                controller: _draftGrossC,
+                                focusNode: _insertGrossFocusNode,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
                                     ),
-                                  );
+                                decoration: _invGlassFieldDecoration(
+                                  hintText: 'Bruto kg',
+                                  suppressFocusedBorder: true,
+                                  hideBorder: _activeInsertColumn == 6,
+                                ),
+                                onTap: () => _setActiveInsertColumn(
+                                  6,
+                                  requestFocus: false,
+                                ),
+                                onChanged: (_) => setState(
+                                  () => _draft = _draftWithComputed(),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          7,
+                          SizedBox(
+                            width: _kInvTareColW,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: TextField(
+                                controller: _draftTareC,
+                                focusNode: _insertTareFocusNode,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: _invGlassFieldDecoration(
+                                  hintText: 'Tara kg',
+                                  suppressFocusedBorder: true,
+                                  hideBorder: _activeInsertColumn == 7,
+                                ),
+                                onTap: () => _setActiveInsertColumn(
+                                  7,
+                                  requestFocus: false,
+                                ),
+                                onChanged: (_) => setState(
+                                  () => _draft = _draftWithComputed(),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          8,
+                          SizedBox(
+                            width: _kInvKgColW,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  _draft.netKg == null
+                                      ? '—'
+                                      : '${_fmtInvCount(_draft.netKg!)} kg',
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          9,
+                          SizedBox(
+                            width: _kInvHumidityColW,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: TextField(
+                                controller: _draftHumidityC,
+                                focusNode: _insertHumidityFocusNode,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: _invGlassFieldDecoration(
+                                  hintText: 'Humedad %',
+                                  suppressFocusedBorder: true,
+                                  hideBorder: _activeInsertColumn == 9,
+                                ),
+                                onTap: () => _setActiveInsertColumn(
+                                  9,
+                                  requestFocus: false,
+                                ),
+                                onChanged: (_) => setState(
+                                  () => _draft = _draftWithComputed(),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          10,
+                          SizedBox(
+                            width: _kInvTrashColW,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: TextField(
+                                controller: _draftTrashC,
+                                focusNode: _insertTrashFocusNode,
+                                keyboardType:
+                                    const TextInputType.numberWithOptions(
+                                      decimal: true,
+                                    ),
+                                decoration: _invGlassFieldDecoration(
+                                  hintText: 'Basura kg',
+                                  suppressFocusedBorder: true,
+                                  hideBorder: _activeInsertColumn == 10,
+                                ),
+                                onTap: () => _setActiveInsertColumn(
+                                  10,
+                                  requestFocus: false,
+                                ),
+                                onChanged: (_) => setState(
+                                  () => _draft = _draftWithComputed(),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          11,
+                          SizedBox(
+                            width: _kInvAmountColW,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 8,
+                                vertical: 8,
+                              ),
+                              child: Align(
+                                alignment: Alignment.centerLeft,
+                                child: Text(
+                                  _draft.totalAmountKg == null
+                                      ? '—'
+                                      : _fmtInvCount(_draft.totalAmountKg!),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                        frame(
+                          12,
+                          SizedBox(
+                            width: _kInvNotesColW,
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 2,
+                              ),
+                              child: TextField(
+                                controller: _draftNotesC,
+                                focusNode: _insertNotesFocusNode,
+                                decoration: _invGlassFieldDecoration(
+                                  hintText: 'Comentario / notas',
+                                  suppressFocusedBorder: true,
+                                  hideBorder: _activeInsertColumn == 12,
+                                ),
+                                onTap: () => _setActiveInsertColumn(
+                                  12,
+                                  requestFocus: false,
+                                ),
+                                onChanged: (t) => setState(
+                                  () => _draft = _draft.copyWith(notes: t),
+                                ),
+                                onSubmitted: (_) {
+                                  _insertDraft();
                                 },
-                                child: InputDecorator(
-                                  decoration: _invGlassFieldDecoration(),
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 2,
-                                    ),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            _draft.opDate == null
-                                                ? '—'
-                                                : _fmtUiDate(_draft.opDate!),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                        ),
-                                        const Icon(
-                                          Icons.calendar_month,
-                                          size: 16,
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
                               ),
                             ),
                           ),
-                          frame(
-                            1,
-                            SizedBox(
-                              width: _kInvRefColW,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
+                        ),
+                        const SizedBox(width: 10),
+                        frame(
+                          13,
+                          AnchoredActionSlot(
+                            width: _kInvActionsW,
+                            trailingWidth: 34,
+                            gap: 6,
+                            leading: Tooltip(
+                              message: _draftHasExtras
+                                  ? 'EXTRAS configurados'
+                                  : 'Agregar calidad y origen',
+                              child: MouseRegion(
+                                onEnter: (_) => setState(
+                                  () => _hoverInsertExtrasButton = true,
                                 ),
-                                child: TextField(
-                                  controller: _draftReferenceC,
-                                  focusNode: _insertReferenceFocusNode,
-                                  decoration: _invGlassFieldDecoration(
-                                    hintText: 'Ticket / folio',
-                                    suppressFocusedBorder: true,
-                                    hideBorder: _activeInsertColumn == 1,
-                                  ),
-                                  onTap: () => _setActiveInsertColumn(
-                                    1,
-                                    requestFocus: false,
-                                  ),
-                                  onChanged: (t) => setState(
-                                    () =>
-                                        _draft = _draft.copyWith(reference: t),
-                                  ),
+                                onExit: (_) => setState(
+                                  () => _hoverInsertExtrasButton = false,
                                 ),
-                              ),
-                            ),
-                          ),
-                          frame(
-                            2,
-                            SizedBox(
-                              width: 190,
-                              child: _InvDropOptInline(
-                                valueId: _draft.materialId,
-                                items: _materials
-                                    .map(
-                                      (m) => _InvOpt(id: m.id, label: m.name),
-                                    )
-                                    .toList(),
-                                onTapStart: () => _setActiveInsertColumn(2),
-                                onChanged: (v) => setState(
-                                  () => _draft = _draft.copyWith(materialId: v),
-                                ),
-                              ),
-                            ),
-                          ),
-                          frame(
-                            3,
-                            SizedBox(
-                              width: _kInvCounterpartyColW,
-                              child: _InvDropOptInline(
-                                valueId: _draft.counterpartySiteId,
-                                items: _counterparties,
-                                onTapStart: () => _setActiveInsertColumn(3),
-                                onChanged: (v) => setState(
-                                  () => _draft = _draft.copyWith(
-                                    counterpartySiteId: v,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          frame(
-                            4,
-                            SizedBox(
-                              width: 190,
-                              child: _InvDropOptInline(
-                                valueId: _draft.driverEmployeeId,
-                                items: _drivers,
-                                onTapStart: () => _setActiveInsertColumn(4),
-                                onChanged: (v) => setState(
-                                  () => _draft = _draft.copyWith(
-                                    driverEmployeeId: v,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          frame(
-                            5,
-                            SizedBox(
-                              width: 140,
-                              child: _InvDropOptInline(
-                                valueId: _draft.vehicleId,
-                                items: _vehicles,
-                                onTapStart: () => _setActiveInsertColumn(5),
-                                onChanged: (v) => setState(
-                                  () => _draft = _draft.copyWith(vehicleId: v),
-                                ),
-                              ),
-                            ),
-                          ),
-                          frame(
-                            6,
-                            SizedBox(
-                              width: _kInvGrossColW,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
-                                ),
-                                child: TextField(
-                                  controller: _draftGrossC,
-                                  focusNode: _insertGrossFocusNode,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  decoration: _invGlassFieldDecoration(
-                                    hintText: 'Bruto kg',
-                                    suppressFocusedBorder: true,
-                                    hideBorder: _activeInsertColumn == 6,
-                                  ),
-                                  onTap: () => _setActiveInsertColumn(
-                                    6,
-                                    requestFocus: false,
-                                  ),
-                                  onChanged: (_) => setState(
-                                    () => _draft = _draftWithComputed(),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          frame(
-                            7,
-                            SizedBox(
-                              width: _kInvTareColW,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
-                                ),
-                                child: TextField(
-                                  controller: _draftTareC,
-                                  focusNode: _insertTareFocusNode,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  decoration: _invGlassFieldDecoration(
-                                    hintText: 'Tara kg',
-                                    suppressFocusedBorder: true,
-                                    hideBorder: _activeInsertColumn == 7,
-                                  ),
-                                  onTap: () => _setActiveInsertColumn(
-                                    7,
-                                    requestFocus: false,
-                                  ),
-                                  onChanged: (_) => setState(
-                                    () => _draft = _draftWithComputed(),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          frame(
-                            8,
-                            SizedBox(
-                              width: _kInvKgColW,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 8,
-                                ),
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    _draft.netKg == null
-                                        ? '—'
-                                        : '${_fmtInvCount(_draft.netKg!)} kg',
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.w700,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          frame(
-                            9,
-                            SizedBox(
-                              width: _kInvHumidityColW,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
-                                ),
-                                child: TextField(
-                                  controller: _draftHumidityC,
-                                  focusNode: _insertHumidityFocusNode,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  decoration: _invGlassFieldDecoration(
-                                    hintText: 'Humedad %',
-                                    suppressFocusedBorder: true,
-                                    hideBorder: _activeInsertColumn == 9,
-                                  ),
-                                  onTap: () => _setActiveInsertColumn(
-                                    9,
-                                    requestFocus: false,
-                                  ),
-                                  onChanged: (_) => setState(
-                                    () => _draft = _draftWithComputed(),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          frame(
-                            10,
-                            SizedBox(
-                              width: _kInvTrashColW,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
-                                ),
-                                child: TextField(
-                                  controller: _draftTrashC,
-                                  focusNode: _insertTrashFocusNode,
-                                  keyboardType:
-                                      const TextInputType.numberWithOptions(
-                                        decimal: true,
-                                      ),
-                                  decoration: _invGlassFieldDecoration(
-                                    hintText: 'Basura kg',
-                                    suppressFocusedBorder: true,
-                                    hideBorder: _activeInsertColumn == 10,
-                                  ),
-                                  onTap: () => _setActiveInsertColumn(
-                                    10,
-                                    requestFocus: false,
-                                  ),
-                                  onChanged: (_) => setState(
-                                    () => _draft = _draftWithComputed(),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          frame(
-                            11,
-                            SizedBox(
-                              width: _kInvAmountColW,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 8,
-                                ),
-                                child: Align(
-                                  alignment: Alignment.centerLeft,
-                                  child: Text(
-                                    _draft.totalAmountKg == null
-                                        ? '—'
-                                        : _fmtInvCount(_draft.totalAmountKg!),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          frame(
-                            12,
-                            SizedBox(
-                              width: _kInvNotesColW,
-                              child: Padding(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 2,
-                                ),
-                                child: TextField(
-                                  controller: _draftNotesC,
-                                  focusNode: _insertNotesFocusNode,
-                                  decoration: _invGlassFieldDecoration(
-                                    hintText: 'Comentario / notas',
-                                    suppressFocusedBorder: true,
-                                    hideBorder: _activeInsertColumn == 12,
-                                  ),
-                                  onTap: () => _setActiveInsertColumn(
-                                    12,
-                                    requestFocus: false,
-                                  ),
-                                  onChanged: (t) => setState(
-                                    () => _draft = _draft.copyWith(notes: t),
-                                  ),
-                                  onSubmitted: (_) {
-                                    _insertDraft();
-                                  },
-                                ),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 10),
-                          frame(
-                            13,
-                            SizedBox(
-                              width: _kInvActionsW,
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.end,
-                                children: [
-                                  Tooltip(
-                                    message: _draftHasExtras
-                                        ? 'EXTRAS configurados'
-                                        : 'Agregar calidad y origen',
-                                    child: MouseRegion(
-                                      onEnter: (_) => setState(
-                                        () => _hoverInsertExtrasButton = true,
-                                      ),
-                                      onExit: (_) => setState(
-                                        () => _hoverInsertExtrasButton = false,
-                                      ),
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(10),
-                                        onTap: _editDraftExtras,
-                                        child: AnimatedContainer(
-                                          duration: const Duration(
-                                            milliseconds: 120,
-                                          ),
-                                          curve: Curves.easeOutCubic,
-                                          width: 98,
-                                          height: 34,
-                                          decoration: BoxDecoration(
-                                            color: _draftHasExtras
-                                                ? const Color(
-                                                    0xFFD7F2E6,
-                                                  ).withValues(alpha: 0.88)
-                                                : Colors.white.withValues(
-                                                    alpha: 0.40,
-                                                  ),
-                                            borderRadius: BorderRadius.circular(
-                                              10,
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: _editDraftExtras,
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 120),
+                                    curve: Curves.easeOutCubic,
+                                    width: 98,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: _draftHasExtras
+                                          ? const Color(
+                                              0xFFD7F2E6,
+                                            ).withValues(alpha: 0.88)
+                                          : Colors.white.withValues(
+                                              alpha: 0.40,
                                             ),
-                                            border: Border.all(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.62,
-                                              ),
-                                            ),
-                                            boxShadow: _hoverInsertExtrasButton
-                                                ? [
-                                                    BoxShadow(
-                                                      color: Colors.black
-                                                          .withValues(
-                                                            alpha: 0.16,
-                                                          ),
-                                                      blurRadius: 14,
-                                                      offset: const Offset(
-                                                        0,
-                                                        7,
-                                                      ),
-                                                    ),
-                                                  ]
-                                                : [
-                                                    BoxShadow(
-                                                      color: Colors.black
-                                                          .withValues(
-                                                            alpha: 0.08,
-                                                          ),
-                                                      blurRadius: 8,
-                                                      offset: const Offset(
-                                                        0,
-                                                        4,
-                                                      ),
-                                                    ),
-                                                  ],
-                                          ),
-                                          child: Center(
-                                            child: Text(
-                                              'EXTRAS',
-                                              style: TextStyle(
-                                                fontSize: 11,
-                                                letterSpacing: 0.2,
-                                                fontWeight: FontWeight.w900,
-                                                color: _draftHasExtras
-                                                    ? const Color(0xFF1A4F36)
-                                                    : const Color(0xFF274A63),
-                                              ),
-                                            ),
-                                          ),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.62,
                                         ),
                                       ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 6),
-                                  Tooltip(
-                                    message: 'AGREGAR',
-                                    child: MouseRegion(
-                                      onEnter: (_) => setState(
-                                        () => _hoverInsertAddButton = true,
-                                      ),
-                                      onExit: (_) => setState(
-                                        () => _hoverInsertAddButton = false,
-                                      ),
-                                      child: InkWell(
-                                        borderRadius: BorderRadius.circular(10),
-                                        onTap: _inserting ? null : _insertDraft,
-                                        child: AnimatedContainer(
-                                          duration: const Duration(
-                                            milliseconds: 120,
-                                          ),
-                                          curve: Curves.easeOutCubic,
-                                          width: 34,
-                                          height: 34,
-                                          decoration: BoxDecoration(
-                                            color: _inserting
-                                                ? Colors.white.withValues(
-                                                    alpha: 0.35,
-                                                  )
-                                                : const Color(
-                                                    0xFF19C37D,
-                                                  ).withValues(alpha: 0.92),
-                                            borderRadius: BorderRadius.circular(
-                                              10,
-                                            ),
-                                            border: Border.all(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.52,
-                                              ),
-                                            ),
-                                            boxShadow:
-                                                _hoverInsertAddButton &&
-                                                    !_inserting
-                                                ? [
-                                                    BoxShadow(
-                                                      color: Colors.black
-                                                          .withValues(
-                                                            alpha: 0.16,
-                                                          ),
-                                                      blurRadius: 14,
-                                                      offset: const Offset(
-                                                        0,
-                                                        7,
-                                                      ),
-                                                    ),
-                                                  ]
-                                                : [
-                                                    BoxShadow(
-                                                      color: Colors.black
-                                                          .withValues(
-                                                            alpha: 0.08,
-                                                          ),
-                                                      blurRadius: 8,
-                                                      offset: const Offset(
-                                                        0,
-                                                        4,
-                                                      ),
-                                                    ),
-                                                  ],
-                                          ),
-                                          child: _inserting
-                                              ? const Padding(
-                                                  padding: EdgeInsets.all(8.0),
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                        strokeWidth: 2,
-                                                      ),
-                                                )
-                                              : const Icon(
-                                                  Icons.add,
-                                                  size: 18,
-                                                  color: Colors.white,
+                                      boxShadow: _hoverInsertExtrasButton
+                                          ? [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.16,
                                                 ),
+                                                blurRadius: 14,
+                                                offset: const Offset(0, 7),
+                                              ),
+                                            ]
+                                          : [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.08,
+                                                ),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ],
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        'EXTRAS',
+                                        style: TextStyle(
+                                          fontSize: 11,
+                                          letterSpacing: 0.2,
+                                          fontWeight: FontWeight.w900,
+                                          color: _draftHasExtras
+                                              ? const Color(0xFF1A4F36)
+                                              : const Color(0xFF274A63),
                                         ),
                                       ),
                                     ),
                                   ),
-                                ],
+                                ),
+                              ),
+                            ),
+                            trailing: Tooltip(
+                              message: 'AGREGAR',
+                              child: MouseRegion(
+                                onEnter: (_) => setState(
+                                  () => _hoverInsertAddButton = true,
+                                ),
+                                onExit: (_) => setState(
+                                  () => _hoverInsertAddButton = false,
+                                ),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: _inserting ? null : _insertDraft,
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 120),
+                                    curve: Curves.easeOutCubic,
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: _inserting
+                                          ? Colors.white.withValues(alpha: 0.35)
+                                          : const Color(
+                                              0xFF19C37D,
+                                            ).withValues(alpha: 0.92),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.52,
+                                        ),
+                                      ),
+                                      boxShadow:
+                                          _hoverInsertAddButton && !_inserting
+                                          ? [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.16,
+                                                ),
+                                                blurRadius: 14,
+                                                offset: const Offset(0, 7),
+                                              ),
+                                            ]
+                                          : [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.08,
+                                                ),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ],
+                                    ),
+                                    child: _inserting
+                                        ? const Padding(
+                                            padding: EdgeInsets.all(8.0),
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.add,
+                                            size: 18,
+                                            color: Colors.white,
+                                          ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                        ],
-                      ),
+                        ),
+                      ],
                     ),
                   ),
                 ),
@@ -3629,111 +3577,111 @@ class _InvHeaderRow extends StatelessWidget {
           builder: (context, constraints) {
             return SizedBox(
               width: constraints.maxWidth,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: SizedBox(
-                  width: _kInvTableContentW,
-                  child: Row(
-                    children: [
-                      _InvHCell(
-                        'FECHA',
-                        90,
+              child: ContractGridScaledRow(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _InvHCell(
+                      'FECHA',
+                      90,
+                      s,
+                      active: hasActiveFilter('fecha'),
+                      onFilter: () => onOpenFilter('fecha', 'FECHA'),
+                    ),
+                    _InvHCell(
+                      'TICKET',
+                      _kInvRefColW,
+                      s,
+                      active: hasActiveFilter('reference'),
+                      onFilter: () => onOpenFilter('reference', 'TICKET'),
+                    ),
+                    _InvHCell(
+                      'MATERIAL',
+                      190,
+                      s,
+                      active: hasActiveFilter('material'),
+                      onFilter: () => onOpenFilter('material', 'MATERIAL'),
+                    ),
+                    _InvHCell(
+                      counterpartyLabel,
+                      _kInvCounterpartyColW,
+                      s,
+                      active: hasActiveFilter('counterparty'),
+                      onFilter: () =>
+                          onOpenFilter('counterparty', counterpartyLabel),
+                    ),
+                    _InvHCell(
+                      'CHOFER',
+                      190,
+                      s,
+                      active: hasActiveFilter('chofer'),
+                      onFilter: () => onOpenFilter('chofer', 'CHOFER'),
+                    ),
+                    _InvHCell(
+                      'UNIDAD',
+                      140,
+                      s,
+                      active: hasActiveFilter('unidad'),
+                      onFilter: () => onOpenFilter('unidad', 'UNIDAD'),
+                    ),
+                    _InvHCell(
+                      'BRUTO',
+                      _kInvGrossColW,
+                      s,
+                      active: hasActiveFilter('bruto'),
+                      onFilter: () => onOpenFilter('bruto', 'BRUTO'),
+                    ),
+                    _InvHCell(
+                      'TARA',
+                      _kInvTareColW,
+                      s,
+                      active: hasActiveFilter('tara'),
+                      onFilter: () => onOpenFilter('tara', 'TARA'),
+                    ),
+                    _InvHCell(
+                      'NETO KG',
+                      _kInvKgColW,
+                      s,
+                      active: hasActiveFilter('kg'),
+                      onFilter: () => onOpenFilter('kg', 'NETO KG'),
+                    ),
+                    _InvHCell(
+                      'HUMEDAD %',
+                      _kInvHumidityColW,
+                      s,
+                      active: hasActiveFilter('humedad'),
+                      onFilter: () => onOpenFilter('humedad', 'HUMEDAD %'),
+                    ),
+                    _InvHCell(
+                      'BASURA',
+                      _kInvTrashColW,
+                      s,
+                      active: hasActiveFilter('basura'),
+                      onFilter: () => onOpenFilter('basura', 'BASURA'),
+                    ),
+                    _InvHCell(
+                      'IMPORTE',
+                      _kInvAmountColW,
+                      s,
+                      active: hasActiveFilter('importe'),
+                      onFilter: () => onOpenFilter('importe', 'IMPORTE'),
+                    ),
+                    SizedBox(
+                      width: _kInvNotesColW,
+                      child: _InvHCellExpand(
+                        'COMENTARIO',
                         s,
-                        active: hasActiveFilter('fecha'),
-                        onFilter: () => onOpenFilter('fecha', 'FECHA'),
+                        active: hasActiveFilter('notes'),
+                        onFilter: () => onOpenFilter('notes', 'COMENTARIO'),
                       ),
-                      _InvHCell(
-                        'TICKET',
-                        _kInvRefColW,
-                        s,
-                        active: hasActiveFilter('reference'),
-                        onFilter: () => onOpenFilter('reference', 'TICKET'),
-                      ),
-                      _InvHCell(
-                        'MATERIAL',
-                        190,
-                        s,
-                        active: hasActiveFilter('material'),
-                        onFilter: () => onOpenFilter('material', 'MATERIAL'),
-                      ),
-                      _InvHCell(
-                        counterpartyLabel,
-                        _kInvCounterpartyColW,
-                        s,
-                        active: hasActiveFilter('counterparty'),
-                        onFilter: () =>
-                            onOpenFilter('counterparty', counterpartyLabel),
-                      ),
-                      _InvHCell(
-                        'CHOFER',
-                        190,
-                        s,
-                        active: hasActiveFilter('chofer'),
-                        onFilter: () => onOpenFilter('chofer', 'CHOFER'),
-                      ),
-                      _InvHCell(
-                        'UNIDAD',
-                        140,
-                        s,
-                        active: hasActiveFilter('unidad'),
-                        onFilter: () => onOpenFilter('unidad', 'UNIDAD'),
-                      ),
-                      _InvHCell(
-                        'BRUTO',
-                        _kInvGrossColW,
-                        s,
-                        active: hasActiveFilter('bruto'),
-                        onFilter: () => onOpenFilter('bruto', 'BRUTO'),
-                      ),
-                      _InvHCell(
-                        'TARA',
-                        _kInvTareColW,
-                        s,
-                        active: hasActiveFilter('tara'),
-                        onFilter: () => onOpenFilter('tara', 'TARA'),
-                      ),
-                      _InvHCell(
-                        'NETO KG',
-                        _kInvKgColW,
-                        s,
-                        active: hasActiveFilter('kg'),
-                        onFilter: () => onOpenFilter('kg', 'NETO KG'),
-                      ),
-                      _InvHCell(
-                        'HUMEDAD %',
-                        _kInvHumidityColW,
-                        s,
-                        active: hasActiveFilter('humedad'),
-                        onFilter: () => onOpenFilter('humedad', 'HUMEDAD %'),
-                      ),
-                      _InvHCell(
-                        'BASURA',
-                        _kInvTrashColW,
-                        s,
-                        active: hasActiveFilter('basura'),
-                        onFilter: () => onOpenFilter('basura', 'BASURA'),
-                      ),
-                      _InvHCell(
-                        'IMPORTE',
-                        _kInvAmountColW,
-                        s,
-                        active: hasActiveFilter('importe'),
-                        onFilter: () => onOpenFilter('importe', 'IMPORTE'),
-                      ),
-                      SizedBox(
-                        width: _kInvNotesColW,
-                        child: _InvHCellExpand(
-                          'COMENTARIO',
-                          s,
-                          active: hasActiveFilter('notes'),
-                          onFilter: () => onOpenFilter('notes', 'COMENTARIO'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      const SizedBox(width: _kInvActionsW),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 10),
+                    const AnchoredActionSlot(
+                      width: _kInvActionsW,
+                      trailingWidth: 32,
+                      leading: SizedBox.shrink(),
+                    ),
+                  ],
                 ),
               ),
             );
@@ -3914,6 +3862,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
   String? _vehicleId;
   String? _commercialMaterialCode;
   String? _movementReason;
+  int? _unitCount;
   double? _grossKg;
   double? _tareKg;
   double? _humidityPercent;
@@ -3983,6 +3932,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
     _vehicleId = r['vehicle_id'] as String?;
     _commercialMaterialCode = r['commercial_material_code'] as String?;
     _movementReason = r['movement_reason'] as String?;
+    _unitCount = r['unit_count'] as int?;
     _grossKg = _toDouble(r['gross_kg']);
     _tareKg = _toDouble(r['tare_kg']);
     final storedNetKg = _toDouble(r['net_kg']) ?? _toDouble(r['weight_kg']);
@@ -4381,14 +4331,18 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                   return Focus(
                     autofocus: true,
                     onKeyEvent: (_, event) {
-                      if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                      if (event is! KeyDownEvent) {
+                        return KeyEventResult.ignored;
+                      }
                       if (event.logicalKey == LogicalKeyboardKey.escape) {
                         Navigator.of(dialogContext).pop();
                         return KeyEventResult.handled;
                       }
                       if (event.logicalKey == LogicalKeyboardKey.enter ||
                           event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-                        if (actions.isEmpty) return KeyEventResult.handled;
+                        if (actions.isEmpty) {
+                          return KeyEventResult.handled;
+                        }
                         final activeIndex = (hoveredIndex ?? 0).clamp(
                           0,
                           actions.length - 1,
@@ -4454,7 +4408,9 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                                 onEnter: (_) =>
                                     setMenuState(() => hoveredIndex = i),
                                 onExit: (_) => setMenuState(() {
-                                  if (hoveredIndex == i) hoveredIndex = null;
+                                  if (hoveredIndex == i) {
+                                    hoveredIndex = null;
+                                  }
                                 }),
                                 child: InkWell(
                                   borderRadius: BorderRadius.circular(10),
@@ -4615,6 +4571,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
       inventoryGeneralCode: selectedMaterial.inventoryGeneralCode,
       commercialMaterialCode: _commercialMaterialCode,
       movementReason: _movementReason,
+      unitCount: _unitCount,
     );
     if (extrasError != null) {
       _toast(extrasError);
@@ -4647,6 +4604,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
       'counterparty': _labelOf(widget.counterparties, _counterpartySiteId),
       'commercial_material_code': _commercialMaterialCode,
       'movement_reason': _isInFlow(widget.flow) ? _movementReason : null,
+      'unit_count': _unitCount,
       'scale_ticket': _scaleTicketC.text.trim().isEmpty
           ? null
           : _scaleTicketC.text.trim(),
@@ -4687,6 +4645,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
           : filteredCommercials,
       initialCommercialMaterialCode: _commercialMaterialCode,
       initialMovementReason: _movementReason,
+      initialUnitCount: _unitCount,
       initialGrossKg: null,
       initialTareKg: null,
       initialNetKg: null,
@@ -4697,6 +4656,7 @@ class _MovementDataRowState extends State<_MovementDataRow> {
     setState(() {
       _commercialMaterialCode = result.commercialMaterialCode;
       _movementReason = result.movementReason;
+      _unitCount = result.unitCount;
     });
   }
 
@@ -4741,66 +4701,11 @@ class _MovementDataRowState extends State<_MovementDataRow> {
       final active =
           _editing && widget.isSelected && widget.activeGridColumn == col;
       final hoveredEditable = !_editing && _hoveredEditableColumn == col;
-      final hoverTop = hasSelection
-          ? const Color(0xFFD9E8F6).withValues(alpha: 0.78)
-          : const Color(0xFFE5F2EC).withValues(alpha: 0.80);
-      final hoverBottom = hasSelection
-          ? const Color(0xFFCCE0F2).withValues(alpha: 0.62)
-          : const Color(0xFFD4E7DE).withValues(alpha: 0.66);
-      return DecoratedBox(
-        position: DecorationPosition.background,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: hoveredEditable
-              ? LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [hoverTop, hoverBottom],
-                )
-              : null,
-          color: active
-              ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
-              : Colors.transparent,
-          border: Border.all(
-            color: active
-                ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
-                : Colors.transparent,
-            width: active ? 1.05 : 1.0,
-          ),
-          boxShadow: hoveredEditable
-              ? [
-                  BoxShadow(
-                    color:
-                        (hasSelection
-                                ? const Color(0xFF6A8FAE)
-                                : const Color(0xFF6C8F84))
-                            .withValues(alpha: 0.18),
-                    blurRadius: 2.2,
-                    spreadRadius: -3.0,
-                    offset: const Offset(0, 0.8),
-                  ),
-                  BoxShadow(
-                    color: Colors.white.withValues(alpha: 0.22),
-                    blurRadius: 1.1,
-                    spreadRadius: -3.1,
-                    offset: const Offset(0, -0.5),
-                  ),
-                ]
-              : null,
-        ),
-        child: DecoratedBox(
-          position: DecorationPosition.foreground,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: active
-                  ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
-                  : Colors.transparent,
-              width: active ? 1.05 : 1.0,
-            ),
-          ),
-          child: child,
-        ),
+      return ContractEditableHoverCapsule(
+        hovered: hoveredEditable,
+        active: active,
+        selectedContext: hasSelection,
+        child: child,
       );
     }
 
@@ -4835,19 +4740,26 @@ class _MovementDataRowState extends State<_MovementDataRow> {
       bool showDivider = true,
       EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: 4),
     }) {
+      final softenDividers =
+          _hoveredEditableColumn != null || (_editing && widget.isSelected);
       return Padding(
         padding: padding,
         child: Row(
           children: [
             Expanded(child: child),
             if (showDivider)
-              Container(
-                width: 1,
-                height: 30,
-                margin: const EdgeInsets.only(left: 8, right: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
-                  borderRadius: BorderRadius.circular(999),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 110),
+                curve: Curves.easeOutCubic,
+                opacity: softenDividers ? 0.0 : 1.0,
+                child: Container(
+                  width: 1,
+                  height: 30,
+                  margin: const EdgeInsets.only(left: 8, right: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
               ),
           ],
@@ -4897,602 +4809,564 @@ class _MovementDataRowState extends State<_MovementDataRow> {
                   builder: (context, constraints) {
                     return SizedBox(
                       width: constraints.maxWidth,
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: Alignment.centerLeft,
-                        child: SizedBox(
-                          width: _kInvTableContentW,
-                          child: Row(
-                            children: [
-                              gridFrame(
-                                0,
-                                SizedBox(
-                                  width: 90,
-                                  child: _editing
-                                      ? InkWell(
-                                          onTap: () {
-                                            widget.onActivateColumn(0);
-                                            activateGridCell(0);
-                                          },
-                                          child: _InvCellBox(
-                                            text: _fmtUiDate(_opDate),
-                                            icon: Icons.calendar_month,
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 0,
-                                          child: readonlyCell(
-                                            child: _InvFitText(
-                                              _fmtUiDate(_opDate),
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              gridFrame(
-                                1,
-                                SizedBox(
-                                  width: _kInvRefColW,
-                                  child: _editing
-                                      ? Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                          ),
-                                          child: TextField(
-                                            controller: _referenceC,
-                                            focusNode: _referenceFocusNode,
-                                            decoration:
-                                                _invGlassFieldDecoration(
-                                                  hintText: 'Ticket',
-                                                  suppressFocusedBorder: true,
-                                                  hideBorder:
-                                                      widget.isSelected &&
-                                                      widget.activeGridColumn ==
-                                                          1,
-                                                ),
-                                            onTap: () =>
-                                                widget.onActivateColumn(1),
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 1,
-                                          child: readonlyCell(
-                                            child: _InvFitText(
-                                              (widget.row['reference'] ?? '')
-                                                  .toString(),
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              gridFrame(
-                                2,
-                                SizedBox(
-                                  width: 190,
-                                  child: _editing
-                                      ? _InvDropStrInline(
-                                          value:
-                                              _material ??
-                                              widget.materialOptions.first,
-                                          items: widget.materialOptions,
-                                          format: widget.materialLabel,
-                                          onTapStart: () =>
-                                              widget.onActivateColumn(2),
-                                          onChanged: (v) =>
-                                              setState(() => _material = v),
-                                        )
-                                      : previewEditableCell(
-                                          col: 2,
-                                          child: Builder(
-                                            builder: (_) {
-                                              final label = widget
-                                                  .materialLabel(_material);
-                                              final palette =
-                                                  _materialChipColors(label);
-                                              return readonlyCell(
-                                                child: _InvPillTag(
-                                                  label: label,
-                                                  background: palette.bg,
-                                                  foreground: palette.fg,
-                                                ),
-                                              );
-                                            },
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              gridFrame(
-                                3,
-                                SizedBox(
-                                  width: _kInvCounterpartyColW,
-                                  child: _editing
-                                      ? _InvDropOptInline(
-                                          valueId: _counterpartySiteId,
-                                          items: widget.counterparties,
-                                          onTapStart: () =>
-                                              widget.onActivateColumn(3),
-                                          onChanged: (v) => setState(
-                                            () => _counterpartySiteId = v,
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 3,
-                                          child: readonlyCell(
-                                            child: _InvFitText(
-                                              _labelOf(
-                                                    widget.counterparties,
-                                                    _counterpartySiteId,
-                                                  ) ??
-                                                  (widget.row['counterparty'] ??
-                                                          '—')
-                                                      .toString(),
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              gridFrame(
-                                4,
-                                SizedBox(
-                                  width: 190,
-                                  child: _editing
-                                      ? _InvDropOptInline(
-                                          valueId: _driverId,
-                                          items: widget.drivers,
-                                          onTapStart: () =>
-                                              widget.onActivateColumn(4),
-                                          onChanged: (v) =>
-                                              setState(() => _driverId = v),
-                                        )
-                                      : previewEditableCell(
-                                          col: 4,
-                                          child: readonlyCell(
-                                            child: _InvFitText(
-                                              _labelOf(
-                                                    widget.drivers,
-                                                    _driverId,
-                                                  ) ??
-                                                  '—',
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              gridFrame(
-                                5,
-                                SizedBox(
-                                  width: 140,
-                                  child: _editing
-                                      ? _InvDropOptInline(
-                                          valueId: _vehicleId,
-                                          items: widget.vehicles,
-                                          onTapStart: () =>
-                                              widget.onActivateColumn(5),
-                                          onChanged: (v) =>
-                                              setState(() => _vehicleId = v),
-                                        )
-                                      : previewEditableCell(
-                                          col: 5,
-                                          child: readonlyCell(
-                                            child: _InvUnitBadge(
-                                              label:
-                                                  _labelOf(
-                                                    widget.vehicles,
-                                                    _vehicleId,
-                                                  ) ??
-                                                  '—',
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              gridFrame(
-                                6,
-                                SizedBox(
-                                  width: _kInvGrossColW,
-                                  child: _editing
-                                      ? Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                          ),
-                                          child: TextField(
-                                            controller: _grossC,
-                                            focusNode: _grossFocusNode,
-                                            keyboardType:
-                                                const TextInputType.numberWithOptions(
-                                                  decimal: true,
-                                                ),
-                                            decoration:
-                                                _invGlassFieldDecoration(
-                                                  hintText: 'Bruto kg',
-                                                  suppressFocusedBorder: true,
-                                                  hideBorder:
-                                                      widget.isSelected &&
-                                                      widget.activeGridColumn ==
-                                                          6,
-                                                ),
-                                            onTap: () =>
-                                                widget.onActivateColumn(6),
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 6,
-                                          child: readonlyCell(
-                                            child: _InvFitText(
-                                              _grossC.text.isEmpty
-                                                  ? '—'
-                                                  : '${_fmtInvCount(_toDouble(_grossC.text) ?? 0)} kg',
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              gridFrame(
-                                7,
-                                SizedBox(
-                                  width: _kInvTareColW,
-                                  child: _editing
-                                      ? Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                          ),
-                                          child: TextField(
-                                            controller: _tareC,
-                                            focusNode: _tareFocusNode,
-                                            keyboardType:
-                                                const TextInputType.numberWithOptions(
-                                                  decimal: true,
-                                                ),
-                                            decoration:
-                                                _invGlassFieldDecoration(
-                                                  hintText: 'Tara kg',
-                                                  suppressFocusedBorder: true,
-                                                  hideBorder:
-                                                      widget.isSelected &&
-                                                      widget.activeGridColumn ==
-                                                          7,
-                                                ),
-                                            onTap: () =>
-                                                widget.onActivateColumn(7),
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 7,
-                                          child: readonlyCell(
-                                            child: _InvFitText(
-                                              _tareC.text.isEmpty
-                                                  ? '—'
-                                                  : '${_fmtInvCount(_toDouble(_tareC.text) ?? 0)} kg',
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              gridFrame(
-                                8,
-                                SizedBox(
-                                  width: _kInvKgColW,
-                                  child: readonlyCell(
-                                    child: Builder(
-                                      builder: (_) {
-                                        final gross = _toDouble(_grossC.text);
-                                        final tare = _toDouble(_tareC.text);
-                                        final computedNet =
-                                            (gross == null || gross <= 0)
-                                            ? (_toDouble(
-                                                    widget.row['net_kg'],
-                                                  ) ??
-                                                  _toDouble(
-                                                    widget.row['weight_kg'],
-                                                  ))
-                                            : math
-                                                  .max(0, gross - (tare ?? 0))
-                                                  .toDouble();
-                                        return _InvFitText(
-                                          computedNet == null
-                                              ? '—'
-                                              : '${_fmtInvCount(computedNet)} kg',
-                                          style: const TextStyle(
-                                            fontWeight: FontWeight.w700,
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              gridFrame(
-                                9,
-                                SizedBox(
-                                  width: _kInvHumidityColW,
-                                  child: _editing
-                                      ? Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                          ),
-                                          child: TextField(
-                                            controller: _humidityC,
-                                            focusNode: _humidityFocusNode,
-                                            keyboardType:
-                                                const TextInputType.numberWithOptions(
-                                                  decimal: true,
-                                                ),
-                                            decoration:
-                                                _invGlassFieldDecoration(
-                                                  hintText: 'Humedad %',
-                                                  suppressFocusedBorder: true,
-                                                  hideBorder:
-                                                      widget.isSelected &&
-                                                      widget.activeGridColumn ==
-                                                          9,
-                                                ),
-                                            onTap: () =>
-                                                widget.onActivateColumn(9),
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 9,
-                                          child: readonlyCell(
-                                            child: _InvFitText(
-                                              _humidityC.text.isEmpty
-                                                  ? '—'
-                                                  : '${_fmtInvCount(_toDouble(_humidityC.text) ?? 0)} %',
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              gridFrame(
-                                10,
-                                SizedBox(
-                                  width: _kInvTrashColW,
-                                  child: _editing
-                                      ? Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                          ),
-                                          child: TextField(
-                                            controller: _trashC,
-                                            focusNode: _trashFocusNode,
-                                            keyboardType:
-                                                const TextInputType.numberWithOptions(
-                                                  decimal: true,
-                                                ),
-                                            decoration:
-                                                _invGlassFieldDecoration(
-                                                  hintText: 'Basura kg',
-                                                  suppressFocusedBorder: true,
-                                                  hideBorder:
-                                                      widget.isSelected &&
-                                                      widget.activeGridColumn ==
-                                                          10,
-                                                ),
-                                            onTap: () =>
-                                                widget.onActivateColumn(10),
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 10,
-                                          child: readonlyCell(
-                                            child: _InvFitText(
-                                              _trashC.text.isEmpty
-                                                  ? '—'
-                                                  : '${_fmtInvCount(_toDouble(_trashC.text) ?? 0)} kg',
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              gridFrame(
-                                11,
-                                SizedBox(
-                                  width: _kInvAmountColW,
-                                  child: readonlyCell(
-                                    child: Builder(
-                                      builder: (_) {
-                                        final netKg = _rowEffectiveNetKg(
-                                          netKg: null,
-                                          grossKg: _toDouble(_grossC.text),
-                                          tareKg: _toDouble(_tareC.text),
-                                        );
-                                        final amount = netKg == null
-                                            ? null
-                                            : _rowTotalAmountKg(
-                                                netKg: netKg,
-                                                humidityPercent: _toDouble(
-                                                  _humidityC.text,
-                                                ),
-                                                trashKg: _toDouble(
-                                                  _trashC.text,
-                                                ),
-                                              );
-                                        return _InvFitText(
-                                          amount == null
-                                              ? '—'
-                                              : _fmtInvCount(amount),
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              gridFrame(
-                                12,
-                                SizedBox(
-                                  width: _kInvNotesColW,
-                                  child: _editing
-                                      ? Padding(
-                                          padding: const EdgeInsets.symmetric(
-                                            horizontal: 2,
-                                          ),
-                                          child: TextField(
-                                            controller: _notesC,
-                                            focusNode: _notesFocusNode,
-                                            decoration:
-                                                _invGlassFieldDecoration(
-                                                  hintText:
-                                                      'Comentario / notas',
-                                                  suppressFocusedBorder: true,
-                                                  hideBorder:
-                                                      widget.isSelected &&
-                                                      widget.activeGridColumn ==
-                                                          12,
-                                                ),
-                                            onTap: () =>
-                                                widget.onActivateColumn(12),
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 12,
-                                          child: readonlyCell(
-                                            showDivider: true,
-                                            child: _InvFitText(
-                                              (widget.row['notes'] ?? '')
-                                                  .toString(),
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: 10),
-                              gridFrame(
-                                13,
-                                SizedBox(
-                                  width: _kInvActionsW,
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      if (_editing)
-                                        FilledButton(
-                                          style: FilledButton.styleFrom(
-                                            backgroundColor: const Color(
-                                              0xFF6A99C7,
-                                            ),
-                                            foregroundColor: Colors.white,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 10,
-                                              vertical: 8,
-                                            ),
-                                            textStyle: const TextStyle(
-                                              fontSize: 11,
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                          ),
-                                          onPressed: () => _save(),
-                                          child: const Text('ACTUALIZAR'),
-                                        )
-                                      else
-                                        _InvPillTag(
-                                          label: widget.flow,
-                                          background: _isInFlow(widget.flow)
-                                              ? const Color(0xFFD8FBF3)
-                                              : const Color(0xFFD9E8FF),
-                                          foreground: const Color(0xFF1D3C58),
-                                          minWidth: 0,
-                                          horizontalPadding: 9,
-                                        ),
-                                      const SizedBox(width: 4),
-                                      Builder(
-                                        builder: (menuContext) {
-                                          return Tooltip(
-                                            message: 'Acciones',
-                                            child: MouseRegion(
-                                              onEnter: (_) => setState(
-                                                () =>
-                                                    _hoverActionsButton = true,
-                                              ),
-                                              onExit: (_) => setState(
-                                                () =>
-                                                    _hoverActionsButton = false,
-                                              ),
-                                              child: GestureDetector(
-                                                behavior:
-                                                    HitTestBehavior.opaque,
-                                                onTapDown: (_) {
-                                                  final box =
-                                                      menuContext
-                                                              .findRenderObject()
-                                                          as RenderBox?;
-                                                  if (box == null) return;
-                                                  final origin = box
-                                                      .localToGlobal(
-                                                        Offset.zero,
-                                                      );
-                                                  final target = Offset(
-                                                    origin.dx,
-                                                    origin.dy +
-                                                        box.size.height +
-                                                        4,
-                                                  );
-                                                  unawaited(
-                                                    _openContextMenuAt(target),
-                                                  );
-                                                },
-                                                child: AnimatedContainer(
-                                                  duration: const Duration(
-                                                    milliseconds: 120,
-                                                  ),
-                                                  curve: Curves.easeOutCubic,
-                                                  width: 32,
-                                                  height: 32,
-                                                  decoration: BoxDecoration(
-                                                    color: _hoverActionsButton
-                                                        ? Colors.white
-                                                              .withValues(
-                                                                alpha: 0.62,
-                                                              )
-                                                        : Colors.white
-                                                              .withValues(
-                                                                alpha: 0.42,
-                                                              ),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                          999,
-                                                        ),
-                                                    border: Border.all(
-                                                      color: Colors.white
-                                                          .withValues(
-                                                            alpha: 0.72,
-                                                          ),
-                                                    ),
-                                                    boxShadow: [
-                                                      BoxShadow(
-                                                        color: Colors.black
-                                                            .withValues(
-                                                              alpha:
-                                                                  _hoverActionsButton
-                                                                  ? 0.15
-                                                                  : 0.08,
-                                                            ),
-                                                        blurRadius:
-                                                            _hoverActionsButton
-                                                            ? 14
-                                                            : 8,
-                                                        offset: Offset(
-                                                          0,
-                                                          _hoverActionsButton
-                                                              ? 7
-                                                              : 4,
-                                                        ),
-                                                      ),
-                                                    ],
-                                                  ),
-                                                  child: const Icon(
-                                                    Icons.more_horiz,
-                                                    size: 20,
-                                                  ),
-                                                ),
-                                              ),
-                                            ),
-                                          );
+                      child: ContractGridScaledRow(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            gridFrame(
+                              0,
+                              SizedBox(
+                                width: 90,
+                                child: _editing
+                                    ? InkWell(
+                                        onTap: () {
+                                          widget.onActivateColumn(0);
+                                          activateGridCell(0);
                                         },
+                                        child: _InvCellBox(
+                                          text: _fmtUiDate(_opDate),
+                                          icon: Icons.calendar_month,
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 0,
+                                        child: readonlyCell(
+                                          child: _InvFitText(
+                                            _fmtUiDate(_opDate),
+                                          ),
+                                        ),
                                       ),
-                                    ],
+                              ),
+                            ),
+                            gridFrame(
+                              1,
+                              SizedBox(
+                                width: _kInvRefColW,
+                                child: _editing
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: TextField(
+                                          controller: _referenceC,
+                                          focusNode: _referenceFocusNode,
+                                          decoration: _invGlassFieldDecoration(
+                                            hintText: 'Ticket',
+                                            suppressFocusedBorder: true,
+                                            hideBorder:
+                                                widget.isSelected &&
+                                                widget.activeGridColumn == 1,
+                                          ),
+                                          onTap: () =>
+                                              widget.onActivateColumn(1),
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 1,
+                                        child: readonlyCell(
+                                          child: _InvFitText(
+                                            (widget.row['reference'] ?? '')
+                                                .toString(),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            gridFrame(
+                              2,
+                              SizedBox(
+                                width: 190,
+                                child: _editing
+                                    ? _InvDropStrInline(
+                                        value:
+                                            _material ??
+                                            widget.materialOptions.first,
+                                        items: widget.materialOptions,
+                                        format: widget.materialLabel,
+                                        onTapStart: () =>
+                                            widget.onActivateColumn(2),
+                                        onChanged: (v) =>
+                                            setState(() => _material = v),
+                                      )
+                                    : previewEditableCell(
+                                        col: 2,
+                                        child: Builder(
+                                          builder: (_) {
+                                            final label = widget.materialLabel(
+                                              _material,
+                                            );
+                                            final palette = _materialChipColors(
+                                              label,
+                                            );
+                                            return readonlyCell(
+                                              child: _InvPillTag(
+                                                label: label,
+                                                background: palette.bg,
+                                                foreground: palette.fg,
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            gridFrame(
+                              3,
+                              SizedBox(
+                                width: _kInvCounterpartyColW,
+                                child: _editing
+                                    ? _InvDropOptInline(
+                                        valueId: _counterpartySiteId,
+                                        items: widget.counterparties,
+                                        onTapStart: () =>
+                                            widget.onActivateColumn(3),
+                                        onChanged: (v) => setState(
+                                          () => _counterpartySiteId = v,
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 3,
+                                        child: readonlyCell(
+                                          child: _InvFitText(
+                                            _labelOf(
+                                                  widget.counterparties,
+                                                  _counterpartySiteId,
+                                                ) ??
+                                                (widget.row['counterparty'] ??
+                                                        '—')
+                                                    .toString(),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            gridFrame(
+                              4,
+                              SizedBox(
+                                width: 190,
+                                child: _editing
+                                    ? _InvDropOptInline(
+                                        valueId: _driverId,
+                                        items: widget.drivers,
+                                        onTapStart: () =>
+                                            widget.onActivateColumn(4),
+                                        onChanged: (v) =>
+                                            setState(() => _driverId = v),
+                                      )
+                                    : previewEditableCell(
+                                        col: 4,
+                                        child: readonlyCell(
+                                          child: _InvFitText(
+                                            _labelOf(
+                                                  widget.drivers,
+                                                  _driverId,
+                                                ) ??
+                                                '—',
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            gridFrame(
+                              5,
+                              SizedBox(
+                                width: 140,
+                                child: _editing
+                                    ? _InvDropOptInline(
+                                        valueId: _vehicleId,
+                                        items: widget.vehicles,
+                                        onTapStart: () =>
+                                            widget.onActivateColumn(5),
+                                        onChanged: (v) =>
+                                            setState(() => _vehicleId = v),
+                                      )
+                                    : previewEditableCell(
+                                        col: 5,
+                                        child: readonlyCell(
+                                          child: _InvUnitBadge(
+                                            label:
+                                                _labelOf(
+                                                  widget.vehicles,
+                                                  _vehicleId,
+                                                ) ??
+                                                '—',
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            gridFrame(
+                              6,
+                              SizedBox(
+                                width: _kInvGrossColW,
+                                child: _editing
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: TextField(
+                                          controller: _grossC,
+                                          focusNode: _grossFocusNode,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration: _invGlassFieldDecoration(
+                                            hintText: 'Bruto kg',
+                                            suppressFocusedBorder: true,
+                                            hideBorder:
+                                                widget.isSelected &&
+                                                widget.activeGridColumn == 6,
+                                          ),
+                                          onTap: () =>
+                                              widget.onActivateColumn(6),
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 6,
+                                        child: readonlyCell(
+                                          child: _InvFitText(
+                                            _grossC.text.isEmpty
+                                                ? '—'
+                                                : '${_fmtInvCount(_toDouble(_grossC.text) ?? 0)} kg',
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            gridFrame(
+                              7,
+                              SizedBox(
+                                width: _kInvTareColW,
+                                child: _editing
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: TextField(
+                                          controller: _tareC,
+                                          focusNode: _tareFocusNode,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration: _invGlassFieldDecoration(
+                                            hintText: 'Tara kg',
+                                            suppressFocusedBorder: true,
+                                            hideBorder:
+                                                widget.isSelected &&
+                                                widget.activeGridColumn == 7,
+                                          ),
+                                          onTap: () =>
+                                              widget.onActivateColumn(7),
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 7,
+                                        child: readonlyCell(
+                                          child: _InvFitText(
+                                            _tareC.text.isEmpty
+                                                ? '—'
+                                                : '${_fmtInvCount(_toDouble(_tareC.text) ?? 0)} kg',
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            gridFrame(
+                              8,
+                              SizedBox(
+                                width: _kInvKgColW,
+                                child: readonlyCell(
+                                  child: Builder(
+                                    builder: (_) {
+                                      final gross = _toDouble(_grossC.text);
+                                      final tare = _toDouble(_tareC.text);
+                                      final computedNet =
+                                          (gross == null || gross <= 0)
+                                          ? (_toDouble(widget.row['net_kg']) ??
+                                                _toDouble(
+                                                  widget.row['weight_kg'],
+                                                ))
+                                          : math
+                                                .max(0, gross - (tare ?? 0))
+                                                .toDouble();
+                                      return _InvFitText(
+                                        computedNet == null
+                                            ? '—'
+                                            : '${_fmtInvCount(computedNet)} kg',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      );
+                                    },
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                            gridFrame(
+                              9,
+                              SizedBox(
+                                width: _kInvHumidityColW,
+                                child: _editing
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: TextField(
+                                          controller: _humidityC,
+                                          focusNode: _humidityFocusNode,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration: _invGlassFieldDecoration(
+                                            hintText: 'Humedad %',
+                                            suppressFocusedBorder: true,
+                                            hideBorder:
+                                                widget.isSelected &&
+                                                widget.activeGridColumn == 9,
+                                          ),
+                                          onTap: () =>
+                                              widget.onActivateColumn(9),
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 9,
+                                        child: readonlyCell(
+                                          child: _InvFitText(
+                                            _humidityC.text.isEmpty
+                                                ? '—'
+                                                : '${_fmtInvCount(_toDouble(_humidityC.text) ?? 0)} %',
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            gridFrame(
+                              10,
+                              SizedBox(
+                                width: _kInvTrashColW,
+                                child: _editing
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: TextField(
+                                          controller: _trashC,
+                                          focusNode: _trashFocusNode,
+                                          keyboardType:
+                                              const TextInputType.numberWithOptions(
+                                                decimal: true,
+                                              ),
+                                          decoration: _invGlassFieldDecoration(
+                                            hintText: 'Basura kg',
+                                            suppressFocusedBorder: true,
+                                            hideBorder:
+                                                widget.isSelected &&
+                                                widget.activeGridColumn == 10,
+                                          ),
+                                          onTap: () =>
+                                              widget.onActivateColumn(10),
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 10,
+                                        child: readonlyCell(
+                                          child: _InvFitText(
+                                            _trashC.text.isEmpty
+                                                ? '—'
+                                                : '${_fmtInvCount(_toDouble(_trashC.text) ?? 0)} kg',
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            gridFrame(
+                              11,
+                              SizedBox(
+                                width: _kInvAmountColW,
+                                child: readonlyCell(
+                                  child: Builder(
+                                    builder: (_) {
+                                      final netKg = _rowEffectiveNetKg(
+                                        netKg: null,
+                                        grossKg: _toDouble(_grossC.text),
+                                        tareKg: _toDouble(_tareC.text),
+                                      );
+                                      final amount = netKg == null
+                                          ? null
+                                          : _rowTotalAmountKg(
+                                              netKg: netKg,
+                                              humidityPercent: _toDouble(
+                                                _humidityC.text,
+                                              ),
+                                              trashKg: _toDouble(_trashC.text),
+                                            );
+                                      return _InvFitText(
+                                        amount == null
+                                            ? '—'
+                                            : _fmtInvCount(amount),
+                                      );
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ),
+                            gridFrame(
+                              12,
+                              SizedBox(
+                                width: _kInvNotesColW,
+                                child: _editing
+                                    ? Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 2,
+                                        ),
+                                        child: TextField(
+                                          controller: _notesC,
+                                          focusNode: _notesFocusNode,
+                                          decoration: _invGlassFieldDecoration(
+                                            hintText: 'Comentario / notas',
+                                            suppressFocusedBorder: true,
+                                            hideBorder:
+                                                widget.isSelected &&
+                                                widget.activeGridColumn == 12,
+                                          ),
+                                          onTap: () =>
+                                              widget.onActivateColumn(12),
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 12,
+                                        child: readonlyCell(
+                                          showDivider: true,
+                                          child: _InvFitText(
+                                            (widget.row['notes'] ?? '')
+                                                .toString(),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            gridFrame(
+                              13,
+                              AnchoredActionSlot(
+                                width: _kInvActionsW,
+                                trailingWidth: 32,
+                                gap: 4,
+                                leading: _editing
+                                    ? FilledButton(
+                                        style: FilledButton.styleFrom(
+                                          backgroundColor: const Color(
+                                            0xFF6A99C7,
+                                          ),
+                                          foregroundColor: Colors.white,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 10,
+                                            vertical: 8,
+                                          ),
+                                          textStyle: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                        onPressed: () => _save(),
+                                        child: const Text('ACTUALIZAR'),
+                                      )
+                                    : _InvPillTag(
+                                        label: widget.flow,
+                                        background: _isInFlow(widget.flow)
+                                            ? const Color(0xFFD8FBF3)
+                                            : const Color(0xFFD9E8FF),
+                                        foreground: const Color(0xFF1D3C58),
+                                        minWidth: 0,
+                                        horizontalPadding: 9,
+                                      ),
+                                trailing: Builder(
+                                  builder: (menuContext) {
+                                    return Tooltip(
+                                      message: 'Acciones',
+                                      child: MouseRegion(
+                                        onEnter: (_) => setState(
+                                          () => _hoverActionsButton = true,
+                                        ),
+                                        onExit: (_) => setState(
+                                          () => _hoverActionsButton = false,
+                                        ),
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTapDown: (_) {
+                                            final box =
+                                                menuContext.findRenderObject()
+                                                    as RenderBox?;
+                                            if (box == null) return;
+                                            final origin = box.localToGlobal(
+                                              Offset.zero,
+                                            );
+                                            final target = Offset(
+                                              origin.dx,
+                                              origin.dy + box.size.height + 4,
+                                            );
+                                            unawaited(
+                                              _openContextMenuAt(target),
+                                            );
+                                          },
+                                          child: AnimatedContainer(
+                                            duration: const Duration(
+                                              milliseconds: 120,
+                                            ),
+                                            curve: Curves.easeOutCubic,
+                                            width: 32,
+                                            height: 32,
+                                            decoration: BoxDecoration(
+                                              color: _hoverActionsButton
+                                                  ? Colors.white.withValues(
+                                                      alpha: 0.62,
+                                                    )
+                                                  : Colors.white.withValues(
+                                                      alpha: 0.42,
+                                                    ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                              border: Border.all(
+                                                color: Colors.white.withValues(
+                                                  alpha: 0.72,
+                                                ),
+                                              ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withValues(
+                                                        alpha:
+                                                            _hoverActionsButton
+                                                            ? 0.15
+                                                            : 0.08,
+                                                      ),
+                                                  blurRadius:
+                                                      _hoverActionsButton
+                                                      ? 14
+                                                      : 8,
+                                                  offset: Offset(
+                                                    0,
+                                                    _hoverActionsButton ? 7 : 4,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
+                                            child: const Icon(
+                                              Icons.more_horiz,
+                                              size: 20,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -5514,6 +5388,7 @@ String? _movementExtrasRequiredError({
   required String? inventoryGeneralCode,
   required String? commercialMaterialCode,
   required String? movementReason,
+  required int? unitCount,
 }) {
   final commercial = (commercialMaterialCode ?? '').trim();
   if (commercial.isEmpty) {
@@ -5523,6 +5398,10 @@ String? _movementExtrasRequiredError({
   final reason = (movementReason ?? '').trim();
   if (_isInFlow(flow) && generalCode == 'METAL' && reason.isEmpty) {
     return 'En entradas de metal, el origen es obligatorio en extras.';
+  }
+  if (isCountedBaleCommercialCode(commercial) &&
+      (unitCount == null || unitCount <= 0)) {
+    return 'En materiales tipo paca, captura las pacas contadas en extras.';
   }
   return null;
 }
@@ -5824,6 +5703,7 @@ class _CommercialMaterialOpt {
 class _MovementExtrasResult {
   final String? commercialMaterialCode;
   final String? movementReason;
+  final int? unitCount;
   final double? grossKg;
   final double? tareKg;
   final double? netKg;
@@ -5834,6 +5714,7 @@ class _MovementExtrasResult {
   const _MovementExtrasResult({
     required this.commercialMaterialCode,
     required this.movementReason,
+    required this.unitCount,
     required this.grossKg,
     required this.tareKg,
     required this.netKg,
@@ -5857,6 +5738,7 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
   required List<_CommercialMaterialOpt> commercialOptions,
   required String? initialCommercialMaterialCode,
   required String? initialMovementReason,
+  required int? initialUnitCount,
   required double? initialGrossKg,
   required double? initialTareKg,
   required double? initialNetKg,
@@ -5865,11 +5747,15 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
 }) async {
   String? selectedCommercial = initialCommercialMaterialCode;
   String? selectedReason = initialMovementReason;
+  int? unitCount = initialUnitCount;
   double? grossKg = initialGrossKg;
   double? tareKg = initialTareKg;
   double? netKg = initialNetKg;
   double? humidityPercent = initialHumidityPercent;
   double? trashKg = initialTrashKg;
+  final unitCountController = TextEditingController(
+    text: initialUnitCount?.toString() ?? '',
+  );
   final isInFlow = flow == 'IN';
   final generalCode = (inventoryGeneralCode ?? '').trim().toUpperCase();
   final showReason = isInFlow && generalCode == 'METAL';
@@ -5906,6 +5792,7 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
         _MovementExtrasResult buildResult() => _MovementExtrasResult(
           commercialMaterialCode: selectedCommercial,
           movementReason: showReason ? selectedReason : null,
+          unitCount: unitCount,
           grossKg: grossKg,
           tareKg: tareKg,
           netKg: netKg,
@@ -5978,6 +5865,16 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
           );
         }
 
+        final selectedCommercialIsBale = isCountedBaleCommercialCode(
+          selectedCommercial,
+        );
+        if (unitCountController.text != (unitCount?.toString() ?? '')) {
+          unitCountController.text = unitCount?.toString() ?? '';
+          unitCountController.selection = TextSelection.collapsed(
+            offset: unitCountController.text.length,
+          );
+        }
+
         return Focus(
           autofocus: true,
           onKeyEvent: (_, event) {
@@ -6036,10 +5933,44 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
                                 )
                                 .toList(),
                           );
-                      setLocalState(() => selectedCommercial = picked);
+                      setLocalState(() {
+                        selectedCommercial = picked;
+                        if (!isCountedBaleCommercialCode(picked)) {
+                          unitCount = null;
+                        }
+                      });
                     },
                   ),
                   const SizedBox(height: 12),
+                  if (selectedCommercialIsBale) ...[
+                    const Padding(
+                      padding: EdgeInsets.only(left: 4, bottom: 6),
+                      child: Text(
+                        'Pacas contadas',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF4B6378),
+                        ),
+                      ),
+                    ),
+                    TextField(
+                      controller: unitCountController,
+                      keyboardType: TextInputType.number,
+                      onChanged: (value) {
+                        setLocalState(() {
+                          final parsed = int.tryParse(value.trim());
+                          unitCount = parsed == null || parsed <= 0
+                              ? null
+                              : parsed;
+                        });
+                      },
+                      decoration: _invGlassFieldDecoration(
+                        hintText: 'Numero de pacas',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   pickerField(
                     label: 'Origen',
                     valueText: showReason
@@ -6092,6 +6023,7 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
                   setLocalState(() {
                     selectedCommercial = null;
                     selectedReason = null;
+                    unitCount = null;
                   });
                 },
                 child: const Text('Limpiar'),
@@ -6111,6 +6043,7 @@ Future<_MovementExtrasResult?> _showMovementExtrasDialog(
     ),
   );
 
+  unitCountController.dispose();
   return result;
 }
 
@@ -6130,6 +6063,7 @@ class _MovementDraft {
   final String? vehicleId;
   final String? commercialMaterialCode;
   final String? movementReason;
+  final int? unitCount;
   final String scaleTicket;
   final String reference;
   final String notes;
@@ -6148,6 +6082,7 @@ class _MovementDraft {
     required this.vehicleId,
     required this.commercialMaterialCode,
     required this.movementReason,
+    required this.unitCount,
     required this.scaleTicket,
     required this.reference,
     required this.notes,
@@ -6167,6 +6102,7 @@ class _MovementDraft {
     Object? vehicleId = _unset,
     Object? commercialMaterialCode = _unset,
     Object? movementReason = _unset,
+    Object? unitCount = _unset,
     String? scaleTicket,
     String? reference,
     String? notes,
@@ -6201,6 +6137,9 @@ class _MovementDraft {
       movementReason: identical(movementReason, _unset)
           ? this.movementReason
           : movementReason as String?,
+      unitCount: identical(unitCount, _unset)
+          ? this.unitCount
+          : unitCount as int?,
       scaleTicket: scaleTicket ?? this.scaleTicket,
       reference: reference ?? this.reference,
       notes: notes ?? this.notes,
@@ -7067,21 +7006,9 @@ Future<bool?> _showConfirmDialog(
 }) {
   return showDialog<bool>(
     context: context,
-    builder: (dialogContext) => Focus(
-      autofocus: true,
-      onKeyEvent: (_, event) {
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.logicalKey == LogicalKeyboardKey.escape) {
-          Navigator.pop(dialogContext, false);
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.enter ||
-            event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-          Navigator.pop(dialogContext, true);
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
+    builder: (dialogContext) => ContractConfirmDialogKeyHandler(
+      onCancel: () => Navigator.pop(dialogContext, false),
+      onConfirm: () => Navigator.pop(dialogContext, true),
       child: AlertDialog(
         title: Text(title),
         content: Text(content),
@@ -7091,6 +7018,7 @@ Future<bool?> _showConfirmDialog(
             child: const Text('Cancelar'),
           ),
           FilledButton(
+            autofocus: true,
             onPressed: () => Navigator.pop(dialogContext, true),
             child: Text(confirmText),
           ),
@@ -7851,33 +7779,12 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     }
   }
 
-  Future<String?> _writeDownloadsFile(String fileName, String content) async {
-    final env = Platform.environment;
-    final dirs = <Directory>[];
-    if (Platform.isWindows) {
-      final userProfile = env['USERPROFILE'];
-      if (userProfile != null && userProfile.isNotEmpty) {
-        dirs.add(Directory('$userProfile\\Downloads'));
-      }
-    } else {
-      final home = env['HOME'];
-      if (home != null && home.isNotEmpty) {
-        dirs.add(Directory('$home/Downloads'));
-        dirs.add(Directory('$home/Descargas'));
-      }
-    }
-    for (final dir in dirs) {
-      try {
-        if (!dir.existsSync()) {
-          dir.createSync(recursive: true);
-        }
-        final file = File('${dir.path}/$fileName');
-        await file.writeAsString(content, encoding: utf8);
-        return file.path;
-      } catch (_) {}
-    }
-    return null;
-  }
+  Future<String?> _writeDownloadsFile(String fileName, String content) =>
+      saveCsvFile(
+        fileName: fileName,
+        content: content,
+        dialogTitle: 'Guardar CSV de produccion',
+      );
 
   String _csvEscape(dynamic value) {
     if (value == null) return '';
@@ -9488,12 +9395,10 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
               },
               child: SizedBox(
                 width: constraints.maxWidth,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: _prodTableContentWFor(constraints.maxWidth),
-                    child: Row(
-                      children: [
+                child: ContractGridScaledRow(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                         frame(
                           0,
                           SizedBox(
@@ -9688,107 +9593,93 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
                         const SizedBox(width: 10),
                         frame(
                           7,
-                          SizedBox(
+                          AnchoredActionSlot(
                             width: _kProdActionsW,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 6,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.42),
-                                    borderRadius: BorderRadius.circular(999),
-                                  ),
-                                  child: Text(
-                                    '${_fmtInvCount(produced.toDouble(), decimals: 1)} kg',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w800,
-                                    ),
-                                  ),
+                            trailingWidth: 34,
+                            gap: 6,
+                            leading: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                                vertical: 6,
+                              ),
+                              decoration: BoxDecoration(
+                                color: Colors.white.withValues(alpha: 0.42),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                              child: Text(
+                                '${_fmtInvCount(produced.toDouble(), decimals: 1)} kg',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w800,
                                 ),
-                                const SizedBox(width: 6),
-                                Tooltip(
-                                  message: 'AGREGAR',
-                                  child: MouseRegion(
-                                    onEnter: (_) => setState(
-                                      () => _hoverInsertAddButton = true,
-                                    ),
-                                    onExit: (_) => setState(
-                                      () => _hoverInsertAddButton = false,
-                                    ),
-                                    child: InkWell(
+                              ),
+                            ),
+                            trailing: Tooltip(
+                              message: 'AGREGAR',
+                              child: MouseRegion(
+                                onEnter: (_) => setState(
+                                  () => _hoverInsertAddButton = true,
+                                ),
+                                onExit: (_) => setState(
+                                  () => _hoverInsertAddButton = false,
+                                ),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: _inserting ? null : _insertDraft,
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 120),
+                                    curve: Curves.easeOutCubic,
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: _inserting
+                                          ? Colors.white.withValues(alpha: 0.35)
+                                          : const Color(
+                                              0xFF19C37D,
+                                            ).withValues(alpha: 0.92),
                                       borderRadius: BorderRadius.circular(10),
-                                      onTap: _inserting ? null : _insertDraft,
-                                      child: AnimatedContainer(
-                                        duration: const Duration(
-                                          milliseconds: 120,
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.52,
                                         ),
-                                        curve: Curves.easeOutCubic,
-                                        width: 34,
-                                        height: 34,
-                                        decoration: BoxDecoration(
-                                          color: _inserting
-                                              ? Colors.white.withValues(
-                                                  alpha: 0.35,
-                                                )
-                                              : const Color(
-                                                  0xFF19C37D,
-                                                ).withValues(alpha: 0.92),
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.52,
-                                            ),
-                                          ),
-                                          boxShadow:
-                                              _hoverInsertAddButton &&
-                                                  !_inserting
-                                              ? [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                          alpha: 0.20,
-                                                        ),
-                                                    blurRadius: 16,
-                                                    offset: const Offset(0, 8),
-                                                  ),
-                                                ]
-                                              : [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                          alpha: 0.10,
-                                                        ),
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 4),
-                                                  ),
-                                                ],
-                                        ),
-                                        child: _inserting
-                                            ? const Padding(
-                                                padding: EdgeInsets.all(8),
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      color: Colors.white,
-                                                    ),
-                                              )
-                                            : const Icon(
-                                                Icons.add,
-                                                size: 18,
-                                                color: Colors.white,
-                                              ),
                                       ),
+                                      boxShadow:
+                                          _hoverInsertAddButton && !_inserting
+                                          ? [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.20,
+                                                ),
+                                                blurRadius: 16,
+                                                offset: const Offset(0, 8),
+                                              ),
+                                            ]
+                                          : [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.10,
+                                                ),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ],
                                     ),
+                                    child: _inserting
+                                        ? const Padding(
+                                            padding: EdgeInsets.all(8),
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.add,
+                                            size: 18,
+                                            color: Colors.white,
+                                          ),
                                   ),
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
@@ -9887,16 +9778,13 @@ class _ProductionHeaderRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final contentW = _prodTableContentWFor(constraints.maxWidth);
             final commentW = _prodCommentColW(constraints.maxWidth);
             return SizedBox(
               width: constraints.maxWidth,
-              child: SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: SizedBox(
-                  width: contentW,
-                  child: Row(
-                    children: [
+              child: ContractGridScaledRow(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                       _InvHCell(
                         'FECHA',
                         _kProdDateColW,
@@ -9949,10 +9837,13 @@ class _ProductionHeaderRow extends StatelessWidget {
                           onFilter: () => onOpenFilter('notes', 'COMENTARIO'),
                         ),
                       ),
-                      const SizedBox(width: 10),
-                      const SizedBox(width: _kProdActionsW),
-                    ],
-                  ),
+                    const SizedBox(width: 10),
+                    const AnchoredActionSlot(
+                      width: _kProdActionsW,
+                      trailingWidth: 32,
+                      leading: SizedBox.shrink(),
+                    ),
+                  ],
                 ),
               ),
             );
@@ -10331,63 +10222,11 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
     Widget frame(int col, Widget child) {
       final active =
           _editing && widget.isSelected && widget.activeGridColumn == col;
-      return DecoratedBox(
-        position: DecorationPosition.background,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: !_editing && _hoveredEditableColumn == col
-              ? LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    (hasSelection
-                            ? const Color(0xFFD9E8F6)
-                            : const Color(0xFFE5F2EC))
-                        .withValues(alpha: 0.78),
-                    (hasSelection
-                            ? const Color(0xFFCCE0F2)
-                            : const Color(0xFFD4E7DE))
-                        .withValues(alpha: 0.64),
-                  ],
-                )
-              : null,
-          color: active
-              ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
-              : Colors.transparent,
-          border: Border.all(
-            color: active
-                ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
-                : Colors.transparent,
-            width: active ? 1.05 : 1.0,
-          ),
-          boxShadow: !_editing && _hoveredEditableColumn == col
-              ? [
-                  BoxShadow(
-                    color:
-                        (hasSelection
-                                ? const Color(0xFF6A8FAE)
-                                : const Color(0xFF6C8F84))
-                            .withValues(alpha: 0.18),
-                    blurRadius: 2.2,
-                    spreadRadius: -3.0,
-                    offset: const Offset(0, 0.8),
-                  ),
-                ]
-              : null,
-        ),
-        child: DecoratedBox(
-          position: DecorationPosition.foreground,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: active
-                  ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
-                  : Colors.transparent,
-              width: active ? 1.05 : 1.0,
-            ),
-          ),
-          child: child,
-        ),
+      return ContractEditableHoverCapsule(
+        hovered: !_editing && _hoveredEditableColumn == col,
+        active: active,
+        selectedContext: hasSelection,
+        child: child,
       );
     }
 
@@ -10422,19 +10261,26 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
       bool showDivider = true,
       EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: 4),
     }) {
+      final softenDividers =
+          _hoveredEditableColumn != null || (_editing && widget.isSelected);
       return Padding(
         padding: padding,
         child: Row(
           children: [
             Expanded(child: child),
             if (showDivider)
-              Container(
-                width: 1,
-                height: 30,
-                margin: const EdgeInsets.only(left: 8, right: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
-                  borderRadius: BorderRadius.circular(999),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 110),
+                curve: Curves.easeOutCubic,
+                opacity: softenDividers ? 0.0 : 1.0,
+                child: Container(
+                  width: 1,
+                  height: 30,
+                  margin: const EdgeInsets.only(left: 8, right: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
               ),
           ],
@@ -10498,12 +10344,10 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                     final commentW = _prodCommentColW(constraints.maxWidth);
                     return SizedBox(
                       width: constraints.maxWidth,
-                      child: SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: SizedBox(
-                          width: _prodTableContentWFor(constraints.maxWidth),
-                          child: Row(
-                            children: [
+                      child: ContractGridScaledRow(
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                               frame(
                                 0,
                                 SizedBox(
@@ -10734,107 +10578,96 @@ class _ProductionDataRowState extends State<_ProductionDataRow> {
                               const SizedBox(width: 10),
                               frame(
                                 7,
-                                SizedBox(
+                                AnchoredActionSlot(
                                   width: _kProdActionsW,
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 10,
-                                          vertical: 6,
-                                        ),
-                                        decoration: BoxDecoration(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.42,
-                                          ),
-                                          borderRadius: BorderRadius.circular(
-                                            999,
-                                          ),
-                                        ),
-                                        child: Text(
-                                          '${_fmtInvCount(producedWeight.toDouble(), decimals: 1)} kg',
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
+                                  trailingWidth: 32,
+                                  gap: 4,
+                                  leading: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.42,
                                       ),
-                                      const SizedBox(width: 4),
-                                      Tooltip(
-                                        message: 'Acciones',
-                                        child: MouseRegion(
-                                          onEnter: (_) => setState(
-                                            () => _hoverActionsButton = true,
+                                      borderRadius: BorderRadius.circular(999),
+                                    ),
+                                    child: Text(
+                                      '${_fmtInvCount(producedWeight.toDouble(), decimals: 1)} kg',
+                                      style: const TextStyle(
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                  trailing: Tooltip(
+                                    message: 'Acciones',
+                                    child: MouseRegion(
+                                      onEnter: (_) => setState(
+                                        () => _hoverActionsButton = true,
+                                      ),
+                                      onExit: (_) => setState(
+                                        () => _hoverActionsButton = false,
+                                      ),
+                                      child: GestureDetector(
+                                        behavior: HitTestBehavior.opaque,
+                                        onTapDown: (details) {
+                                          if (!hasSelection) {
+                                            widget.onSelect(false);
+                                          }
+                                          widget.onOpenContextMenu(
+                                            details.globalPosition,
+                                          );
+                                        },
+                                        child: AnimatedContainer(
+                                          duration: const Duration(
+                                            milliseconds: 120,
                                           ),
-                                          onExit: (_) => setState(
-                                            () => _hoverActionsButton = false,
-                                          ),
-                                          child: GestureDetector(
-                                            behavior: HitTestBehavior.opaque,
-                                            onTapDown: (details) {
-                                              if (!hasSelection) {
-                                                widget.onSelect(false);
-                                              }
-                                              widget.onOpenContextMenu(
-                                                details.globalPosition,
-                                              );
-                                            },
-                                            child: AnimatedContainer(
-                                              duration: const Duration(
-                                                milliseconds: 120,
-                                              ),
-                                              curve: Curves.easeOutCubic,
-                                              width: 32,
-                                              height: 32,
-                                              decoration: BoxDecoration(
-                                                color: _hoverActionsButton
-                                                    ? Colors.white.withValues(
-                                                        alpha: 0.62,
-                                                      )
-                                                    : Colors.white.withValues(
-                                                        alpha: 0.42,
-                                                      ),
-                                                borderRadius:
-                                                    BorderRadius.circular(999),
-                                                border: Border.all(
-                                                  color: Colors.white
-                                                      .withValues(alpha: 0.72),
-                                                ),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                          alpha:
-                                                              _hoverActionsButton
-                                                              ? 0.15
-                                                              : 0.08,
-                                                        ),
-                                                    blurRadius:
-                                                        _hoverActionsButton
-                                                        ? 14
-                                                        : 8,
-                                                    offset: Offset(
-                                                      0,
-                                                      _hoverActionsButton
-                                                          ? 7
-                                                          : 4,
-                                                    ),
+                                          curve: Curves.easeOutCubic,
+                                          width: 32,
+                                          height: 32,
+                                          decoration: BoxDecoration(
+                                            color: _hoverActionsButton
+                                                ? Colors.white.withValues(
+                                                    alpha: 0.62,
+                                                  )
+                                                : Colors.white.withValues(
+                                                    alpha: 0.42,
                                                   ),
-                                                ],
-                                              ),
-                                              child: Icon(
-                                                Icons.more_horiz,
-                                                size: 20,
-                                                color: multiContext
-                                                    ? const Color(0xFF2D5478)
-                                                    : const Color(0xFF20364E),
+                                            borderRadius:
+                                                BorderRadius.circular(999),
+                                            border: Border.all(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.72,
                                               ),
                                             ),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: _hoverActionsButton
+                                                      ? 0.15
+                                                      : 0.08,
+                                                ),
+                                                blurRadius:
+                                                    _hoverActionsButton ? 14 : 8,
+                                                offset: Offset(
+                                                  0,
+                                                  _hoverActionsButton ? 7 : 4,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                          child: Icon(
+                                            Icons.more_horiz,
+                                            size: 20,
+                                            color: multiContext
+                                                ? const Color(0xFF2D5478)
+                                                : const Color(0xFF20364E),
                                           ),
                                         ),
                                       ),
-                                    ],
+                                    ),
                                   ),
                                 ),
                               ),
@@ -11412,24 +11245,12 @@ class _InventoryMaterialSeparationGridState
     }
   }
 
-  Future<String?> _writeDownloadsFile(String fileName, String content) async {
-    final env = Platform.environment;
-    final dirs = <Directory>[];
-    final home = env['HOME'];
-    if (home != null && home.isNotEmpty) {
-      dirs.add(Directory('$home/Downloads'));
-      dirs.add(Directory('$home/Descargas'));
-    }
-    for (final dir in dirs) {
-      try {
-        if (!dir.existsSync()) dir.createSync(recursive: true);
-        final file = File('${dir.path}/$fileName');
-        await file.writeAsString(content, encoding: utf8);
-        return file.path;
-      } catch (_) {}
-    }
-    return null;
-  }
+  Future<String?> _writeDownloadsFile(String fileName, String content) =>
+      saveCsvFile(
+        fileName: fileName,
+        content: content,
+        dialogTitle: 'Guardar CSV de separacion',
+      );
 
   String _csvEscape(dynamic value) {
     if (value == null) return '';
@@ -12404,12 +12225,10 @@ class _InventoryMaterialSeparationGridState
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: SizedBox(
                 width: constraints.maxWidth,
-                child: SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: _sepTableContentWFor(constraints.maxWidth),
-                    child: Row(
-                      children: [
+                child: ContractGridScaledRow(
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                         frame(
                           0,
                           SizedBox(
@@ -12580,119 +12399,99 @@ class _InventoryMaterialSeparationGridState
                         const SizedBox(width: 10),
                         frame(
                           6,
-                          SizedBox(
+                          AnchoredActionSlot(
                             width: _kSepActionsColW,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                Expanded(
-                                  child: Align(
-                                    alignment: Alignment.centerRight,
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 6,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.42,
-                                        ),
-                                        borderRadius: BorderRadius.circular(
-                                          999,
-                                        ),
-                                      ),
-                                      child: FittedBox(
-                                        fit: BoxFit.scaleDown,
-                                        child: Text(
-                                          '${_fmtInvCount(draftKg, decimals: 1)} kg',
-                                          style: const TextStyle(
-                                            fontSize: 11,
-                                            fontWeight: FontWeight.w800,
-                                          ),
-                                        ),
-                                      ),
+                            trailingWidth: 34,
+                            gap: 4,
+                            leading: Align(
+                              alignment: Alignment.centerRight,
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.42),
+                                  borderRadius: BorderRadius.circular(999),
+                                ),
+                                child: FittedBox(
+                                  fit: BoxFit.scaleDown,
+                                  child: Text(
+                                    '${_fmtInvCount(draftKg, decimals: 1)} kg',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
                                     ),
                                   ),
                                 ),
-                                const SizedBox(width: 4),
-                                Tooltip(
-                                  message: 'AGREGAR',
-                                  child: MouseRegion(
-                                    onEnter: (_) => setState(
-                                      () => _hoverInsertAddButton = true,
-                                    ),
-                                    onExit: (_) => setState(
-                                      () => _hoverInsertAddButton = false,
-                                    ),
-                                    child: InkWell(
+                              ),
+                            ),
+                            trailing: Tooltip(
+                              message: 'AGREGAR',
+                              child: MouseRegion(
+                                onEnter: (_) => setState(
+                                  () => _hoverInsertAddButton = true,
+                                ),
+                                onExit: (_) => setState(
+                                  () => _hoverInsertAddButton = false,
+                                ),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: _inserting ? null : _insertDraft,
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 120),
+                                    curve: Curves.easeOutCubic,
+                                    width: 34,
+                                    height: 34,
+                                    decoration: BoxDecoration(
+                                      color: _inserting
+                                          ? Colors.white.withValues(alpha: 0.35)
+                                          : const Color(
+                                              0xFF19C37D,
+                                            ).withValues(alpha: 0.92),
                                       borderRadius: BorderRadius.circular(10),
-                                      onTap: _inserting ? null : _insertDraft,
-                                      child: AnimatedContainer(
-                                        duration: const Duration(
-                                          milliseconds: 120,
+                                      border: Border.all(
+                                        color: Colors.white.withValues(
+                                          alpha: 0.52,
                                         ),
-                                        curve: Curves.easeOutCubic,
-                                        width: 34,
-                                        height: 34,
-                                        decoration: BoxDecoration(
-                                          color: _inserting
-                                              ? Colors.white.withValues(
-                                                  alpha: 0.35,
-                                                )
-                                              : const Color(
-                                                  0xFF19C37D,
-                                                ).withValues(alpha: 0.92),
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.52,
-                                            ),
-                                          ),
-                                          boxShadow:
-                                              _hoverInsertAddButton &&
-                                                  !_inserting
-                                              ? [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                          alpha: 0.20,
-                                                        ),
-                                                    blurRadius: 16,
-                                                    offset: const Offset(0, 8),
-                                                  ),
-                                                ]
-                                              : [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                          alpha: 0.10,
-                                                        ),
-                                                    blurRadius: 8,
-                                                    offset: const Offset(0, 4),
-                                                  ),
-                                                ],
-                                        ),
-                                        child: _inserting
-                                            ? const Padding(
-                                                padding: EdgeInsets.all(8),
-                                                child:
-                                                    CircularProgressIndicator(
-                                                      strokeWidth: 2,
-                                                      color: Colors.white,
-                                                    ),
-                                              )
-                                            : const Icon(
-                                                Icons.add,
-                                                size: 18,
-                                                color: Colors.white,
-                                              ),
                                       ),
+                                      boxShadow:
+                                          _hoverInsertAddButton && !_inserting
+                                          ? [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.20,
+                                                ),
+                                                blurRadius: 16,
+                                                offset: const Offset(0, 8),
+                                              ),
+                                            ]
+                                          : [
+                                              BoxShadow(
+                                                color: Colors.black.withValues(
+                                                  alpha: 0.10,
+                                                ),
+                                                blurRadius: 8,
+                                                offset: const Offset(0, 4),
+                                              ),
+                                            ],
                                     ),
+                                    child: _inserting
+                                        ? const Padding(
+                                            padding: EdgeInsets.all(8),
+                                            child: CircularProgressIndicator(
+                                              strokeWidth: 2,
+                                              color: Colors.white,
+                                            ),
+                                          )
+                                        : const Icon(
+                                            Icons.add,
+                                            size: 18,
+                                            color: Colors.white,
+                                          ),
                                   ),
                                 ),
-                              ],
+                              ),
                             ),
                           ),
                         ),
@@ -12889,14 +12688,12 @@ class _SeparationHeaderRow extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(14),
           ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: SizedBox(
-                width: _sepTableContentWFor(constraints.maxWidth),
-                child: Row(
-                  children: [
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: ContractGridScaledRow(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
                     _InvHCell(
                       'FECHA',
                       _kSepDateColW,
@@ -12943,7 +12740,11 @@ class _SeparationHeaderRow extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 10),
-                    const SizedBox(width: _kSepActionsColW),
+                    const AnchoredActionSlot(
+                      width: _kSepActionsColW,
+                      trailingWidth: 32,
+                      leading: SizedBox.shrink(),
+                    ),
                   ],
                 ),
               ),
@@ -13282,35 +13083,10 @@ class _SeparationDataRowState extends State<_SeparationDataRow> {
     Widget frame(int col, Widget child) {
       final active =
           _editing && widget.isSelected && widget.activeGridColumn == col;
-      return DecoratedBox(
-        position: DecorationPosition.background,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(12),
-          gradient: !_editing && _hoveredEditableColumn == col
-              ? LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    (hasSelection
-                            ? const Color(0xFFD9E8F6)
-                            : const Color(0xFFE5F2EC))
-                        .withValues(alpha: 0.78),
-                    (hasSelection
-                            ? const Color(0xFFCCE0F2)
-                            : const Color(0xFFD4E7DE))
-                        .withValues(alpha: 0.64),
-                  ],
-                )
-              : null,
-          color: active
-              ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
-              : Colors.transparent,
-          border: Border.all(
-            color: active
-                ? const Color(0xFF0B72FF).withValues(alpha: 0.84)
-                : Colors.transparent,
-          ),
-        ),
+      return ContractEditableHoverCapsule(
+        hovered: !_editing && _hoveredEditableColumn == col,
+        active: active,
+        selectedContext: hasSelection,
         child: child,
       );
     }
@@ -13346,19 +13122,26 @@ class _SeparationDataRowState extends State<_SeparationDataRow> {
       bool showDivider = true,
       EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: 4),
     }) {
+      final softenDividers =
+          _hoveredEditableColumn != null || (_editing && widget.isSelected);
       return Padding(
         padding: padding,
         child: Row(
           children: [
             Expanded(child: child),
             if (showDivider)
-              Container(
-                width: 1,
-                height: 30,
-                margin: const EdgeInsets.only(left: 8, right: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
-                  borderRadius: BorderRadius.circular(999),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 110),
+                curve: Curves.easeOutCubic,
+                opacity: softenDividers ? 0.0 : 1.0,
+                child: Container(
+                  width: 1,
+                  height: 30,
+                  margin: const EdgeInsets.only(left: 8, right: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
               ),
           ],
@@ -13403,12 +13186,10 @@ class _SeparationDataRowState extends State<_SeparationDataRow> {
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               child: LayoutBuilder(
                 builder: (context, constraints) {
-                  return SingleChildScrollView(
-                    scrollDirection: Axis.horizontal,
-                    child: SizedBox(
-                      width: _sepTableContentWFor(constraints.maxWidth),
-                      child: Row(
-                        children: [
+                  return ContractGridScaledRow(
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
                           frame(
                             0,
                             SizedBox(
@@ -13584,23 +13365,20 @@ class _SeparationDataRowState extends State<_SeparationDataRow> {
                             ),
                           ),
                           const SizedBox(width: 10),
-                          SizedBox(
+                          AnchoredActionSlot(
                             width: _kSepActionsColW,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                IconButton(
-                                  tooltip: _editing ? 'Guardar' : 'Editar',
-                                  onPressed: _editing
-                                      ? saveFromKeyboard
-                                      : () => _enterEditingFromPointer(0),
-                                  icon: Icon(
-                                    _editing
-                                        ? Icons.save_rounded
-                                        : Icons.more_horiz_rounded,
-                                  ),
-                                ),
-                              ],
+                            trailingWidth: 40,
+                            leading: const SizedBox.shrink(),
+                            trailing: IconButton(
+                              tooltip: _editing ? 'Guardar' : 'Editar',
+                              onPressed: _editing
+                                  ? saveFromKeyboard
+                                  : () => _enterEditingFromPointer(0),
+                              icon: Icon(
+                                _editing
+                                    ? Icons.save_rounded
+                                    : Icons.more_horiz_rounded,
+                              ),
                             ),
                           ),
                         ],

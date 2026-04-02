@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -17,16 +17,133 @@ import 'weighings_page.dart';
 import 'services_shell.dart'; // ajusta el path si lo guardaste en /ui/ o /app/
 import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart'
     as shared_picker;
+import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
+import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
+import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/page_routes.dart';
+import '../shared/utils/csv_file_save.dart';
 
-const double _kActionsW = 150; // prueba 150-170 si quieres más aire
+const double _kServiceDateColW = 90;
+const double _kServiceCompanyColW = 190;
+const double _kServiceMaterialColW = 190;
+const double _kServiceTypeColW = 130;
+const double _kServiceDriverColW = 190;
+const double _kServiceUnitColW = 140;
+const double _kServiceDueDateColW = 130;
+const double _kServiceCommentColW = 230;
+const double _kServiceActionsGapW = 10;
+const double _kServiceActionsW = 168;
+const double _kServiceHeaderActionSlotW = 34;
+const double _kServiceRowActionButtonW = 32;
+const double _kServiceInsertActionButtonW = 34;
+const double _kServiceActionInnerGapW = 6;
 
 const Color _kGlassMenuBg = Color(0xE6EAF2F9);
 const Color _kFilterAccent = Color(0xFF4F8E8C);
 const Color _kFilterAccentSoft = Color(0xFFE2EEEC);
-const double _kCommentColW = 230;
-const double _kTableContentW =
-    90 + 190 + 190 + 130 + 190 + 140 + 130 + _kCommentColW + 10 + _kActionsW;
+const double _kServicesTableBaseContentW =
+    _kServiceDateColW +
+    _kServiceCompanyColW +
+    _kServiceMaterialColW +
+    _kServiceTypeColW +
+    _kServiceDriverColW +
+    _kServiceUnitColW +
+    _kServiceDueDateColW +
+    _kServiceCommentColW +
+    _kServiceActionsGapW +
+    _kServiceActionsW;
+
+class _ServicesTableLayout {
+  const _ServicesTableLayout({
+    required this.serviceDate,
+    required this.company,
+    required this.material,
+    required this.type,
+    required this.driver,
+    required this.unit,
+    required this.dueDate,
+    required this.comment,
+    required this.actionsGap,
+    required this.actions,
+    required this.scale,
+  });
+
+  final double serviceDate;
+  final double company;
+  final double material;
+  final double type;
+  final double driver;
+  final double unit;
+  final double dueDate;
+  final double comment;
+  final double actionsGap;
+  final double actions;
+  final double scale;
+
+  double get contentWidth =>
+      serviceDate +
+      company +
+      material +
+      type +
+      driver +
+      unit +
+      dueDate +
+      comment +
+      actionsGap +
+      actions;
+
+  double get headerActionSlotWidth =>
+      math.min(actions, _kServiceHeaderActionSlotW * scale);
+
+  double get rowActionButtonWidth =>
+      math.min(actions, _kServiceRowActionButtonW * scale);
+
+  double get insertActionButtonWidth =>
+      math.min(actions, _kServiceInsertActionButtonW * scale);
+
+  double get actionInnerGap =>
+      math.min(actions, _kServiceActionInnerGapW * scale);
+
+  double get headerStatusWidth => math.max(0, actions - headerActionSlotWidth);
+
+  double get rowStatusWidth =>
+      math.max(0, actions - rowActionButtonWidth - actionInnerGap);
+
+  double get insertStatusWidth =>
+      math.max(0, actions - insertActionButtonWidth - actionInnerGap);
+}
+
+_ServicesTableLayout _resolveServicesTableLayout(double availableWidth) {
+  if (!availableWidth.isFinite || availableWidth <= 0) {
+    return const _ServicesTableLayout(
+      serviceDate: _kServiceDateColW,
+      company: _kServiceCompanyColW,
+      material: _kServiceMaterialColW,
+      type: _kServiceTypeColW,
+      driver: _kServiceDriverColW,
+      unit: _kServiceUnitColW,
+      dueDate: _kServiceDueDateColW,
+      comment: _kServiceCommentColW,
+      actionsGap: _kServiceActionsGapW,
+      actions: _kServiceActionsW,
+      scale: 1,
+    );
+  }
+  final scale = math.min(1.0, availableWidth / _kServicesTableBaseContentW);
+  return _ServicesTableLayout(
+    serviceDate: _kServiceDateColW * scale,
+    company: _kServiceCompanyColW * scale,
+    material: _kServiceMaterialColW * scale,
+    type: _kServiceTypeColW * scale,
+    driver: _kServiceDriverColW * scale,
+    unit: _kServiceUnitColW * scale,
+    dueDate: _kServiceDueDateColW * scale,
+    comment: _kServiceCommentColW * scale,
+    actionsGap: _kServiceActionsGapW * scale,
+    actions: _kServiceActionsW * scale,
+    scale: scale,
+  );
+}
 
 class _FilterDialogResult {
   final Set<String> selectedValues;
@@ -593,6 +710,7 @@ class _TypeAheadDropdownField<T> extends StatefulWidget {
   final BorderRadius? borderRadius;
   final Color? dropdownColor;
   final List<Widget> Function(BuildContext)? selectedItemBuilder;
+  final Widget? icon;
 
   const _TypeAheadDropdownField({
     required this.value,
@@ -606,6 +724,7 @@ class _TypeAheadDropdownField<T> extends StatefulWidget {
     this.borderRadius,
     this.dropdownColor,
     this.selectedItemBuilder,
+    this.icon,
   });
 
   @override
@@ -625,6 +744,7 @@ class _TypeAheadDropdownFieldState<T>
       menuMaxHeight: widget.menuMaxHeight,
       borderRadius: widget.borderRadius,
       dropdownColor: widget.dropdownColor,
+      icon: widget.icon,
       decoration: widget.decoration,
       selectedItemBuilder: widget.selectedItemBuilder,
       items: widget.items,
@@ -739,31 +859,34 @@ Future<bool?> _showGlassConfirmDialog(
   return showDialog<bool>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
-    builder: (dialogContext) => Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 440),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(20),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.62),
-                borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.09),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
+    builder: (dialogContext) => ContractConfirmDialogKeyHandler(
+      onCancel: () => Navigator.pop(dialogContext, false),
+      onConfirm: () => Navigator.pop(dialogContext, true),
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 440),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(20),
+            child: BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.62),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.68),
                   ),
-                ],
-              ),
-              child: FocusScope(
-                autofocus: true,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.09),
+                      blurRadius: 20,
+                      offset: const Offset(0, 10),
+                    ),
+                  ],
+                ),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -1460,64 +1583,20 @@ class _ServicesPageState extends State<ServicesPage>
       final stamp =
           '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
       final fileName = 'services_backup_$stamp.csv';
-      final env = Platform.environment;
-      final targetDirs = <Directory>[];
-
-      if (Platform.isWindows) {
-        final userProfile = env['USERPROFILE'];
-        final homeDrive = env['HOMEDRIVE'];
-        final homePath = env['HOMEPATH'];
-        final oneDrive = env['OneDrive'];
-
-        if (userProfile != null && userProfile.isNotEmpty) {
-          targetDirs.add(Directory('$userProfile\\Downloads'));
-        }
-        if (oneDrive != null && oneDrive.isNotEmpty) {
-          targetDirs.add(Directory('$oneDrive\\Downloads'));
-        }
-        if (homeDrive != null &&
-            homeDrive.isNotEmpty &&
-            homePath != null &&
-            homePath.isNotEmpty) {
-          targetDirs.add(Directory('$homeDrive$homePath\\Downloads'));
-        }
-      } else {
-        final home = env['HOME'];
-        if (home != null && home.isNotEmpty) {
-          targetDirs.add(Directory('$home/Downloads'));
-          targetDirs.add(Directory('$home/Descargas'));
-        }
-      }
-
-      String? savedPath;
-      Object? lastWriteError;
-
-      for (final dir in targetDirs) {
-        try {
-          if (!dir.existsSync()) {
-            dir.createSync(recursive: true);
-          }
-          final file = File('${dir.path}/$fileName');
-          await file.writeAsString(sb.toString(), encoding: utf8);
-          savedPath = file.path;
-          break;
-        } catch (e) {
-          lastWriteError = e;
-        }
-      }
+      final savedPath = await saveCsvFile(
+        fileName: fileName,
+        content: sb.toString(),
+        dialogTitle: 'Guardar CSV de servicios',
+      );
 
       if (savedPath == null) {
-        _toast(
-          'No se pudo guardar en Descargas: ${lastWriteError ?? 'sin detalle'}',
-        );
+        _toast('Exportacion cancelada');
         return;
       }
 
       _toast('CSV exportado en: $savedPath');
     } on PostgrestException catch (e) {
       _toast('CSV no disponible (Supabase): ${e.message}');
-    } on FileSystemException catch (e) {
-      _toast('No se pudo guardar CSV: ${e.message}');
     } catch (e) {
       _toast('No se pudo exportar el CSV: $e');
     } finally {
@@ -2949,6 +3028,9 @@ class _ServicesPageState extends State<ServicesPage>
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: LayoutBuilder(
           builder: (context, constraints) {
+            final tableLayout = _resolveServicesTableLayout(
+              constraints.maxWidth,
+            );
             Widget insertCellFrame(int columnIndex, Widget child) {
               final active = _activeInsertColumn == columnIndex;
               return DecoratedBox(
@@ -3035,261 +3117,249 @@ class _ServicesPageState extends State<ServicesPage>
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
                   alignment: Alignment.centerLeft,
-                  child: SizedBox(
-                    width: _kTableContentW,
-                    child: Row(
-                      children: [
-                        insertCellFrame(
-                          0,
-                          SizedBox(
-                            width: 90,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () async {
-                                _setActiveInsertColumn(0);
-                                final d = await _pickInlineDate(
-                                  _draft.serviceDate,
-                                );
-                                if (!mounted || d == null) return;
-                                setState(
-                                  () =>
-                                      _draft = _draft.copyWith(serviceDate: d),
-                                );
-                              },
-                              onLongPress: () => setState(
-                                () =>
-                                    _draft = _draft.copyWith(serviceDate: null),
-                              ),
-                              child: InputDecorator(
-                                decoration: _glassFieldDecoration(),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: _FitText(
-                                        _draft.serviceDate == null
-                                            ? '—'
-                                            : _fmtUiDate(_draft.serviceDate!),
-                                      ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      insertCellFrame(
+                        0,
+                        SizedBox(
+                          width: tableLayout.serviceDate,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () async {
+                              _setActiveInsertColumn(0);
+                              final d = await _pickInlineDate(
+                                _draft.serviceDate,
+                              );
+                              if (!mounted || d == null) return;
+                              setState(
+                                () => _draft = _draft.copyWith(serviceDate: d),
+                              );
+                            },
+                            onLongPress: () => setState(
+                              () => _draft = _draft.copyWith(serviceDate: null),
+                            ),
+                            child: InputDecorator(
+                              decoration: _glassFieldDecoration(),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: _FitText(
+                                      _draft.serviceDate == null
+                                          ? '—'
+                                          : _fmtUiDate(_draft.serviceDate!),
                                     ),
-                                    const Icon(Icons.calendar_month, size: 16),
-                                  ],
-                                ),
+                                  ),
+                                  const Icon(Icons.calendar_month, size: 16),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                        insertCellFrame(
-                          1,
-                          SizedBox(
-                            width: 190,
-                            child: _DropOptInline(
-                              valueId: _draft.clientId,
-                              items: _clients,
-                              onTapStart: () => _setActiveInsertColumn(1),
-                              onChanged: (id) => setState(
-                                () => _draft = _draft.copyWith(clientId: id),
+                      ),
+                      insertCellFrame(
+                        1,
+                        SizedBox(
+                          width: tableLayout.company,
+                          child: _DropOptInline(
+                            valueId: _draft.clientId,
+                            items: _clients,
+                            onTapStart: () => _setActiveInsertColumn(1),
+                            onChanged: (id) => setState(
+                              () => _draft = _draft.copyWith(clientId: id),
+                            ),
+                          ),
+                        ),
+                      ),
+                      insertCellFrame(
+                        2,
+                        SizedBox(
+                          width: tableLayout.material,
+                          child: _DropOptInline(
+                            valueId: _draft.materialId,
+                            items: _materials,
+                            onTapStart: () => _setActiveInsertColumn(2),
+                            onChanged: (id) => setState(
+                              () => _draft = _draft.copyWith(materialId: id),
+                            ),
+                          ),
+                        ),
+                      ),
+                      insertCellFrame(
+                        3,
+                        SizedBox(
+                          width: tableLayout.type,
+                          child: _DropStrInline(
+                            value: _draft.direction,
+                            items: _directions,
+                            format: _uiLabel,
+                            onTapStart: () => _setActiveInsertColumn(3),
+                            onChanged: (v) => setState(
+                              () => _draft = _draft.copyWith(direction: v),
+                            ),
+                          ),
+                        ),
+                      ),
+                      insertCellFrame(
+                        4,
+                        SizedBox(
+                          width: tableLayout.driver,
+                          child: _DropOptInline(
+                            valueId: _draft.driverEmployeeId,
+                            items: _drivers,
+                            onTapStart: () => _setActiveInsertColumn(4),
+                            onChanged: (id) => setState(
+                              () => _draft = _draft.copyWith(
+                                driverEmployeeId: id,
                               ),
                             ),
                           ),
                         ),
-                        insertCellFrame(
-                          2,
-                          SizedBox(
-                            width: 190,
-                            child: _DropOptInline(
-                              valueId: _draft.materialId,
-                              items: _materials,
-                              onTapStart: () => _setActiveInsertColumn(2),
-                              onChanged: (id) => setState(
-                                () => _draft = _draft.copyWith(materialId: id),
-                              ),
+                      ),
+                      insertCellFrame(
+                        5,
+                        SizedBox(
+                          width: tableLayout.unit,
+                          child: _DropOptInline(
+                            valueId: _draft.vehicleId,
+                            items: _vehicles,
+                            onTapStart: () => _setActiveInsertColumn(5),
+                            onChanged: (id) => setState(
+                              () => _draft = _draft.copyWith(vehicleId: id),
                             ),
                           ),
                         ),
-                        insertCellFrame(
-                          3,
-                          SizedBox(
-                            width: 130,
-                            child: _DropStrInline(
-                              value: _draft.direction,
-                              items: _directions,
-                              format: _uiLabel,
-                              onTapStart: () => _setActiveInsertColumn(3),
-                              onChanged: (v) => setState(
-                                () => _draft = _draft.copyWith(direction: v),
-                              ),
+                      ),
+                      insertCellFrame(
+                        6,
+                        SizedBox(
+                          width: tableLayout.dueDate,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () async {
+                              _setActiveInsertColumn(6);
+                              final d = await _pickInlineDate(_draft.dueDate);
+                              if (!mounted || d == null) return;
+                              setState(
+                                () => _draft = _draft.copyWith(dueDate: d),
+                              );
+                            },
+                            onLongPress: () => setState(
+                              () => _draft = _draft.copyWith(dueDate: null),
                             ),
-                          ),
-                        ),
-                        insertCellFrame(
-                          4,
-                          SizedBox(
-                            width: 190,
-                            child: _DropOptInline(
-                              valueId: _draft.driverEmployeeId,
-                              items: _drivers,
-                              onTapStart: () => _setActiveInsertColumn(4),
-                              onChanged: (id) => setState(
-                                () => _draft = _draft.copyWith(
-                                  driverEmployeeId: id,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        insertCellFrame(
-                          5,
-                          SizedBox(
-                            width: 140,
-                            child: _DropOptInline(
-                              valueId: _draft.vehicleId,
-                              items: _vehicles,
-                              onTapStart: () => _setActiveInsertColumn(5),
-                              onChanged: (id) => setState(
-                                () => _draft = _draft.copyWith(vehicleId: id),
-                              ),
-                            ),
-                          ),
-                        ),
-                        insertCellFrame(
-                          6,
-                          SizedBox(
-                            width: 130,
-                            child: InkWell(
-                              borderRadius: BorderRadius.circular(12),
-                              onTap: () async {
-                                _setActiveInsertColumn(6);
-                                final d = await _pickInlineDate(_draft.dueDate);
-                                if (!mounted || d == null) return;
-                                setState(
-                                  () => _draft = _draft.copyWith(dueDate: d),
-                                );
-                              },
-                              onLongPress: () => setState(
-                                () => _draft = _draft.copyWith(dueDate: null),
-                              ),
-                              child: InputDecorator(
-                                decoration: _glassFieldDecoration(),
-                                child: Row(
-                                  children: [
-                                    Expanded(
-                                      child: _FitText(
-                                        _draft.dueDate == null
-                                            ? '—'
-                                            : _fmtUiDate(_draft.dueDate!),
-                                      ),
+                            child: InputDecorator(
+                              decoration: _glassFieldDecoration(),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: _FitText(
+                                      _draft.dueDate == null
+                                          ? '—'
+                                          : _fmtUiDate(_draft.dueDate!),
                                     ),
-                                    const Icon(Icons.calendar_today, size: 16),
-                                  ],
-                                ),
+                                  ),
+                                  const Icon(Icons.calendar_today, size: 16),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                        insertCellFrame(
-                          7,
-                          SizedBox(
-                            width: _kCommentColW,
-                            child: Focus(
-                              onKeyEvent: (_, event) {
-                                if (event is! KeyDownEvent) {
-                                  return KeyEventResult.ignored;
-                                }
-                                final key = event.logicalKey;
-                                if (key == LogicalKeyboardKey.arrowLeft &&
-                                    _isDraftCommentCaretAtStart) {
-                                  _moveInsertColumn(-1);
-                                  return KeyEventResult.handled;
-                                }
-                                if (key == LogicalKeyboardKey.arrowRight &&
-                                    _isDraftCommentCaretAtEnd) {
-                                  _moveInsertColumn(1);
-                                  return KeyEventResult.handled;
-                                }
-                                if (key == LogicalKeyboardKey.enter ||
-                                    key == LogicalKeyboardKey.numpadEnter) {
-                                  unawaited(_insertDraft());
-                                  return KeyEventResult.handled;
-                                }
+                      ),
+                      insertCellFrame(
+                        7,
+                        SizedBox(
+                          width: tableLayout.comment,
+                          child: Focus(
+                            onKeyEvent: (_, event) {
+                              if (event is! KeyDownEvent) {
                                 return KeyEventResult.ignored;
+                              }
+                              final key = event.logicalKey;
+                              if (key == LogicalKeyboardKey.arrowLeft &&
+                                  _isDraftCommentCaretAtStart) {
+                                _moveInsertColumn(-1);
+                                return KeyEventResult.handled;
+                              }
+                              if (key == LogicalKeyboardKey.arrowRight &&
+                                  _isDraftCommentCaretAtEnd) {
+                                _moveInsertColumn(1);
+                                return KeyEventResult.handled;
+                              }
+                              if (key == LogicalKeyboardKey.enter ||
+                                  key == LogicalKeyboardKey.numpadEnter) {
+                                unawaited(_insertDraft());
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.ignored;
+                            },
+                            child: TextField(
+                              controller: _draftNotesC,
+                              focusNode: _draftNotesFocusNode,
+                              decoration: _glassFieldDecoration(),
+                              onTap: () => _setActiveInsertColumn(
+                                7,
+                                requestFocus: false,
+                              ),
+                              onChanged: (t) => setState(
+                                () => _draft = _draft.copyWith(notes: t),
+                              ),
+                              onSubmitted: (_) {
+                                _insertDraft();
                               },
-                              child: TextField(
-                                controller: _draftNotesC,
-                                focusNode: _draftNotesFocusNode,
-                                decoration: _glassFieldDecoration(),
-                                onTap: () => _setActiveInsertColumn(
-                                  7,
-                                  requestFocus: false,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: tableLayout.actionsGap),
+                      insertCellFrame(
+                        8,
+                        AnchoredActionSlot(
+                          width: tableLayout.actions,
+                          trailingWidth: tableLayout.insertActionButtonWidth,
+                          gap: tableLayout.actionInnerGap,
+                          leading: _DropStrInline(
+                            value: _draft.status,
+                            items: _statuses,
+                            format: _uiLabel,
+                            compact: true,
+                            onTapStart: () => _setActiveInsertColumn(8),
+                            onChanged: (v) => setState(
+                              () => _draft = _draft.copyWith(status: v),
+                            ),
+                          ),
+                          trailing: insertCellFrame(
+                            9,
+                            Tooltip(
+                              message: 'AGREGAR',
+                              child: InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTap: _insertDraft,
+                                child: Container(
+                                  width: tableLayout.insertActionButtonWidth,
+                                  height: tableLayout.insertActionButtonWidth,
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFF19C37D,
+                                    ).withValues(alpha: 0.92),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.52,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Icon(
+                                    Icons.add,
+                                    size: 18,
+                                    color: Colors.white,
+                                  ),
                                 ),
-                                onChanged: (t) => setState(
-                                  () => _draft = _draft.copyWith(notes: t),
-                                ),
-                                onSubmitted: (_) {
-                                  _insertDraft();
-                                },
                               ),
                             ),
                           ),
                         ),
-                        const SizedBox(width: 10),
-                        insertCellFrame(
-                          8,
-                          SizedBox(
-                            width: _kActionsW,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                SizedBox(
-                                  width: _kActionsW - 50,
-                                  child: _DropStrInline(
-                                    value: _draft.status,
-                                    items: _statuses,
-                                    format: _uiLabel,
-                                    onTapStart: () => _setActiveInsertColumn(8),
-                                    onChanged: (v) => setState(
-                                      () => _draft = _draft.copyWith(status: v),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                insertCellFrame(
-                                  9,
-                                  Tooltip(
-                                    message: 'AGREGAR',
-                                    child: InkWell(
-                                      borderRadius: BorderRadius.circular(10),
-                                      onTap: _insertDraft,
-                                      child: Container(
-                                        width: 34,
-                                        height: 34,
-                                        decoration: BoxDecoration(
-                                          color: const Color(
-                                            0xFF19C37D,
-                                          ).withValues(alpha: 0.92),
-                                          borderRadius: BorderRadius.circular(
-                                            10,
-                                          ),
-                                          border: Border.all(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.52,
-                                            ),
-                                          ),
-                                        ),
-                                        child: Icon(
-                                          Icons.add,
-                                          size: 18,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -3876,94 +3946,88 @@ class _HeaderRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: LayoutBuilder(
           builder: (context, constraints) {
+            final resolvedLayout = _resolveServicesTableLayout(
+              constraints.maxWidth,
+            );
             return SizedBox(
               width: constraints.maxWidth,
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
-                child: SizedBox(
-                  width: _kTableContentW,
-                  child: Row(
-                    children: [
-                      _HCell(
-                        'FECHA',
-                        90,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _HCell(
+                      'FECHA',
+                      resolvedLayout.serviceDate,
+                      s,
+                      active: hasActiveFilter('fecha'),
+                      onFilter: () => onOpenFilter('fecha', 'FECHA'),
+                    ),
+                    _HCell(
+                      'EMPRESA',
+                      resolvedLayout.company,
+                      s,
+                      active: hasActiveFilter('empresa'),
+                      onFilter: () => onOpenFilter('empresa', 'EMPRESA'),
+                    ),
+                    _HCell(
+                      'MATERIAL',
+                      resolvedLayout.material,
+                      s,
+                      active: hasActiveFilter('material'),
+                      onFilter: () => onOpenFilter('material', 'MATERIAL'),
+                    ),
+                    _HCell(
+                      'TIPO',
+                      resolvedLayout.type,
+                      s,
+                      active: hasActiveFilter('tipo'),
+                      onFilter: () => onOpenFilter('tipo', 'TIPO'),
+                    ),
+                    _HCell(
+                      'CHOFER',
+                      resolvedLayout.driver,
+                      s,
+                      active: hasActiveFilter('chofer'),
+                      onFilter: () => onOpenFilter('chofer', 'CHOFER'),
+                    ),
+                    _HCell(
+                      'UNIDAD',
+                      resolvedLayout.unit,
+                      s,
+                      active: hasActiveFilter('unidad'),
+                      onFilter: () => onOpenFilter('unidad', 'UNIDAD'),
+                    ),
+                    _HCell(
+                      'PARA EL DÍA',
+                      resolvedLayout.dueDate,
+                      s,
+                      active: hasActiveFilter('para_dia'),
+                      onFilter: () => onOpenFilter('para_dia', 'PARA EL DÍA'),
+                    ),
+                    SizedBox(
+                      width: resolvedLayout.comment,
+                      child: _HCellExpand(
+                        'COMENTARIO',
                         s,
-                        active: hasActiveFilter('fecha'),
-                        onFilter: () => onOpenFilter('fecha', 'FECHA'),
+                        active: hasActiveFilter('comentario'),
+                        onFilter: () =>
+                            onOpenFilter('comentario', 'COMENTARIO'),
                       ),
-                      _HCell(
-                        'EMPRESA',
-                        190,
+                    ),
+                    SizedBox(width: resolvedLayout.actionsGap),
+                    AnchoredActionSlot(
+                      width: resolvedLayout.actions,
+                      trailingWidth: resolvedLayout.headerActionSlotWidth,
+                      leading: _HCellExpand(
+                        'ESTADO',
                         s,
-                        active: hasActiveFilter('empresa'),
-                        onFilter: () => onOpenFilter('empresa', 'EMPRESA'),
+                        active: hasActiveFilter('estado'),
+                        onFilter: () => onOpenFilter('estado', 'ESTADO'),
                       ),
-                      _HCell(
-                        'MATERIAL',
-                        190,
-                        s,
-                        active: hasActiveFilter('material'),
-                        onFilter: () => onOpenFilter('material', 'MATERIAL'),
-                      ),
-                      _HCell(
-                        'TIPO',
-                        130,
-                        s,
-                        active: hasActiveFilter('tipo'),
-                        onFilter: () => onOpenFilter('tipo', 'TIPO'),
-                      ),
-                      _HCell(
-                        'CHOFER',
-                        190,
-                        s,
-                        active: hasActiveFilter('chofer'),
-                        onFilter: () => onOpenFilter('chofer', 'CHOFER'),
-                      ),
-                      _HCell(
-                        'UNIDAD',
-                        140,
-                        s,
-                        active: hasActiveFilter('unidad'),
-                        onFilter: () => onOpenFilter('unidad', 'UNIDAD'),
-                      ),
-                      _HCell(
-                        'PARA EL DÍA',
-                        130,
-                        s,
-                        active: hasActiveFilter('para_dia'),
-                        onFilter: () => onOpenFilter('para_dia', 'PARA EL DÍA'),
-                      ),
-                      SizedBox(
-                        width: _kCommentColW,
-                        child: _HCellExpand(
-                          'COMENTARIO',
-                          s,
-                          active: hasActiveFilter('comentario'),
-                          onFilter: () =>
-                              onOpenFilter('comentario', 'COMENTARIO'),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        width: _kActionsW,
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: _HCellExpand(
-                                'ESTADO',
-                                s,
-                                active: hasActiveFilter('estado'),
-                                onFilter: () =>
-                                    onOpenFilter('estado', 'ESTADO'),
-                              ),
-                            ),
-                            const SizedBox(width: 34),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             );
@@ -4417,16 +4481,10 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
           _editing &&
           widget.isSelected &&
           widget.activeGridColumn == columnIndex;
-      if (!active) return child;
-      return DecoratedBox(
-        position: DecorationPosition.foreground,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: const Color(0xFF0B72FF).withValues(alpha: 0.85),
-            width: 1.2,
-          ),
-        ),
+      return ContractEditableHoverCapsule(
+        hovered: !_editing && _hoveredEditableColumn == columnIndex,
+        active: active,
+        selectedContext: hasSelection,
         child: child,
       );
     }
@@ -4457,13 +4515,6 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
     }
 
     Widget previewEditableCell({required int col, required Widget child}) {
-      final hovered = !_editing && _hoveredEditableColumn == col;
-      final top = hasSelection
-          ? const Color(0xFFD9EBFB).withValues(alpha: 0.64)
-          : const Color(0xFFEAF3FF).withValues(alpha: 0.92);
-      final bottom = hasSelection
-          ? const Color(0xFFCCE5FA).withValues(alpha: 0.42)
-          : const Color(0xFFDCEBFF).withValues(alpha: 0.72);
       return MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) {
@@ -4477,39 +4528,16 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
             setState(() => _hoveredEditableColumn = null);
           }
         },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 80),
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            gradient: hovered
-                ? LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [top, bottom],
-                  )
-                : null,
-            boxShadow: hovered
-                ? [
-                    BoxShadow(
-                      color: const Color(0xFF78B6F2).withValues(alpha: 0.20),
-                      blurRadius: 9,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : const [],
-          ),
-          child: Listener(
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (event) {
+            if (event.buttons != kPrimaryMouseButton) return;
+            previewEditableCellTap(col);
+          },
+          child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onPointerDown: (event) {
-              if (event.buttons != kPrimaryMouseButton) return;
-              previewEditableCellTap(col);
-            },
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onDoubleTap: () => enterEditingFromPointer(col),
-              child: child,
-            ),
+            onDoubleTap: () => enterEditingFromPointer(col),
+            child: child,
           ),
         ),
       );
@@ -4520,19 +4548,26 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
       bool showDivider = true,
       EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: 4),
     }) {
+      final softenDividers =
+          _hoveredEditableColumn != null || (_editing && widget.isSelected);
       return Padding(
         padding: padding,
         child: Row(
           children: [
             Expanded(child: child),
             if (showDivider)
-              Container(
-                width: 1,
-                height: 30,
-                margin: const EdgeInsets.only(left: 8, right: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
-                  borderRadius: BorderRadius.circular(999),
+              AnimatedOpacity(
+                duration: const Duration(milliseconds: 110),
+                curve: Curves.easeOutCubic,
+                opacity: softenDividers ? 0.0 : 1.0,
+                child: Container(
+                  width: 1,
+                  height: 30,
+                  margin: const EdgeInsets.only(left: 8, right: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
               ),
           ],
@@ -4585,427 +4620,411 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                 ),
                 child: LayoutBuilder(
                   builder: (context, constraints) {
+                    final tableLayout = _resolveServicesTableLayout(
+                      constraints.maxWidth,
+                    );
                     return SizedBox(
                       width: constraints.maxWidth,
                       child: FittedBox(
                         fit: BoxFit.scaleDown,
                         alignment: Alignment.centerLeft,
-                        child: SizedBox(
-                          width: _kTableContentW,
-                          child: Row(
-                            children: [
-                              // FECHA
-                              gridCellFrame(
-                                0,
-                                SizedBox(
-                                  width: 90,
-                                  child: _editing
-                                      ? InkWell(
-                                          onTap: () {
-                                            widget.onActivateColumn(0);
-                                            _pickServiceDate();
-                                          },
-                                          child: _CellBox(
-                                            text: widget.fmtDateUi(
-                                              _serviceDate,
-                                            ),
-                                            icon: Icons.calendar_month,
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 0,
-                                          child: readonlyCell(
-                                            child: _FitText(
-                                              widget.fmtDateUi(_serviceDate),
-                                              style: const TextStyle(
-                                                fontWeight: FontWeight.w600,
-                                              ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            // FECHA
+                            gridCellFrame(
+                              0,
+                              SizedBox(
+                                width: tableLayout.serviceDate,
+                                child: _editing
+                                    ? InkWell(
+                                        onTap: () {
+                                          widget.onActivateColumn(0);
+                                          _pickServiceDate();
+                                        },
+                                        child: _CellBox(
+                                          text: widget.fmtDateUi(_serviceDate),
+                                          icon: Icons.calendar_month,
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 0,
+                                        child: readonlyCell(
+                                          child: _FitText(
+                                            widget.fmtDateUi(_serviceDate),
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.w600,
                                             ),
                                           ),
                                         ),
-                                ),
+                                      ),
                               ),
+                            ),
 
-                              // EMPRESA
-                              gridCellFrame(
-                                1,
-                                SizedBox(
-                                  width: 190,
-                                  child: _editing
-                                      ? _DropOptInline(
-                                          valueId: _clientId,
-                                          items: widget.clients,
-                                          onTapStart: () =>
-                                              widget.onActivateColumn(1),
-                                          onChanged: (v) =>
-                                              setState(() => _clientId = v),
-                                        )
-                                      : previewEditableCell(
-                                          col: 1,
-                                          child: readonlyCell(
-                                            child: _FitText(
-                                              _labelOf(
-                                                    widget.clients,
-                                                    _clientId,
-                                                  ) ??
-                                                  '—',
-                                            ),
+                            // EMPRESA
+                            gridCellFrame(
+                              1,
+                              SizedBox(
+                                width: tableLayout.company,
+                                child: _editing
+                                    ? _DropOptInline(
+                                        valueId: _clientId,
+                                        items: widget.clients,
+                                        onTapStart: () =>
+                                            widget.onActivateColumn(1),
+                                        onChanged: (v) =>
+                                            setState(() => _clientId = v),
+                                      )
+                                    : previewEditableCell(
+                                        col: 1,
+                                        child: readonlyCell(
+                                          child: _FitText(
+                                            _labelOf(
+                                                  widget.clients,
+                                                  _clientId,
+                                                ) ??
+                                                '—',
                                           ),
                                         ),
-                                ),
+                                      ),
                               ),
+                            ),
 
-                              // MATERIAL
-                              gridCellFrame(
-                                2,
-                                SizedBox(
-                                  width: 190,
-                                  child: _editing
-                                      ? _DropOptInline(
-                                          valueId: _materialId,
-                                          items: widget.materials,
-                                          onTapStart: () =>
-                                              widget.onActivateColumn(2),
-                                          onChanged: (v) =>
-                                              setState(() => _materialId = v),
-                                        )
-                                      : previewEditableCell(
-                                          col: 2,
-                                          child: readonlyCell(
-                                            child: _ServiceMaterialBadge(
-                                              text:
-                                                  _labelOf(
-                                                    widget.materials,
-                                                    _materialId,
-                                                  ) ??
-                                                  '—',
-                                            ),
+                            // MATERIAL
+                            gridCellFrame(
+                              2,
+                              SizedBox(
+                                width: tableLayout.material,
+                                child: _editing
+                                    ? _DropOptInline(
+                                        valueId: _materialId,
+                                        items: widget.materials,
+                                        onTapStart: () =>
+                                            widget.onActivateColumn(2),
+                                        onChanged: (v) =>
+                                            setState(() => _materialId = v),
+                                      )
+                                    : previewEditableCell(
+                                        col: 2,
+                                        child: readonlyCell(
+                                          child: _ServiceMaterialBadge(
+                                            text:
+                                                _labelOf(
+                                                  widget.materials,
+                                                  _materialId,
+                                                ) ??
+                                                '—',
                                           ),
                                         ),
-                                ),
+                                      ),
                               ),
+                            ),
 
-                              // TIPO (recolección/entrega)
-                              gridCellFrame(
-                                3,
-                                SizedBox(
-                                  width: 130,
-                                  child: _editing
-                                      ? _DropStrInline(
-                                          value: _direction,
-                                          items: widget.directions,
-                                          format: widget.uiLabel,
-                                          onTapStart: () =>
-                                              widget.onActivateColumn(3),
-                                          onChanged: (v) {
-                                            if (v == null) return;
-                                            setState(() => _direction = v);
-                                          },
-                                        )
-                                      : previewEditableCell(
-                                          col: 3,
-                                          child: readonlyCell(
-                                            child: _FitText(
-                                              widget.uiLabel(_direction),
-                                            ),
+                            // TIPO (recolección/entrega)
+                            gridCellFrame(
+                              3,
+                              SizedBox(
+                                width: tableLayout.type,
+                                child: _editing
+                                    ? _DropStrInline(
+                                        value: _direction,
+                                        items: widget.directions,
+                                        format: widget.uiLabel,
+                                        onTapStart: () =>
+                                            widget.onActivateColumn(3),
+                                        onChanged: (v) {
+                                          if (v == null) return;
+                                          setState(() => _direction = v);
+                                        },
+                                      )
+                                    : previewEditableCell(
+                                        col: 3,
+                                        child: readonlyCell(
+                                          child: _FitText(
+                                            widget.uiLabel(_direction),
                                           ),
                                         ),
-                                ),
+                                      ),
                               ),
+                            ),
 
-                              // CHOFER
-                              gridCellFrame(
-                                4,
-                                SizedBox(
-                                  width: 190,
-                                  child: _editing
-                                      ? _DropOptInline(
-                                          valueId: _driverId,
-                                          items: widget.drivers,
-                                          onTapStart: () =>
-                                              widget.onActivateColumn(4),
-                                          onChanged: (v) =>
-                                              setState(() => _driverId = v),
-                                        )
-                                      : previewEditableCell(
-                                          col: 4,
-                                          child: readonlyCell(
-                                            child: _FitText(
-                                              _labelOf(
-                                                    widget.drivers,
-                                                    _driverId,
-                                                  ) ??
-                                                  '—',
-                                            ),
+                            // CHOFER
+                            gridCellFrame(
+                              4,
+                              SizedBox(
+                                width: tableLayout.driver,
+                                child: _editing
+                                    ? _DropOptInline(
+                                        valueId: _driverId,
+                                        items: widget.drivers,
+                                        onTapStart: () =>
+                                            widget.onActivateColumn(4),
+                                        onChanged: (v) =>
+                                            setState(() => _driverId = v),
+                                      )
+                                    : previewEditableCell(
+                                        col: 4,
+                                        child: readonlyCell(
+                                          child: _FitText(
+                                            _labelOf(
+                                                  widget.drivers,
+                                                  _driverId,
+                                                ) ??
+                                                '—',
                                           ),
                                         ),
-                                ),
+                                      ),
                               ),
+                            ),
 
-                              // UNIDAD
-                              gridCellFrame(
-                                5,
-                                SizedBox(
-                                  width: 140,
-                                  child: _editing
-                                      ? _DropOptInline(
-                                          valueId: _vehicleId,
-                                          items: widget.vehicles,
-                                          onTapStart: () =>
-                                              widget.onActivateColumn(5),
-                                          onChanged: (v) =>
-                                              setState(() => _vehicleId = v),
-                                        )
-                                      : previewEditableCell(
-                                          col: 5,
-                                          child: readonlyCell(
-                                            child: _ServiceUnitBadge(
-                                              text:
-                                                  _labelOf(
-                                                    widget.vehicles,
-                                                    _vehicleId,
-                                                  ) ??
-                                                  '—',
-                                            ),
+                            // UNIDAD
+                            gridCellFrame(
+                              5,
+                              SizedBox(
+                                width: tableLayout.unit,
+                                child: _editing
+                                    ? _DropOptInline(
+                                        valueId: _vehicleId,
+                                        items: widget.vehicles,
+                                        onTapStart: () =>
+                                            widget.onActivateColumn(5),
+                                        onChanged: (v) =>
+                                            setState(() => _vehicleId = v),
+                                      )
+                                    : previewEditableCell(
+                                        col: 5,
+                                        child: readonlyCell(
+                                          child: _ServiceUnitBadge(
+                                            text:
+                                                _labelOf(
+                                                  widget.vehicles,
+                                                  _vehicleId,
+                                                ) ??
+                                                '—',
                                           ),
                                         ),
-                                ),
+                                      ),
                               ),
+                            ),
 
-                              // PARA EL DÍA (due_date)
-                              gridCellFrame(
-                                6,
-                                SizedBox(
-                                  width: 130,
-                                  child: _editing
-                                      ? InkWell(
-                                          onTap: () {
-                                            widget.onActivateColumn(6);
-                                            _pickDueDate();
-                                          },
-                                          child: _CellBox(
-                                            text: _dueDate == null
+                            // PARA EL DÍA (due_date)
+                            gridCellFrame(
+                              6,
+                              SizedBox(
+                                width: tableLayout.dueDate,
+                                child: _editing
+                                    ? InkWell(
+                                        onTap: () {
+                                          widget.onActivateColumn(6);
+                                          _pickDueDate();
+                                        },
+                                        child: _CellBox(
+                                          text: _dueDate == null
+                                              ? '—'
+                                              : widget.fmtDateUi(_dueDate!),
+                                          icon: Icons.calendar_today,
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 6,
+                                        child: readonlyCell(
+                                          child: _FitText(
+                                            _dueDate == null
                                                 ? '—'
                                                 : widget.fmtDateUi(_dueDate!),
-                                            icon: Icons.calendar_today,
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 6,
-                                          child: readonlyCell(
-                                            child: _FitText(
-                                              _dueDate == null
-                                                  ? '—'
-                                                  : widget.fmtDateUi(_dueDate!),
-                                            ),
                                           ),
                                         ),
-                                ),
+                                      ),
                               ),
+                            ),
 
-                              // COMENTARIO
-                              gridCellFrame(
-                                7,
-                                SizedBox(
-                                  width: _kCommentColW,
-                                  child: _editing
-                                      ? Focus(
-                                          onKeyEvent: (_, event) {
-                                            if (event is! KeyDownEvent) {
-                                              return KeyEventResult.ignored;
-                                            }
-                                            if (event.logicalKey ==
-                                                LogicalKeyboardKey.escape) {
-                                              cancelEditingFromKeyboard();
-                                              return KeyEventResult.handled;
-                                            }
-                                            if (event.logicalKey ==
-                                                    LogicalKeyboardKey
-                                                        .arrowLeft &&
-                                                isCommentCaretAtStart) {
-                                              widget.onActivateColumn(6);
-                                              return KeyEventResult.handled;
-                                            }
-                                            if (event.logicalKey ==
-                                                    LogicalKeyboardKey
-                                                        .arrowRight &&
-                                                isCommentCaretAtEnd) {
-                                              widget.onActivateColumn(8);
-                                              WidgetsBinding.instance
-                                                  .addPostFrameCallback((_) {
-                                                    if (!mounted) return;
-                                                    unawaited(
-                                                      activateGridCell(8),
-                                                    );
-                                                  });
-                                              return KeyEventResult.handled;
-                                            }
+                            // COMENTARIO
+                            gridCellFrame(
+                              7,
+                              SizedBox(
+                                width: tableLayout.comment,
+                                child: _editing
+                                    ? Focus(
+                                        onKeyEvent: (_, event) {
+                                          if (event is! KeyDownEvent) {
                                             return KeyEventResult.ignored;
-                                          },
-                                          child: TextField(
-                                            controller: _notes,
-                                            focusNode: _notesFocusNode,
-                                            textInputAction:
-                                                TextInputAction.done,
-                                            decoration: _glassFieldDecoration()
-                                                .copyWith(
-                                                  fillColor: Colors.white
-                                                      .withValues(alpha: 0.88),
-                                                  contentPadding:
-                                                      const EdgeInsets.symmetric(
-                                                        horizontal: 10,
-                                                        vertical: 9,
-                                                      ),
-                                                ),
-                                            onTap: () {
-                                              widget.onActivateColumn(7);
-                                              if (!_notesFocusNode.hasFocus) {
-                                                _notesFocusNode.requestFocus();
-                                              }
-                                            },
-                                            onSubmitted: (_) =>
-                                                unawaited(saveFromKeyboard()),
-                                          ),
-                                        )
-                                      : previewEditableCell(
-                                          col: 7,
-                                          child: readonlyCell(
-                                            showDivider: false,
-                                            child: _FitText(
-                                              (widget.row['notes'] ?? '')
-                                                  as String,
-                                            ),
-                                          ),
-                                        ),
-                                ),
-                              ),
-
-                              const SizedBox(width: 10),
-
-                              // ACCIONES
-                              // ACCIONES
-                              gridCellFrame(
-                                8,
-                                SizedBox(
-                                  width: _kActionsW,
-                                  child: Row(
-                                    mainAxisAlignment: MainAxisAlignment.end,
-                                    children: [
-                                      if (_editing)
-                                        SizedBox(
-                                          width:
-                                              _kActionsW -
-                                              54, // deja espacio al menú (⋯)
-                                          child: _DropStrInline(
-                                            value: _status,
-                                            items: widget.statuses,
-                                            format: widget.uiLabel,
-                                            onTapStart: () =>
-                                                widget.onActivateColumn(8),
-                                            onChanged: (v) {
-                                              if (v == null) return;
-                                              setState(() => _status = v);
-                                            },
-                                          ),
-                                        )
-                                      else
-                                        Flexible(
-                                          child: _StatusPill(
-                                            text: widget.uiLabel(_status),
-                                          ),
-                                        ),
-
-                                      if (widget.showRowActions) ...[
-                                        const SizedBox(width: 6),
-                                        MouseRegion(
-                                          onEnter: (_) => setState(
-                                            () => _hoverActionsButton = true,
-                                          ),
-                                          onExit: (_) => setState(
-                                            () => _hoverActionsButton = false,
-                                          ),
-                                          child: GestureDetector(
-                                            behavior: HitTestBehavior.opaque,
-                                            onTapDown: (details) => widget
-                                                .onOpenContextMenu
-                                                ?.call(details.globalPosition),
-                                            child: AnimatedContainer(
-                                              duration: const Duration(
-                                                milliseconds: 120,
+                                          }
+                                          if (event.logicalKey ==
+                                              LogicalKeyboardKey.escape) {
+                                            cancelEditingFromKeyboard();
+                                            return KeyEventResult.handled;
+                                          }
+                                          if (event.logicalKey ==
+                                                  LogicalKeyboardKey
+                                                      .arrowLeft &&
+                                              isCommentCaretAtStart) {
+                                            widget.onActivateColumn(6);
+                                            return KeyEventResult.handled;
+                                          }
+                                          if (event.logicalKey ==
+                                                  LogicalKeyboardKey
+                                                      .arrowRight &&
+                                              isCommentCaretAtEnd) {
+                                            widget.onActivateColumn(8);
+                                            WidgetsBinding.instance
+                                                .addPostFrameCallback((_) {
+                                                  if (!mounted) return;
+                                                  unawaited(
+                                                    activateGridCell(8),
+                                                  );
+                                                });
+                                            return KeyEventResult.handled;
+                                          }
+                                          return KeyEventResult.ignored;
+                                        },
+                                        child: TextField(
+                                          controller: _notes,
+                                          focusNode: _notesFocusNode,
+                                          textInputAction: TextInputAction.done,
+                                          decoration: _glassFieldDecoration()
+                                              .copyWith(
+                                                fillColor: Colors.white
+                                                    .withValues(alpha: 0.88),
+                                                contentPadding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 9,
+                                                    ),
                                               ),
-                                              curve: Curves.easeOutCubic,
-                                              width: 32,
-                                              height: 32,
-                                              decoration: BoxDecoration(
+                                          onTap: () {
+                                            widget.onActivateColumn(7);
+                                            if (!_notesFocusNode.hasFocus) {
+                                              _notesFocusNode.requestFocus();
+                                            }
+                                          },
+                                          onSubmitted: (_) =>
+                                              unawaited(saveFromKeyboard()),
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 7,
+                                        child: readonlyCell(
+                                          showDivider: false,
+                                          child: _FitText(
+                                            (widget.row['notes'] ?? '')
+                                                as String,
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+
+                            SizedBox(width: tableLayout.actionsGap),
+
+                            // ACCIONES
+                            // ACCIONES
+                            gridCellFrame(
+                              8,
+                              AnchoredActionSlot(
+                                width: tableLayout.actions,
+                                trailingWidth: tableLayout.rowActionButtonWidth,
+                                gap: tableLayout.actionInnerGap,
+                                leading: _editing
+                                    ? _DropStrInline(
+                                        value: _status,
+                                        items: widget.statuses,
+                                        format: widget.uiLabel,
+                                        compact: true,
+                                        onTapStart: () =>
+                                            widget.onActivateColumn(8),
+                                        onChanged: (v) {
+                                          if (v == null) return;
+                                          setState(() => _status = v);
+                                        },
+                                      )
+                                    : _StatusPill(
+                                        text: widget.uiLabel(_status),
+                                      ),
+                                trailing: widget.showRowActions
+                                    ? MouseRegion(
+                                        onEnter: (_) => setState(
+                                          () => _hoverActionsButton = true,
+                                        ),
+                                        onExit: (_) => setState(
+                                          () => _hoverActionsButton = false,
+                                        ),
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTapDown: (details) => widget
+                                              .onOpenContextMenu
+                                              ?.call(details.globalPosition),
+                                          child: AnimatedContainer(
+                                            duration: const Duration(
+                                              milliseconds: 120,
+                                            ),
+                                            curve: Curves.easeOutCubic,
+                                            width: tableLayout
+                                                .rowActionButtonWidth,
+                                            height: tableLayout
+                                                .rowActionButtonWidth,
+                                            decoration: BoxDecoration(
+                                              color:
+                                                  widget.isSelected ||
+                                                      widget.isChecked
+                                                  ? const Color(
+                                                      0xFF0B72FF,
+                                                    ).withValues(alpha: 0.10)
+                                                  : _hoverActionsButton
+                                                  ? Colors.white.withValues(
+                                                      alpha: 0.72,
+                                                    )
+                                                  : Colors.white.withValues(
+                                                      alpha: 0.52,
+                                                    ),
+                                              borderRadius:
+                                                  BorderRadius.circular(999),
+                                              border: Border.all(
                                                 color:
                                                     widget.isSelected ||
                                                         widget.isChecked
                                                     ? const Color(
                                                         0xFF0B72FF,
-                                                      ).withValues(alpha: 0.10)
-                                                    : _hoverActionsButton
-                                                    ? Colors.white.withValues(
-                                                        alpha: 0.72,
-                                                      )
+                                                      ).withValues(alpha: 0.28)
                                                     : Colors.white.withValues(
-                                                        alpha: 0.52,
+                                                        alpha: 0.72,
                                                       ),
-                                                borderRadius:
-                                                    BorderRadius.circular(999),
-                                                border: Border.all(
-                                                  color:
-                                                      widget.isSelected ||
-                                                          widget.isChecked
-                                                      ? const Color(
-                                                          0xFF0B72FF,
-                                                        ).withValues(
-                                                          alpha: 0.28,
-                                                        )
-                                                      : Colors.white.withValues(
-                                                          alpha: 0.72,
-                                                        ),
-                                                ),
-                                                boxShadow: [
-                                                  BoxShadow(
-                                                    color: Colors.black
-                                                        .withValues(
-                                                          alpha:
-                                                              _hoverActionsButton
-                                                              ? 0.15
-                                                              : 0.08,
-                                                        ),
-                                                    blurRadius:
-                                                        _hoverActionsButton
-                                                        ? 14
-                                                        : 8,
-                                                    offset: Offset(
-                                                      0,
+                                              ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  color: Colors.black
+                                                      .withValues(
+                                                        alpha:
+                                                            _hoverActionsButton
+                                                            ? 0.15
+                                                            : 0.08,
+                                                      ),
+                                                  blurRadius:
                                                       _hoverActionsButton
-                                                          ? 7
-                                                          : 4,
-                                                    ),
+                                                      ? 14
+                                                      : 8,
+                                                  offset: Offset(
+                                                    0,
+                                                    _hoverActionsButton ? 7 : 4,
                                                   ),
-                                                ],
-                                              ),
-                                              child: Icon(
-                                                Icons.more_horiz,
-                                                size: 20,
-                                                color:
-                                                    widget.isSelected ||
-                                                        widget.isChecked
-                                                    ? const Color(0xFF0B72FF)
-                                                    : const Color(0xFF203447),
-                                              ),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Icon(
+                                              Icons.more_horiz,
+                                              size: 20,
+                                              color:
+                                                  widget.isSelected ||
+                                                      widget.isChecked
+                                                  ? const Color(0xFF0B72FF)
+                                                  : const Color(0xFF203447),
                                             ),
                                           ),
                                         ),
-                                      ],
-                                    ],
-                                  ),
-                                ),
+                                      )
+                                    : null,
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
                       ),
                     );
@@ -5368,12 +5387,14 @@ class _DropStrInline extends StatelessWidget {
   final String Function(String) format;
   final VoidCallback? onTapStart;
   final ValueChanged<String?> onChanged;
+  final bool compact;
 
   const _DropStrInline({
     required this.value,
     required this.items,
     required this.format,
     this.onTapStart,
+    this.compact = false,
     required this.onChanged,
   });
 
@@ -5405,7 +5426,18 @@ class _DropStrInline extends StatelessWidget {
           dropdownColor: _kGlassMenuBg,
           decoration: _glassFieldDecoration().copyWith(
             fillColor: Colors.white.withValues(alpha: 0.88),
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: compact ? 6 : 10,
+              vertical: compact ? 8 : 10,
+            ),
           ),
+          icon: compact
+              ? const Icon(
+                  Icons.keyboard_arrow_down_rounded,
+                  size: 18,
+                  color: Color(0xFF48637E),
+                )
+              : null,
           selectedItemBuilder: (context) => selectedItems
               .map(
                 (e) => Align(

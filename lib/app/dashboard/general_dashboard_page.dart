@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../maintenance/maintenance_page.dart';
+import '../menudeo/menudeo_dashboard_page.dart';
 import '../services/inventory_page.dart';
 import '../services/services_catalog_page.dart';
 import '../shared/app_shell.dart';
@@ -71,6 +72,13 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const DashboardPage(instantOpen: true)),
     );
+  }
+
+  Future<void> _openRetailDashboard() async {
+    if (!mounted) return;
+    await Navigator.of(
+      context,
+    ).push(appPageRoute(page: const MenudeoDashboardPage(), fade: false));
   }
 
   Future<void> _openOperationalEntriesAndOutputs() async {
@@ -190,6 +198,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       canOpenCatalogs: _canOpenCatalogs,
       onOpenGeneralDashboard: () async {},
       onOpenOperationalDashboard: _openOperationalDashboard,
+      onOpenMenudeo: _openRetailDashboard,
       onOpenHumanResources: () => _showUpcomingArea('Recursos humanos'),
       onOpenAdministration: () => _showUpcomingArea('Administración'),
       onOpenFinance: () => _showUpcomingArea('Finanzas'),
@@ -246,6 +255,23 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
                         onPrimaryTap: _openOperationalDashboard,
                         secondaryLabel: 'Ver inventario',
                         onSecondaryTap: _openOperationalInventory,
+                      ),
+                      _AreaSummaryCard(
+                        width: summaryWidth,
+                        accent: const Color(0xFF8E3F2A),
+                        icon: Icons.storefront_rounded,
+                        title: 'Menudeo',
+                        status: 'Demo visual',
+                        statusColor: const Color(0xFFC96A4A),
+                        description:
+                            'Validación inicial de la paleta comercial para compras, ventas, conciliación y corte.',
+                        highlights: const [
+                          'Dashboard demo del área',
+                          'Tokens coral terracota sobre el sistema DICSA',
+                          'Listo para revisión visual en app',
+                        ],
+                        primaryLabel: 'Abrir demo',
+                        onPrimaryTap: _openRetailDashboard,
                       ),
                       _AreaSummaryCard(
                         width: summaryWidth,
@@ -986,6 +1012,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final VoidCallback? onToggleCatalogsExpanded;
   final Future<void> Function()? onOpenGeneralDashboard;
   final Future<void> Function()? onOpenOperationalDashboard;
+  final Future<void> Function()? onOpenMenudeo;
   final Future<void> Function()? onOpenHumanResources;
   final Future<void> Function()? onOpenAdministration;
   final Future<void> Function()? onOpenFinance;
@@ -1002,6 +1029,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onToggleCatalogsExpanded,
     this.onOpenGeneralDashboard,
     this.onOpenOperationalDashboard,
+    this.onOpenMenudeo,
     this.onOpenHumanResources,
     this.onOpenAdministration,
     this.onOpenFinance,
@@ -1080,6 +1108,13 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                       title: 'Operación',
                       subtitle: 'Dashboard operativo actual',
                       onTap: onOpenOperationalDashboard,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.storefront_rounded,
+                      title: 'Menudeo',
+                      subtitle: 'Demo de paleta y dashboard',
+                      onTap: onOpenMenudeo,
                     ),
                     const SizedBox(height: 8),
                     _MenuActionItem(

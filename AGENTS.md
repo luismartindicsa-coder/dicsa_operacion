@@ -22,10 +22,21 @@ Para cualquier módulo nuevo o refactor de módulo existente (ej. Pesadas, Servi
 - Refresh:
   - Priorizar recarga automática con las mismas reglas de defer/sincronización de Entradas/Salidas.
   - No agregar botón manual de recarga salvo requerimiento explícito del usuario.
-- UI contract:
+ - UI contract:
   - Mantener diseño, paleta, sombras, estados hover/selected, diálogos y filtros exactamente alineados a Entradas/Salidas.
   - Si la página pertenece a un área distinta (`Ventas`, `Finanzas`, `RH`, etc.), mantener fijo todo el lenguaje visual base y cambiar únicamente la gama cromática mediante tokens semánticos de área.
   - No hardcodear colores por componente; el color del área debe entrar por contrato de tema, no por reinterpretación local.
+  - El hover editable debe vivir en la celda, no en toda la fila: debe sobresalir visualmente como cápsula local, ganar color/tinte del área, crecer levemente y empujar/acomodar la fila sin romper su altura o ancho contractual.
+  - Ese comportamiento de hover editable debe ser idéntico entre módulos tipo grid; solo cambia la paleta por tokens de área.
+  - Las celdas del grid deben conservar separadores verticales contractuales entre columnas cuando el arquetipo los use; esos separadores deben desvanecerse en la fila cuando una celda editable entra en hover o edición activa, para que la cápsula no parezca “comerse” la línea.
+ - Ancho de filas y overflow:
+   - La fila de datos debe ocupar exactamente la misma huella horizontal que el `insert row` dentro del mismo módulo.
+   - El ancho efectivo de headers, `insert row` y filas renderizadas debe salir de la misma fuente de verdad; no recalcular cada capa con paddings distintos.
+   - El contrato reusable base para grids debe vivir en componentes compartidos; no volver a codificar localmente la estructura de escalado o el slot de acciones en cada página.
+   - Para el escalado estructural del row, usar el patrón compartido equivalente a `Card -> Padding -> ContractGridScaledRow -> Row(mainAxisSize: MainAxisSize.min, children: [...])`.
+   - Para columnas con acción final (`...`, `Agregar`, `Estado + acción`), reservar el slot con un componente compartido tipo `AnchoredActionSlot`: contenido principal a la izquierda y acción anclada a la derecha, sin overlap.
+   - Los overflows se atacan primero revisando desalineación de ancho estructural entre header/insert/grid y luego celdas compactas que intentan meter más contenido del que cabe; no se resuelven a prueba y error con offsets locales.
+   - Controles compactos (`Switch`, menú `...`, badges, acciones`) dentro de celdas angostas no deben acompañarse de texto adicional si eso rompe el ancho contractual.
 
 ## Criterio de aceptación
 Un módulo nuevo se considera terminado solo si es réplica funcional y visual de Entradas/Salidas en interacción (mouse/teclado/foco) y estilo, cambiando únicamente los campos propios del módulo.

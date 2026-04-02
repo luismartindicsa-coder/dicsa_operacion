@@ -1,0 +1,8 @@
+id,code,name,is_active,sort_order,notes,created_at,updated_at
+88c788cd-06c8-43a9-b429-aba0c440f2f4,CARTON,CARTON,t,10,"Base general para compras y aperturas de carton","2026-03-13 19:39:38.720229+00","2026-03-13 19:39:38.720229+00"
+4c7a25df-991f-4443-9269-4e853df6fed3,CHATARRA,CHATARRA,t,20,"Base general para compras y aperturas de chatarra","2026-03-13 19:39:38.720229+00","2026-03-13 19:39:38.720229+00"
+a3b39add-83a8-4b9e-92db-242b2b852a40,METAL,METAL,t,30,"Base general para compras y aperturas de metal","2026-03-13 19:39:38.720229+00","2026-03-13 19:39:38.720229+00"
+6a15cf8a-9064-49a4-8795-946591fee553,PLASTICO,PLASTICO,t,40,"Base general para compras y aperturas de plastico","2026-03-13 19:39:38.720229+00","2026-03-13 19:39:38.720229+00"
+ecc6f380-5996-43ba-87b1-d751882974d8,MADERA,MADERA,t,50,"Base general para compras y aperturas de madera","2026-03-13 19:39:38.720229+00","2026-03-13 19:39:38.720229+00"
+97e156d5-3719-4083-885c-e6a25af94015,PAPEL,PAPEL,t,60,"Base general para compras y aperturas de papel","2026-03-13 19:39:38.720229+00","2026-03-13 19:39:38.720229+00"
+ed5a219e-fda7-440a-b5ce-35dec6e45fef,MADERA_GRANEL,"MADERA GRANEL",f,100,,"2026-03-23 15:48:35.45895+00","2026-03-23 15:49:04.36685+00"

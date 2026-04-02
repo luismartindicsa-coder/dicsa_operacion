@@ -13,6 +13,10 @@ import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
+import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
+import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
+import '../shared/utils/csv_file_save.dart';
 import 'inventory_page.dart';
 import 'services_page.dart';
 import 'services_shell.dart';
@@ -1263,7 +1267,7 @@ class _WeighingsPageState extends State<WeighingsPage>
     };
   }
 
-  Future<void> _exportCsvToClipboard() async {
+  Future<void> _exportCsvToFile() async {
     final rows = _filteredRows;
     final sb = StringBuffer('FECHA,TICKET,PROVEEDOR,PRECIO\n');
     for (final row in rows) {
@@ -1274,9 +1278,20 @@ class _WeighingsPageState extends State<WeighingsPage>
         '${(_num(row['precio']) ?? 0).toStringAsFixed(2)}',
       );
     }
-    await Clipboard.setData(ClipboardData(text: sb.toString()));
+    final now = DateTime.now();
+    final stamp =
+        '${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}_${now.hour.toString().padLeft(2, '0')}${now.minute.toString().padLeft(2, '0')}';
+    final path = await saveCsvFile(
+      fileName: 'pesadas_$stamp.csv',
+      content: sb.toString(),
+      dialogTitle: 'Guardar CSV de pesadas',
+    );
     if (!mounted) return;
-    _toast('CSV copiado (${_fmtCountInt(rows.length)} filas)');
+    if (path == null) {
+      _toast('Exportacion cancelada');
+      return;
+    }
+    _toast('CSV guardado: $path');
   }
 
   Future<void> _logout() async {
@@ -1410,6 +1425,14 @@ class _WeighingsPageState extends State<WeighingsPage>
 
   @override
   Widget build(BuildContext context) {
+    final filteredRows = _filteredRows;
+    final filteredTotal = filteredRows.fold<double>(
+      0,
+      (sum, row) => sum + (_num(row['precio']) ?? 0),
+    );
+    final filteredAvg = filteredRows.isEmpty
+        ? 0.0
+        : filteredTotal / filteredRows.length;
     final selectedRows = _rows
         .where(
           (row) =>
@@ -1439,93 +1462,103 @@ class _WeighingsPageState extends State<WeighingsPage>
       onGoToWarehouse: _goToWarehouse,
       topContent: Padding(
         padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
-        child: OperationalGlassToolbarPanel(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final actions = FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  children: [
-                    OutlinedButton.icon(
-                      style: _actionOutlinedButtonStyle(),
-                      onPressed: _exportCsvToClipboard,
-                      icon: const Icon(Icons.download_rounded),
-                      label: const Text('Descargar CSV'),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            OperationalGlassToolbarPanel(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final actions = FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Row(
+                      children: [
+                        OutlinedButton.icon(
+                          style: _actionOutlinedButtonStyle(),
+                          onPressed: _exportCsvToFile,
+                          icon: const Icon(Icons.download_rounded),
+                          label: const Text('Descargar CSV'),
+                        ),
+                        if (_selectedCount > 0) ...[
+                          const SizedBox(width: 8),
+                          FilledButton.icon(
+                            style: _actionFilledButtonStyle(),
+                            onPressed: _bulkDeleting
+                                ? null
+                                : _deleteSelectedRows,
+                            icon: const Icon(Icons.delete_outline),
+                            label: Text(
+                              'Eliminar (${_fmtCountInt(_selectedCount)})',
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
-                    if (_selectedCount > 0) ...[
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        style: _actionFilledButtonStyle(),
-                        onPressed: _bulkDeleting ? null : _deleteSelectedRows,
-                        icon: const Icon(Icons.delete_outline),
-                        label: Text(
-                          'Eliminar (${_fmtCountInt(_selectedCount)})',
+                  );
+
+                  final info = Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Text(
+                        '${_fmtCountInt(_selectedCount)} seleccionadas',
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
+                      if (_selectedCount > 0)
+                        Text(
+                          'Suma: ${_fmtMoney(selectedTotal)} · Promedio: ${_fmtMoney(selectedAvg)}',
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF2A4B49),
+                          ),
+                        ),
+                      if (_selectedRowState()?.isEditing ?? false)
+                        Text(
+                          'Celda: ${_gridColumnLabels[_activeGridColumn]} · Space',
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF2A4B49),
+                          ),
+                        ),
                     ],
-                  ],
-                ),
-              );
+                  );
 
-              final info = Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${_fmtCountInt(_selectedCount)} seleccionadas',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                  if (_selectedCount > 0)
-                    Text(
-                      'Suma: ${_fmtMoney(selectedTotal)} · Promedio: ${_fmtMoney(selectedAvg)}',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF2A4B49),
+                  if (constraints.maxWidth < 980) {
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Align(alignment: Alignment.centerLeft, child: actions),
+                        const SizedBox(height: 6),
+                        Align(alignment: Alignment.centerRight, child: info),
+                      ],
+                    );
+                  }
+
+                  return Row(
+                    children: [
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: actions,
+                        ),
                       ),
-                    ),
-                  if (_selectedRowState()?.isEditing ?? false)
-                    Text(
-                      'Celda: ${_gridColumnLabels[_activeGridColumn]} · Space',
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF2A4B49),
-                      ),
-                    ),
-                ],
-              );
-
-              if (constraints.maxWidth < 980) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Align(alignment: Alignment.centerLeft, child: actions),
-                    const SizedBox(height: 6),
-                    Align(alignment: Alignment.centerRight, child: info),
-                  ],
-                );
-              }
-
-              return Row(
-                children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: actions,
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  info,
-                ],
-              );
-            },
-          ),
+                      const SizedBox(width: 8),
+                      info,
+                    ],
+                  );
+                },
+              ),
+            ),
+          ],
         ),
       ),
       child: _loading
@@ -1533,6 +1566,38 @@ class _WeighingsPageState extends State<WeighingsPage>
           : Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 330),
+                      child: OperationalMetricCard(
+                        icon: Icons.payments_outlined,
+                        label: 'EGRESO PESADAS',
+                        value: _fmtMoney(filteredTotal),
+                        subtitle:
+                            '${_fmtCountInt(filteredRows.length)} pesadas · Promedio ${_fmtMoney(filteredAvg)}',
+                      ),
+                    ),
+                  ),
+                ),
+                if (_selectedCount > 0)
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: Text(
+                        'Selección: ${_fmtMoney(selectedTotal)} · Promedio ${_fmtMoney(selectedAvg)}',
+                        textAlign: TextAlign.right,
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: Color(0xFF2A4B49),
+                        ),
+                      ),
+                    ),
+                  ),
                 Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 12),
                   child: _HeaderRow(
@@ -1962,32 +2027,31 @@ class _WeighingsPageState extends State<WeighingsPage>
                       ),
                     ),
                     const SizedBox(width: _kColGap),
-                    SizedBox(
+                    AnchoredActionSlot(
                       width: _kActionsW,
-                      child: Align(
-                        alignment: Alignment.centerRight,
-                        child: Tooltip(
-                          message: 'AGREGAR',
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(10),
-                            onTap: _insertDraft,
-                            child: Container(
-                              width: 34,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                color: const Color(
-                                  0xFF19C37D,
-                                ).withValues(alpha: 0.92),
-                                borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.52),
-                                ),
+                      trailingWidth: 34,
+                      leading: const SizedBox.shrink(),
+                      trailing: Tooltip(
+                        message: 'AGREGAR',
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(10),
+                          onTap: _insertDraft,
+                          child: Container(
+                            width: 34,
+                            height: 34,
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFF19C37D,
+                              ).withValues(alpha: 0.92),
+                              borderRadius: BorderRadius.circular(10),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.52),
                               ),
-                              child: const Icon(
-                                Icons.add,
-                                size: 18,
-                                color: Colors.white,
-                              ),
+                            ),
+                            child: const Icon(
+                              Icons.add,
+                              size: 18,
+                              color: Colors.white,
                             ),
                           ),
                         ),
@@ -2125,7 +2189,11 @@ class _HeaderRow extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(width: _kColGap),
-                  const SizedBox(width: _kActionsW),
+                  const AnchoredActionSlot(
+                    width: _kActionsW,
+                    trailingWidth: 34,
+                    leading: SizedBox.shrink(),
+                  ),
                 ],
               ),
             );
@@ -2419,16 +2487,10 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
           _editing &&
           widget.isSelected &&
           widget.activeGridColumn == columnIndex;
-      if (!active) return child;
-      return DecoratedBox(
-        position: DecorationPosition.foreground,
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(10),
-          border: Border.all(
-            color: const Color(0xFF0B72FF).withValues(alpha: 0.85),
-            width: 1.2,
-          ),
-        ),
+      return ContractEditableHoverCapsule(
+        hovered: !_editing && _hoveredEditableColumn == columnIndex,
+        active: active,
+        selectedContext: hasSelection,
         child: child,
       );
     }
@@ -2459,13 +2521,6 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
     }
 
     Widget previewEditableCell({required int col, required Widget child}) {
-      final hovered = !_editing && _hoveredEditableColumn == col;
-      final top = hasSelection
-          ? const Color(0xFFD9E8F6).withValues(alpha: 0.78)
-          : const Color(0xFFE5F2EC).withValues(alpha: 0.78);
-      final bottom = hasSelection
-          ? const Color(0xFFCCE0F2).withValues(alpha: 0.64)
-          : const Color(0xFFD4E7DE).withValues(alpha: 0.64);
       return MouseRegion(
         cursor: SystemMouseCursors.click,
         onEnter: (_) {
@@ -2479,39 +2534,16 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
             setState(() => _hoveredEditableColumn = null);
           }
         },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 80),
-          curve: Curves.easeOutCubic,
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            gradient: hovered
-                ? LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
-                    colors: [top, bottom],
-                  )
-                : null,
-            boxShadow: hovered
-                ? [
-                    BoxShadow(
-                      color: const Color(0xFF8FB4D6).withValues(alpha: 0.20),
-                      blurRadius: 10,
-                      offset: const Offset(0, 3),
-                    ),
-                  ]
-                : const [],
-          ),
-          child: Listener(
+        child: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: (event) {
+            if (event.buttons != kPrimaryMouseButton) return;
+            previewEditableCellTap(col);
+          },
+          child: GestureDetector(
             behavior: HitTestBehavior.opaque,
-            onPointerDown: (event) {
-              if (event.buttons != kPrimaryMouseButton) return;
-              previewEditableCellTap(col);
-            },
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onDoubleTap: () => enterEditingFromPointer(col),
-              child: child,
-            ),
+            onDoubleTap: () => enterEditingFromPointer(col),
+            child: child,
           ),
         ),
       );
@@ -2522,6 +2554,8 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
       bool showDivider = true,
       EdgeInsetsGeometry padding = const EdgeInsets.symmetric(horizontal: 4),
     }) {
+      final softenDividers =
+          _hoveredEditableColumn != null || (_editing && widget.isSelected);
       return Stack(
         children: [
           Padding(padding: padding, child: child),
@@ -2530,11 +2564,16 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
               right: 0,
               top: 2,
               bottom: 2,
-              child: Container(
-                width: 1,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
-                  borderRadius: BorderRadius.circular(999),
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 110),
+                curve: Curves.easeOutCubic,
+                opacity: softenDividers ? 0.0 : 1.0,
+                child: Container(
+                  width: 1,
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFC9D5E2).withValues(alpha: 0.90),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
                 ),
               ),
             ),
@@ -2713,13 +2752,12 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
                             ),
                           ),
                           const SizedBox(width: _kColGap),
-                          SizedBox(
+                          AnchoredActionSlot(
                             width: _kActionsW,
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                if (widget.showRowActions)
-                                  MouseRegion(
+                            trailingWidth: 32,
+                            leading: const SizedBox.shrink(),
+                            trailing: widget.showRowActions
+                                ? MouseRegion(
                                     onEnter: (_) => setState(
                                       () => _hoverActionsButton = true,
                                     ),
@@ -2777,9 +2815,8 @@ class _WeighingDataRowState extends State<_WeighingDataRow> {
                                         ),
                                       ),
                                     ),
-                                  ),
-                              ],
-                            ),
+                                  )
+                                : null,
                           ),
                         ],
                       ),
@@ -3436,21 +3473,9 @@ Future<bool?> _showGlassConfirmDialog(
   return showDialog<bool>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
-    builder: (dialogContext) => Focus(
-      autofocus: true,
-      onKeyEvent: (_, event) {
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.logicalKey == LogicalKeyboardKey.escape) {
-          Navigator.of(dialogContext).pop(false);
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.enter ||
-            event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-          Navigator.of(dialogContext).pop(true);
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
+    builder: (dialogContext) => ContractConfirmDialogKeyHandler(
+      onCancel: () => Navigator.of(dialogContext).pop(false),
+      onConfirm: () => Navigator.of(dialogContext).pop(true),
       child: Dialog(
         backgroundColor: Colors.transparent,
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -3523,6 +3548,7 @@ Future<bool?> _showGlassConfirmDialog(
                             backgroundColor: const Color(0xFF2D6A6A),
                             foregroundColor: Colors.white,
                           ),
+                          autofocus: true,
                           onPressed: () =>
                               Navigator.of(dialogContext).pop(true),
                           child: Text(confirmText),

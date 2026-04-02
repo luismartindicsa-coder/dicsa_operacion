@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -12,6 +10,7 @@ import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart';
 import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/utils/csv_file_save.dart';
 
 class InventoryStockV2Body extends StatefulWidget {
   final TabController controller;
@@ -167,19 +166,21 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
       final results = await Future.wait<dynamic>([
         supa
             .from('v_inventory_general_balance_v2')
-            .select('id,code,name,opening_kg,movement_kg,on_hand_kg')
+            .select(
+              'id,code,name,opening_kg,movement_kg,on_hand_kg,opening_units,movement_units,on_hand_units',
+            )
             .order('name'),
         supa
             .from('v_inventory_commercial_balance_v2')
             .select(
-              'id,code,name,family,general_code,opening_kg,movement_kg,on_hand_kg',
+              'id,code,name,family,general_code,opening_kg,movement_kg,on_hand_kg,opening_units,movement_units,on_hand_units',
             )
             .order('family')
             .order('name'),
         supa
             .from('inventory_opening_balances_v2')
             .select(
-              'id,period_month,as_of_date,inventory_level,weight_kg,site,notes,'
+              'id,period_month,as_of_date,inventory_level,weight_kg,unit_count,site,notes,'
               'general_material:general_material_id(id,code,name),'
               'commercial_material:commercial_material_id(id,code,name,family)',
             )
@@ -213,6 +214,9 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
               openingKg: _toDouble(row['opening_kg']) ?? 0,
               movementKg: _toDouble(row['movement_kg']) ?? 0,
               onHandKg: _toDouble(row['on_hand_kg']) ?? 0,
+              openingUnits: _toInt(row['opening_units']) ?? 0,
+              movementUnits: _toInt(row['movement_units']) ?? 0,
+              onHandUnits: _toInt(row['on_hand_units']) ?? 0,
             ),
           )
           .toList();
@@ -226,6 +230,9 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
               openingKg: _toDouble(row['opening_kg']) ?? 0,
               movementKg: _toDouble(row['movement_kg']) ?? 0,
               onHandKg: _toDouble(row['on_hand_kg']) ?? 0,
+              openingUnits: _toInt(row['opening_units']) ?? 0,
+              movementUnits: _toInt(row['movement_units']) ?? 0,
+              onHandUnits: _toInt(row['on_hand_units']) ?? 0,
             ),
           )
           .toList();
@@ -316,10 +323,16 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
       case 1:
         final rows = _filteredCommercialRows;
         final totalKg = rows.fold<double>(0, (sum, row) => sum + row.onHandKg);
+        final totalUnits = rows.fold<int>(
+          0,
+          (sum, row) => sum + row.onHandUnits,
+        );
         return InventoryGridTopBarData(
           metricIcon: Icons.warehouse_outlined,
           metricLabel: 'NETO INVENTARIO PATIO',
-          metricValue: '${totalKg.toStringAsFixed(2)} kg',
+          metricValue: totalUnits > 0
+              ? '${totalKg.toStringAsFixed(2)} kg · $totalUnits pacas'
+              : '${totalKg.toStringAsFixed(2)} kg',
           metricSubtitle: 'Filtrado (${rows.length} registros)',
           exportingCsv: _exporting,
           gridEditMode: false,
@@ -332,10 +345,16 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
       default:
         final rows = _filteredOpeningRows;
         final totalKg = rows.fold<double>(0, (sum, row) => sum + row.weightKg);
+        final totalUnits = rows.fold<int>(
+          0,
+          (sum, row) => sum + (row.unitCount ?? 0),
+        );
         return InventoryGridTopBarData(
           metricIcon: Icons.event_note_rounded,
           metricLabel: 'APERTURAS DEL MES',
-          metricValue: '${totalKg.toStringAsFixed(2)} kg',
+          metricValue: totalUnits > 0
+              ? '${totalKg.toStringAsFixed(2)} kg · $totalUnits pacas'
+              : '${totalKg.toStringAsFixed(2)} kg',
           metricSubtitle: 'Filtrado (${rows.length} registros)',
           exportingCsv: _exporting,
           gridEditMode: false,
@@ -366,6 +385,7 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
           ? (general?['name'] ?? '').toString()
           : (commercial?['name'] ?? '').toString(),
       weightKg: _toDouble(row['weight_kg']) ?? 0,
+      unitCount: _toInt(row['unit_count']),
       notes: (row['notes'] ?? '').toString(),
       asOfDate: _parseDate(row['as_of_date']),
     );
@@ -400,6 +420,7 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
             ? result.materialId
             : null,
         'weight_kg': result.weightKg,
+        'unit_count': result.unitCount,
         'site': _selectedSite,
         'notes': result.notes.isEmpty ? null : result.notes,
       });
@@ -433,6 +454,7 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
                 ? result.materialId
                 : null,
             'weight_kg': result.weightKg,
+            'unit_count': result.unitCount,
             'notes': result.notes.isEmpty ? null : result.notes,
           })
           .eq('id', row.id);
@@ -486,6 +508,9 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
     final kgC = TextEditingController(
       text: existing == null ? '' : existing.weightKg.toStringAsFixed(2),
     );
+    final unitCountC = TextEditingController(
+      text: existing?.unitCount?.toString() ?? '',
+    );
     final notesC = TextEditingController(text: existing?.notes ?? '');
 
     final result = await showDialog<_OpeningDialogResult>(
@@ -500,10 +525,20 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
             materialId = options.any((opt) => opt.id == materialId)
                 ? materialId
                 : (options.isEmpty ? null : options.first.id);
+            _MaterialOptionV2? selectedOption;
+            for (final option in options) {
+              if (option.id == materialId) {
+                selectedOption = option;
+                break;
+              }
+            }
             final selectedMaterialLabel = options
                 .where((opt) => opt.id == materialId)
                 .map((opt) => opt.name)
                 .fold<String?>(null, (_, name) => name);
+            final requiresUnitCount =
+                level == 'COMMERCIAL' &&
+                isCountedBaleCommercialCode(selectedOption?.code);
             return ContractDialogShell(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
@@ -640,6 +675,26 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
                           hintText: 'Kg apertura',
                         ),
                       ),
+                      if (requiresUnitCount) ...[
+                        const SizedBox(height: 12),
+                        const Text(
+                          'Pacas contadas',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF2A4B49),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        TextField(
+                          controller: unitCountC,
+                          keyboardType: TextInputType.number,
+                          decoration: contractGlassFieldDecoration(
+                            context,
+                            hintText: 'Numero de pacas',
+                          ),
+                        ),
+                      ],
                       const SizedBox(height: 12),
                       const Text(
                         'Notas',
@@ -673,8 +728,14 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
                             style: contractPrimaryButtonStyle(context),
                             onPressed: () {
                               final kg = _toDouble(kgC.text);
+                              final unitCount = _toInt(unitCountC.text);
                               if (materialId == null || kg == null || kg < 0) {
                                 _toast('Completa material y kg válidos.');
+                                return;
+                              }
+                              if (requiresUnitCount &&
+                                  (unitCount == null || unitCount <= 0)) {
+                                _toast('Captura las pacas contadas.');
                                 return;
                               }
                               Navigator.of(context).pop(
@@ -682,6 +743,9 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
                                   inventoryLevel: level,
                                   materialId: materialId!,
                                   weightKg: kg,
+                                  unitCount: requiresUnitCount
+                                      ? unitCount
+                                      : null,
                                   notes: notesC.text.trim(),
                                   asOfDate: asOfDate,
                                 ),
@@ -702,6 +766,7 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
     );
 
     kgC.dispose();
+    unitCountC.dispose();
     notesC.dispose();
     return result;
   }
@@ -726,7 +791,16 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
   }
 
   Future<void> _exportGeneralCsv() => _exportCsv(<List<Object?>>[
-    <Object?>['codigo', 'material', 'opening_kg', 'movement_kg', 'on_hand_kg'],
+    <Object?>[
+      'codigo',
+      'material',
+      'opening_kg',
+      'movement_kg',
+      'on_hand_kg',
+      'opening_units',
+      'movement_units',
+      'on_hand_units',
+    ],
     ..._filteredGeneralRows.map(
       (row) => <Object?>[
         row.code,
@@ -734,6 +808,9 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
         row.openingKg,
         row.movementKg,
         row.onHandKg,
+        row.openingUnits,
+        row.movementUnits,
+        row.onHandUnits,
       ],
     ),
   ], 'inventario_general_v2_${_fmtDbDate(DateTime.now())}.csv');
@@ -746,6 +823,9 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
       'opening_kg',
       'movement_kg',
       'on_hand_kg',
+      'opening_units',
+      'movement_units',
+      'on_hand_units',
     ],
     ..._filteredCommercialRows.map(
       (row) => <Object?>[
@@ -755,12 +835,15 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
         row.openingKg,
         row.movementKg,
         row.onHandKg,
+        row.openingUnits,
+        row.movementUnits,
+        row.onHandUnits,
       ],
     ),
   ], 'inventario_patio_v2_${_fmtDbDate(DateTime.now())}.csv');
 
   Future<void> _exportOpeningsCsv() => _exportCsv(<List<Object?>>[
-    <Object?>['nivel', 'codigo', 'material', 'fecha', 'kg', 'notas'],
+    <Object?>['nivel', 'codigo', 'material', 'fecha', 'kg', 'pacas', 'notas'],
     ..._filteredOpeningRows.map(
       (row) => <Object?>[
         row.inventoryLevel,
@@ -768,6 +851,7 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
         row.materialName,
         _fmtDbDate(row.asOfDate),
         row.weightKg,
+        row.unitCount,
         row.notes,
       ],
     ),
@@ -782,27 +866,22 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
     return text;
   }
 
-  Future<String?> _saveFile(String fileName, String content) async {
-    final home = Platform.environment['HOME'];
-    if (home == null || home.isEmpty) return null;
-    for (final dir in <Directory>[
-      Directory('$home/Downloads'),
-      Directory('$home/Descargas'),
-    ]) {
-      try {
-        if (!dir.existsSync()) dir.createSync(recursive: true);
-        final file = File('${dir.path}/$fileName');
-        await file.writeAsString(content, encoding: utf8);
-        return file.path;
-      } catch (_) {}
-    }
-    return null;
-  }
+  Future<String?> _saveFile(String fileName, String content) => saveCsvFile(
+    fileName: fileName,
+    content: content,
+    dialogTitle: 'Guardar CSV de inventario',
+  );
 
   double? _toDouble(dynamic value) {
     final raw = value?.toString().trim().replaceAll(',', '') ?? '';
     if (raw.isEmpty) return null;
     return double.tryParse(raw);
+  }
+
+  int? _toInt(dynamic value) {
+    final raw = value?.toString().trim() ?? '';
+    if (raw.isEmpty) return null;
+    return int.tryParse(raw);
   }
 
   DateTime _parseDate(dynamic value) {
@@ -1543,7 +1622,9 @@ class _WideStockRow extends StatelessWidget {
           SizedBox(
             width: 120,
             child: Text(
-              '${row.openingKg.toStringAsFixed(2)} kg',
+              row.openingUnits > 0
+                  ? '${row.openingKg.toStringAsFixed(2)} kg · ${row.openingUnits}'
+                  : '${row.openingKg.toStringAsFixed(2)} kg',
               textAlign: TextAlign.right,
               style: const TextStyle(
                 fontSize: 12,
@@ -1556,7 +1637,9 @@ class _WideStockRow extends StatelessWidget {
           SizedBox(
             width: 120,
             child: Text(
-              '${row.movementKg.toStringAsFixed(2)} kg',
+              row.movementUnits != 0
+                  ? '${row.movementKg.toStringAsFixed(2)} kg · ${row.movementUnits}'
+                  : '${row.movementKg.toStringAsFixed(2)} kg',
               textAlign: TextAlign.right,
               style: const TextStyle(
                 fontSize: 12,
@@ -1580,7 +1663,9 @@ class _WideStockRow extends StatelessWidget {
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Text(
-                  '${row.onHandKg.toStringAsFixed(2)} kg',
+                  row.onHandUnits > 0
+                      ? '${row.onHandKg.toStringAsFixed(2)} kg · ${row.onHandUnits} pzas'
+                      : '${row.onHandKg.toStringAsFixed(2)} kg',
                   style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
@@ -1663,11 +1748,15 @@ class _CompactStockRow extends StatelessWidget {
             children: [
               _CompactMetricPill(
                 label: 'Apertura',
-                value: '${row.openingKg.toStringAsFixed(2)} kg',
+                value: row.openingUnits > 0
+                    ? '${row.openingKg.toStringAsFixed(2)} kg · ${row.openingUnits} pzas'
+                    : '${row.openingKg.toStringAsFixed(2)} kg',
               ),
               _CompactMetricPill(
                 label: 'Movimiento',
-                value: '${row.movementKg.toStringAsFixed(2)} kg',
+                value: row.movementUnits != 0
+                    ? '${row.movementKg.toStringAsFixed(2)} kg · ${row.movementUnits} pzas'
+                    : '${row.movementKg.toStringAsFixed(2)} kg',
               ),
             ],
           ),
@@ -1775,7 +1864,9 @@ class _WideOpeningRow extends StatelessWidget {
             SizedBox(
               width: 110,
               child: Text(
-                '${row.weightKg.toStringAsFixed(2)} kg',
+                row.unitCount != null && row.unitCount! > 0
+                    ? '${row.weightKg.toStringAsFixed(2)} kg · ${row.unitCount} pzas'
+                    : '${row.weightKg.toStringAsFixed(2)} kg',
                 textAlign: TextAlign.right,
                 style: const TextStyle(
                   fontSize: 12,
@@ -1919,7 +2010,9 @@ class _CompactOpeningRow extends StatelessWidget {
               children: [
                 _CompactMetricPill(
                   label: 'Kg',
-                  value: '${row.weightKg.toStringAsFixed(2)} kg',
+                  value: row.unitCount != null && row.unitCount! > 0
+                      ? '${row.weightKg.toStringAsFixed(2)} kg · ${row.unitCount} pzas'
+                      : '${row.weightKg.toStringAsFixed(2)} kg',
                 ),
                 _CompactMetricPill(
                   label: 'Notas',
@@ -2121,6 +2214,9 @@ class _StockBalanceRow {
   final double openingKg;
   final double movementKg;
   final double onHandKg;
+  final int openingUnits;
+  final int movementUnits;
+  final int onHandUnits;
 
   const _StockBalanceRow({
     required this.code,
@@ -2129,6 +2225,9 @@ class _StockBalanceRow {
     required this.openingKg,
     required this.movementKg,
     required this.onHandKg,
+    required this.openingUnits,
+    required this.movementUnits,
+    required this.onHandUnits,
   });
 }
 
@@ -2139,6 +2238,7 @@ class _OpeningBalanceV2Row {
   final String materialCode;
   final String materialName;
   final double weightKg;
+  final int? unitCount;
   final String notes;
   final DateTime asOfDate;
 
@@ -2149,6 +2249,7 @@ class _OpeningBalanceV2Row {
     required this.materialCode,
     required this.materialName,
     required this.weightKg,
+    required this.unitCount,
     required this.notes,
     required this.asOfDate,
   });
@@ -2170,6 +2271,7 @@ class _OpeningDialogResult {
   final String inventoryLevel;
   final String materialId;
   final double weightKg;
+  final int? unitCount;
   final String notes;
   final DateTime asOfDate;
 
@@ -2177,6 +2279,7 @@ class _OpeningDialogResult {
     required this.inventoryLevel,
     required this.materialId,
     required this.weightKg,
+    required this.unitCount,
     required this.notes,
     required this.asOfDate,
   });

@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
+import 'dart:ui';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart';
@@ -118,6 +120,11 @@ const Map<String, List<String>> _kNextStatuses = {
   'rechazado': ['revision_area', 'reporte_mantenimiento', 'cotizacion'],
 };
 
+class _MaintenanceFilterDialogResult {
+  final Set<String> selectedValues;
+  const _MaintenanceFilterDialogResult({required this.selectedValues});
+}
+
 const Map<String, List<String>> _kTransitionRoles = {
   'aviso_falla->revision_area': [
     'jefe_area',
@@ -145,6 +152,14 @@ const List<String> _kFixedAreas = [
 String _normEnum(dynamic value) =>
     (value ?? '').toString().toLowerCase().trim();
 
+class _MaintenanceDateFilterDialogResult {
+  final DateTimeRange? range;
+  final bool clear;
+  const _MaintenanceDateFilterDialogResult({this.range, this.clear = false});
+}
+
+enum _MaintenanceWorkspace { orders, reports }
+
 class MaintenancePage extends StatefulWidget {
   const MaintenancePage({super.key});
 
@@ -166,6 +181,8 @@ class _MaintenancePageState extends State<MaintenancePage>
   bool _saving = false;
   bool _creating = false;
   bool _exportingPdf = false;
+  bool _exportingReportPdf = false;
+  bool _exportingReportCsv = false;
   bool _autoReloading = false;
   bool _pendingAutoReload = false;
   bool _suspendAutosave = false;
@@ -186,6 +203,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   String _profileRole = 'viewer';
   String _profileName = '';
   String? _hoveredOrderId;
+  _MaintenanceWorkspace _workspace = _MaintenanceWorkspace.orders;
 
   String? _selectedOrderId;
   Map<String, dynamic>? _selectedOrder;
@@ -196,11 +214,14 @@ class _MaintenancePageState extends State<MaintenancePage>
   final TextEditingController _equipmentC = TextEditingController();
   final TextEditingController _serialC = TextEditingController();
   final TextEditingController _requesterC = TextEditingController();
+  final TextEditingController _mechanicNameC = TextEditingController();
+  final TextEditingController _mechanicContactC = TextEditingController();
   final TextEditingController _descriptionC = TextEditingController();
   final TextEditingController _diagnosisC = TextEditingController();
   final TextEditingController _summaryC = TextEditingController();
   final TextEditingController _assignedToC = TextEditingController();
   final ScrollController _detailScrollController = ScrollController();
+  final ScrollController _reportsScrollController = ScrollController();
 
   String _priority = 'media';
   String _type = 'correctivo';
@@ -212,6 +233,16 @@ class _MaintenancePageState extends State<MaintenancePage>
   List<Map<String, dynamic>> _timeLogs = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _evidences = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _approvals = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _reportTimeLogs = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _reportTasks = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _reportMaterials = <Map<String, dynamic>>[];
+
+  Set<String> _reportMechanicFilters = <String>{};
+  Set<String> _reportEquipmentFilters = <String>{};
+  Set<String> _reportAreaFilters = <String>{};
+  Set<String> _reportStatusFilters = <String>{};
+  Set<String> _reportTypeFilters = <String>{};
+  DateTimeRange? _reportDateRange;
 
   @override
   void initState() {
@@ -231,11 +262,14 @@ class _MaintenancePageState extends State<MaintenancePage>
     _maintenanceRealtimeChannel?.unsubscribe();
     _ordersListFocusNode.dispose();
     _detailScrollController.dispose();
+    _reportsScrollController.dispose();
     _detachAutosaveListeners();
     _areaC.dispose();
     _equipmentC.dispose();
     _serialC.dispose();
     _requesterC.dispose();
+    _mechanicNameC.dispose();
+    _mechanicContactC.dispose();
     _descriptionC.dispose();
     _diagnosisC.dispose();
     _summaryC.dispose();
@@ -418,7 +452,7 @@ class _MaintenancePageState extends State<MaintenancePage>
       final rows = await _supa
           .from('maintenance_orders')
           .select(
-            'id,ot_folio,status,priority,type,requested_at,area_label,equipment_label,assigned_to_name,updated_at',
+            'id,ot_folio,status,priority,type,category,impact,requested_at,area_label,equipment_label,assigned_to_name,updated_at,mechanic_name,mechanic_contact,requester_name,cost_estimated_total,cost_actual_total',
           )
           .order('requested_at', ascending: false)
           .limit(400);
@@ -460,6 +494,37 @@ class _MaintenancePageState extends State<MaintenancePage>
           if (otId.isEmpty) continue;
           _pendingApprovalsByOt[otId] = (_pendingApprovalsByOt[otId] ?? 0) + 1;
         }
+
+        final timeLogRows = await _supa
+            .from('maintenance_time_logs')
+            .select('ot_id,start_at,end_at,minutes,tech_name')
+            .inFilter('ot_id', ids);
+        _reportTimeLogs = (timeLogRows as List)
+            .cast<Map<String, dynamic>>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+
+        final taskRows = await _supa
+            .from('maintenance_tasks')
+            .select('ot_id,is_done')
+            .inFilter('ot_id', ids);
+        _reportTasks = (taskRows as List)
+            .cast<Map<String, dynamic>>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+
+        final materialRows = await _supa
+            .from('maintenance_materials')
+            .select('ot_id')
+            .inFilter('ot_id', ids);
+        _reportMaterials = (materialRows as List)
+            .cast<Map<String, dynamic>>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList();
+      } else {
+        _reportTimeLogs = <Map<String, dynamic>>[];
+        _reportTasks = <Map<String, dynamic>>[];
+        _reportMaterials = <Map<String, dynamic>>[];
       }
 
       if (_selectedOrderId != null) {
@@ -474,6 +539,8 @@ class _MaintenancePageState extends State<MaintenancePage>
       if (_selectedOrderId == null && _orders.isNotEmpty) {
         _selectedOrderId = _orders.first['id']?.toString();
       }
+
+      _sanitizeReportFilters();
 
       if (refreshSelectedDetails && _selectedOrderId != null) {
         await _loadOrderDetails(_selectedOrderId!);
@@ -563,6 +630,8 @@ class _MaintenancePageState extends State<MaintenancePage>
       _equipmentC.text = (order['equipment_label'] ?? '').toString();
       _serialC.text = (order['equipment_serial'] ?? '').toString();
       _requesterC.text = (order['requester_name'] ?? '').toString();
+      _mechanicNameC.text = (order['mechanic_name'] ?? '').toString();
+      _mechanicContactC.text = (order['mechanic_contact'] ?? '').toString();
       _descriptionC.text = (order['problem_description'] ?? '').toString();
       _diagnosisC.text = (order['diagnosis'] ?? '').toString();
       _summaryC.text = (order['work_summary'] ?? '').toString();
@@ -599,6 +668,8 @@ class _MaintenancePageState extends State<MaintenancePage>
       _equipmentC.clear();
       _serialC.clear();
       _requesterC.clear();
+      _mechanicNameC.clear();
+      _mechanicContactC.clear();
       _descriptionC.clear();
       _diagnosisC.clear();
       _summaryC.clear();
@@ -624,6 +695,8 @@ class _MaintenancePageState extends State<MaintenancePage>
       _equipmentC,
       _serialC,
       _requesterC,
+      _mechanicNameC,
+      _mechanicContactC,
       _descriptionC,
       _diagnosisC,
       _summaryC,
@@ -639,6 +712,8 @@ class _MaintenancePageState extends State<MaintenancePage>
       _equipmentC,
       _serialC,
       _requesterC,
+      _mechanicNameC,
+      _mechanicContactC,
       _descriptionC,
       _diagnosisC,
       _summaryC,
@@ -672,6 +747,8 @@ class _MaintenancePageState extends State<MaintenancePage>
       'equipment_label': _equipmentC.text.trim(),
       'equipment_serial': _serialC.text.trim(),
       'requester_name': _requesterC.text.trim(),
+      'mechanic_name': _mechanicNameC.text.trim(),
+      'mechanic_contact': _mechanicContactC.text.trim(),
       'priority': _priority,
       'type': _type,
       'category': _category,
@@ -964,6 +1041,12 @@ class _MaintenancePageState extends State<MaintenancePage>
             'equipment_label': _equipmentC.text.trim(),
             'equipment_serial': _serialC.text.trim(),
             'requester_name': _requesterC.text.trim(),
+            'mechanic_name': _mechanicNameC.text.trim().isEmpty
+                ? null
+                : _mechanicNameC.text.trim(),
+            'mechanic_contact': _mechanicContactC.text.trim().isEmpty
+                ? null
+                : _mechanicContactC.text.trim(),
             'priority': _priority,
             'type': _type,
             'category': _category,
@@ -1001,6 +1084,12 @@ class _MaintenancePageState extends State<MaintenancePage>
             'equipment_label': _equipmentC.text.trim(),
             'equipment_serial': _serialC.text.trim(),
             'requester_name': _requesterC.text.trim(),
+            'mechanic_name': _mechanicNameC.text.trim().isEmpty
+                ? null
+                : _mechanicNameC.text.trim(),
+            'mechanic_contact': _mechanicContactC.text.trim().isEmpty
+                ? null
+                : _mechanicContactC.text.trim(),
             'priority': _priority,
             'type': _type,
             'category': _category,
@@ -1364,8 +1453,7 @@ class _MaintenancePageState extends State<MaintenancePage>
 
       doc.addPage(
         pw.MultiPage(
-          pageFormat: PdfPageFormat.a4,
-          margin: const pw.EdgeInsets.all(24),
+          pageTheme: _reportPdfPageTheme(),
           build: (context) => [
             _pdfHeaderCard(
               folio: folio,
@@ -1380,6 +1468,8 @@ class _MaintenancePageState extends State<MaintenancePage>
               'Equipo: ${(order['equipment_label'] ?? '-').toString()}',
               'Serie: ${(order['equipment_serial'] ?? '-').toString()}',
               'Solicitante: ${(order['requester_name'] ?? '-').toString()}',
+              'Mecanico: ${(order['mechanic_name'] ?? '-').toString()}',
+              'Contacto mecanico: ${(order['mechanic_contact'] ?? '-').toString()}',
               'Responsable: ${(order['assigned_to_name'] ?? '-').toString()}',
               'Fecha solicitud: ${_fmtDateTimeNullable(order['requested_at'])}',
             ]),
@@ -1541,9 +1631,9 @@ class _MaintenancePageState extends State<MaintenancePage>
   }) {
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 10),
-      padding: const pw.EdgeInsets.all(10),
+      padding: const pw.EdgeInsets.fromLTRB(14, 12, 14, 12),
       decoration: pw.BoxDecoration(
-        color: const PdfColor.fromInt(0xFFE8F7F4),
+        color: PdfColors.white,
         border: pw.Border.all(
           color: const PdfColor.fromInt(0xFF1C3E5D),
           width: 1,
@@ -1574,15 +1664,13 @@ class _MaintenancePageState extends State<MaintenancePage>
                 'ORDEN DE TRABAJO: $folio',
                 style: pw.TextStyle(
                   fontWeight: pw.FontWeight.bold,
-                  fontSize: 13,
+                  fontSize: 16,
                   color: const PdfColor.fromInt(0xFF1C3E5D),
                 ),
               ),
             ],
           ),
-          pw.SizedBox(height: 6),
-          pw.Container(height: 1.2, color: const PdfColor.fromInt(0xFF13D183)),
-          pw.SizedBox(height: 6),
+          pw.SizedBox(height: 8),
           pw.Row(
             mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
             children: [
@@ -1625,26 +1713,30 @@ class _MaintenancePageState extends State<MaintenancePage>
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 10),
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.black, width: 1),
+        color: PdfColors.white,
+        border: pw.Border.all(
+          color: const PdfColor.fromInt(0xFFD8E8EB),
+          width: 1,
+        ),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Container(
             width: double.infinity,
-            color: const PdfColor.fromInt(0xFFDDF3EE),
-            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            color: const PdfColor.fromInt(0xFFF3FAF8),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             child: pw.Text(
               title,
               style: pw.TextStyle(
                 fontWeight: pw.FontWeight.bold,
                 fontSize: 11,
-                color: const PdfColor.fromInt(0xFF1C3E5D),
+                color: const PdfColor.fromInt(0xFF123B44),
               ),
             ),
           ),
           pw.Padding(
-            padding: const pw.EdgeInsets.fromLTRB(8, 7, 8, 7),
+            padding: const pw.EdgeInsets.fromLTRB(10, 8, 10, 8),
             child: pw.Column(
               crossAxisAlignment: pw.CrossAxisAlignment.start,
               children: lines
@@ -1673,21 +1765,25 @@ class _MaintenancePageState extends State<MaintenancePage>
     return pw.Container(
       margin: const pw.EdgeInsets.only(bottom: 10),
       decoration: pw.BoxDecoration(
-        border: pw.Border.all(color: PdfColors.black, width: 1),
+        color: PdfColors.white,
+        border: pw.Border.all(
+          color: const PdfColor.fromInt(0xFFD8E8EB),
+          width: 1,
+        ),
       ),
       child: pw.Column(
         crossAxisAlignment: pw.CrossAxisAlignment.start,
         children: [
           pw.Container(
             width: double.infinity,
-            color: const PdfColor.fromInt(0xFFDDF3EE),
-            padding: const pw.EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+            color: const PdfColor.fromInt(0xFFF3FAF8),
+            padding: const pw.EdgeInsets.symmetric(horizontal: 10, vertical: 7),
             child: pw.Text(
               title,
               style: pw.TextStyle(
                 fontWeight: pw.FontWeight.bold,
                 fontSize: 11,
-                color: const PdfColor.fromInt(0xFF1C3E5D),
+                color: const PdfColor.fromInt(0xFF123B44),
               ),
             ),
           ),
@@ -1699,16 +1795,591 @@ class _MaintenancePageState extends State<MaintenancePage>
               headerStyle: pw.TextStyle(
                 fontWeight: pw.FontWeight.bold,
                 fontSize: 9.5,
+                color: PdfColors.white,
               ),
               cellStyle: const pw.TextStyle(fontSize: 9),
-              border: pw.TableBorder.all(color: PdfColors.blueGrey300),
+              border: pw.TableBorder(
+                horizontalInside: pw.BorderSide(
+                  color: const PdfColor.fromInt(0xFFD8E8EB),
+                  width: 0.8,
+                ),
+                verticalInside: pw.BorderSide(
+                  color: const PdfColor.fromInt(0xFFE2EEF0),
+                  width: 0.6,
+                ),
+              ),
               headerDecoration: const pw.BoxDecoration(
-                color: PdfColor.fromInt(0xFFEAF7F4),
+                color: PdfColor.fromInt(0xFF1F5B66),
               ),
               cellPadding: const pw.EdgeInsets.all(4),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  pw.Widget _reportPdfHeroCard({
+    required DateTime generatedAt,
+    required int rowsCount,
+    required double totalReal,
+    required String dateFilterLabel,
+    pw.MemoryImage? logoImage,
+  }) {
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(bottom: 10),
+      padding: const pw.EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        border: pw.Border.all(
+          color: const PdfColor.fromInt(0xFF123B44),
+          width: 1,
+        ),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Row(
+            mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'Reporte OT',
+                      style: pw.TextStyle(
+                        color: const PdfColor.fromInt(0xFF123B44),
+                        fontSize: 20,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.SizedBox(height: 3),
+                    pw.Text(
+                      'Resumen analitico de mantenimiento con enfoque en costos, carga operativa y seguimiento por unidad.',
+                      style: const pw.TextStyle(
+                        color: PdfColor.fromInt(0xFF4F6C71),
+                        fontSize: 9.2,
+                        lineSpacing: 1.5,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(width: 12),
+              pw.Container(
+                width: 96,
+                height: 38,
+                alignment: pw.Alignment.centerRight,
+                child: logoImage == null
+                    ? pw.Text(
+                        'DICSA',
+                        style: pw.TextStyle(
+                          color: const PdfColor.fromInt(0xFF123B44),
+                          fontWeight: pw.FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      )
+                    : pw.Image(logoImage, fit: pw.BoxFit.contain),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 10),
+          pw.Wrap(
+            spacing: 8,
+            runSpacing: 6,
+            children: [
+              _reportPdfInfoBadge('Generado', _fmtDateTime(generatedAt)),
+              _reportPdfInfoBadge('OT en vista', '$rowsCount'),
+              _reportPdfInfoBadge('Costo real', _fmtMoney(totalReal)),
+              _reportPdfInfoBadge('Rango', dateFilterLabel),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _reportPdfInfoBadge(String label, String value) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      decoration: pw.BoxDecoration(
+        color: const PdfColor.fromInt(0xFF245A64),
+        border: pw.Border.all(
+          color: const PdfColor.fromInt(0xFF245A64),
+          width: 0.8,
+        ),
+      ),
+      child: pw.Row(
+        mainAxisSize: pw.MainAxisSize.min,
+        children: [
+          pw.Text(
+            '$label: ',
+            style: pw.TextStyle(
+              color: const PdfColor.fromInt(0xFFB6DDE0),
+              fontSize: 9,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+          pw.Text(
+            value,
+            style: pw.TextStyle(
+              color: PdfColors.white,
+              fontSize: 9.5,
+              fontWeight: pw.FontWeight.bold,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _reportPdfMetricGrid(List<MapEntry<String, String>> metrics) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 10),
+      child: pw.Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: metrics.map(_reportPdfMetricCard).toList(),
+      ),
+    );
+  }
+
+  pw.Widget _reportPdfMetricCard(MapEntry<String, String> metric) {
+    return pw.Container(
+      width: 104,
+      padding: const pw.EdgeInsets.fromLTRB(9, 9, 9, 9),
+      decoration: pw.BoxDecoration(
+        color: const PdfColor.fromInt(0xFFF3FAF8),
+        border: pw.Border.all(
+          color: const PdfColor.fromInt(0xFFD3E8E5),
+          width: 1,
+        ),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            metric.key,
+            style: const pw.TextStyle(
+              fontSize: 8,
+              color: PdfColor.fromInt(0xFF5C7C81),
+            ),
+          ),
+          pw.SizedBox(height: 4),
+          pw.Text(
+            metric.value,
+            style: pw.TextStyle(
+              fontSize: 12.5,
+              fontWeight: pw.FontWeight.bold,
+              color: const PdfColor.fromInt(0xFF123B44),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _reportPdfSection({
+    required String title,
+    required pw.Widget child,
+    double bottomMargin = 12,
+  }) {
+    return pw.Container(
+      margin: pw.EdgeInsets.only(bottom: bottomMargin),
+      padding: const pw.EdgeInsets.fromLTRB(12, 10, 12, 12),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        border: pw.Border.all(
+          color: const PdfColor.fromInt(0xFFD8E8EB),
+          width: 1,
+        ),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            title,
+            style: pw.TextStyle(
+              fontSize: 11,
+              fontWeight: pw.FontWeight.bold,
+              color: const PdfColor.fromInt(0xFF123B44),
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          child,
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _reportPdfTwoColumnSection({
+    required String leftTitle,
+    required pw.Widget leftChild,
+    required String rightTitle,
+    required pw.Widget rightChild,
+  }) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 12),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Expanded(
+            child: _reportPdfSection(title: leftTitle, child: leftChild),
+          ),
+          pw.SizedBox(width: 10),
+          pw.Expanded(
+            child: _reportPdfSection(title: rightTitle, child: rightChild),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget _reportPdfRankList(List<MapEntry<String, String>> items) {
+    if (items.isEmpty) {
+      return pw.Text(
+        'Sin datos para mostrar',
+        style: const pw.TextStyle(
+          fontSize: 10,
+          color: PdfColor.fromInt(0xFF6E8A8F),
+        ),
+      );
+    }
+    return pw.Column(
+      children: items
+          .map(
+            (entry) => pw.Container(
+              margin: const pw.EdgeInsets.only(bottom: 8),
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 8,
+              ),
+              decoration: pw.BoxDecoration(
+                color: const PdfColor.fromInt(0xFFF7FBFC),
+                border: pw.Border.all(
+                  color: const PdfColor.fromInt(0xFFDDEBED),
+                  width: 1,
+                ),
+              ),
+              child: pw.Row(
+                children: [
+                  pw.Expanded(
+                    child: pw.Text(
+                      entry.key,
+                      style: pw.TextStyle(
+                        fontSize: 9.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: const PdfColor.fromInt(0xFF123B44),
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(width: 8),
+                  pw.Text(
+                    entry.value,
+                    style: const pw.TextStyle(
+                      fontSize: 9,
+                      color: PdfColor.fromInt(0xFF55757B),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  pw.Widget _reportPdfBarChart(
+    List<MapEntry<String, double>> items, {
+    required PdfColor barColor,
+    bool compact = false,
+  }) {
+    if (items.isEmpty) {
+      return pw.Text(
+        'Sin datos para mostrar',
+        style: const pw.TextStyle(
+          fontSize: 10,
+          color: PdfColor.fromInt(0xFF6E8A8F),
+        ),
+      );
+    }
+    final maxValue = items.fold<double>(
+      1,
+      (max, entry) => entry.value > max ? entry.value : max,
+    );
+    final maxBarWidth = compact ? 165.0 : 130.0;
+    final labelWidth = compact ? 68.0 : 62.0;
+    return pw.Column(
+      children: items
+          .map(
+            (entry) => pw.Padding(
+              padding: pw.EdgeInsets.only(bottom: compact ? 6 : 8),
+              child: pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.SizedBox(
+                    width: labelWidth,
+                    child: pw.Text(
+                      entry.key,
+                      style: pw.TextStyle(
+                        fontSize: compact ? 8.2 : 8.6,
+                        fontWeight: pw.FontWeight.bold,
+                        color: const PdfColor.fromInt(0xFF123B44),
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(width: 8),
+                  pw.Container(
+                    width: maxBarWidth,
+                    height: compact ? 11 : 12,
+                    decoration: pw.BoxDecoration(
+                      color: const PdfColor.fromInt(0xFFE5EFF1),
+                      border: pw.Border.all(
+                        color: const PdfColor.fromInt(0xFFD4E6E9),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: pw.Align(
+                      alignment: pw.Alignment.centerLeft,
+                      child: pw.Container(
+                        width: maxValue == 0
+                            ? 0
+                            : maxBarWidth * (entry.value / maxValue),
+                        decoration: pw.BoxDecoration(
+                          color: barColor,
+                          border: pw.Border.all(color: barColor, width: 0.8),
+                        ),
+                      ),
+                    ),
+                  ),
+                  pw.SizedBox(width: 8),
+                  pw.SizedBox(
+                    width: compact ? 22 : 28,
+                    child: pw.Text(
+                      entry.value.toStringAsFixed(0),
+                      textAlign: pw.TextAlign.right,
+                      style: pw.TextStyle(
+                        fontSize: compact ? 8.1 : 8.4,
+                        fontWeight: pw.FontWeight.bold,
+                        color: const PdfColor.fromInt(0xFF55757B),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  pw.Widget _reportPdfPieChart(List<MapEntry<String, double>> items) {
+    if (items.isEmpty) {
+      return pw.Text(
+        'Sin datos para mostrar',
+        style: const pw.TextStyle(
+          fontSize: 10,
+          color: PdfColor.fromInt(0xFF6E8A8F),
+        ),
+      );
+    }
+    const palette = <String>[
+      '#1F5B66',
+      '#4F8E8C',
+      '#7AAFB5',
+      '#B7D5D8',
+      '#D7E7E8',
+    ];
+    final total = items.fold<double>(0, (sum, entry) => sum + entry.value);
+    if (total <= 0) {
+      return pw.Text('Sin datos para mostrar');
+    }
+
+    final svg = _buildReportPieChartSvg(
+      items,
+      palette: palette,
+      size: 120,
+      radius: 52,
+    );
+
+    return pw.Row(
+      crossAxisAlignment: pw.CrossAxisAlignment.start,
+      children: [
+        pw.SizedBox(width: 124, height: 124, child: pw.SvgImage(svg: svg)),
+        pw.SizedBox(width: 10),
+        pw.Expanded(
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: items.asMap().entries.map((entry) {
+              final color = palette[entry.key % palette.length];
+              final pct = ((entry.value.value / total) * 100).round();
+              return pw.Container(
+                margin: const pw.EdgeInsets.only(bottom: 6),
+                padding: const pw.EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 6,
+                ),
+                decoration: pw.BoxDecoration(
+                  color: const PdfColor.fromInt(0xFFF7FBFC),
+                  border: pw.Border.all(
+                    color: const PdfColor.fromInt(0xFFDDEBED),
+                    width: 0.8,
+                  ),
+                ),
+                child: pw.Row(
+                  children: [
+                    pw.Container(
+                      width: 10,
+                      height: 10,
+                      color: PdfColor.fromHex(color),
+                    ),
+                    pw.SizedBox(width: 6),
+                    pw.Expanded(
+                      child: pw.Text(
+                        entry.value.key,
+                        style: pw.TextStyle(
+                          fontSize: 8.8,
+                          fontWeight: pw.FontWeight.bold,
+                          color: const PdfColor.fromInt(0xFF123B44),
+                        ),
+                      ),
+                    ),
+                    pw.Text(
+                      '${entry.value.value.toStringAsFixed(0)} · $pct%',
+                      style: const pw.TextStyle(
+                        fontSize: 8.4,
+                        color: PdfColor.fromInt(0xFF55757B),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }).toList(),
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _buildReportPieChartSvg(
+    List<MapEntry<String, double>> items, {
+    required List<String> palette,
+    required double size,
+    required double radius,
+  }) {
+    final total = items.fold<double>(0, (sum, entry) => sum + entry.value);
+    final center = size / 2;
+    var startAngle = -math.pi / 2;
+    final buffer = StringBuffer()
+      ..write(
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 $size $size">',
+      )
+      ..write(
+        '<circle cx="$center" cy="$center" r="$radius" fill="#EEF5F6" />',
+      );
+
+    for (var i = 0; i < items.length; i++) {
+      final value = items[i].value;
+      if (value <= 0) continue;
+      final sweep = (value / total) * math.pi * 2;
+      final endAngle = startAngle + sweep;
+      final x1 = center + radius * math.cos(startAngle);
+      final y1 = center + radius * math.sin(startAngle);
+      final x2 = center + radius * math.cos(endAngle);
+      final y2 = center + radius * math.sin(endAngle);
+      final largeArc = sweep > math.pi ? 1 : 0;
+      buffer.write(
+        '<path d="M $center $center L ${x1.toStringAsFixed(2)} ${y1.toStringAsFixed(2)} '
+        'A $radius $radius 0 $largeArc 1 ${x2.toStringAsFixed(2)} ${y2.toStringAsFixed(2)} Z" '
+        'fill="${palette[i % palette.length]}" stroke="#FFFFFF" stroke-width="1"/>',
+      );
+      startAngle = endAngle;
+    }
+
+    buffer
+      ..write(
+        '<circle cx="$center" cy="$center" r="18" fill="#FFFFFF" stroke="#DDEBED" stroke-width="1"/>',
+      )
+      ..write('</svg>');
+    return buffer.toString();
+  }
+
+  pw.Widget _reportPdfModernTable({
+    required String title,
+    required List<String> headers,
+    required List<List<String>> rows,
+  }) {
+    return pw.Container(
+      margin: const pw.EdgeInsets.only(bottom: 14),
+      padding: const pw.EdgeInsets.fromLTRB(14, 12, 14, 14),
+      decoration: pw.BoxDecoration(
+        color: PdfColors.white,
+        border: pw.Border.all(
+          color: const PdfColor.fromInt(0xFFD8E8EB),
+          width: 1,
+        ),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.Text(
+            title,
+            style: pw.TextStyle(
+              fontSize: 12,
+              fontWeight: pw.FontWeight.bold,
+              color: const PdfColor.fromInt(0xFF123B44),
+            ),
+          ),
+          pw.SizedBox(height: 10),
+          pw.TableHelper.fromTextArray(
+            headers: headers,
+            data: rows.isEmpty ? [List.filled(headers.length, '-')] : rows,
+            headerStyle: pw.TextStyle(
+              fontWeight: pw.FontWeight.bold,
+              fontSize: 9.5,
+              color: PdfColors.white,
+            ),
+            cellStyle: const pw.TextStyle(
+              fontSize: 8.8,
+              color: PdfColor.fromInt(0xFF233E45),
+            ),
+            headerDecoration: pw.BoxDecoration(
+              color: const PdfColor.fromInt(0xFF1F5B66),
+            ),
+            rowDecoration: const pw.BoxDecoration(
+              color: PdfColor.fromInt(0xFFF8FBFB),
+            ),
+            oddRowDecoration: const pw.BoxDecoration(
+              color: PdfColor.fromInt(0xFFEFF6F7),
+            ),
+            border: pw.TableBorder(
+              horizontalInside: pw.BorderSide(
+                color: const PdfColor.fromInt(0xFFD8E8EB),
+                width: 0.8,
+              ),
+              verticalInside: pw.BorderSide(
+                color: const PdfColor.fromInt(0xFFE2EEF0),
+                width: 0.6,
+              ),
+            ),
+            cellPadding: const pw.EdgeInsets.symmetric(
+              horizontal: 6,
+              vertical: 6,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.PageTheme _reportPdfPageTheme() {
+    return pw.PageTheme(
+      margin: const pw.EdgeInsets.all(24),
+      buildBackground: (context) => pw.FullPage(
+        ignoreMargins: true,
+        child: pw.Container(color: PdfColors.white),
       ),
     );
   }
@@ -2844,50 +3515,2450 @@ class _MaintenancePageState extends State<MaintenancePage>
       topContent: _buildTopActions(),
       child: _loading
           ? const Center(child: CircularProgressIndicator())
-          : LayoutBuilder(
-              builder: (context, c) {
-                if (c.maxWidth < 1180) {
-                  return Column(
-                    children: [
-                      _buildDashboardCards(),
-                      const SizedBox(height: 10),
-                      SizedBox(height: 300, child: _buildOrdersTable()),
-                      const SizedBox(height: 10),
-                      Expanded(child: _buildOrderSheet()),
-                    ],
-                  );
-                }
-
-                return Column(
-                  children: [
-                    _buildDashboardCards(),
-                    const SizedBox(height: 10),
-                    Expanded(
-                      child: Row(
-                        children: [
-                          SizedBox(width: 470, child: _buildOrdersTable()),
-                          const SizedBox(width: 12),
-                          Expanded(child: _buildOrderSheet()),
-                        ],
-                      ),
-                    ),
-                  ],
-                );
-              },
+          : Column(
+              children: [
+                _buildWorkspaceSwitcher(),
+                const SizedBox(height: 10),
+                Expanded(
+                  child: _workspace == _MaintenanceWorkspace.orders
+                      ? _buildOrdersWorkspace()
+                      : _buildReportsWorkspace(),
+                ),
+              ],
             ),
     );
   }
 
   Widget _buildTopActions() {
     return OperationalGlassToolbarPanel(
+      child: _workspace == _MaintenanceWorkspace.orders
+          ? _buildOrdersTopActionsBar()
+          : _buildReportsTopActionsBar(),
+    );
+  }
+
+  Widget _buildOrdersTopActionsBar() {
+    final openStates = _orders.where((e) {
+      final st = (e['status'] ?? '').toString();
+      return st != 'cerrado' && st != 'rechazado';
+    }).length;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
+      child: Card(
+        elevation: 0,
+        color: Colors.white.withValues(alpha: 0.34),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final actions = FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: FilledButton.icon(
+                  style: _maintenanceActionFilledButtonStyle(),
+                  onPressed: _creating ? null : _createOrder,
+                  icon: const Icon(Icons.add_box_rounded),
+                  label: const Text('Nueva OT'),
+                ),
+              );
+
+              final info = Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${_orders.length} OT totales',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    '$openStates abiertas · ${_countStatus('cerrado')} cerradas',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF2A4B49),
+                    ),
+                  ),
+                ],
+              );
+
+              if (constraints.maxWidth < 900) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(alignment: Alignment.centerLeft, child: actions),
+                    const SizedBox(height: 6),
+                    Align(alignment: Alignment.centerRight, child: info),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: actions,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  info,
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReportsTopActionsBar() {
+    final rows = _filteredReportOrders;
+    final filtersCount = _reportActiveFiltersCount;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
+      child: Card(
+        elevation: 0,
+        color: Colors.white.withValues(alpha: 0.34),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final actions = FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Row(
+                  children: [
+                    OutlinedButton.icon(
+                      style: _maintenanceActionOutlinedButtonStyle(),
+                      onPressed: _exportingReportPdf
+                          ? null
+                          : _exportCurrentReportPdf,
+                      icon: Icon(
+                        _exportingReportPdf
+                            ? Icons.hourglass_top_rounded
+                            : Icons.picture_as_pdf_outlined,
+                      ),
+                      label: Text(
+                        _exportingReportPdf
+                            ? 'Generando PDF...'
+                            : 'Descargar PDF',
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      style: _maintenanceActionOutlinedButtonStyle(),
+                      onPressed: _exportingReportCsv
+                          ? null
+                          : _exportCurrentReportCsv,
+                      icon: Icon(
+                        _exportingReportCsv
+                            ? Icons.hourglass_top_rounded
+                            : Icons.download_rounded,
+                      ),
+                      label: Text(
+                        _exportingReportCsv ? 'Exportando...' : 'Descargar CSV',
+                      ),
+                    ),
+                    if (_hasActiveReportFilters) ...[
+                      const SizedBox(width: 8),
+                      FilledButton.icon(
+                        style: _maintenanceActionFilledButtonStyle(),
+                        onPressed: () {
+                          setState(() {
+                            _reportMechanicFilters.clear();
+                            _reportEquipmentFilters.clear();
+                            _reportAreaFilters.clear();
+                            _reportStatusFilters.clear();
+                            _reportTypeFilters.clear();
+                            _reportDateRange = null;
+                          });
+                        },
+                        icon: const Icon(Icons.filter_alt_off_outlined),
+                        label: const Text('Limpiar filtros'),
+                      ),
+                    ],
+                  ],
+                ),
+              );
+
+              final info = Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    '${rows.length} OT visibles',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  Text(
+                    '$filtersCount filtros activos · ${_fmtReportDateRangeLabel(compact: true)}',
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF2A4B49),
+                    ),
+                  ),
+                ],
+              );
+
+              if (constraints.maxWidth < 980) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Align(alignment: Alignment.centerLeft, child: actions),
+                    const SizedBox(height: 6),
+                    Align(alignment: Alignment.centerRight, child: info),
+                  ],
+                );
+              }
+
+              return Row(
+                children: [
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: actions,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  info,
+                ],
+              );
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildWorkspaceSwitcher() {
+    final isOrders = _workspace == _MaintenanceWorkspace.orders;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(6),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFDBF0E8), Color(0xFFD8E8F8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.75)),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF0E3A47).withValues(alpha: 0.10),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
       child: Row(
         children: [
-          FilledButton.icon(
-            style: _maintenanceFilledButtonStyle(),
-            onPressed: _creating ? null : _createOrder,
-            icon: const Icon(Icons.add_box_rounded),
-            label: const Text('Nueva OT'),
+          Expanded(
+            child: _workspaceSwitchChip(
+              title: 'Operacion OT',
+              subtitle: 'Captura y seguimiento',
+              icon: Icons.fact_check_outlined,
+              selected: isOrders,
+              onTap: () =>
+                  setState(() => _workspace = _MaintenanceWorkspace.orders),
+            ),
           ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _workspaceSwitchChip(
+              title: 'Reportes OT',
+              subtitle: 'Resumenes y analitica',
+              icon: Icons.insights_rounded,
+              selected: !isOrders,
+              onTap: () =>
+                  setState(() => _workspace = _MaintenanceWorkspace.reports),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _workspaceSwitchChip({
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: selected
+              ? const LinearGradient(
+                  colors: [Color(0xFF103A42), Color(0xFF256A7A)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                )
+              : null,
+          color: selected ? null : Colors.white.withValues(alpha: 0.62),
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.42)
+                : const Color(0xFF6AA3B3).withValues(alpha: 0.25),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 42,
+              height: 42,
+              decoration: BoxDecoration(
+                color: selected
+                    ? Colors.white.withValues(alpha: 0.15)
+                    : const Color(0xFFE8F5F4),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Icon(
+                icon,
+                color: selected ? Colors.white : const Color(0xFF1F5B66),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      fontSize: 14,
+                      color: selected ? Colors.white : const Color(0xFF103A42),
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    subtitle,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: selected
+                          ? Colors.white.withValues(alpha: 0.82)
+                          : const Color(0xFF43656C),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildOrdersWorkspace() {
+    return LayoutBuilder(
+      builder: (context, c) {
+        if (c.maxWidth < 1180) {
+          return Column(
+            children: [
+              _buildDashboardCards(),
+              const SizedBox(height: 10),
+              SizedBox(height: 300, child: _buildOrdersTable()),
+              const SizedBox(height: 10),
+              Expanded(child: _buildOrderSheet()),
+            ],
+          );
+        }
+
+        return Column(
+          children: [
+            _buildDashboardCards(),
+            const SizedBox(height: 10),
+            Expanded(
+              child: Row(
+                children: [
+                  SizedBox(width: 470, child: _buildOrdersTable()),
+                  const SizedBox(width: 12),
+                  Expanded(child: _buildOrderSheet()),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  List<Map<String, dynamic>> get _filteredReportOrders {
+    return _orders.where((order) {
+      final mechanic = (order['mechanic_name'] ?? '').toString().trim();
+      final equipment = (order['equipment_label'] ?? '').toString().trim();
+      final area = (order['area_label'] ?? '').toString().trim();
+      final status = (order['status'] ?? '').toString().trim();
+      final type = (order['type'] ?? '').toString().trim();
+      final requestedAt = DateTime.tryParse(
+        (order['requested_at'] ?? '').toString(),
+      );
+
+      if (_reportMechanicFilters.isNotEmpty &&
+          !_reportMechanicFilters.contains(mechanic)) {
+        return false;
+      }
+      if (_reportEquipmentFilters.isNotEmpty &&
+          !_reportEquipmentFilters.contains(equipment)) {
+        return false;
+      }
+      if (_reportAreaFilters.isNotEmpty && !_reportAreaFilters.contains(area)) {
+        return false;
+      }
+      if (_reportStatusFilters.isNotEmpty &&
+          !_reportStatusFilters.contains(status)) {
+        return false;
+      }
+      if (_reportTypeFilters.isNotEmpty && !_reportTypeFilters.contains(type)) {
+        return false;
+      }
+      if (_reportDateRange != null && requestedAt != null) {
+        final start = DateTime(
+          _reportDateRange!.start.year,
+          _reportDateRange!.start.month,
+          _reportDateRange!.start.day,
+        );
+        final end = DateTime(
+          _reportDateRange!.end.year,
+          _reportDateRange!.end.month,
+          _reportDateRange!.end.day,
+          23,
+          59,
+          59,
+        );
+        if (requestedAt.isBefore(start) || requestedAt.isAfter(end)) {
+          return false;
+        }
+      } else if (_reportDateRange != null && requestedAt == null) {
+        return false;
+      }
+      return true;
+    }).toList();
+  }
+
+  List<String> _distinctReportValues(String key) {
+    final byNormalized = <String, String>{};
+    for (final row in _orders) {
+      final value = (row[key] ?? '').toString().trim();
+      if (value.isEmpty) continue;
+      byNormalized.putIfAbsent(value.toLowerCase(), () => value);
+    }
+    final values = byNormalized.values.toList()..sort();
+    return values;
+  }
+
+  void _sanitizeReportFilters() {
+    final mechanicOptions = _distinctReportValues('mechanic_name');
+    final equipmentOptions = _distinctReportValues('equipment_label');
+    final areaOptions = _distinctReportValues('area_label');
+    _reportMechanicFilters = _reportMechanicFilters
+        .where(mechanicOptions.contains)
+        .toSet();
+    _reportEquipmentFilters = _reportEquipmentFilters
+        .where(equipmentOptions.contains)
+        .toSet();
+    _reportAreaFilters = _reportAreaFilters.where(areaOptions.contains).toSet();
+    _reportStatusFilters = _reportStatusFilters
+        .where(_kStatusLabel.keys.contains)
+        .toSet();
+    _reportTypeFilters = _reportTypeFilters
+        .where(_kTypeLabel.keys.contains)
+        .toSet();
+  }
+
+  Map<String, int> _groupCount(
+    Iterable<Map<String, dynamic>> rows,
+    String key,
+  ) {
+    final map = <String, int>{};
+    for (final row in rows) {
+      final value = (row[key] ?? '').toString().trim();
+      final label = value.isEmpty ? 'Sin dato' : value;
+      map[label] = (map[label] ?? 0) + 1;
+    }
+    return map;
+  }
+
+  double _sumOrderCost(Iterable<Map<String, dynamic>> rows, String field) {
+    return rows.fold<double>(
+      0,
+      (sum, row) => sum + (_toDouble(row[field]) ?? 0),
+    );
+  }
+
+  int _totalMinutesForOrders(Iterable<Map<String, dynamic>> rows) {
+    final ids = rows
+        .map((row) => (row['id'] ?? '').toString())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    return _reportTimeLogs.fold<int>(0, (sum, log) {
+      final otId = (log['ot_id'] ?? '').toString();
+      if (!ids.contains(otId)) return sum;
+      final explicitMinutes = log['minutes'];
+      if (explicitMinutes is num) return sum + explicitMinutes.toInt();
+      final start = DateTime.tryParse((log['start_at'] ?? '').toString());
+      final end = DateTime.tryParse((log['end_at'] ?? '').toString());
+      if (start == null || end == null) return sum;
+      return sum + end.difference(start).inMinutes.clamp(0, 100000);
+    });
+  }
+
+  int _countTasksForOrders(
+    Iterable<Map<String, dynamic>> rows, {
+    bool onlyDone = false,
+  }) {
+    final ids = rows
+        .map((row) => (row['id'] ?? '').toString())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    return _reportTasks.where((task) {
+      final otId = (task['ot_id'] ?? '').toString();
+      if (!ids.contains(otId)) return false;
+      if (!onlyDone) return true;
+      return task['is_done'] == true;
+    }).length;
+  }
+
+  int _countMaterialsForOrders(Iterable<Map<String, dynamic>> rows) {
+    final ids = rows
+        .map((row) => (row['id'] ?? '').toString())
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    return _reportMaterials.where((row) {
+      final otId = (row['ot_id'] ?? '').toString();
+      return ids.contains(otId);
+    }).length;
+  }
+
+  Widget _buildReportsWorkspace() {
+    final rows = _filteredReportOrders;
+    final totalReal = _sumOrderCost(rows, 'cost_actual_total');
+    final totalEstimated = _sumOrderCost(rows, 'cost_estimated_total');
+    final totalMinutes = _totalMinutesForOrders(rows);
+    final totalTasks = _countTasksForOrders(rows);
+    final totalDoneTasks = _countTasksForOrders(rows, onlyDone: true);
+    final totalMaterials = _countMaterialsForOrders(rows);
+    final closedCount = rows
+        .where((row) => (row['status'] ?? '').toString() == 'cerrado')
+        .length;
+    final averageCost = rows.isEmpty ? 0.0 : totalReal / rows.length;
+    final uniqueUnits = rows
+        .map((row) => (row['equipment_label'] ?? '').toString().trim())
+        .where((v) => v.isNotEmpty)
+        .toSet()
+        .length;
+
+    return Container(
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFF6FBFA), Color(0xFFEAF4F8)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+      ),
+      child: Scrollbar(
+        controller: _reportsScrollController,
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          controller: _reportsScrollController,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _buildReportsHero(rows),
+              const SizedBox(height: 12),
+              _buildReportFilters(),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final kpiWidth = _adaptiveTileWidth(
+                    constraints.maxWidth,
+                    largeColumns: 4,
+                    mediumColumns: 3,
+                    smallColumns: 2,
+                    minWidth: 178,
+                  );
+                  return Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _reportKpiCard(
+                        'OTs encontradas',
+                        '${rows.length}',
+                        'Unidades: $uniqueUnits',
+                        Icons.inventory_2_outlined,
+                        width: kpiWidth,
+                      ),
+                      _reportKpiCard(
+                        'Costo real',
+                        _fmtMoney(totalReal),
+                        'Estimado: ${_fmtMoney(totalEstimated)}',
+                        Icons.payments_outlined,
+                        width: kpiWidth,
+                      ),
+                      _reportKpiCard(
+                        'Horas registradas',
+                        (totalMinutes / 60).toStringAsFixed(1),
+                        '$totalMinutes min acumulados',
+                        Icons.schedule_rounded,
+                        width: kpiWidth,
+                      ),
+                      _reportKpiCard(
+                        'Actividades',
+                        '$totalTasks',
+                        '$totalDoneTasks realizadas',
+                        Icons.checklist_rounded,
+                        width: kpiWidth,
+                      ),
+                      _reportKpiCard(
+                        'Materiales',
+                        '$totalMaterials',
+                        'Renglones requeridos',
+                        Icons.handyman_outlined,
+                        width: kpiWidth,
+                      ),
+                      _reportKpiCard(
+                        'Cierre',
+                        rows.isEmpty
+                            ? '0%'
+                            : '${((closedCount / rows.length) * 100).round()}%',
+                        '$closedCount cerradas',
+                        Icons.check_circle_outline_rounded,
+                        width: kpiWidth,
+                      ),
+                      _reportKpiCard(
+                        'Ticket promedio',
+                        _fmtMoney(averageCost),
+                        'Por OT filtrada',
+                        Icons.bar_chart_rounded,
+                        width: kpiWidth,
+                      ),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 12),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final panelWidth = _adaptiveTileWidth(
+                    constraints.maxWidth,
+                    largeColumns: 3,
+                    mediumColumns: 2,
+                    smallColumns: 1,
+                    minWidth: 300,
+                  );
+                  return Wrap(
+                    spacing: 10,
+                    runSpacing: 0,
+                    children: [
+                      SizedBox(
+                        width: panelWidth,
+                        child: _buildMechanicSpotlight(rows),
+                      ),
+                      SizedBox(
+                        width: panelWidth,
+                        child: _buildUnitSpotlight(rows),
+                      ),
+                      SizedBox(
+                        width: panelWidth,
+                        child: _buildImpactBreakdown(rows),
+                      ),
+                      SizedBox(
+                        width: panelWidth,
+                        child: _buildStatusBreakdown(rows),
+                      ),
+                      SizedBox(
+                        width: panelWidth,
+                        child: _buildMechanicCostBreakdown(rows),
+                      ),
+                      SizedBox(
+                        width: panelWidth,
+                        child: _buildTopUnitsBreakdown(rows),
+                      ),
+                      SizedBox(
+                        width: constraints.maxWidth,
+                        child: _buildMonthlyTrend(rows),
+                      ),
+                    ],
+                  );
+                },
+              ),
+              _buildDetailedReportTable(rows),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReportsHero(List<Map<String, dynamic>> rows) {
+    final mechanicLabel = _reportFilterSummaryLabel(
+      _reportMechanicFilters,
+      emptyLabel: 'Todos los mecanicos',
+      pluralLabel: 'mecanicos',
+    );
+    final equipmentLabel = _reportFilterSummaryLabel(
+      _reportEquipmentFilters,
+      emptyLabel: 'Todas las unidades',
+      pluralLabel: 'unidades',
+    );
+    final dateLabel = _reportDateRange == null
+        ? 'Historico completo'
+        : '${_reportDateRange!.start.day.toString().padLeft(2, '0')}/${_reportDateRange!.start.month.toString().padLeft(2, '0')}/${_reportDateRange!.start.year} - ${_reportDateRange!.end.day.toString().padLeft(2, '0')}/${_reportDateRange!.end.month.toString().padLeft(2, '0')}/${_reportDateRange!.end.year}';
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF123B44), Color(0xFF2F6F7D), Color(0xFF7DB7BE)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(22),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Reportes OT',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Vista analitica para revisar trabajos por mecanico, unidad, costo, fechas y etapa operativa.',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.84),
+              fontSize: 13,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _heroPill(Icons.person_outline_rounded, mechanicLabel),
+              _heroPill(Icons.local_shipping_outlined, equipmentLabel),
+              _heroPill(Icons.calendar_month_outlined, dateLabel),
+              _heroPill(Icons.summarize_outlined, '${rows.length} OT en vista'),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _heroPill(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.14),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: Colors.white),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReportFilters() {
+    final mechanicOptions = _distinctReportValues('mechanic_name');
+    final equipmentOptions = _distinctReportValues('equipment_label');
+    final areaOptions = _distinctReportValues('area_label');
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
+      child: Card(
+        elevation: 0,
+        color: Colors.white.withValues(alpha: 0.34),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.tune_rounded, color: Color(0xFF1B5560)),
+                  const SizedBox(width: 8),
+                  const Expanded(
+                    child: Text(
+                      'Filtros de resumen',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  if (_hasActiveReportFilters)
+                    OutlinedButton.icon(
+                      style: _maintenanceFilterOutlinedButtonStyle(),
+                      onPressed: () {
+                        setState(() {
+                          _reportMechanicFilters.clear();
+                          _reportEquipmentFilters.clear();
+                          _reportAreaFilters.clear();
+                          _reportStatusFilters.clear();
+                          _reportTypeFilters.clear();
+                          _reportDateRange = null;
+                        });
+                      },
+                      icon: const Icon(Icons.filter_alt_off_outlined),
+                      label: const Text('Limpiar'),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  SizedBox(
+                    width: 250,
+                    child: _reportMultiSelectFilterButton(
+                      label: 'Mecanico',
+                      values: _reportMechanicFilters,
+                      options: mechanicOptions,
+                      pluralLabel: 'mecanicos',
+                      onPressed: () => _openReportMultiSelectFilter(
+                        label: 'Mecanico',
+                        options: mechanicOptions,
+                        initialSelected: _reportMechanicFilters,
+                        onApplied: (values) =>
+                            setState(() => _reportMechanicFilters = values),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 250,
+                    child: _reportMultiSelectFilterButton(
+                      label: 'Unidad',
+                      values: _reportEquipmentFilters,
+                      options: equipmentOptions,
+                      pluralLabel: 'unidades',
+                      onPressed: () => _openReportMultiSelectFilter(
+                        label: 'Unidad',
+                        options: equipmentOptions,
+                        initialSelected: _reportEquipmentFilters,
+                        onApplied: (values) =>
+                            setState(() => _reportEquipmentFilters = values),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 180,
+                    child: _reportMultiSelectFilterButton(
+                      label: 'Area',
+                      values: _reportAreaFilters,
+                      options: areaOptions,
+                      pluralLabel: 'areas',
+                      onPressed: () => _openReportMultiSelectFilter(
+                        label: 'Area',
+                        options: areaOptions,
+                        initialSelected: _reportAreaFilters,
+                        onApplied: (values) =>
+                            setState(() => _reportAreaFilters = values),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 220,
+                    child: _reportMultiSelectFilterButton(
+                      label: 'Estatus',
+                      values: _reportStatusFilters,
+                      options: _kStatusLabel.keys.toList(),
+                      pluralLabel: 'estatus',
+                      labelBuilder: (v) => _kStatusLabel[v] ?? v,
+                      onPressed: () => _openReportMultiSelectFilter(
+                        label: 'Estatus',
+                        options: _kStatusLabel.keys.toList(),
+                        initialSelected: _reportStatusFilters,
+                        labelBuilder: (v) => _kStatusLabel[v] ?? v,
+                        onApplied: (values) =>
+                            setState(() => _reportStatusFilters = values),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 200,
+                    child: _reportMultiSelectFilterButton(
+                      label: 'Tipo',
+                      values: _reportTypeFilters,
+                      options: _kTypeLabel.keys.toList(),
+                      pluralLabel: 'tipos',
+                      labelBuilder: (v) => _kTypeLabel[v] ?? v,
+                      onPressed: () => _openReportMultiSelectFilter(
+                        label: 'Tipo',
+                        options: _kTypeLabel.keys.toList(),
+                        initialSelected: _reportTypeFilters,
+                        labelBuilder: (v) => _kTypeLabel[v] ?? v,
+                        onApplied: (values) =>
+                            setState(() => _reportTypeFilters = values),
+                      ),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 290,
+                    child: OutlinedButton.icon(
+                      style: _maintenanceFilterOutlinedButtonStyle(),
+                      onPressed: _pickReportDateRange,
+                      icon: const Icon(Icons.date_range_rounded),
+                      label: Text(_fmtReportDateRangeLabel()),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  bool get _hasActiveReportFilters =>
+      _reportMechanicFilters.isNotEmpty ||
+      _reportEquipmentFilters.isNotEmpty ||
+      _reportAreaFilters.isNotEmpty ||
+      _reportStatusFilters.isNotEmpty ||
+      _reportTypeFilters.isNotEmpty ||
+      _reportDateRange != null;
+
+  int get _reportActiveFiltersCount {
+    var count = 0;
+    if (_reportMechanicFilters.isNotEmpty) count++;
+    if (_reportEquipmentFilters.isNotEmpty) count++;
+    if (_reportAreaFilters.isNotEmpty) count++;
+    if (_reportStatusFilters.isNotEmpty) count++;
+    if (_reportTypeFilters.isNotEmpty) count++;
+    if (_reportDateRange != null) count++;
+    return count;
+  }
+
+  String _fmtReportDateRangeLabel({bool compact = false}) {
+    if (_reportDateRange == null) {
+      return compact ? 'Sin rango' : 'Rango de fechas';
+    }
+    final start = _reportDateRange!.start;
+    final end = _reportDateRange!.end;
+    final startLabel =
+        '${start.day.toString().padLeft(2, '0')}/${start.month.toString().padLeft(2, '0')}/${start.year}';
+    final endLabel =
+        '${end.day.toString().padLeft(2, '0')}/${end.month.toString().padLeft(2, '0')}/${end.year}';
+    return compact ? '$startLabel - $endLabel' : '$startLabel - $endLabel';
+  }
+
+  String _reportFilterSummaryLabel(
+    Set<String> values, {
+    required String emptyLabel,
+    required String pluralLabel,
+    String Function(String value)? labelBuilder,
+  }) {
+    if (values.isEmpty) return emptyLabel;
+    if (values.length == 1) {
+      final only = values.first;
+      return labelBuilder == null ? only : labelBuilder(only);
+    }
+    return '${values.length} $pluralLabel';
+  }
+
+  Widget _reportMultiSelectFilterButton({
+    required String label,
+    required Set<String> values,
+    required List<String> options,
+    required VoidCallback onPressed,
+    required String pluralLabel,
+    String Function(String value)? labelBuilder,
+  }) {
+    final dedupedOptions = <String>{
+      for (final option in options)
+        if (option.trim().isNotEmpty) option.trim(),
+    }.toList()..sort();
+    final effectiveValues = values.where(dedupedOptions.contains).toSet();
+    final summary = _reportFilterSummaryLabel(
+      effectiveValues,
+      emptyLabel: 'Todos',
+      pluralLabel: pluralLabel,
+      labelBuilder: labelBuilder,
+    );
+    return OutlinedButton.icon(
+      style: _maintenanceFilterOutlinedButtonStyle().copyWith(
+        padding: WidgetStateProperty.all(
+          const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+        ),
+        alignment: Alignment.centerLeft,
+      ),
+      onPressed: onPressed,
+      icon: const Icon(Icons.filter_list_rounded),
+      label: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF42666C),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            summary,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF0B2B2B),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openReportMultiSelectFilter({
+    required String label,
+    required List<String> options,
+    required Set<String> initialSelected,
+    required ValueChanged<Set<String>> onApplied,
+    String Function(String value)? labelBuilder,
+  }) async {
+    final dedupedOptions = <String>{
+      for (final option in options)
+        if (option.trim().isNotEmpty) option.trim(),
+    }.toList()..sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+
+    final result = await showDialog<_MaintenanceFilterDialogResult>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.28),
+      builder: (dialogContext) {
+        final localSelected = <String>{
+          ...initialSelected.where(dedupedOptions.contains),
+        };
+        String localSearch = '';
+
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            final visibleOptions = dedupedOptions.where((option) {
+              final candidate = labelBuilder == null
+                  ? option
+                  : labelBuilder(option);
+              return localSearch.trim().isEmpty ||
+                  candidate.toLowerCase().contains(
+                    localSearch.trim().toLowerCase(),
+                  );
+            }).toList();
+            final allVisibleSelected =
+                visibleOptions.isNotEmpty &&
+                visibleOptions.every(localSelected.contains);
+
+            void applyAndClose() {
+              Navigator.pop(
+                dialogContext,
+                _MaintenanceFilterDialogResult(
+                  selectedValues: {...localSelected},
+                ),
+              );
+            }
+
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 24,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                  child: Container(
+                    width: 420,
+                    constraints: const BoxConstraints(maxHeight: 560),
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                    decoration: _maintenanceFilterDialogDecoration(),
+                    child: FocusScope(
+                      autofocus: true,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Filtro: $label',
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF0B2B2B),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          TextField(
+                            onChanged: (value) =>
+                                setLocalState(() => localSearch = value),
+                            onSubmitted: (_) => applyAndClose(),
+                            decoration: _maintenanceInputDecoration(
+                              hintText: 'Buscar',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                              isDense: true,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFF2A4B49),
+                                ),
+                                onPressed: () {
+                                  setLocalState(() {
+                                    if (allVisibleSelected) {
+                                      localSelected.removeAll(visibleOptions);
+                                    } else {
+                                      localSelected.addAll(visibleOptions);
+                                    }
+                                  });
+                                },
+                                child: Text(
+                                  allVisibleSelected
+                                      ? 'Deseleccionar visibles'
+                                      : 'Seleccionar visibles',
+                                ),
+                              ),
+                              const Spacer(),
+                              Text(
+                                '${localSelected.length} seleccionados',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 6),
+                          Expanded(
+                            child: visibleOptions.isEmpty
+                                ? const Center(
+                                    child: Text('Sin valores para mostrar'),
+                                  )
+                                : ListView.builder(
+                                    itemCount: visibleOptions.length,
+                                    itemBuilder: (_, index) {
+                                      final value = visibleOptions[index];
+                                      final checked = localSelected.contains(
+                                        value,
+                                      );
+                                      return CheckboxListTile(
+                                        dense: true,
+                                        value: checked,
+                                        title: Text(
+                                          labelBuilder == null
+                                              ? value
+                                              : labelBuilder(value),
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        onChanged: (selected) {
+                                          setLocalState(() {
+                                            if (selected ?? false) {
+                                              localSelected.add(value);
+                                            } else {
+                                              localSelected.remove(value);
+                                            }
+                                          });
+                                        },
+                                      );
+                                    },
+                                  ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              OutlinedButton(
+                                style: _maintenanceFilterOutlinedButtonStyle(),
+                                onPressed: () => Navigator.pop(dialogContext),
+                                child: const Text('Cancelar'),
+                              ),
+                              const SizedBox(width: 8),
+                              OutlinedButton(
+                                style: _maintenanceFilterOutlinedButtonStyle(),
+                                onPressed: () => Navigator.pop(
+                                  dialogContext,
+                                  const _MaintenanceFilterDialogResult(
+                                    selectedValues: <String>{},
+                                  ),
+                                ),
+                                child: const Text('Limpiar'),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton(
+                                style: _maintenanceFilterFilledButtonStyle(),
+                                onPressed: applyAndClose,
+                                child: const Text('Aplicar'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    if (!mounted || result == null) return;
+    onApplied(result.selectedValues);
+  }
+
+  Future<void> _pickReportDateRange() async {
+    final now = DateTime.now();
+    final picked = await _showMaintenanceReportDateRangeDialog(
+      context,
+      label: 'Rango de fechas',
+      bounds: DateTimeRange(
+        start: DateTime(now.year - 3, 1, 1),
+        end: DateTime(now.year + 1, 12, 31),
+      ),
+      initialRange: _reportDateRange,
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      if (picked.clear) {
+        _reportDateRange = null;
+      } else {
+        _reportDateRange = picked.range;
+      }
+    });
+  }
+
+  Widget _reportKpiCard(
+    String title,
+    String value,
+    String caption,
+    IconData icon, {
+    required double width,
+  }) {
+    return Container(
+      width: width,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFD2E4E8)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, color: const Color(0xFF1B6671)),
+          const SizedBox(height: 8),
+          Text(
+            title,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF4B6970),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            caption,
+            style: const TextStyle(fontSize: 12, color: Color(0xFF5F7D83)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  double _adaptiveTileWidth(
+    double availableWidth, {
+    required int largeColumns,
+    required int mediumColumns,
+    required int smallColumns,
+    required double minWidth,
+    double spacing = 10,
+  }) {
+    final columns = availableWidth >= 1380
+        ? largeColumns
+        : availableWidth >= 900
+        ? mediumColumns
+        : smallColumns;
+    final width = (availableWidth - (spacing * (columns - 1))) / columns;
+    if (width >= minWidth || columns == 1) return width;
+    final fallbackColumns = columns > 2 ? 2 : 1;
+    return (availableWidth - (spacing * (fallbackColumns - 1))) /
+        fallbackColumns;
+  }
+
+  Widget _buildMechanicSpotlight(List<Map<String, dynamic>> rows) {
+    final effectiveMechanic =
+        (_reportMechanicFilters.length == 1
+            ? _reportMechanicFilters.first
+            : null) ??
+        (() {
+          final grouped = _groupCount(rows, 'mechanic_name').entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+          return grouped.isEmpty ? null : grouped.first.key;
+        })();
+    final mechanicRows = effectiveMechanic == null
+        ? <Map<String, dynamic>>[]
+        : rows
+              .where(
+                (row) =>
+                    (row['mechanic_name'] ?? '').toString().trim() ==
+                    effectiveMechanic,
+              )
+              .toList();
+    final units = mechanicRows
+        .map((row) => (row['equipment_label'] ?? '').toString().trim())
+        .where((v) => v.isNotEmpty)
+        .toSet();
+    final totalReal = _sumOrderCost(mechanicRows, 'cost_actual_total');
+    final totalTasks = _countTasksForOrders(mechanicRows);
+    final doneTasks = _countTasksForOrders(mechanicRows, onlyDone: true);
+    final totalMaterials = _countMaterialsForOrders(mechanicRows);
+    final statuses = _groupCount(mechanicRows, 'status').entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final impacts = _groupCount(mechanicRows, 'impact').entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final latestDate = mechanicRows
+        .map((row) => DateTime.tryParse((row['updated_at'] ?? '').toString()))
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (latest, current) {
+          if (latest == null || current.isAfter(latest)) return current;
+          return latest;
+        });
+
+    return _reportPanel(
+      title: 'Resumen por mecanico',
+      icon: Icons.person_search_rounded,
+      child: mechanicRows.isEmpty
+          ? const Text(
+              'Selecciona un mecanico o ajusta filtros para ver resumen.',
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  effectiveMechanic ?? 'Sin mecanico',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _summaryTag('OTs', '${mechanicRows.length}'),
+                    _summaryTag('Unidades', '${units.length}'),
+                    _summaryTag('Costo real', _fmtMoney(totalReal)),
+                    _summaryTag('Impacto dominante', _labelForImpact(impacts)),
+                    _summaryTag(
+                      'Actividades',
+                      '$totalTasks / $doneTasks hechas',
+                    ),
+                    _summaryTag('Materiales', '$totalMaterials'),
+                    _summaryTag(
+                      'Ultimo movimiento',
+                      latestDate == null ? '-' : _fmtDateTime(latestDate),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                if (statuses.isNotEmpty) ...[
+                  const Text(
+                    'Etapas actuales',
+                    style: TextStyle(fontWeight: FontWeight.w800),
+                  ),
+                  const SizedBox(height: 6),
+                  ...statuses
+                      .take(4)
+                      .map(
+                        (entry) => Padding(
+                          padding: const EdgeInsets.only(bottom: 6),
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: 170,
+                                child: Text(
+                                  _kStatusLabel[entry.key] ?? entry.key,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              Expanded(
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(999),
+                                  child: LinearProgressIndicator(
+                                    minHeight: 10,
+                                    value: mechanicRows.isEmpty
+                                        ? 0
+                                        : entry.value / mechanicRows.length,
+                                    backgroundColor: const Color(0xFFDDEDF0),
+                                    valueColor:
+                                        const AlwaysStoppedAnimation<Color>(
+                                          Color(0xFF2E7B86),
+                                        ),
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                '${entry.value}',
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                ],
+              ],
+            ),
+    );
+  }
+
+  Widget _buildStatusBreakdown(List<Map<String, dynamic>> rows) {
+    final grouped = _groupCount(rows, 'status').entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return _reportPanel(
+      title: 'Distribucion por etapa',
+      icon: Icons.account_tree_outlined,
+      child: grouped.isEmpty
+          ? const Text('Sin datos para este filtro.')
+          : Column(
+              children: grouped
+                  .map(
+                    (entry) => Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        children: [
+                          SizedBox(
+                            width: 170,
+                            child: Text(
+                              _kStatusLabel[entry.key] ?? entry.key,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          Expanded(
+                            child: ClipRRect(
+                              borderRadius: BorderRadius.circular(999),
+                              child: LinearProgressIndicator(
+                                minHeight: 12,
+                                value: rows.isEmpty
+                                    ? 0
+                                    : entry.value / rows.length,
+                                backgroundColor: const Color(0xFFE3EEF1),
+                                valueColor: const AlwaysStoppedAnimation<Color>(
+                                  Color(0xFF377D8A),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${entry.value}',
+                            style: const TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                        ],
+                      ),
+                    ),
+                  )
+                  .toList(),
+            ),
+    );
+  }
+
+  Widget _buildImpactBreakdown(List<Map<String, dynamic>> rows) {
+    final grouped = _groupCount(rows, 'impact').entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    const palette = <Color>[
+      Color(0xFF1F6F78),
+      Color(0xFF3D8D99),
+      Color(0xFF78B7BD),
+      Color(0xFFA9D2D6),
+    ];
+    final total = grouped.fold<int>(0, (sum, entry) => sum + entry.value);
+    return _reportPanel(
+      title: 'Distribucion por impacto',
+      icon: Icons.donut_large_rounded,
+      child: grouped.isEmpty
+          ? const Text('Sin datos de impacto para este filtro.')
+          : Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SizedBox(
+                  width: 150,
+                  height: 150,
+                  child: Stack(
+                    alignment: Alignment.center,
+                    children: [
+                      SizedBox(
+                        width: 132,
+                        height: 132,
+                        child: CustomPaint(
+                          painter: _DonutChartPainter(
+                            segments: grouped
+                                .asMap()
+                                .entries
+                                .map(
+                                  (entry) => _DonutSegment(
+                                    value: entry.value.value.toDouble(),
+                                    color: palette[entry.key % palette.length],
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ),
+                      ),
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            '$total',
+                            style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const Text(
+                            'OT',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF5C7C81),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    children: grouped.asMap().entries.map((entry) {
+                      final color = palette[entry.key % palette.length];
+                      final label =
+                          _kImpactLabel[entry.value.key] ?? entry.value.key;
+                      final pct = total == 0
+                          ? 0
+                          : ((entry.value.value / total) * 100).round();
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5FBFA),
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: const Color(0xFFD5E6E9)),
+                        ),
+                        child: Row(
+                          children: [
+                            Container(
+                              width: 12,
+                              height: 12,
+                              decoration: BoxDecoration(
+                                color: color,
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(child: Text(label)),
+                            Text(
+                              '${entry.value.value} · $pct%',
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildMechanicCostBreakdown(List<Map<String, dynamic>> rows) {
+    final grouped = <String, double>{};
+    for (final row in rows) {
+      final key = (row['mechanic_name'] ?? '').toString().trim();
+      final label = key.isEmpty ? 'Sin mecanico' : key;
+      grouped[label] =
+          (grouped[label] ?? 0) + (_toDouble(row['cost_actual_total']) ?? 0);
+    }
+    final entries = grouped.entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final maxValue = entries.isEmpty
+        ? 1.0
+        : entries.fold<double>(
+            0,
+            (max, entry) => entry.value > max ? entry.value : max,
+          );
+    return _reportPanel(
+      title: 'Costo real por mecanico',
+      icon: Icons.bar_chart_rounded,
+      child: entries.isEmpty
+          ? const Text('Sin costos para este filtro.')
+          : Column(
+              children: entries.take(6).map((entry) {
+                final ratio = maxValue == 0 ? 0.0 : entry.value / maxValue;
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 150,
+                        child: Text(
+                          entry.key,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Expanded(
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(999),
+                          child: LinearProgressIndicator(
+                            minHeight: 14,
+                            value: ratio,
+                            backgroundColor: const Color(0xFFE4EEF0),
+                            valueColor: const AlwaysStoppedAnimation<Color>(
+                              Color(0xFF2E7B86),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      SizedBox(
+                        width: 92,
+                        child: Text(
+                          _fmtMoney(entry.value),
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+    );
+  }
+
+  Widget _buildTopUnitsBreakdown(List<Map<String, dynamic>> rows) {
+    final grouped = _groupCount(rows, 'equipment_label').entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    return _reportPanel(
+      title: 'Unidades con mas intervencion',
+      icon: Icons.local_shipping_outlined,
+      child: grouped.isEmpty
+          ? const Text('Sin unidades para mostrar.')
+          : Column(
+              children: grouped.take(6).map((entry) {
+                final unitRows = rows
+                    .where(
+                      (row) =>
+                          (row['equipment_label'] ?? '').toString().trim() ==
+                          entry.key,
+                    )
+                    .toList();
+                final cost = _sumOrderCost(unitRows, 'cost_actual_total');
+                return Container(
+                  margin: const EdgeInsets.only(bottom: 8),
+                  padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5FBFA),
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: const Color(0xFFD4E7EA)),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              entry.key,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${entry.value} OT · ${_fmtMoney(cost)}',
+                              style: const TextStyle(
+                                color: Color(0xFF55757B),
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Icon(
+                        Icons.chevron_right_rounded,
+                        color: Color(0xFF76949A),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+    );
+  }
+
+  Widget _buildUnitSpotlight(List<Map<String, dynamic>> rows) {
+    final effectiveUnit =
+        (_reportEquipmentFilters.length == 1
+            ? _reportEquipmentFilters.first
+            : null) ??
+        (() {
+          final grouped = _groupCount(rows, 'equipment_label').entries.toList()
+            ..sort((a, b) => b.value.compareTo(a.value));
+          return grouped.isEmpty ? null : grouped.first.key;
+        })();
+    final unitRows = effectiveUnit == null
+        ? <Map<String, dynamic>>[]
+        : rows
+              .where(
+                (row) =>
+                    (row['equipment_label'] ?? '').toString().trim() ==
+                    effectiveUnit,
+              )
+              .toList();
+    final mechanics = unitRows
+        .map((row) => (row['mechanic_name'] ?? '').toString().trim())
+        .where((v) => v.isNotEmpty)
+        .toSet();
+    final totalReal = _sumOrderCost(unitRows, 'cost_actual_total');
+    final totalEstimated = _sumOrderCost(unitRows, 'cost_estimated_total');
+    final totalTasks = _countTasksForOrders(unitRows);
+    final doneTasks = _countTasksForOrders(unitRows, onlyDone: true);
+    final totalMaterials = _countMaterialsForOrders(unitRows);
+    final impacts = _groupCount(unitRows, 'impact').entries.toList()
+      ..sort((a, b) => b.value.compareTo(a.value));
+    final latestStatus = unitRows.isEmpty
+        ? '-'
+        : (_kStatusLabel[(unitRows.first['status'] ?? '').toString()] ??
+              (unitRows.first['status'] ?? '-').toString());
+    final latestDate = unitRows
+        .map((row) => DateTime.tryParse((row['updated_at'] ?? '').toString()))
+        .whereType<DateTime>()
+        .fold<DateTime?>(null, (latest, current) {
+          if (latest == null || current.isAfter(latest)) return current;
+          return latest;
+        });
+
+    return _reportPanel(
+      title: 'Resumen por unidad',
+      icon: Icons.precision_manufacturing_outlined,
+      child: unitRows.isEmpty
+          ? const Text(
+              'Selecciona una unidad o ajusta filtros para ver su resumen.',
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  effectiveUnit ?? 'Sin unidad',
+                  style: const TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _summaryTag('OTs', '${unitRows.length}'),
+                    _summaryTag('Mecanicos', '${mechanics.length}'),
+                    _summaryTag('Costo real', _fmtMoney(totalReal)),
+                    _summaryTag('Costo estimado', _fmtMoney(totalEstimated)),
+                    _summaryTag('Impacto dominante', _labelForImpact(impacts)),
+                    _summaryTag(
+                      'Actividades',
+                      '$totalTasks / $doneTasks hechas',
+                    ),
+                    _summaryTag('Materiales', '$totalMaterials'),
+                    _summaryTag('Etapa actual', latestStatus),
+                    _summaryTag(
+                      'Ultimo movimiento',
+                      latestDate == null ? '-' : _fmtDateTime(latestDate),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildMonthlyTrend(List<Map<String, dynamic>> rows) {
+    final monthly = <String, int>{};
+    for (final row in rows) {
+      final dt = DateTime.tryParse((row['requested_at'] ?? '').toString());
+      if (dt == null) continue;
+      final key = '${dt.year}-${dt.month.toString().padLeft(2, '0')}';
+      monthly[key] = (monthly[key] ?? 0) + 1;
+    }
+    final series = monthly.entries.toList()
+      ..sort((a, b) => a.key.compareTo(b.key));
+    return _reportPanel(
+      title: 'Tendencia por mes',
+      icon: Icons.show_chart_rounded,
+      child: series.isEmpty
+          ? const Text('Sin historial suficiente.')
+          : Column(
+              children: series.take(8).map((entry) {
+                final maxValue = series.fold<int>(
+                  1,
+                  (max, item) => item.value > max ? item.value : max,
+                );
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 84,
+                        child: Text(
+                          entry.key,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      Expanded(
+                        child: Container(
+                          height: 16,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE3EEF1),
+                            borderRadius: BorderRadius.circular(999),
+                          ),
+                          child: FractionallySizedBox(
+                            alignment: Alignment.centerLeft,
+                            widthFactor: entry.value / maxValue,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                gradient: const LinearGradient(
+                                  colors: [
+                                    Color(0xFF205C67),
+                                    Color(0xFF83BEC3),
+                                  ],
+                                ),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Text(
+                        '${entry.value}',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
+                    ],
+                  ),
+                );
+              }).toList(),
+            ),
+    );
+  }
+
+  Widget _buildDetailedReportTable(List<Map<String, dynamic>> rows) {
+    final sortedRows = [...rows]
+      ..sort((a, b) {
+        final ad = DateTime.tryParse((a['requested_at'] ?? '').toString());
+        final bd = DateTime.tryParse((b['requested_at'] ?? '').toString());
+        if (ad == null && bd == null) return 0;
+        if (ad == null) return 1;
+        if (bd == null) return -1;
+        return bd.compareTo(ad);
+      });
+
+    return _reportPanel(
+      title: 'Detalle de trabajos',
+      icon: Icons.table_rows_outlined,
+      child: sortedRows.isEmpty
+          ? const Text('No hay OTs con el filtro actual.')
+          : Column(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: const Row(
+                    children: [
+                      Expanded(flex: 2, child: Text('OT / Unidad')),
+                      Expanded(flex: 2, child: Text('Mecanico')),
+                      Expanded(child: Text('Fecha')),
+                      Expanded(child: Text('Responsable')),
+                      Expanded(child: Text('Costo')),
+                      Expanded(child: Text('Etapa')),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                ...sortedRows.take(24).map((row) {
+                  return Container(
+                    padding: const EdgeInsets.symmetric(vertical: 9),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: Colors.blueGrey.withValues(alpha: 0.10),
+                        ),
+                      ),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                (row['ot_folio'] ?? '').toString(),
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${row['equipment_label'] ?? 'Sin unidad'} · ${row['area_label'] ?? 'Sin area'}',
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF5F7A80),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          flex: 2,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text((row['mechanic_name'] ?? '-').toString()),
+                              const SizedBox(height: 2),
+                              Text(
+                                (row['mechanic_contact'] ?? '-').toString(),
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  color: Color(0xFF67848A),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            _fmtDateTimeNullable(row['requested_at']),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            (row['assigned_to_name'] ?? '-').toString(),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            _fmtMoney(_toDouble(row['cost_actual_total']) ?? 0),
+                          ),
+                        ),
+                        Expanded(
+                          child: Text(
+                            _kStatusLabel[(row['status'] ?? '').toString()] ??
+                                (row['status'] ?? '').toString(),
+                          ),
+                        ),
+                      ],
+                    ),
+                  );
+                }),
+              ],
+            ),
+    );
+  }
+
+  Future<void> _exportCurrentReportCsv() async {
+    if (_exportingReportCsv) return;
+    final rows = _filteredReportOrders;
+    if (rows.isEmpty) {
+      _toast('No hay datos para exportar con el filtro actual');
+      return;
+    }
+
+    setState(() => _exportingReportCsv = true);
+    try {
+      final totalMinutes = _totalMinutesForOrders(rows);
+      final csvRows = <List<String>>[
+        [
+          'folio_ot',
+          'mecanico',
+          'contacto_mecanico',
+          'unidad',
+          'area',
+          'tipo',
+          'prioridad',
+          'estatus',
+          'fecha_solicitud',
+          'responsable',
+          'solicitante',
+          'costo_estimado_total',
+          'costo_real_total',
+        ],
+        ...rows.map(
+          (row) => [
+            (row['ot_folio'] ?? '').toString(),
+            (row['mechanic_name'] ?? '').toString(),
+            (row['mechanic_contact'] ?? '').toString(),
+            (row['equipment_label'] ?? '').toString(),
+            (row['area_label'] ?? '').toString(),
+            _kTypeLabel[(row['type'] ?? '').toString()] ??
+                (row['type'] ?? '').toString(),
+            _kPriorityLabel[(row['priority'] ?? '').toString()] ??
+                (row['priority'] ?? '').toString(),
+            _kStatusLabel[(row['status'] ?? '').toString()] ??
+                (row['status'] ?? '').toString(),
+            _fmtDateTimeNullable(row['requested_at']),
+            (row['assigned_to_name'] ?? '').toString(),
+            (row['requester_name'] ?? '').toString(),
+            (_toDouble(row['cost_estimated_total']) ?? 0).toStringAsFixed(2),
+            (_toDouble(row['cost_actual_total']) ?? 0).toStringAsFixed(2),
+          ],
+        ),
+        [
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          'RESUMEN',
+          '',
+          '',
+          '',
+          _sumOrderCost(rows, 'cost_estimated_total').toStringAsFixed(2),
+          _sumOrderCost(rows, 'cost_actual_total').toStringAsFixed(2),
+        ],
+        [
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          '',
+          'MINUTOS',
+          '$totalMinutes',
+          '',
+          '',
+          '',
+          '',
+        ],
+      ];
+      final csv = csvRows.map(_csvLine).join('\n');
+      final suggestedName =
+          'reporte_ot_${DateTime.now().year}${DateTime.now().month.toString().padLeft(2, '0')}${DateTime.now().day.toString().padLeft(2, '0')}.csv';
+      String? outputPath;
+      if (!kIsWeb) {
+        outputPath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Guardar reporte OT en CSV',
+          fileName: suggestedName,
+          allowedExtensions: const ['csv'],
+          type: FileType.custom,
+          lockParentWindow: true,
+        );
+      }
+      if (outputPath == null || outputPath.trim().isEmpty) {
+        _toast('Exportacion cancelada');
+        return;
+      }
+      final normalized = outputPath.toLowerCase().endsWith('.csv')
+          ? outputPath
+          : '$outputPath.csv';
+      await File(normalized).writeAsString(csv, flush: true);
+      _toast('CSV guardado: $normalized');
+    } catch (e) {
+      _toast('No se pudo exportar CSV: $e');
+    } finally {
+      if (mounted) setState(() => _exportingReportCsv = false);
+    }
+  }
+
+  Future<void> _exportCurrentReportPdf() async {
+    if (_exportingReportPdf) return;
+    final rows = _filteredReportOrders;
+    if (rows.isEmpty) {
+      _toast('No hay datos para exportar con el filtro actual');
+      return;
+    }
+
+    setState(() => _exportingReportPdf = true);
+    try {
+      final doc = pw.Document();
+      final now = DateTime.now();
+      final totalReal = _sumOrderCost(rows, 'cost_actual_total');
+      final totalEstimated = _sumOrderCost(rows, 'cost_estimated_total');
+      final totalMinutes = _totalMinutesForOrders(rows);
+      final totalTasks = _countTasksForOrders(rows);
+      final totalDoneTasks = _countTasksForOrders(rows, onlyDone: true);
+      final totalMaterials = _countMaterialsForOrders(rows);
+      final closedCount = rows
+          .where((row) => (row['status'] ?? '').toString() == 'cerrado')
+          .length;
+      final uniqueUnits = rows
+          .map((row) => (row['equipment_label'] ?? '').toString().trim())
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .length;
+      final averageCost = rows.isEmpty ? 0.0 : totalReal / rows.length;
+      final mechanicBreakdown = _groupCount(
+        rows,
+        'mechanic_name',
+      ).entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+      final statusBreakdown = _groupCount(rows, 'status').entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final impactBreakdown = _groupCount(rows, 'impact').entries.toList()
+        ..sort((a, b) => b.value.compareTo(a.value));
+      final unitBreakdown = _groupCount(
+        rows,
+        'equipment_label',
+      ).entries.toList()..sort((a, b) => b.value.compareTo(a.value));
+      final monthlyMap = <String, int>{};
+      for (final row in rows) {
+        final dt = DateTime.tryParse((row['requested_at'] ?? '').toString());
+        if (dt == null) continue;
+        final key = '${dt.year}-${dt.month.toString().padLeft(2, '0')}';
+        monthlyMap[key] = (monthlyMap[key] ?? 0) + 1;
+      }
+      final monthlyBreakdown = monthlyMap.entries.toList()
+        ..sort((a, b) => a.key.compareTo(b.key));
+      final detailRows = [...rows]
+        ..sort((a, b) {
+          final ad = DateTime.tryParse((a['requested_at'] ?? '').toString());
+          final bd = DateTime.tryParse((b['requested_at'] ?? '').toString());
+          if (ad == null && bd == null) return 0;
+          if (ad == null) return 1;
+          if (bd == null) return -1;
+          return bd.compareTo(ad);
+        });
+      final mechanicFilterLabel = _reportFilterSummaryLabel(
+        _reportMechanicFilters,
+        emptyLabel: 'Todos los mecanicos',
+        pluralLabel: 'mecanicos',
+      );
+      final unitFilterLabel = _reportFilterSummaryLabel(
+        _reportEquipmentFilters,
+        emptyLabel: 'Todas las unidades',
+        pluralLabel: 'unidades',
+      );
+      final areaFilterLabel = _reportFilterSummaryLabel(
+        _reportAreaFilters,
+        emptyLabel: 'Todas las areas',
+        pluralLabel: 'areas',
+      );
+      final statusFilterLabel = _reportFilterSummaryLabel(
+        _reportStatusFilters,
+        emptyLabel: 'Todos los estatus',
+        pluralLabel: 'estatus',
+        labelBuilder: (value) => _kStatusLabel[value] ?? value,
+      );
+      final typeFilterLabel = _reportFilterSummaryLabel(
+        _reportTypeFilters,
+        emptyLabel: 'Todos los tipos',
+        pluralLabel: 'tipos',
+        labelBuilder: (value) => _kTypeLabel[value] ?? value,
+      );
+      final dateFilterLabel = _reportDateRange == null
+          ? 'Historico completo'
+          : _fmtReportDateRangeLabel();
+
+      pw.MemoryImage? logoImage;
+      try {
+        final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+        logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+      } catch (e, st) {
+        AppErrorReporter.report(
+          e,
+          st,
+          fallbackMessage: 'No se pudo cargar el logo para el PDF del reporte.',
+        );
+      }
+
+      final filters = <MapEntry<String, String>>[
+        MapEntry('Mecanico', mechanicFilterLabel),
+        MapEntry('Unidad', unitFilterLabel),
+        MapEntry('Area', areaFilterLabel),
+        MapEntry('Estatus', statusFilterLabel),
+        MapEntry('Tipo', typeFilterLabel),
+        MapEntry('Rango', dateFilterLabel),
+      ];
+
+      final metrics = <MapEntry<String, String>>[
+        MapEntry('OTs encontradas', '${rows.length}'),
+        MapEntry('Unidades', '$uniqueUnits'),
+        MapEntry('Costo estimado', _fmtMoney(totalEstimated)),
+        MapEntry('Costo real', _fmtMoney(totalReal)),
+        MapEntry('Ticket prom.', _fmtMoney(averageCost)),
+        MapEntry('Horas', (totalMinutes / 60).toStringAsFixed(1)),
+        MapEntry('Actividades', '$totalTasks/$totalDoneTasks'),
+        MapEntry('Materiales', '$totalMaterials'),
+        MapEntry('Cerradas', '$closedCount'),
+      ];
+
+      doc.addPage(
+        pw.MultiPage(
+          pageTheme: _reportPdfPageTheme(),
+          build: (context) => [
+            _reportPdfHeroCard(
+              logoImage: logoImage,
+              generatedAt: now,
+              rowsCount: rows.length,
+              totalReal: totalReal,
+              dateFilterLabel: dateFilterLabel,
+            ),
+            _reportPdfMetricGrid(metrics),
+            _reportPdfSection(
+              title: 'Grafica por etapa',
+              child: _reportPdfBarChart(
+                statusBreakdown
+                    .take(6)
+                    .map(
+                      (entry) => MapEntry(
+                        _kStatusLabel[entry.key] ?? entry.key,
+                        entry.value.toDouble(),
+                      ),
+                    )
+                    .toList(),
+                barColor: const PdfColor.fromInt(0xFF1F5B66),
+                compact: true,
+              ),
+            ),
+            _reportPdfSection(
+              title: 'Distribucion por impacto',
+              child: _reportPdfPieChart(
+                impactBreakdown
+                    .take(4)
+                    .map(
+                      (entry) => MapEntry(
+                        _kImpactLabel[entry.key] ?? entry.key,
+                        entry.value.toDouble(),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+            _reportPdfSection(
+              title: 'Tendencia mensual',
+              child: _reportPdfBarChart(
+                monthlyBreakdown
+                    .take(5)
+                    .map((entry) => MapEntry(entry.key, entry.value.toDouble()))
+                    .toList(),
+                barColor: const PdfColor.fromInt(0xFF7AAFB5),
+                compact: true,
+              ),
+            ),
+            pw.NewPage(),
+            _reportPdfSection(
+              title: 'Filtros aplicados',
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: filters
+                    .map(
+                      (entry) => pw.Padding(
+                        padding: const pw.EdgeInsets.only(bottom: 4),
+                        child: pw.Text(
+                          '${entry.key}: ${entry.value}',
+                          style: const pw.TextStyle(
+                            fontSize: 9.2,
+                            color: PdfColor.fromInt(0xFF284A51),
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
+              ),
+            ),
+            _reportPdfTwoColumnSection(
+              leftTitle: 'OTs por mecanico',
+              leftChild: _reportPdfRankList(
+                mechanicBreakdown
+                    .take(8)
+                    .map((entry) => MapEntry(entry.key, '${entry.value} OT'))
+                    .toList(),
+              ),
+              rightTitle: 'Unidades con mas intervencion',
+              rightChild: _reportPdfRankList(
+                unitBreakdown
+                    .take(6)
+                    .map((entry) => MapEntry(entry.key, '${entry.value} OT'))
+                    .toList(),
+              ),
+            ),
+            _reportPdfModernTable(
+              title: 'Detalle de trabajos (primeras 12 OT)',
+              headers: const [
+                'OT',
+                'Unidad',
+                'Mecanico',
+                'Fecha',
+                'Responsable',
+                'Costo real',
+                'Etapa',
+              ],
+              rows: detailRows
+                  .take(12)
+                  .map(
+                    (row) => [
+                      (row['ot_folio'] ?? '').toString(),
+                      (row['equipment_label'] ?? 'Sin unidad').toString(),
+                      (row['mechanic_name'] ?? '-').toString(),
+                      _fmtDateTimeNullable(row['requested_at']),
+                      (row['assigned_to_name'] ?? '-').toString(),
+                      _fmtMoney(_toDouble(row['cost_actual_total']) ?? 0),
+                      _kStatusLabel[(row['status'] ?? '').toString()] ??
+                          (row['status'] ?? '').toString(),
+                    ],
+                  )
+                  .toList(),
+            ),
+          ],
+        ),
+      );
+
+      final bytes = await doc.save();
+      final suggestedName =
+          'reporte_ot_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.pdf';
+      String? outputPath;
+      if (!kIsWeb) {
+        outputPath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Guardar reporte OT como PDF',
+          fileName: suggestedName,
+          allowedExtensions: const ['pdf'],
+          type: FileType.custom,
+          lockParentWindow: true,
+        );
+      }
+
+      if (outputPath == null || outputPath.trim().isEmpty) {
+        _toast('Exportacion cancelada');
+        return;
+      }
+
+      final normalized = outputPath.toLowerCase().endsWith('.pdf')
+          ? outputPath
+          : '$outputPath.pdf';
+      await File(normalized).writeAsBytes(bytes, flush: true);
+      _toast('PDF guardado: $normalized');
+    } catch (e) {
+      _toast('No se pudo exportar PDF: $e');
+    } finally {
+      if (mounted) setState(() => _exportingReportPdf = false);
+    }
+  }
+
+  Widget _reportPanel({
+    required String title,
+    required IconData icon,
+    required Widget child,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFD5E6E9)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: const Color(0xFF205C67)),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
+    );
+  }
+
+  Widget _summaryTag(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFFEAF5F4),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFD1E5E2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              color: Color(0xFF5E7E83),
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(value, style: const TextStyle(fontWeight: FontWeight.w900)),
         ],
       ),
     );
@@ -3989,6 +7060,27 @@ class _MaintenancePageState extends State<MaintenancePage>
             ),
           ],
         ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _mechanicNameC,
+                decoration: _maintenanceInputDecoration(labelText: 'Mecanico'),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: TextField(
+                controller: _mechanicContactC,
+                keyboardType: TextInputType.phone,
+                decoration: _maintenanceInputDecoration(
+                  labelText: 'Contacto mecanico',
+                ),
+              ),
+            ),
+          ],
+        ),
       ],
     );
   }
@@ -4410,6 +7502,61 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 }
 
+class _DonutSegment {
+  const _DonutSegment({required this.value, required this.color});
+
+  final double value;
+  final Color color;
+}
+
+class _DonutChartPainter extends CustomPainter {
+  const _DonutChartPainter({required this.segments});
+
+  final List<_DonutSegment> segments;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final total = segments.fold<double>(
+      0,
+      (sum, segment) => sum + segment.value,
+    );
+    if (total <= 0) return;
+
+    final strokeWidth = size.width * 0.18;
+    final rect = Offset.zero & size;
+    var startAngle = -90 * (3.1415926535897932 / 180.0);
+
+    for (final segment in segments) {
+      final sweepAngle = (segment.value / total) * 3.1415926535897932 * 2;
+      final paint = Paint()
+        ..color = segment.color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..strokeCap = StrokeCap.butt;
+      canvas.drawArc(
+        rect.deflate(strokeWidth / 2),
+        startAngle,
+        sweepAngle,
+        false,
+        paint,
+      );
+      startAngle += sweepAngle;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DonutChartPainter oldDelegate) {
+    if (oldDelegate.segments.length != segments.length) return true;
+    for (var i = 0; i < segments.length; i++) {
+      if (oldDelegate.segments[i].value != segments[i].value ||
+          oldDelegate.segments[i].color != segments[i].color) {
+        return true;
+      }
+    }
+    return false;
+  }
+}
+
 String _fmtDateTime(DateTime d) {
   final dd = d.day.toString().padLeft(2, '0');
   final mm = d.month.toString().padLeft(2, '0');
@@ -4423,6 +7570,16 @@ String _fmtDateTimeNullable(dynamic raw) {
   final dt = DateTime.tryParse((raw ?? '').toString());
   if (dt == null) return '-';
   return _fmtDateTime(dt);
+}
+
+String _labelForImpact(List<MapEntry<String, int>> impacts) {
+  if (impacts.isEmpty) return '-';
+  final key = impacts.first.key;
+  return _kImpactLabel[key] ?? key;
+}
+
+String _csvLine(List<String> values) {
+  return values.map((value) => '"${value.replaceAll('"', '""')}"').join(',');
 }
 
 Future<T?> _showMaintenanceDialog<T>({
@@ -4547,6 +7704,303 @@ Future<TimeOfDay?> _showMaintenanceTimePicker(
   );
 }
 
+Future<_MaintenanceDateFilterDialogResult?>
+_showMaintenanceReportDateRangeDialog(
+  BuildContext context, {
+  required String label,
+  required DateTimeRange bounds,
+  DateTimeRange? initialRange,
+}) {
+  return showDialog<_MaintenanceDateFilterDialogResult>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) {
+      DateTime displayMonth = DateTime(
+        (initialRange?.start ?? DateTime.now()).year,
+        (initialRange?.start ?? DateTime.now()).month,
+      );
+      DateTime? start = initialRange?.start;
+      DateTime? end = initialRange?.end;
+      DateTime? hover;
+
+      bool isSameDay(DateTime a, DateTime b) =>
+          a.year == b.year && a.month == b.month && a.day == b.day;
+      DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+      bool withinBounds(DateTime day) {
+        final d = dateOnly(day);
+        return !d.isBefore(dateOnly(bounds.start)) &&
+            !d.isAfter(dateOnly(bounds.end));
+      }
+
+      String monthNameEs(int month) {
+        const months = <String>[
+          'enero',
+          'febrero',
+          'marzo',
+          'abril',
+          'mayo',
+          'junio',
+          'julio',
+          'agosto',
+          'septiembre',
+          'octubre',
+          'noviembre',
+          'diciembre',
+        ];
+        return months[(month - 1).clamp(0, 11)];
+      }
+
+      return StatefulBuilder(
+        builder: (context, setLocalState) {
+          final monthFirst = DateTime(displayMonth.year, displayMonth.month, 1);
+          final leading = (monthFirst.weekday + 6) % 7;
+          final gridStart = monthFirst.subtract(Duration(days: leading));
+          final rangePreviewEnd = end ?? hover;
+
+          _MaintenanceDateFilterDialogResult? buildApplyResult() {
+            if (start == null) return null;
+            final s = dateOnly(start!);
+            final e = dateOnly(end ?? start!);
+            final from = s.isBefore(e) ? s : e;
+            final to = s.isBefore(e) ? e : s;
+            return _MaintenanceDateFilterDialogResult(
+              range: DateTimeRange(start: from, end: to),
+            );
+          }
+
+          bool inPreviewRange(DateTime day) {
+            if (start == null || rangePreviewEnd == null) return false;
+            final a = dateOnly(start!);
+            final b = dateOnly(rangePreviewEnd);
+            final from = a.isBefore(b) ? a : b;
+            final to = a.isBefore(b) ? b : a;
+            final d = dateOnly(day);
+            return !d.isBefore(from) && !d.isAfter(to);
+          }
+
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 18,
+              vertical: 24,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(20),
+                child: BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                    decoration: _maintenanceFilterDialogDecoration(),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Filtro: $label',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0B2B2B),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () {
+                                setLocalState(() {
+                                  displayMonth = DateTime(
+                                    displayMonth.year,
+                                    displayMonth.month - 1,
+                                  );
+                                });
+                              },
+                              icon: const Icon(Icons.chevron_left),
+                            ),
+                            Expanded(
+                              child: Center(
+                                child: Text(
+                                  '${monthNameEs(monthFirst.month)[0].toUpperCase()}${monthNameEs(monthFirst.month).substring(1)} ${monthFirst.year}',
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            IconButton(
+                              visualDensity: VisualDensity.compact,
+                              onPressed: () {
+                                setLocalState(() {
+                                  displayMonth = DateTime(
+                                    displayMonth.year,
+                                    displayMonth.month + 1,
+                                  );
+                                });
+                              },
+                              icon: const Icon(Icons.chevron_right),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          children: const [
+                            Expanded(child: Center(child: Text('L'))),
+                            Expanded(child: Center(child: Text('M'))),
+                            Expanded(child: Center(child: Text('M'))),
+                            Expanded(child: Center(child: Text('J'))),
+                            Expanded(child: Center(child: Text('V'))),
+                            Expanded(child: Center(child: Text('S'))),
+                            Expanded(child: Center(child: Text('D'))),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        SizedBox(
+                          height: 250,
+                          child: Column(
+                            children: List.generate(6, (row) {
+                              return Expanded(
+                                child: Row(
+                                  children: List.generate(7, (col) {
+                                    final day = gridStart.add(
+                                      Duration(days: row * 7 + col),
+                                    );
+                                    final inMonth =
+                                        day.month == displayMonth.month;
+                                    final allowed = withinBounds(day);
+                                    final selectedStart =
+                                        start != null && isSameDay(day, start!);
+                                    final selectedEnd =
+                                        end != null && isSameDay(day, end!);
+                                    final inRange = inPreviewRange(day);
+                                    final active = selectedStart || selectedEnd;
+                                    final bgColor = active
+                                        ? const Color(0xFF4F8E8C)
+                                        : inRange
+                                        ? const Color(0xFFE2EEEC)
+                                        : Colors.transparent;
+                                    final txtColor = active
+                                        ? Colors.white
+                                        : !allowed
+                                        ? Colors.black38
+                                        : inMonth
+                                        ? const Color(0xFF0B2B2B)
+                                        : Colors.black54;
+
+                                    return Expanded(
+                                      child: MouseRegion(
+                                        onEnter: (_) {
+                                          if (start != null &&
+                                              end == null &&
+                                              allowed) {
+                                            setLocalState(() => hover = day);
+                                          }
+                                        },
+                                        onExit: (_) {
+                                          if (hover != null) {
+                                            setLocalState(() => hover = null);
+                                          }
+                                        },
+                                        child: GestureDetector(
+                                          onTap: !allowed
+                                              ? null
+                                              : () {
+                                                  setLocalState(() {
+                                                    final picked = dateOnly(
+                                                      day,
+                                                    );
+                                                    if (start == null ||
+                                                        (start != null &&
+                                                            end != null)) {
+                                                      start = picked;
+                                                      end = null;
+                                                    } else {
+                                                      end = picked;
+                                                    }
+                                                  });
+                                                },
+                                          child: Container(
+                                            margin: const EdgeInsets.all(2),
+                                            decoration: BoxDecoration(
+                                              color: bgColor,
+                                              borderRadius:
+                                                  BorderRadius.circular(10),
+                                              border: Border.all(
+                                                color: active
+                                                    ? const Color(0xFF4F8E8C)
+                                                    : inRange
+                                                    ? const Color(0xFFB6D9D5)
+                                                    : Colors.transparent,
+                                              ),
+                                            ),
+                                            alignment: Alignment.center,
+                                            child: Text(
+                                              '${day.day}',
+                                              style: TextStyle(
+                                                fontWeight: active
+                                                    ? FontWeight.w800
+                                                    : FontWeight.w600,
+                                                color: txtColor,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    );
+                                  }),
+                                ),
+                              );
+                            }),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            OutlinedButton(
+                              style: _maintenanceFilterOutlinedButtonStyle(),
+                              onPressed: () => Navigator.pop(dialogContext),
+                              child: const Text('Cancelar'),
+                            ),
+                            const SizedBox(width: 8),
+                            OutlinedButton(
+                              style: _maintenanceFilterOutlinedButtonStyle(),
+                              onPressed: () => Navigator.pop(
+                                dialogContext,
+                                const _MaintenanceDateFilterDialogResult(
+                                  clear: true,
+                                ),
+                              ),
+                              child: const Text('Limpiar'),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton(
+                              style: _maintenanceFilterFilledButtonStyle(),
+                              onPressed: () {
+                                final result = buildApplyResult();
+                                if (result != null) {
+                                  Navigator.pop(dialogContext, result);
+                                }
+                              },
+                              child: const Text('Aplicar'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
 InputDecoration _maintenanceInputDecoration({
   String? hintText,
   String? labelText,
@@ -4583,13 +8037,6 @@ InputDecoration _maintenanceInputDecoration({
   );
 }
 
-ButtonStyle _maintenanceFilledButtonStyle() {
-  return FilledButton.styleFrom(
-    backgroundColor: const Color(0xFF4F8E8C),
-    foregroundColor: Colors.white,
-  );
-}
-
 ButtonStyle _maintenanceDialogFilledButtonStyle() {
   return FilledButton.styleFrom(
     backgroundColor: const Color(0xFF4F8E8C),
@@ -4602,6 +8049,64 @@ ButtonStyle _maintenanceDialogOutlinedButtonStyle() {
     foregroundColor: const Color(0xFF2A4B49),
     side: BorderSide(color: const Color(0xFF2A4B49).withValues(alpha: 0.25)),
     backgroundColor: Colors.white.withValues(alpha: 0.40),
+  );
+}
+
+BoxDecoration _maintenanceFilterDialogDecoration() {
+  return BoxDecoration(
+    color: Colors.white.withValues(alpha: 0.62),
+    borderRadius: BorderRadius.circular(20),
+    border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
+  );
+}
+
+ButtonStyle _maintenanceFilterOutlinedButtonStyle() {
+  return OutlinedButton.styleFrom(
+    foregroundColor: const Color(0xFF2A4B49),
+    side: BorderSide(color: const Color(0xFF2A4B49).withValues(alpha: 0.25)),
+    backgroundColor: Colors.white.withValues(alpha: 0.40),
+  );
+}
+
+ButtonStyle _maintenanceFilterFilledButtonStyle() {
+  return FilledButton.styleFrom(
+    backgroundColor: const Color(0xFF4F8E8C),
+    foregroundColor: Colors.white,
+  );
+}
+
+ButtonStyle _maintenanceActionOutlinedButtonStyle() {
+  return OutlinedButton.styleFrom(
+    foregroundColor: const Color(0xFF0B2B2B),
+    backgroundColor: Colors.white.withValues(alpha: 0.34),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.72)),
+    surfaceTintColor: Colors.transparent,
+    shadowColor: Colors.black.withValues(alpha: 0.28),
+  ).copyWith(
+    overlayColor: WidgetStateProperty.all(Colors.transparent),
+    elevation: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.disabled)) return 0;
+      if (states.contains(WidgetState.pressed)) return 1.5;
+      if (states.contains(WidgetState.hovered)) return 6;
+      return 0;
+    }),
+  );
+}
+
+ButtonStyle _maintenanceActionFilledButtonStyle() {
+  return FilledButton.styleFrom(
+    backgroundColor: const Color(0xFF4F8E8C),
+    foregroundColor: Colors.white,
+    surfaceTintColor: Colors.transparent,
+    shadowColor: Colors.black.withValues(alpha: 0.30),
+  ).copyWith(
+    overlayColor: WidgetStateProperty.all(Colors.transparent),
+    elevation: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.disabled)) return 0;
+      if (states.contains(WidgetState.pressed)) return 1.5;
+      if (states.contains(WidgetState.hovered)) return 6;
+      return 0;
+    }),
   );
 }
 

@@ -7,6 +7,9 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../shared/app_ui/app_ui_widgets.dart';
+import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
+import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
+import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 
 String _stripAccents(String input) {
   const map = <String, String>{
@@ -1149,21 +1152,9 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
   }) async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => Focus(
-        autofocus: true,
-        onKeyEvent: (_, event) {
-          if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          if (event.logicalKey == LogicalKeyboardKey.escape) {
-            Navigator.pop(dialogContext, false);
-            return KeyEventResult.handled;
-          }
-          if (event.logicalKey == LogicalKeyboardKey.enter ||
-              event.logicalKey == LogicalKeyboardKey.numpadEnter) {
-            Navigator.pop(dialogContext, true);
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
+      builder: (dialogContext) => ContractConfirmDialogKeyHandler(
+        onCancel: () => Navigator.pop(dialogContext, false),
+        onConfirm: () => Navigator.pop(dialogContext, true),
         child: AlertDialog(
           title: Text(title),
           content: Text(message),
@@ -1173,6 +1164,7 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
               child: const Text('Cancelar'),
             ),
             FilledButton(
+              autofocus: true,
               onPressed: () => Navigator.pop(dialogContext, true),
               child: Text(confirmLabel),
             ),
@@ -5071,83 +5063,84 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                       horizontal: 12,
                       vertical: 10,
                     ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(
-                                maxWidth: editableCellMaxWidth,
-                              ),
-                              child: TextField(
-                                focusNode: _insertFocusNode,
-                                controller: _insertController,
-                                inputFormatters: [
-                                  FilteringTextInputFormatter
-                                      .singleLineFormatter,
-                                  _NameInputFormatter(),
-                                ],
-                                onChanged: (_) => setState(() {}),
-                                onTap: () {
-                                  _focusNode.requestFocus();
-                                  _activateInsertRow();
-                                },
-                                onSubmitted: (_) => _insertFromRow(),
-                                onTapOutside: (event) {
-                                  if (event.kind == PointerDeviceKind.mouse &&
-                                      event.buttons == kSecondaryButton) {
-                                    return;
-                                  }
-                                },
-                                decoration:
-                                    _catalogContractGlassFieldDecoration(
-                                      hintText: widget.insertHintText,
-                                    ),
+                    child: ContractGridScaledRow(
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: editableCellMaxWidth,
+                            child: TextField(
+                              focusNode: _insertFocusNode,
+                              controller: _insertController,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.singleLineFormatter,
+                                _NameInputFormatter(),
+                              ],
+                              onChanged: (_) => setState(() {}),
+                              onTap: () {
+                                _focusNode.requestFocus();
+                                _activateInsertRow();
+                              },
+                              onSubmitted: (_) => _insertFromRow(),
+                              onTapOutside: (event) {
+                                if (event.kind == PointerDeviceKind.mouse &&
+                                    event.buttons == kSecondaryButton) {
+                                  return;
+                                }
+                              },
+                              decoration: _catalogContractGlassFieldDecoration(
+                                hintText: widget.insertHintText,
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(width: 10),
-                        Tooltip(
-                          message: 'AGREGAR',
-                          child: InkWell(
-                            borderRadius: BorderRadius.circular(10),
-                            onTap: canInsert
-                                ? () => unawaited(_insertFromRow())
-                                : null,
-                            child: Container(
-                              width: 34,
-                              height: 34,
-                              decoration: BoxDecoration(
-                                color: canInsert
-                                    ? const Color(
-                                        0xFF19C37D,
-                                      ).withValues(alpha: 0.92)
-                                    : Colors.white.withValues(alpha: 0.35),
+                          const SizedBox(width: 10),
+                          AnchoredActionSlot(
+                            width: 34,
+                            trailingWidth: 34,
+                            leading: const SizedBox.shrink(),
+                            trailing: Tooltip(
+                              message: 'AGREGAR',
+                              child: InkWell(
                                 borderRadius: BorderRadius.circular(10),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.52),
+                                onTap: canInsert
+                                    ? () => unawaited(_insertFromRow())
+                                    : null,
+                                child: Container(
+                                  width: 34,
+                                  height: 34,
+                                  decoration: BoxDecoration(
+                                    color: canInsert
+                                        ? const Color(
+                                            0xFF19C37D,
+                                          ).withValues(alpha: 0.92)
+                                        : Colors.white.withValues(alpha: 0.35),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.52,
+                                      ),
+                                    ),
+                                  ),
+                                  child: _inserting
+                                      ? const Padding(
+                                          padding: EdgeInsets.all(8),
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                          ),
+                                        )
+                                      : Icon(
+                                          Icons.add,
+                                          size: 18,
+                                          color: canInsert
+                                              ? Colors.white
+                                              : const Color(0xFF0B2B2B),
+                                        ),
                                 ),
                               ),
-                              child: _inserting
-                                  ? const Padding(
-                                      padding: EdgeInsets.all(8),
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    )
-                                  : Icon(
-                                      Icons.add,
-                                      size: 18,
-                                      color: canInsert
-                                          ? Colors.white
-                                          : const Color(0xFF0B2B2B),
-                                    ),
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -5273,259 +5266,257 @@ class _CatalogContractTableState extends State<_CatalogContractTable> {
                                           horizontal: 12,
                                           vertical: 10,
                                         ),
-                                        child: Row(
-                                          children: [
-                                            Expanded(
-                                              child: Align(
-                                                alignment: Alignment.centerLeft,
-                                                child: ConstrainedBox(
-                                                  constraints:
-                                                      const BoxConstraints(
-                                                        maxWidth:
-                                                            editableCellMaxWidth,
+                                        child: ContractGridScaledRow(
+                                          child: Row(
+                                            mainAxisSize: MainAxisSize.min,
+                                            children: [
+                                              SizedBox(
+                                                width: editableCellMaxWidth,
+                                                child: AnimatedContainer(
+                                                  duration: const Duration(
+                                                    milliseconds: 100,
+                                                  ),
+                                                  padding:
+                                                      const EdgeInsets.symmetric(
+                                                        horizontal: 4,
                                                       ),
-                                                  child: AnimatedContainer(
-                                                    duration: const Duration(
-                                                      milliseconds: 100,
-                                                    ),
-                                                    padding:
-                                                        const EdgeInsets.symmetric(
-                                                          horizontal: 4,
+                                                  decoration: BoxDecoration(
+                                                    color: (hovered || editing)
+                                                        ? _kCatalogTableSelectionAccent
+                                                              .withValues(
+                                                                alpha: editing
+                                                                    ? 0.12
+                                                                    : 0.06,
+                                                              )
+                                                        : Colors.transparent,
+                                                    borderRadius:
+                                                        BorderRadius.circular(
+                                                          8,
                                                         ),
-                                                    decoration: BoxDecoration(
-                                                      color:
-                                                          (hovered || editing)
+                                                    border: Border.all(
+                                                      color: editing
                                                           ? _kCatalogTableSelectionAccent
                                                                 .withValues(
-                                                                  alpha: editing
-                                                                      ? 0.12
-                                                                      : 0.06,
+                                                                  alpha: 0.25,
+                                                                )
+                                                          : hovered
+                                                          ? _kCatalogTableSelectionAccent
+                                                                .withValues(
+                                                                  alpha: 0.14,
                                                                 )
                                                           : Colors.transparent,
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                            8,
-                                                          ),
-                                                      border: Border.all(
-                                                        color: editing
-                                                            ? _kCatalogTableSelectionAccent
-                                                                  .withValues(
-                                                                    alpha: 0.25,
-                                                                  )
-                                                            : hovered
-                                                            ? _kCatalogTableSelectionAccent
-                                                                  .withValues(
-                                                                    alpha: 0.14,
-                                                                  )
-                                                            : Colors
-                                                                  .transparent,
-                                                      ),
                                                     ),
-                                                    child:
-                                                        editing &&
-                                                            editController !=
-                                                                null
-                                                        ? Focus(
-                                                            onKeyEvent: (_, event) {
-                                                              if (event
-                                                                  is! KeyDownEvent) {
-                                                                return KeyEventResult
-                                                                    .ignored;
-                                                              }
-                                                              if (event
-                                                                      .logicalKey ==
-                                                                  LogicalKeyboardKey
-                                                                      .escape) {
-                                                                _cancelEditing();
-                                                                _focusNode
-                                                                    .requestFocus();
-                                                                return KeyEventResult
-                                                                    .handled;
-                                                              }
+                                                  ),
+                                                  child:
+                                                      editing &&
+                                                          editController != null
+                                                      ? Focus(
+                                                          onKeyEvent: (_, event) {
+                                                            if (event
+                                                                is! KeyDownEvent) {
                                                               return KeyEventResult
                                                                   .ignored;
-                                                            },
-                                                            child: TextField(
-                                                              focusNode:
+                                                            }
+                                                            if (event
+                                                                    .logicalKey ==
+                                                                LogicalKeyboardKey
+                                                                    .escape) {
+                                                              _cancelEditing();
+                                                              _focusNode
+                                                                  .requestFocus();
+                                                              return KeyEventResult
+                                                                  .handled;
+                                                            }
+                                                            return KeyEventResult
+                                                                .ignored;
+                                                          },
+                                                          child: TextField(
+                                                            focusNode:
+                                                                _focusNodeForRow(
+                                                                  rowId,
+                                                                ),
+                                                            controller:
+                                                                editController,
+                                                            textInputAction:
+                                                                TextInputAction
+                                                                    .done,
+                                                            inputFormatters: [
+                                                              FilteringTextInputFormatter
+                                                                  .singleLineFormatter,
+                                                              _NameInputFormatter(),
+                                                            ],
+                                                            onTap: () {
+                                                              final rowFocus =
                                                                   _focusNodeForRow(
                                                                     rowId,
+                                                                  );
+                                                              if (!rowFocus
+                                                                  .hasFocus) {
+                                                                rowFocus
+                                                                    .requestFocus();
+                                                              }
+                                                              if (_insertActive ||
+                                                                  _activeEditingRowId !=
+                                                                      rowId ||
+                                                                  _selectedIndex !=
+                                                                      i) {
+                                                                setState(() {
+                                                                  _insertActive =
+                                                                      false;
+                                                                  _activeEditingRowId =
+                                                                      rowId;
+                                                                  _selectedIndex =
+                                                                      i;
+                                                                });
+                                                              }
+                                                            },
+                                                            onSubmitted: (_) =>
+                                                                _saveEditingRows(),
+                                                            onTapOutside: (event) {
+                                                              if (event.kind ==
+                                                                      PointerDeviceKind
+                                                                          .mouse &&
+                                                                  event.buttons ==
+                                                                      kSecondaryButton) {
+                                                                return;
+                                                              }
+                                                              _cancelEditing();
+                                                            },
+                                                            decoration: _catalogContractGlassFieldDecoration().copyWith(
+                                                              fillColor: Colors
+                                                                  .white
+                                                                  .withValues(
+                                                                    alpha: 0.86,
                                                                   ),
-                                                              controller:
-                                                                  editController,
-                                                              textInputAction:
-                                                                  TextInputAction
-                                                                      .done,
-                                                              inputFormatters: [
-                                                                FilteringTextInputFormatter
-                                                                    .singleLineFormatter,
-                                                                _NameInputFormatter(),
-                                                              ],
-                                                              onTap: () {
-                                                                final rowFocus =
-                                                                    _focusNodeForRow(
-                                                                      rowId,
-                                                                    );
-                                                                if (!rowFocus
-                                                                    .hasFocus) {
-                                                                  rowFocus
-                                                                      .requestFocus();
-                                                                }
-                                                                if (_insertActive ||
-                                                                    _activeEditingRowId !=
-                                                                        rowId ||
-                                                                    _selectedIndex !=
-                                                                        i) {
-                                                                  setState(() {
-                                                                    _insertActive =
-                                                                        false;
-                                                                    _activeEditingRowId =
-                                                                        rowId;
-                                                                    _selectedIndex =
-                                                                        i;
-                                                                  });
-                                                                }
-                                                              },
-                                                              onSubmitted: (_) =>
-                                                                  _saveEditingRows(),
-                                                              onTapOutside: (event) {
-                                                                if (event.kind ==
-                                                                        PointerDeviceKind
-                                                                            .mouse &&
-                                                                    event.buttons ==
-                                                                        kSecondaryButton) {
-                                                                  return;
-                                                                }
-                                                                _cancelEditing();
-                                                              },
-                                                              decoration: _catalogContractGlassFieldDecoration().copyWith(
-                                                                fillColor: Colors
-                                                                    .white
-                                                                    .withValues(
-                                                                      alpha:
-                                                                          0.86,
+                                                              border: OutlineInputBorder(
+                                                                borderRadius:
+                                                                    BorderRadius.circular(
+                                                                      10,
                                                                     ),
-                                                                border: OutlineInputBorder(
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        10,
-                                                                      ),
-                                                                  borderSide:
-                                                                      BorderSide
-                                                                          .none,
-                                                                ),
-                                                                enabledBorder: OutlineInputBorder(
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        10,
-                                                                      ),
-                                                                  borderSide:
-                                                                      BorderSide
-                                                                          .none,
-                                                                ),
-                                                                focusedBorder: OutlineInputBorder(
-                                                                  borderRadius:
-                                                                      BorderRadius.circular(
-                                                                        10,
-                                                                      ),
-                                                                  borderSide: BorderSide(
-                                                                    color: _kCatalogTableSelectionAccent
-                                                                        .withValues(
-                                                                          alpha:
-                                                                              0.42,
+                                                                borderSide:
+                                                                    BorderSide
+                                                                        .none,
+                                                              ),
+                                                              enabledBorder:
+                                                                  OutlineInputBorder(
+                                                                    borderRadius:
+                                                                        BorderRadius.circular(
+                                                                          10,
                                                                         ),
-                                                                    width: 1,
+                                                                    borderSide:
+                                                                        BorderSide
+                                                                            .none,
                                                                   ),
-                                                                ),
-                                                                contentPadding:
-                                                                    const EdgeInsets.symmetric(
-                                                                      horizontal:
-                                                                          8,
-                                                                      vertical:
-                                                                          7,
+                                                              focusedBorder: OutlineInputBorder(
+                                                                borderRadius:
+                                                                    BorderRadius.circular(
+                                                                      10,
                                                                     ),
+                                                                borderSide: BorderSide(
+                                                                  color: _kCatalogTableSelectionAccent
+                                                                      .withValues(
+                                                                        alpha:
+                                                                            0.42,
+                                                                      ),
+                                                                  width: 1,
+                                                                ),
+                                                              ),
+                                                              contentPadding:
+                                                                  const EdgeInsets.symmetric(
+                                                                    horizontal:
+                                                                        8,
+                                                                    vertical: 7,
+                                                                  ),
+                                                            ),
+                                                          ),
+                                                        )
+                                                      : Column(
+                                                          mainAxisSize:
+                                                              MainAxisSize.min,
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
+                                                          children: [
+                                                            Text(
+                                                              title,
+                                                              maxLines:
+                                                                  subtitle ==
+                                                                      null
+                                                                  ? 2
+                                                                  : 1,
+                                                              overflow:
+                                                                  TextOverflow
+                                                                      .ellipsis,
+                                                              style: const TextStyle(
+                                                                color: Color(
+                                                                  0xFF0B2B2B,
+                                                                ),
+                                                                fontWeight:
+                                                                    FontWeight
+                                                                        .w700,
                                                               ),
                                                             ),
-                                                          )
-                                                        : Column(
-                                                            mainAxisSize:
-                                                                MainAxisSize
-                                                                    .min,
-                                                            crossAxisAlignment:
-                                                                CrossAxisAlignment
-                                                                    .start,
-                                                            children: [
+                                                            if (subtitle !=
+                                                                    null &&
+                                                                subtitle
+                                                                    .isNotEmpty) ...[
+                                                              const SizedBox(
+                                                                height: 2,
+                                                              ),
                                                               Text(
-                                                                title,
-                                                                maxLines:
-                                                                    subtitle ==
-                                                                        null
-                                                                    ? 2
-                                                                    : 1,
+                                                                subtitle,
+                                                                maxLines: 1,
                                                                 overflow:
                                                                     TextOverflow
                                                                         .ellipsis,
                                                                 style: const TextStyle(
-                                                                  color: Color(
-                                                                    0xFF0B2B2B,
-                                                                  ),
+                                                                  fontSize: 11,
                                                                   fontWeight:
                                                                       FontWeight
-                                                                          .w700,
-                                                                ),
-                                                              ),
-                                                              if (subtitle !=
-                                                                      null &&
-                                                                  subtitle
-                                                                      .isNotEmpty) ...[
-                                                                const SizedBox(
-                                                                  height: 2,
-                                                                ),
-                                                                Text(
-                                                                  subtitle,
-                                                                  maxLines: 1,
-                                                                  overflow:
-                                                                      TextOverflow
-                                                                          .ellipsis,
-                                                                  style: const TextStyle(
-                                                                    fontSize:
-                                                                        11,
-                                                                    fontWeight:
-                                                                        FontWeight
-                                                                            .w600,
-                                                                    color: Color(
-                                                                      0xFF486563,
-                                                                    ),
+                                                                          .w600,
+                                                                  color: Color(
+                                                                    0xFF486563,
                                                                   ),
                                                                 ),
-                                                              ],
+                                                              ),
                                                             ],
-                                                          ),
-                                                  ),
+                                                          ],
+                                                        ),
                                                 ),
                                               ),
-                                            ),
-                                            if (hasSecondaryColumn) ...[
-                                              const SizedBox(width: 10),
-                                              SizedBox(
-                                                width: 170,
-                                                child: Text(
-                                                  widget
-                                                      .secondaryColumnValueOf!(
-                                                    row,
+                                              if (hasSecondaryColumn) ...[
+                                                const SizedBox(width: 10),
+                                                SizedBox(
+                                                  width: 170,
+                                                  child: Text(
+                                                    widget
+                                                        .secondaryColumnValueOf!(
+                                                      row,
+                                                    ),
+                                                    maxLines: 1,
+                                                    overflow:
+                                                        TextOverflow.ellipsis,
+                                                    style: const TextStyle(
+                                                      color: Color(0xFF0B2B2B),
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                    ),
                                                   ),
-                                                  maxLines: 1,
-                                                  overflow:
-                                                      TextOverflow.ellipsis,
-                                                  style: const TextStyle(
-                                                    color: Color(0xFF0B2B2B),
-                                                    fontWeight: FontWeight.w700,
-                                                  ),
+                                                ),
+                                              ],
+                                              const SizedBox(width: 8),
+                                              AnchoredActionSlot(
+                                                width: 32,
+                                                trailingWidth: 32,
+                                                leading:
+                                                    const SizedBox.shrink(),
+                                                trailing: _actionButtonForRow(
+                                                  i,
+                                                  row,
                                                 ),
                                               ),
                                             ],
-                                            const SizedBox(width: 8),
-                                            _actionButtonForRow(i, row),
-                                          ],
+                                          ),
                                         ),
                                       ),
                                     ),

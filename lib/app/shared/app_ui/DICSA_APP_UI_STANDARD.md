@@ -290,7 +290,12 @@ No usar como patrón base:
 ### Descubribilidad visual
 
 - Hover editable solo en celdas editables
+- El hover editable debe renderizarse como cápsula local de celda, no como tinte de fila completa
+- La cápsula editable puede crecer levemente y sobresalir dentro de la celda para comunicar affordance, siempre sin romper el ancho contractual del row
+- El color, glow, borde y tinte del hover editable deben salir de tokens del área; el comportamiento visual y la microanimación se mantienen constantes entre módulos
+- La fila debe acomodarse visualmente al hover de celda sin generar saltos bruscos, overflow ni desalineación con header o `insert row`
 - La cápsula/hover no debe invadir otras celdas
+- Los separadores verticales entre celdas forman parte del contrato visual cuando el arquetipo los use; deben permanecer visibles en estado normal y desvanecerse al entrar el hover editable o la edición activa en esa fila
 - Borde de celda activa único, limpio y alineado
 - Celdas no editables no deben aparentar edición
 
@@ -299,6 +304,26 @@ No usar como patrón base:
 - Reducir densidad antes de depender de scroll horizontal
 - El scroll horizontal es fallback, no estrategia base
 - En ancho limitado, acciones van a `...`
+- El contrato responsive de grids debe apoyarse en helpers compartidos, no en ajustes por pantalla
+
+### Ancho estructural y overflow
+
+- Header, `insert row` y filas del grid deben compartir la misma huella horizontal dentro del módulo.
+- El ancho contractual de fila debe definirse una sola vez y reutilizarse en header, captura inline, filas normales y filas en edición.
+- El wrapper estructural del row debe venir de un helper compartido equivalente a `ContractGridScaledRow`.
+- El patrón contractual base para filas escalables es:
+  - `Card`
+  - `Padding`
+  - `ContractGridScaledRow`
+  - `Row(mainAxisSize: MainAxisSize.min, children: [...])`
+- Las columnas con acción final deben usar un helper compartido equivalente a `AnchoredActionSlot`.
+- `AnchoredActionSlot` reserva el ancho del botón/menú y deja el contenido principal anclado a la izquierda para evitar overflow y overlap.
+- Si aparece overflow:
+  - primero validar que el problema no sea una desalineación entre el ancho del `insert row` y el de las filas renderizadas
+  - después revisar celdas compactas con controles como `Switch`, badges o menú `...`
+  - después validar que la última columna reserve explícitamente su slot de acción
+  - solo al final ajustar densidad o copy; no introducir parches de pixeles como estrategia base
+- Si los filtros por columna ya cubren la búsqueda requerida, no duplicar una segunda banda de búsqueda global debajo del `insert row`.
 
 ### Definition of Done
 
