@@ -1497,12 +1497,17 @@ class _InventoryTransformationGridState
     if (_exporting) return;
     setState(() => _exporting = true);
     try {
+      final rows = _filteredRows;
+      if (rows.isEmpty) {
+        _toast('No hay transformaciones para exportar con el filtro actual');
+        return;
+      }
       final sb = StringBuffer()
         ..write('\uFEFF')
         ..writeln(
           'fecha,turno,origen,material_general,material_comercial,kg_entrada,kg_salida,unidades,notas',
         );
-      for (final row in _rows) {
+      for (final row in rows) {
         sb.writeln(
           [
             _fmtDbDate(row.opDate),

@@ -17,6 +17,7 @@ import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
+import '../shared/utils/number_formatters.dart';
 import 'inventory_page.dart';
 import 'services_page.dart';
 import 'services_shell.dart';
@@ -3255,9 +3256,9 @@ String _cutPeriodLabel(Map<String, dynamic> cut) {
 
 String _fmtQty(num value) {
   if (value == value.roundToDouble()) {
-    return value.toInt().toString();
+    return formatDecimal(value, decimals: 0);
   }
-  return value.toStringAsFixed(2);
+  return formatDecimal(value, decimals: 2);
 }
 
 double? _toNum(dynamic value) {

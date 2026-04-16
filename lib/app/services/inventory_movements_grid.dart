@@ -1145,7 +1145,13 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     if (_exportingCsv) return;
     setState(() => _exportingCsv = true);
     try {
-      final rows = await _loadRowsFromV2ForExport();
+      final rows = _filteredRows
+          .map((row) => <String, dynamic>{...row, 'flow': widget.flow})
+          .toList(growable: false);
+      if (rows.isEmpty) {
+        _toast('No hay movimientos para exportar con el filtro actual');
+        return;
+      }
       const headers = <String>[
         'id',
         'created_at',
@@ -1192,13 +1198,6 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
     } finally {
       if (mounted) setState(() => _exportingCsv = false);
     }
-  }
-
-  Future<List<Map<String, dynamic>>> _loadRowsFromV2ForExport() async {
-    final rows = await _loadRowsFromV2();
-    return rows
-        .map((row) => <String, dynamic>{...row, 'flow': widget.flow})
-        .toList();
   }
 
   Future<String?> _writeDownloadsFile(String fileName, String content) =>
@@ -7737,12 +7736,11 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
     if (_exportingCsv) return;
     setState(() => _exportingCsv = true);
     try {
-      final data = await supa
-          .from('production_runs')
-          .select('*')
-          .order('op_date')
-          .order('created_at');
-      final rows = (data as List).cast<Map<String, dynamic>>();
+      final rows = _filteredRows;
+      if (rows.isEmpty) {
+        _toast('No hay produccion para exportar con el filtro actual');
+        return;
+      }
       const headers = <String>[
         'id',
         'created_at',
@@ -11203,13 +11201,11 @@ class _InventoryMaterialSeparationGridState
     if (_exportingCsv) return;
     setState(() => _exportingCsv = true);
     try {
-      final data = await supa
-          .from('material_separation_runs')
-          .select('*')
-          .eq('source_material', _sourceMaterial)
-          .order('op_date')
-          .order('created_at');
-      final rows = (data as List).cast<Map<String, dynamic>>();
+      final rows = _filteredRows;
+      if (rows.isEmpty) {
+        _toast('No hay separaciones para exportar con el filtro actual');
+        return;
+      }
       const headers = <String>[
         'id',
         'created_at',

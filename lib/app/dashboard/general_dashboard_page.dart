@@ -76,9 +76,13 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
 
   Future<void> _openRetailDashboard() async {
     if (!mounted) return;
-    await Navigator.of(
-      context,
-    ).push(appPageRoute(page: const MenudeoDashboardPage(), fade: false));
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const MenudeoDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
   }
 
   Future<void> _openOperationalEntriesAndOutputs() async {

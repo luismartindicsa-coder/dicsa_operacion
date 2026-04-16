@@ -1545,14 +1545,11 @@ class _ServicesPageState extends State<ServicesPage>
     if (_exportingCsv) return;
     setState(() => _exportingCsv = true);
     try {
-      final data = await supa
-          .from('services')
-          .select(
-            'id,service_date,due_date,direction,status,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at',
-          )
-          .order('created_at');
-
-      final rows = (data as List).cast<Map<String, dynamic>>();
+      final rows = _filteredRows;
+      if (rows.isEmpty) {
+        _toast('No hay servicios para exportar con el filtro actual');
+        return;
+      }
       const headers = <String>[
         'id',
         'service_date',

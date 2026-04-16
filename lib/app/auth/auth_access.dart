@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../env.dart';
 import '../services/services_shell.dart';
 import '../shared/app_error_reporter.dart';
 
@@ -18,6 +19,9 @@ class AuthResolvedProfile {
 
 class AuthAccess {
   static final SupabaseClient _supa = Supabase.instance.client;
+  static const String _directionEmail = 'direccion@dicsamx.com';
+  static const String _operationsEmail = 'operacion@dicsamx.com';
+  static const String _menudeoEmail = 'menudeo@dicsamx.com';
 
   static String _normalizeRoleValue(String? raw) {
     final value = (raw ?? '').toLowerCase().trim();
@@ -40,13 +44,38 @@ class AuthAccess {
         role.contains('direction');
   }
 
+  static bool _isDirectionEmailValue(String? email) {
+    return (email ?? '').toLowerCase().trim() == _directionEmail;
+  }
+
+  static bool _isOperationsEmailValue(String? email) {
+    return (email ?? '').toLowerCase().trim() == _operationsEmail;
+  }
+
+  static bool _isMenudeoRoleValue(String role) {
+    return role == 'menudeo' ||
+        role == 'retail' ||
+        role == 'retail_cashier' ||
+        role == 'caja_menudeo' ||
+        role.startsWith('menudeo_') ||
+        role.endsWith('_menudeo');
+  }
+
+  static bool _isMenudeoEmailValue(String? email) {
+    return (email ?? '').toLowerCase().trim() == _menudeoEmail;
+  }
+
   static bool _roleIn(AuthResolvedProfile? profile, Set<String> roles) {
     if (profile == null || !profile.isActive) return false;
     return roles.contains(profile.role);
   }
 
   static bool hasFullOperationsAccess(AuthResolvedProfile? profile) {
-    if (_isDirectionRoleValue(profile?.role ?? '')) return true;
+    if (_isDirectionRoleValue(profile?.role ?? '') ||
+        _isDirectionEmailValue(profile?.email)) {
+      return true;
+    }
+    if (_isOperationsEmailValue(profile?.email)) return true;
     return _roleIn(profile, {
       'ops_manager',
       'admin',
@@ -60,7 +89,15 @@ class AuthAccess {
   }
 
   static bool isDirectionRole(AuthResolvedProfile? profile) {
-    return _isDirectionRoleValue(profile?.role ?? '');
+    return _isDirectionRoleValue(profile?.role ?? '') ||
+        _isDirectionEmailValue(profile?.email);
+  }
+
+  static bool hasMenudeoAccess(AuthResolvedProfile? profile) {
+    if (profile == null || !profile.isActive) return false;
+    if (isDirectionRole(profile)) return true;
+    return _isMenudeoRoleValue(profile.role) ||
+        _isMenudeoEmailValue(profile.email);
   }
 
   static Future<AuthResolvedProfile?> resolveCurrentProfile() async {
@@ -102,6 +139,10 @@ class AuthAccess {
     return canAccessDashboard(profile) || canAccessGeneralDashboard(profile);
   }
 
+  static bool canAccessMenudeoDashboard(AuthResolvedProfile? profile) {
+    return hasMenudeoAccess(profile);
+  }
+
   static bool canAccessOperationalModule(
     AuthResolvedProfile? profile,
     ServicesOverlayNavModule module,
@@ -125,7 +166,8 @@ class AuthAccess {
 
   static String routeKeyForProfile(AuthResolvedProfile? profile) {
     if (profile == null || !profile.isActive) return 'blocked';
-    if (_isDirectionRoleValue(profile.role)) return 'dashboard_general';
+    if (isDirectionRole(profile)) return 'dashboard_general';
+    if (hasMenudeoAccess(profile)) return 'menudeo_dashboard';
 
     switch (profile.role) {
       case 'services':
@@ -140,7 +182,36 @@ class AuthAccess {
       case 'admin':
         return 'dashboard';
       default:
+        if (_isOperationsEmailValue(profile.email)) return 'dashboard';
         return 'dashboard';
+    }
+  }
+
+  static Future<bool> validateDirectionPassword(String password) async {
+    final trimmed = password.trim();
+    if (trimmed.isEmpty) return false;
+
+    final client = GoTrueClient(
+      url: '${Env.supabaseUrl}/auth/v1',
+      headers: {
+        'apikey': Env.supabaseAnonKey,
+        'Authorization': 'Bearer ${Env.supabaseAnonKey}',
+      },
+      autoRefreshToken: false,
+      flowType: AuthFlowType.implicit,
+    );
+
+    try {
+      await client.signInWithPassword(
+        email: _directionEmail,
+        password: trimmed,
+      );
+      try {
+        await client.signOut();
+      } catch (_) {}
+      return true;
+    } catch (_) {
+      return false;
     }
   }
 }

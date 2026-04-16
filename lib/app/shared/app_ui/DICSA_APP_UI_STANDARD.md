@@ -277,6 +277,39 @@ La edición debe entrar por interacción directa:
 
 No usar como patrón base:
 - filtros de texto libre simples cuando el grid de referencia ya usa popup por valores
+- campos de clasificación estable como texto libre cuando representan catálogos operativos o comerciales repetibles
+
+### Catálogos controlados
+
+- Cuando un campo clasifique entidades de forma repetible y deba usarse después en precios, reglas, reportes o filtros, no debe capturarse como comentario o texto libre.
+- Ese tipo de campo debe resolverse como picker/catálogo controlado, aunque visualmente viva dentro del `insert row` o de la edición inline.
+- Si existen valores legacy fuera del catálogo:
+  - se pueden mostrar para no romper registros históricos
+  - pero los nuevos registros y la edición normal deben empujar a los valores homologados
+- Catálogo homologado actual para `grupo de contraparte` en Menudeo:
+  - `PUBLICO GENERAL`
+  - `PROVEEDOR GRANDE`
+  - `TRICICLOS`
+
+### Regla de vigencia para precios de Menudeo
+
+- El sistema opera siempre sobre `precio vigente actual`.
+- Cada ajuste nuevo absorbe al precio vigente anterior y produce un nuevo vigente.
+- Ese nuevo vigente se vuelve la nueva base operativa para el siguiente ajuste.
+- No recalcular desde una base histórica congelada.
+- No reaplicar automáticamente alzas o bajas que ya quedaron absorbidas por el vigente.
+- El modelo se divide en:
+  - `precio vigente`
+  - `historial de movimientos`
+- La tabla o vista de consulta operativa muestra el vigente.
+- El historial registra:
+  - precio anterior
+  - precio nuevo
+  - modo de ajuste
+  - valor del ajuste
+  - motivo
+  - usuario
+  - fecha
 
 ### Acciones por fila
 
@@ -286,6 +319,47 @@ No usar como patrón base:
   - primero selecciona
   - luego abre menú
 - El menú debe operar sobre la selección actual
+
+### Checklist de cierre homologado para Menudeo
+
+Este checklist ya quedó probado en `Contrapartes y precios` y debe reutilizarse como contrato para futuras páginas del área.
+
+- Navegación y shell:
+  - El botón principal de navegación abre panel lateral/overlay con glass del área.
+  - El panel no empuja el layout base; aparece sobre la página.
+  - Botones de header y tiles del panel deben tener hover con lift perceptible:
+    - leve escala
+    - leve desplazamiento vertical
+    - sombra/glow más profundos
+  - `Esc` cierra panel lateral, menús y diálogos.
+- Grid y layout:
+  - `insert row`, filas, edición inline y headers comparten exactamente la misma huella horizontal.
+  - El slot final de acciones queda siempre anclado y reservado.
+  - No se aceptan overflows “pequeños” residuales; deben resolverse estructuralmente.
+- Mouse:
+  - Click simple selecciona.
+  - `Cmd/Ctrl + click` alterna selección dentro del grupo.
+  - `Shift + click` extiende rango cuando el arquetipo lo soporte.
+  - Drag selection debe seguir el movimiento del mouse, continuar por autoscroll y no resetear selección al soltar.
+  - Click derecho primero alinea selección y luego abre contexto.
+  - Click afuera cancela edición inline o multiedición sin guardar.
+- Teclado:
+  - Flechas izquierda/derecha recorren el `insert row`.
+  - `ArrowDown` pasa del `insert row` al grid.
+  - `ArrowUp` desde la primera fila visible puede regresar al `insert row`.
+  - La fila seleccionada debe volver al viewport si el usuario siguió con flechas después de haber hecho scroll.
+  - `Enter` guarda edición inline o multiedición.
+  - `Esc` cancela edición.
+  - `Delete/Backspace` dentro de texto editan texto; fuera de texto operan sobre selección.
+- Pickers y filtros:
+  - Pickers y filtros popup deben aceptar `ArrowUp/ArrowDown`, `Enter`, `Space` y `Esc`.
+  - Los diálogos de filtros heredan tokens del área anfitriona.
+  - Clasificaciones operativas/comerciales estables viven como catálogos controlados.
+  - En Menudeo, capturas nominales deben normalizarse a mayúsculas limpias cuando aplique.
+- Multiedición:
+  - La multiedición debe vivir dentro del grid, sobre las filas seleccionadas, no como banda ajena al arquetipo de referencia.
+  - `Enter`, `Esc` y `Cmd/Ctrl + S` deben respetar el mismo contrato contextual de la app.
+  - La selección no se pierde al abrir `...`, menú contextual o acciones de grupo.
 
 ### Descubribilidad visual
 

@@ -11,6 +11,7 @@ import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/number_formatters.dart';
 
 class InventoryStockV2Body extends StatefulWidget {
   final TabController controller;
@@ -310,7 +311,7 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
         return InventoryGridTopBarData(
           metricIcon: Icons.inventory_2_outlined,
           metricLabel: 'NETO INVENTARIO GENERAL',
-          metricValue: '${totalKg.toStringAsFixed(2)} kg',
+          metricValue: '${formatDecimal(totalKg, decimals: 2)} kg',
           metricSubtitle: 'Filtrado (${rows.length} registros)',
           exportingCsv: _exporting,
           gridEditMode: false,
@@ -331,8 +332,8 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
           metricIcon: Icons.warehouse_outlined,
           metricLabel: 'NETO INVENTARIO PATIO',
           metricValue: totalUnits > 0
-              ? '${totalKg.toStringAsFixed(2)} kg · $totalUnits pacas'
-              : '${totalKg.toStringAsFixed(2)} kg',
+              ? '${formatDecimal(totalKg, decimals: 2)} kg · ${formatDecimal(totalUnits, decimals: 0)} pacas'
+              : '${formatDecimal(totalKg, decimals: 2)} kg',
           metricSubtitle: 'Filtrado (${rows.length} registros)',
           exportingCsv: _exporting,
           gridEditMode: false,
@@ -353,8 +354,8 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
           metricIcon: Icons.event_note_rounded,
           metricLabel: 'APERTURAS DEL MES',
           metricValue: totalUnits > 0
-              ? '${totalKg.toStringAsFixed(2)} kg · $totalUnits pacas'
-              : '${totalKg.toStringAsFixed(2)} kg',
+              ? '${formatDecimal(totalKg, decimals: 2)} kg · ${formatDecimal(totalUnits, decimals: 0)} pacas'
+              : '${formatDecimal(totalKg, decimals: 2)} kg',
           metricSubtitle: 'Filtrado (${rows.length} registros)',
           exportingCsv: _exporting,
           gridEditMode: false,

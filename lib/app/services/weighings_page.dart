@@ -17,6 +17,7 @@ import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/number_formatters.dart';
 import 'inventory_page.dart';
 import 'services_page.dart';
 import 'services_shell.dart';
@@ -3696,16 +3697,7 @@ String _fmtUiDate(DateTime d) {
 }
 
 String _fmtMoney(double v) {
-  final fixed = v.toStringAsFixed(2);
-  final parts = fixed.split('.');
-  final intPart = parts[0];
-  final decimal = parts[1];
-  final re = RegExp(r'(\d+)(\d{3})');
-  var out = intPart;
-  while (re.hasMatch(out)) {
-    out = out.replaceAllMapped(re, (m) => '${m[1]},${m[2]}');
-  }
-  return '\$$out.$decimal';
+  return formatMoney(v);
 }
 
 double? _parseMoney(String raw) {

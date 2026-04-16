@@ -24,6 +24,7 @@ import '../services/weighings_page.dart';
 import '../shared/app_error_reporter.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/page_routes.dart';
+import '../shared/utils/number_formatters.dart';
 
 const List<String> _kStatusFlow = [
   'aviso_falla',
@@ -8111,8 +8112,7 @@ ButtonStyle _maintenanceActionFilledButtonStyle() {
 }
 
 String _fmtMoney(double value) {
-  final fixed = value.toStringAsFixed(2);
-  return '\$$fixed';
+  return formatMoney(value);
 }
 
 String _materialSourceLabel(String key) {

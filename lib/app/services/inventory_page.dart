@@ -23,6 +23,7 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/number_formatters.dart';
 import 'inventory_movements_grid.dart';
 import 'inventory_stock_v2_body.dart';
 import 'inventory_transformation_grid.dart';
@@ -7751,13 +7752,13 @@ double _pickNum(Map<String, dynamic>? row, List<String> candidates) {
 
 String _formatKg(double? value) {
   final v = value ?? 0;
-  return '${v.toStringAsFixed(1)} kg';
+  return '${formatDecimal(v, decimals: 1)} kg';
 }
 
 String _formatSignedKg(double? value) {
   final v = value ?? 0;
   final sign = v > 0 ? '+' : '';
-  return '$sign${v.toStringAsFixed(1)} kg';
+  return '$sign${formatDecimal(v, decimals: 1)} kg';
 }
 
 int _inventorySummaryMaterialOrder(String material) {

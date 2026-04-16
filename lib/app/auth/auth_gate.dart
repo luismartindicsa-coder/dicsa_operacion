@@ -7,6 +7,8 @@ import 'auth_access.dart';
 import 'login_page.dart';
 import 'role_router.dart';
 import '../shared/session_expiry_service.dart';
+import '../update/app_update_prompt.dart';
+import '../update/app_update_service.dart';
 
 class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
@@ -29,6 +31,7 @@ class _AuthGateState extends State<AuthGate>
   bool _transitionToSession = false;
   bool _transitioning = false;
   bool? _queuedSessionState;
+  bool _checkedAppUpdate = false;
 
   @override
   void initState() {
@@ -62,6 +65,10 @@ class _AuthGateState extends State<AuthGate>
     if (session != null) {
       _scheduleSessionExpiry();
     }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      unawaited(_checkForAppUpdate());
+    });
   }
 
   @override
@@ -112,6 +119,24 @@ class _AuthGateState extends State<AuthGate>
     if (queued != null && queued != _hasSession && mounted) {
       _queuedSessionState = null;
       _animateAuthSwap(queued);
+    }
+  }
+
+  Future<void> _checkForAppUpdate() async {
+    if (_checkedAppUpdate || !mounted) {
+      return;
+    }
+    _checkedAppUpdate = true;
+
+    try {
+      final update = await AppUpdateService.checkForUpdate();
+      if (!mounted || update == null) {
+        return;
+      }
+
+      await showAppUpdatePrompt(context, update);
+    } catch (_) {
+      // Ignora errores de red o configuracion para no bloquear el acceso.
     }
   }
 

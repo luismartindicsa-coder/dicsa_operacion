@@ -17,6 +17,7 @@ import '../shared/app_shell.dart';
 import '../shared/app_error_reporter.dart';
 import '../shared/page_routes.dart';
 import '../shared/dicsa_logo_mark.dart';
+import '../shared/utils/number_formatters.dart';
 
 const double _kDashboardTitleMinWidth = 430;
 const double _kWidgetSmallHeight = 132;
@@ -1951,8 +1952,10 @@ class _WarehouseSummaryCardState extends State<_WarehouseSummaryCard> {
   }
 
   String _fmtQty(double value) {
-    if (value == value.roundToDouble()) return value.toStringAsFixed(0);
-    return value.toStringAsFixed(2);
+    if (value == value.roundToDouble()) {
+      return formatDecimal(value, decimals: 0);
+    }
+    return formatDecimal(value, decimals: 2);
   }
 
   @override
@@ -2842,7 +2845,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     }
   }
 
-  String _fmtKg(double value) => '${value.toStringAsFixed(1)} kg';
+  String _fmtKg(double value) => '${formatDecimal(value, decimals: 1)} kg';
 
   _DashboardInventoryTileModel? _buildTileModel(
     _DashboardInventoryWidgetPref pref,
@@ -3267,7 +3270,7 @@ class _OperationalBreakdownTable extends StatelessWidget {
     this.onTap,
   });
 
-  String _fmtKg(double value) => '${value.toStringAsFixed(1)} kg';
+  String _fmtKg(double value) => '${formatDecimal(value, decimals: 1)} kg';
 
   @override
   Widget build(BuildContext context) {
