@@ -209,7 +209,8 @@ Win32Window::MessageHandler(HWND hwnd,
     case WM_GETMINMAXINFO: {
       if (minimum_size_.has_value()) {
         auto* minmax_info = reinterpret_cast<MINMAXINFO*>(lparam);
-        UINT dpi = FlutterDesktopGetDpiForWindow(hwnd);
+        const auto monitor = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        UINT dpi = FlutterDesktopGetDpiForMonitor(monitor);
         double scale_factor = dpi / 96.0;
         minmax_info->ptMinTrackSize.x =
             Scale(static_cast<int>(minimum_size_->width), scale_factor);
