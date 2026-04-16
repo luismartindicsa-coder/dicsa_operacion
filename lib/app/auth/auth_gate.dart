@@ -4,8 +4,10 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_access.dart';
+import 'auth_navigation.dart';
 import 'login_page.dart';
 import 'role_router.dart';
+import '../shared/app_error_reporter.dart';
 import '../shared/session_expiry_service.dart';
 import '../update/app_update_prompt.dart';
 import '../update/app_update_service.dart';
@@ -18,7 +20,7 @@ class AuthGate extends StatefulWidget {
 }
 
 class _AuthGateState extends State<AuthGate>
-    with SingleTickerProviderStateMixin {
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   static const _overlayTotalMs = 880;
   static const _preSwapSignInMs = 180;
   static const _preSwapSignOutMs = 60;
@@ -36,6 +38,7 @@ class _AuthGateState extends State<AuthGate>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _hasSession = Supabase.instance.client.auth.currentSession != null;
     _switchFx = AnimationController(
       vsync: this,
@@ -63,7 +66,7 @@ class _AuthGateState extends State<AuthGate>
 
     final session = Supabase.instance.client.auth.currentSession;
     if (session != null) {
-      _scheduleSessionExpiry();
+      unawaited(_handleSessionResumed());
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -72,10 +75,34 @@ class _AuthGateState extends State<AuthGate>
   }
 
   @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_handleSessionResumed());
+    }
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _authSub.cancel();
     _switchFx.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleSessionResumed() async {
+    final hasSession = Supabase.instance.client.auth.currentSession != null;
+    if (!hasSession) {
+      await SessionExpiryService.instance.clearSessionStart();
+      return;
+    }
+
+    final expired = await SessionExpiryService.instance.isExpired();
+    if (expired) {
+      await _expireSession();
+      return;
+    }
+
+    await _scheduleSessionExpiry();
   }
 
   Future<void> _scheduleSessionExpiry() async {
@@ -85,12 +112,26 @@ class _AuthGateState extends State<AuthGate>
   Future<void> _expireSession() async {
     if (_expiring) return;
     _expiring = true;
-    await AuthSessionActions.signOut();
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(const SnackBar(content: Text('Tu sesión ha expirado')));
-    _expiring = false;
+    final shouldSwapToLogin =
+        mounted &&
+        _hasSession &&
+        !_transitioning &&
+        _queuedSessionState == null;
+
+    if (shouldSwapToLogin) {
+      setState(() => _hasSession = false);
+    }
+
+    try {
+      await AuthSessionActions.signOut();
+      await SessionExpiryService.instance.clearSessionStart();
+      await routeToLogin(animated: false);
+      appScaffoldMessengerKey.currentState?.showSnackBar(
+        const SnackBar(content: Text('Tu sesión ha expirado')),
+      );
+    } finally {
+      _expiring = false;
+    }
   }
 
   Future<void> _animateAuthSwap(bool nextHasSession) async {

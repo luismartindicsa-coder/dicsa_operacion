@@ -11,6 +11,19 @@ class SessionExpiryService {
 
   Timer? _expiryTimer;
 
+  Future<DateTime?> sessionStartedAt() async {
+    final prefs = await SharedPreferences.getInstance();
+    final startedAtMs = prefs.getInt(_kSessionStartedAtMs);
+    if (startedAtMs == null) return null;
+    return DateTime.fromMillisecondsSinceEpoch(startedAtMs);
+  }
+
+  Future<bool> isExpired() async {
+    final startedAt = await sessionStartedAt();
+    if (startedAt == null) return false;
+    return DateTime.now().difference(startedAt) >= sessionDuration;
+  }
+
   Future<void> markSessionStarted({
     DateTime? startedAt,
     bool force = false,
@@ -29,11 +42,8 @@ class SessionExpiryService {
 
   Future<void> schedule({required Future<void> Function() onExpired}) async {
     _expiryTimer?.cancel();
-    final prefs = await SharedPreferences.getInstance();
-    final startedAtMs = prefs.getInt(_kSessionStartedAtMs);
-    if (startedAtMs == null) return;
-
-    final startedAt = DateTime.fromMillisecondsSinceEpoch(startedAtMs);
+    final startedAt = await sessionStartedAt();
+    if (startedAt == null) return;
     final elapsed = DateTime.now().difference(startedAt);
     final remaining = sessionDuration - elapsed;
 
