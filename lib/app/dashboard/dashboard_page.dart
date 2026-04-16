@@ -2263,11 +2263,15 @@ class _DashboardCommercialMaterialOption {
   final String code;
   final String name;
   final String? inventoryMaterial;
+  final String classificationKind;
+  final bool tracksPatioStock;
 
   const _DashboardCommercialMaterialOption({
     required this.code,
     required this.name,
     required this.inventoryMaterial,
+    required this.classificationKind,
+    required this.tracksPatioStock,
   });
 }
 
@@ -2324,6 +2328,8 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   final Map<String, double> _operationalOnHandKg = <String, double>{};
   final Map<String, double> _commercialOnHandKg = <String, double>{};
   final Map<String, double> _commercialOnHandKgByGeneral = <String, double>{};
+  final Map<String, double> _commercialPatioOnHandKgByGeneral =
+      <String, double>{};
   final Map<String, double> _operationalOnHandBales = <String, double>{};
   final Map<String, double> _commercialOnHandBales = <String, double>{};
   final Map<String, _DashboardCommercialMaterialOption>
@@ -2577,7 +2583,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   double _yardKgForOperationalMaterial(String material) {
     final normalized = _normalizeOperational(material);
     final operationalKg = _operationalOnHandKg[normalized] ?? 0;
-    final commercialKg = _commercialOnHandKgByGeneral[normalized] ?? 0;
+    final commercialKg = _commercialPatioOnHandKgByGeneral[normalized] ?? 0;
     return operationalKg + commercialKg;
   }
 
@@ -2605,7 +2611,10 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
             ),
         _supa
             .from('material_commercial_catalog_v2')
-            .select('code,name,general_material:general_material_id(code)')
+            .select(
+              'code,name,classification_kind,tracks_patio_stock,'
+              'general_material:general_material_id(code)',
+            )
             .eq('is_active', true),
         _supa
             .from('material_transformation_runs_v2')
@@ -2651,6 +2660,9 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
                   .toString(): _DashboardCommercialMaterialOption(
                 code: (row['code'] ?? '').toString(),
                 name: (row['name'] ?? '').toString(),
+                classificationKind: (row['classification_kind'] ?? '')
+                    .toString(),
+                tracksPatioStock: row['tracks_patio_stock'] == true,
                 inventoryMaterial:
                     ((((row['general_material'] as Map?) ?? const {})['code']))
                         .toString(),
@@ -2658,6 +2670,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
           };
       final commercialOnHand = <String, double>{};
       final commercialOnHandByGeneral = <String, double>{};
+      final commercialPatioOnHandByGeneral = <String, double>{};
       final operationalBales = <String, double>{};
       final commercialBales = <String, double>{};
       final scrapByCommercial = <String, double>{};
@@ -2675,9 +2688,17 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
           (row['general_code'] ?? '').toString(),
         );
         commercialOnHand[code] = weightKg;
+        final commercialOption = commercialOptionsByCode[code];
         if (generalCode.isNotEmpty) {
           commercialOnHandByGeneral[generalCode] =
               (commercialOnHandByGeneral[generalCode] ?? 0) + weightKg;
+          final countsAsPatioStock =
+              commercialOption?.tracksPatioStock == true &&
+              commercialOption?.classificationKind == 'classified_stock';
+          if (countsAsPatioStock) {
+            commercialPatioOnHandByGeneral[generalCode] =
+                (commercialPatioOnHandByGeneral[generalCode] ?? 0) + weightKg;
+          }
         }
         final movementIsBale =
             _isBaleOperationalMaterial(code) ||
@@ -2841,6 +2862,9 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         _commercialOnHandKgByGeneral
           ..clear()
           ..addAll(commercialOnHandByGeneral);
+        _commercialPatioOnHandKgByGeneral
+          ..clear()
+          ..addAll(commercialPatioOnHandByGeneral);
         _operationalOnHandBales
           ..clear()
           ..addAll(operationalBales);
