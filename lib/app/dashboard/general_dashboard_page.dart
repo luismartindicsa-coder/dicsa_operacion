@@ -265,16 +265,16 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
                         accent: const Color(0xFF8E3F2A),
                         icon: Icons.storefront_rounded,
                         title: 'Menudeo',
-                        status: 'Demo visual',
-                        statusColor: const Color(0xFFC96A4A),
+                        status: 'Activo',
+                        statusColor: const Color(0xFFB85637),
                         description:
-                            'Validación inicial de la paleta comercial para compras, ventas, conciliación y corte.',
+                            'Operación comercial de compras, ventas, caja, conciliación y catálogo de precios.',
                         highlights: const [
-                          'Dashboard demo del área',
-                          'Tokens coral terracota sobre el sistema DICSA',
-                          'Listo para revisión visual en app',
+                          'Compras, ventas y vouchers de caja',
+                          'Ajustes de precios y catálogo operativo',
+                          'Listo para abrir el dashboard de Menudeo',
                         ],
-                        primaryLabel: 'Abrir demo',
+                        primaryLabel: 'Abrir dashboard',
                         onPrimaryTap: _openRetailDashboard,
                       ),
                       _AreaSummaryCard(
@@ -1117,7 +1117,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                     _MenuActionItem(
                       icon: Icons.storefront_rounded,
                       title: 'Menudeo',
-                      subtitle: 'Demo de paleta y dashboard',
+                      subtitle: 'Dashboard comercial del área',
                       onTap: onOpenMenudeo,
                     ),
                     const SizedBox(height: 8),

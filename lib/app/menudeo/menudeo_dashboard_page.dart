@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
+import '../dashboard/dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
@@ -1171,6 +1172,17 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     );
   }
 
+  Future<void> _openOperationalDashboard() async {
+    if (!_canReturnToDirection || !mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const DashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   void _showStub(String label) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -1401,6 +1413,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
                   ignoring: !_menuOpen,
                   child: _MenudeoSidePanel(
                     onBack: _goBack,
+                    onOpenOperationalDashboard: _openOperationalDashboard,
                     onStubTap: _handleAreaAction,
                     canReturnToDirection: _canReturnToDirection,
                   ),
@@ -5088,11 +5101,13 @@ class _AlertPill extends StatelessWidget {
 
 class _MenudeoSidePanel extends StatelessWidget {
   final Future<void> Function() onBack;
+  final Future<void> Function() onOpenOperationalDashboard;
   final ValueChanged<String> onStubTap;
   final bool canReturnToDirection;
 
   const _MenudeoSidePanel({
     required this.onBack,
+    required this.onOpenOperationalDashboard,
     required this.onStubTap,
     required this.canReturnToDirection,
   });
@@ -5178,6 +5193,22 @@ class _MenudeoSidePanel extends StatelessWidget {
               const SizedBox(height: 14),
               const _MenudeoSectionHeader(label: 'ACCESOS'),
               const SizedBox(height: 8),
+              if (canReturnToDirection) ...[
+                _MenudeoPanelItem(
+                  icon: Icons.assessment_outlined,
+                  title: 'Dashboard Dirección',
+                  subtitle: 'Vista ejecutiva multiarea',
+                  onTap: onBack,
+                ),
+                const SizedBox(height: 8),
+                _MenudeoPanelItem(
+                  icon: Icons.precision_manufacturing_rounded,
+                  title: 'Dashboard Operación',
+                  subtitle: 'Patio, inventario y servicios',
+                  onTap: onOpenOperationalDashboard,
+                ),
+                const SizedBox(height: 8),
+              ],
               _MenudeoPanelItem(
                 icon: Icons.space_dashboard_rounded,
                 title: 'Dashboard Menudeo',

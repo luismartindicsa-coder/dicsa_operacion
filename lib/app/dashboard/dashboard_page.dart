@@ -9,6 +9,7 @@ import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../services/inventory_page.dart';
 import '../maintenance/maintenance_page.dart';
+import '../menudeo/menudeo_dashboard_page.dart';
 import '../services/services_catalog_page.dart';
 import '../services/services_page.dart';
 import '../services/warehouse_page.dart';
@@ -98,6 +99,19 @@ class _DashboardPageState extends State<DashboardPage> {
     if (!mounted || !AuthAccess.canAccessGeneralDashboard(profile)) return;
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const GeneralDashboardPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openRetailDashboard() async {
+    if (!mounted) return;
+    final profile = _profile ?? await AuthAccess.resolveCurrentProfile();
+    if (!mounted || !AuthAccess.canAccessMenudeoDashboard(profile)) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const MenudeoDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
     );
   }
 
@@ -221,6 +235,9 @@ class _DashboardPageState extends State<DashboardPage> {
       onOpenWeighings: _openWeighings,
       onOpenMaintenance: _openMaintenance,
       onOpenWarehouse: _openWarehouse,
+      onOpenRetailDashboard: AuthAccess.canAccessMenudeoDashboard(_profile)
+          ? _openRetailDashboard
+          : null,
       onOpenCatalogsFleet: _canOpenCatalogs ? _openCatalogsFleet : null,
       onOpenCatalogsCompanies: _canOpenCatalogs ? _openCatalogsCompanies : null,
       onOpenCatalogsMaterials: _canOpenCatalogs ? _openCatalogsMaterials : null,
@@ -611,6 +628,7 @@ class _DashboardSideMenu extends StatelessWidget {
   final Future<void> Function() onOpenWeighings;
   final Future<void> Function() onOpenMaintenance;
   final Future<void> Function() onOpenWarehouse;
+  final Future<void> Function()? onOpenRetailDashboard;
   final Future<void> Function()? onOpenCatalogsFleet;
   final Future<void> Function()? onOpenCatalogsCompanies;
   final Future<void> Function()? onOpenCatalogsMaterials;
@@ -627,6 +645,7 @@ class _DashboardSideMenu extends StatelessWidget {
     required this.onOpenWeighings,
     required this.onOpenMaintenance,
     required this.onOpenWarehouse,
+    this.onOpenRetailDashboard,
     this.onOpenCatalogsFleet,
     this.onOpenCatalogsCompanies,
     this.onOpenCatalogsMaterials,
@@ -738,6 +757,15 @@ class _DashboardSideMenu extends StatelessWidget {
                                 title: 'Dashboard general',
                                 subtitle: 'Vista ejecutiva para dirección',
                                 onTap: onOpenGeneralDashboard,
+                              ),
+                              const SizedBox(height: 8),
+                            ],
+                            if (onOpenRetailDashboard != null) ...[
+                              _SideMenuActionItem(
+                                icon: Icons.storefront_rounded,
+                                title: 'Dashboard Menudeo',
+                                subtitle: 'Compras, ventas y caja comercial',
+                                onTap: onOpenRetailDashboard,
                               ),
                               const SizedBox(height: 8),
                             ],
