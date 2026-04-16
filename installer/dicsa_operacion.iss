@@ -3,7 +3,7 @@
 #endif
 
 #ifndef FlutterBuildDir
-  #define FlutterBuildDir "build\\windows\\x64\\runner\\Release"
+  #define FlutterBuildDir "..\\build\\windows\\x64\\runner\\Release"
 #endif
 
 #define MyAppName "DICSA Operacion"
@@ -19,9 +19,9 @@ AppPublisher={#MyAppPublisher}
 DefaultDirName={autopf}\{#MyAppName}
 DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
-OutputDir=build\installer
+OutputDir=..\build\installer
 OutputBaseFilename=DicsaOperacionSetup
-SetupIconFile=windows\runner\resources\app_icon.ico
+SetupIconFile=..\windows\runner\resources\app_icon.ico
 Compression=lzma
 SolidCompression=yes
 WizardStyle=modern
