@@ -5652,13 +5652,13 @@ class _CatalogHeaderRow extends StatelessWidget {
                                     padding: const EdgeInsets.all(4),
                                     decoration: BoxDecoration(
                                       color: column.active
-                                          ? const Color(0xFFC96A4A)
-                                          : const Color(0xFFF3D9CF),
+                                          ? menudeoAreaTokens.primary
+                                          : menudeoAreaTokens.badgeBackground,
                                       borderRadius: BorderRadius.circular(8),
                                       border: Border.all(
                                         color: column.active
-                                            ? const Color(0xFF8E3F2A)
-                                            : const Color(0xFFE4B9A8),
+                                            ? menudeoAreaTokens.primaryStrong
+                                            : menudeoAreaTokens.border,
                                       ),
                                     ),
                                     child: Icon(
@@ -5668,7 +5668,7 @@ class _CatalogHeaderRow extends StatelessWidget {
                                       size: 15,
                                       color: column.active
                                           ? Colors.white
-                                          : const Color(0xFF7A3422),
+                                          : menudeoAreaTokens.badgeText,
                                     ),
                                   ),
                                 ),
@@ -5829,12 +5829,14 @@ class _CatalogTableRowState extends State<_CatalogTableRow> {
     widget.onSecondarySelection?.call();
     final action = await showMenu<_RowMenuAction>(
       context: context,
-      color: const Color(0xFFF3E4D9).withValues(alpha: 0.96),
+      color: menudeoAreaTokens.surfaceTint.withValues(alpha: 0.98),
       elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
+        side: BorderSide(
+          color: menudeoAreaTokens.primarySoft.withValues(alpha: 0.58),
+        ),
       ),
       position: RelativeRect.fromLTRB(
         globalPosition.dx,
@@ -5974,9 +5976,8 @@ class _CatalogTableRowState extends State<_CatalogTableRow> {
                                   trailing: PopupMenuButton<_RowMenuAction>(
                                     tooltip: 'Acciones',
                                     padding: EdgeInsets.zero,
-                                    color: const Color(
-                                      0xFFF3E4D9,
-                                    ).withValues(alpha: 0.96),
+                                    color: menudeoAreaTokens.surfaceTint
+                                        .withValues(alpha: 0.98),
                                     elevation: 8,
                                     shadowColor: Colors.black.withValues(
                                       alpha: 0.12,
@@ -6112,7 +6113,7 @@ class _CatalogSidePanel extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0x66EFD7C2),
+                  color: tokens.primarySoft.withValues(alpha: 0.34),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
                     color: tokens.primaryStrong.withValues(alpha: 0.14),
@@ -6238,15 +6239,15 @@ class _CatalogPanelItemState extends State<_CatalogPanelItem> {
     final hasSubtitle =
         widget.subtitle != null && widget.subtitle!.trim().isNotEmpty;
     final border = widget.isAccent
-        ? const Color(0xFFF7DCC5)
+        ? Colors.white.withValues(alpha: 0.72)
         : active
         ? tokens.primaryStrong.withValues(alpha: 0.18)
         : Colors.white.withValues(alpha: _hovered ? 0.62 : 0.58);
     final shadowColor = widget.isAccent
-        ? const Color(0xFFB46D4F).withValues(alpha: 0.22)
+        ? kMenudeoPanelShadow.withValues(alpha: 0.24)
         : active
-        ? const Color(0xFFB97A5C).withValues(alpha: 0.18)
-        : const Color(0xFFB97A5C).withValues(alpha: _hovered ? 0.14 : 0.12);
+        ? kMenudeoPanelShadow.withValues(alpha: 0.18)
+        : kMenudeoPanelShadow.withValues(alpha: _hovered ? 0.14 : 0.12);
 
     return MouseRegion(
       cursor: SystemMouseCursors.click,
@@ -6267,22 +6268,10 @@ class _CatalogPanelItemState extends State<_CatalogPanelItem> {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 gradient: widget.isAccent
-                    ? const LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [Color(0xFFE5A56F), Color(0xFFCF7E59)],
-                      )
+                    ? kMenudeoPanelAccentGradient
                     : active
-                    ? const LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [Color(0xFFEFC186), Color(0xFFDFA06F)],
-                      )
-                    : const LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [Color(0xFFF6E2D1), Color(0xFFE7B992)],
-                      ),
+                    ? kMenudeoPanelHighlightGradient
+                    : kMenudeoPanelGradient,
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(color: border),
                 boxShadow: [

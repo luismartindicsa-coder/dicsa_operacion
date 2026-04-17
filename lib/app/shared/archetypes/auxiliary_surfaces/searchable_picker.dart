@@ -3,6 +3,9 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../../ui_contract_core/theme/area_theme_scope.dart';
+import '../../ui_contract_core/theme/contract_tokens.dart';
+
 @immutable
 class SearchablePickerOption<T> {
   final T value;
@@ -87,6 +90,7 @@ class _SearchablePickerDialogState<T>
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     final normalized = _query.trim().toLowerCase();
     final filtered = normalized.isEmpty
         ? widget.options
@@ -132,19 +136,19 @@ class _SearchablePickerDialogState<T>
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    const Color(0xFF9FC8E7).withValues(alpha: 0.78),
-                    const Color(0xFFB9CCE8).withValues(alpha: 0.72),
-                    const Color(0xFF9ED7D6).withValues(alpha: 0.70),
+                    tokens.badgeBackground.withValues(alpha: 0.86),
+                    tokens.primarySoft.withValues(alpha: 0.78),
+                    tokens.surfaceTint.withValues(alpha: 0.74),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
-                  color: const Color(0xFFE5F1FB).withValues(alpha: 0.78),
+                  color: tokens.border.withValues(alpha: 0.78),
                   width: 1.4,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFF76A6C2).withValues(alpha: 0.22),
+                    color: tokens.primaryStrong.withValues(alpha: 0.16),
                     blurRadius: 24,
                     offset: const Offset(0, 10),
                   ),
@@ -155,9 +159,10 @@ class _SearchablePickerDialogState<T>
                 children: [
                   Text(
                     widget.title,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 16,
+                      color: tokens.primaryStrong,
                     ),
                   ),
                   const SizedBox(height: 8),
@@ -179,6 +184,7 @@ class _SearchablePickerDialogState<T>
                       autofocus: true,
                       onChanged: (value) => setState(() => _query = value),
                       decoration: _searchablePickerFieldDecoration(
+                        tokens: tokens,
                         hintText: 'Buscar',
                       ),
                     ),
@@ -279,26 +285,25 @@ class _SearchablePickerDialogState<T>
                                         curve: Curves.linear,
                                         decoration: BoxDecoration(
                                           color: focused
-                                              ? const Color(
-                                                  0xFFE3F0FC,
-                                                ).withValues(alpha: 0.92)
+                                              ? tokens.badgeBackground
+                                                    .withValues(alpha: 0.92)
                                               : hovered
-                                              ? const Color(
-                                                  0xFFE9F7EE,
-                                                ).withValues(alpha: 0.98)
+                                              ? tokens.primarySoft.withValues(
+                                                  alpha: 0.98,
+                                                )
                                               : Colors.transparent,
                                           borderRadius: BorderRadius.circular(
                                             14,
                                           ),
                                           border: Border.all(
                                             color: focused
-                                                ? const Color(
-                                                    0xFF4E92D1,
-                                                  ).withValues(alpha: 0.88)
+                                                ? tokens.primary.withValues(
+                                                    alpha: 0.88,
+                                                  )
                                                 : hovered
-                                                ? const Color(
-                                                    0xFFBFD8D3,
-                                                  ).withValues(alpha: 0.62)
+                                                ? tokens.border.withValues(
+                                                    alpha: 0.62,
+                                                  )
                                                 : Colors.transparent,
                                             width: focused
                                                 ? 1.25
@@ -309,9 +314,10 @@ class _SearchablePickerDialogState<T>
                                           boxShadow: hovered
                                               ? [
                                                   BoxShadow(
-                                                    color: const Color(
-                                                      0xFFBFD8D3,
-                                                    ).withValues(alpha: 0.46),
+                                                    color: tokens.primaryStrong
+                                                        .withValues(
+                                                          alpha: 0.12,
+                                                        ),
                                                     blurRadius: 8,
                                                     offset: const Offset(0, 2),
                                                   ),
@@ -336,17 +342,17 @@ class _SearchablePickerDialogState<T>
                                           title: Text(
                                             option.label,
                                             overflow: TextOverflow.ellipsis,
-                                            style: const TextStyle(
-                                              color: Color(0xFF2D4661),
+                                            style: TextStyle(
+                                              color: tokens.primaryStrong,
                                               fontWeight: FontWeight.w500,
                                               letterSpacing: 0.2,
                                             ),
                                           ),
                                           trailing: selected
-                                              ? const Icon(
+                                              ? Icon(
                                                   Icons.check,
                                                   size: 18,
-                                                  color: Color(0xFF2D7A73),
+                                                  color: tokens.primary,
                                                 )
                                               : null,
                                           onTap: () => Navigator.of(
@@ -360,9 +366,9 @@ class _SearchablePickerDialogState<T>
                                     Divider(
                                       height: 1,
                                       thickness: 1,
-                                      color: const Color(
-                                        0xFFE5F1FB,
-                                      ).withValues(alpha: 0.56),
+                                      color: tokens.border.withValues(
+                                        alpha: 0.56,
+                                      ),
                                     ),
                                 ],
                               );
@@ -379,28 +385,29 @@ class _SearchablePickerDialogState<T>
   }
 }
 
-InputDecoration _searchablePickerFieldDecoration({String? hintText}) {
+InputDecoration _searchablePickerFieldDecoration({
+  required ContractAreaTokens tokens,
+  String? hintText,
+}) {
   final border = OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(
-      color: const Color(0xFF8AA9C2).withValues(alpha: 0.52),
-    ),
+    borderSide: BorderSide(color: tokens.border.withValues(alpha: 0.58)),
   );
 
   return InputDecoration(
     hintText: hintText,
     hintStyle: TextStyle(
-      color: const Color(0xFF0B2B2B).withValues(alpha: 0.42),
+      color: tokens.primaryStrong.withValues(alpha: 0.42),
       fontWeight: FontWeight.w400,
     ),
     isDense: true,
     filled: true,
-    fillColor: const Color(0xFFEAF3FC).withValues(alpha: 0.86),
+    fillColor: tokens.surfaceTint.withValues(alpha: 0.92),
     border: border,
     enabledBorder: border,
     focusedBorder: border.copyWith(
       borderSide: BorderSide(
-        color: const Color(0xFF00A3FF).withValues(alpha: 0.8),
+        color: tokens.primary.withValues(alpha: 0.86),
         width: 1.2,
       ),
     ),

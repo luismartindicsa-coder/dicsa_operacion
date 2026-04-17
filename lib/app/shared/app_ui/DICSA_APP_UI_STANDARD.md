@@ -160,6 +160,14 @@ Reglas obligatorias:
 - No meter excepciones visuales por pantalla si el area ya tiene tokens aprobados.
 - No resolver necesidades de contraste tocando tipografia o layout antes de corregir la paleta.
 
+#### Paletas congeladas vigentes
+
+- `Menudeo` queda congelado en familia `azul royal / navy / midnight`.
+- `Recursos Humanos` queda congelado en familia `morado corporativo / violeta profundo`.
+- `Menudeo` no puede reutilizar morados base de `Recursos Humanos`.
+- `Recursos Humanos` no puede reciclar azules base de `Menudeo`.
+- Si una de estas dos areas cambia de direccion cromatica, se debe actualizar tambien `AREA_PALETTES_CONTRACT.md`.
+
 #### Implementacion obligatoria
 
 - El tema debe aplicarse por contenedor, shell o contexto de area; no por widget aislado.

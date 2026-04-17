@@ -12,7 +12,6 @@ import '../shared/app_shell.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
-import 'menudeo_demo_mode.dart';
 import 'menudeo_catalog_page.dart';
 import 'menudeo_cash_cuts_page.dart';
 import 'menudeo_deposits_expenses_page.dart';
@@ -74,10 +73,6 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
   Future<void> _loadDashboardData() async {
     setState(() => _loadingDashboard = true);
     final today = DateTime.now();
-    if (kMenudeoForceDemoMode) {
-      _applyMockDashboardData(today, const <Map<String, dynamic>>[]);
-      return;
-    }
     final todayIso = _toIsoDate(today);
     try {
       final results = await Future.wait<dynamic>([
@@ -146,12 +141,6 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       }
 
       if (!mounted) return;
-      final shouldUseMock =
-          ticketRows.isEmpty && voucherRows.isEmpty && cutRows.isEmpty;
-      if (shouldUseMock) {
-        _applyMockDashboardData(today, pendingRows);
-        return;
-      }
       final baseCut = cutRows.isEmpty
           ? _MenudeoCashCutDraft.forDate(today)
           : _MenudeoCashCutDraft.fromMap(cutRows.first);
@@ -187,91 +176,27 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       });
     } catch (error) {
       if (!mounted) return;
-      _applyMockDashboardData(today, const <Map<String, dynamic>>[]);
+      setState(() {
+        _salesToday = 0;
+        _purchasesToday = 0;
+        _depositsToday = 0;
+        _expensesToday = 0;
+        _salesCount = 0;
+        _purchasesCount = 0;
+        _purchaseMaterialRows = const <_DashboardWeightRow>[];
+        _purchaseProviderRows = const <_DashboardWeightRow>[];
+        _priceReferenceRows = const <_DashboardPriceReferenceRow>[];
+        _todayCut = _MenudeoCashCutDraft.forDate(today);
+        _pendingChecks = const <_PendingCashCheck>[];
+        _loadingDashboard = false;
+      });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'No se pudo cargar el dashboard real. Se muestran totales demo para revisar el flujo: $error',
-          ),
+          content: Text('No se pudo cargar el dashboard: $error'),
           behavior: SnackBarBehavior.floating,
         ),
       );
     }
-  }
-
-  void _applyMockDashboardData(
-    DateTime today,
-    List<Map<String, dynamic>> pendingRows,
-  ) {
-    if (!mounted) return;
-    setState(() {
-      _salesToday = 1695.90;
-      _purchasesToday = 1755.54;
-      _depositsToday = 26350.00;
-      _expensesToday = 13297.06;
-      _salesCount = 6;
-      _purchasesCount = 7;
-      _purchaseMaterialRows = const <_DashboardWeightRow>[
-        _DashboardWeightRow(label: 'CARTÓN AMERICANO', weight: 232),
-        _DashboardWeightRow(label: 'CARTÓN REVUELTO', weight: 186),
-        _DashboardWeightRow(label: 'PET', weight: 138),
-        _DashboardWeightRow(label: 'CHATARRA', weight: 116),
-        _DashboardWeightRow(label: 'ALUMINIO', weight: 94),
-      ];
-      _purchaseProviderRows = const <_DashboardWeightRow>[
-        _DashboardWeightRow(label: 'MAURICIO ALCALA', weight: 232),
-        _DashboardWeightRow(label: 'AMBROCIO PEÑAFLOR', weight: 186),
-        _DashboardWeightRow(label: 'ANTONIO MORALES', weight: 138),
-        _DashboardWeightRow(label: 'TRICICLOS', weight: 116),
-        _DashboardWeightRow(label: 'SAN PABLO', weight: 94),
-      ];
-      _priceReferenceRows = const <_DashboardPriceReferenceRow>[
-        _DashboardPriceReferenceRow(
-          material: 'CARTÓN AMERICANO',
-          purchasePrice: 2.50,
-          salePrice: 3.10,
-        ),
-        _DashboardPriceReferenceRow(
-          material: 'CARTÓN REVUELTO',
-          purchasePrice: 2.20,
-          salePrice: 2.85,
-        ),
-        _DashboardPriceReferenceRow(
-          material: 'PET',
-          purchasePrice: 5.30,
-          salePrice: 6.10,
-        ),
-        _DashboardPriceReferenceRow(
-          material: 'CHATARRA',
-          purchasePrice: 3.10,
-          salePrice: 3.95,
-        ),
-        _DashboardPriceReferenceRow(
-          material: 'ALUMINIO',
-          purchasePrice: 19.50,
-          salePrice: 22.00,
-        ),
-        _DashboardPriceReferenceRow(
-          material: 'COBRE',
-          purchasePrice: 88.00,
-          salePrice: 94.50,
-        ),
-      ];
-      _todayCut = _MenudeoCashCutDraft.forDate(today).copyWith(
-        openingCash: 12000,
-        salesTotal: _salesToday,
-        purchasesTotal: _purchasesToday,
-        depositsTotal: _depositsToday,
-        expensesTotal: _expensesToday,
-        countedCashTotal: 25000,
-        pendingChecksCount: pendingRows.length,
-        status: pendingRows.isEmpty ? 'ABIERTO' : 'CON_PENDIENTES',
-      );
-      _pendingChecks = pendingRows
-          .map(_PendingCashCheck.fromMap)
-          .toList(growable: false);
-      _loadingDashboard = false;
-    });
   }
 
   Future<List<Map<String, dynamic>>> _loadDashboardPriceRows() async {
@@ -439,25 +364,6 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       'notes': result.notes,
     };
 
-    if (kMenudeoForceDemoMode) {
-      setState(() {
-        _todayCut = (_todayCut ?? _MenudeoCashCutDraft.forDate(result.date))
-            .copyWith(
-              openingCash: result.openingCash,
-              salesTotal: _salesToday,
-              purchasesTotal: _purchasesToday,
-              depositsTotal: result.depositsTotal,
-              expensesTotal: result.expensesTotal,
-              countedCashTotal: result.countedCashTotal,
-              pendingChecksCount: result.pendingChecksCount,
-              status: result.status,
-              notes: result.notes,
-            );
-      });
-      _toastDashboard('Apertura/corte actualizado solo en demo');
-      return;
-    }
-
     try {
       await _supa.from('men_cash_cuts').upsert(payload, onConflict: 'cut_date');
       await _loadDashboardData();
@@ -477,7 +383,6 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     required double countedCashTotal,
     required String notes,
   }) async {
-    if (kMenudeoForceDemoMode) return 'demo-cut';
     final today = DateTime.now();
     final todayIso = _toIsoDate(today);
     final theoreticalCash =
@@ -589,6 +494,8 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
                   amount:
                       double.tryParse((row['total_amount'] ?? '').toString()) ??
                       0,
+                  previewHeader: null,
+                  previewLines: const <Map<String, dynamic>>[],
                 ),
               )
               .toList(growable: false),
@@ -609,6 +516,8 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
                   amount:
                       double.tryParse((row['total_amount'] ?? '').toString()) ??
                       0,
+                  previewHeader: null,
+                  previewLines: const <Map<String, dynamic>>[],
                 ),
               )
               .toList(growable: false),
@@ -629,6 +538,8 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
                   amount:
                       double.tryParse((row['amount_total'] ?? '').toString()) ??
                       0,
+                  previewHeader: null,
+                  previewLines: const <Map<String, dynamic>>[],
                 ),
               )
               .toList(growable: false),
@@ -649,20 +560,20 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
                   amount:
                       double.tryParse((row['amount_total'] ?? '').toString()) ??
                       0,
+                  previewHeader: null,
+                  previewLines: const <Map<String, dynamic>>[],
                 ),
               )
               .toList(growable: false),
         ),
       ];
-      final hydratedBatches = _withCashCutMockFallback(batches, todayIso);
-
       if (!mounted) return;
       final review = await showDialog<_CashCutVirtualFlowResult>(
         context: context,
         barrierDismissible: false,
         barrierColor: Colors.black.withValues(alpha: 0.24),
         builder: (context) => _CashCutVirtualFlowDialog(
-          batches: hydratedBatches,
+          batches: batches,
           initialBatchIndex: 0,
           initialItemIndex: 0,
           initialDecisions: const <_CashCutCheckDecision>[],
@@ -677,34 +588,6 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         ),
       );
       if (review == null || !mounted) return;
-
-      if (kMenudeoForceDemoMode) {
-        setState(() {
-          _todayCut = base.copyWith(
-            countedCashTotal: capture.countedCashTotal,
-            pendingChecksCount: review.pendingCount,
-            status: review.pendingCount == 0 ? 'CERRADO' : 'CON_PENDIENTES',
-            notes: capture.notes,
-          );
-          _pendingChecks = review.decisions
-              .where((item) => !item.isVerified)
-              .map(
-                (item) => _PendingCashCheck(
-                  sourceType: item.sourceType,
-                  sourceFolio: item.sourceFolio,
-                  reason: item.reason,
-                  cutDate: base.date,
-                ),
-              )
-              .toList(growable: false);
-        });
-        _toastDashboard(
-          review.pendingCount == 0
-              ? 'Corte completado solo en demo'
-              : 'Corte demo guardado con ${review.pendingCount} pendientes',
-        );
-        return;
-      }
 
       final cashCutId = await _ensureTodayCutId(
         openingCash: base.openingCash,
@@ -768,374 +651,6 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         ),
       );
     }
-  }
-
-  void _toastDashboard(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
-    );
-  }
-
-  List<_CashCutReviewBatch> _withCashCutMockFallback(
-    List<_CashCutReviewBatch> batches,
-    String todayIso,
-  ) {
-    final fallback = _buildCashCutMockBatches(todayIso);
-    return List<_CashCutReviewBatch>.generate(batches.length, (index) {
-      final current = batches[index];
-      if (current.items.isNotEmpty) return current;
-      return _CashCutReviewBatch(
-        label: current.label,
-        sourceType: current.sourceType,
-        items: fallback[index].items,
-      );
-    }, growable: false);
-  }
-
-  List<_CashCutReviewBatch> _buildCashCutMockBatches(String todayIso) {
-    Map<String, dynamic> ticketPreview({
-      required String ticket,
-      required String direction,
-      required String counterparty,
-      required String material,
-      required double price,
-      required double gross,
-      required double tare,
-      required double humidity,
-      required double trash,
-      required double premium,
-      required double payable,
-      required double amount,
-      String status = 'PAGADO',
-      String comment = '',
-      String exitOrder = '',
-    }) {
-      return <String, dynamic>{
-        'ticket_date': todayIso,
-        'ticket_number': ticket,
-        'direction': direction,
-        'counterparty_name_snapshot': counterparty,
-        'material_label_snapshot': material,
-        'price_at_entry': price,
-        'gross_weight': gross,
-        'tare_weight': tare,
-        'humidity_percent': humidity,
-        'trash_weight': trash,
-        'premium_per_kg': premium,
-        'payable_weight': payable,
-        'amount_total': amount,
-        'status': status,
-        'comment': comment,
-        'exit_order_number': exitOrder,
-      };
-    }
-
-    Map<String, dynamic> voucherHeader({
-      required String folio,
-      required String type,
-      required String person,
-      required String rubric,
-      required double total,
-      String comment = '',
-    }) {
-      return <String, dynamic>{
-        'voucher_date': todayIso,
-        'folio': folio,
-        'voucher_type': type,
-        'person_label': person,
-        'rubric': rubric,
-        'total_amount': total,
-        'comment': comment,
-      };
-    }
-
-    List<Map<String, dynamic>> voucherLines(List<Map<String, dynamic>> lines) =>
-        lines;
-
-    return <_CashCutReviewBatch>[
-      _CashCutReviewBatch(
-        label: 'Gastos',
-        sourceType: 'expense_voucher',
-        items: <_CashCutReviewItem>[
-          _CashCutReviewItem(
-            sourceId: 'demo-expense-18263',
-            sourceFolio: '18263',
-            sourceType: 'expense_voucher',
-            title: 'JESUS RODRIGUEZ',
-            subtitle: 'OPERATIVO',
-            detail: 'BÁSCULA',
-            amount: 150,
-            previewHeader: voucherHeader(
-              folio: '18263',
-              type: 'expense',
-              person: 'JESUS RODRIGUEZ',
-              rubric: 'OPERATIVO',
-              total: 150,
-              comment: 'RODOLFO VERA',
-            ),
-            previewLines: voucherLines([
-              {
-                'concept': 'BÁSCULA',
-                'company': 'MONROE',
-                'driver': 'RODOLFO VERA',
-                'amount': 150,
-                'comment': '',
-              },
-            ]),
-          ),
-          _CashCutReviewItem(
-            sourceId: 'demo-expense-18276',
-            sourceFolio: '18276',
-            sourceType: 'expense_voucher',
-            title: 'RAFAEL ABOYTES',
-            subtitle: 'OPERATIVO',
-            detail: 'OXÍGENO',
-            amount: 2144.02,
-            previewHeader: voucherHeader(
-              folio: '18276',
-              type: 'expense',
-              person: 'RAFAEL ABOYTES',
-              rubric: 'OPERATIVO',
-              total: 2144.02,
-              comment: 'OXÍGENO Y BOQUILLAS',
-            ),
-            previewLines: voucherLines([
-              {
-                'concept': 'OXÍGENO',
-                'quantity': '2',
-                'amount': 2144.02,
-                'comment': 'OXÍGENO Y BOQUILLAS',
-              },
-            ]),
-          ),
-          _CashCutReviewItem(
-            sourceId: 'demo-expense-18280',
-            sourceFolio: '18280',
-            sourceType: 'expense_voucher',
-            title: 'GABRIEL RODRIGUEZ',
-            subtitle: 'OPERATIVO',
-            detail: 'BÁSCULA',
-            amount: 140,
-            previewHeader: voucherHeader(
-              folio: '18280',
-              type: 'expense',
-              person: 'GABRIEL RODRIGUEZ',
-              rubric: 'OPERATIVO',
-              total: 140,
-              comment: 'MONROE',
-            ),
-            previewLines: voucherLines([
-              {
-                'concept': 'BÁSCULA',
-                'company': 'MONROE',
-                'driver': 'GABRIEL RODRIGUEZ',
-                'amount': 140,
-                'comment': '',
-              },
-            ]),
-          ),
-        ],
-      ),
-      _CashCutReviewBatch(
-        label: 'Depósitos',
-        sourceType: 'deposit_voucher',
-        items: <_CashCutReviewItem>[
-          _CashCutReviewItem(
-            sourceId: 'demo-deposit-14350',
-            sourceFolio: '14350',
-            sourceType: 'deposit_voucher',
-            title: 'FATIMA CORTES',
-            subtitle: 'VENTA DE MATERIAL',
-            detail: 'DEPÓSITO',
-            amount: 14350,
-            previewHeader: voucherHeader(
-              folio: '14350',
-              type: 'deposit',
-              person: 'FATIMA CORTES',
-              rubric: 'VENTA DE MATERIAL',
-              total: 14350,
-              comment: 'SRA REBE',
-            ),
-            previewLines: voucherLines([
-              {'concept': 'DEPÓSITO', 'amount': 14350, 'comment': 'SRA REBE'},
-            ]),
-          ),
-          _CashCutReviewItem(
-            sourceId: 'demo-deposit-14381',
-            sourceFolio: '14381',
-            sourceType: 'deposit_voucher',
-            title: 'CAJA GRANDE',
-            subtitle: 'REPOSICIÓN DE FONDO',
-            detail: 'CAJA GRANDE',
-            amount: 5000,
-            previewHeader: voucherHeader(
-              folio: '14381',
-              type: 'deposit',
-              person: 'CAJA GRANDE',
-              rubric: 'REPOSICIÓN DE FONDO',
-              total: 5000,
-            ),
-            previewLines: voucherLines([
-              {'concept': 'CAJA GRANDE', 'amount': 5000, 'comment': ''},
-            ]),
-          ),
-        ],
-      ),
-      _CashCutReviewBatch(
-        label: 'Ventas',
-        sourceType: 'sale_ticket',
-        items: <_CashCutReviewItem>[
-          _CashCutReviewItem(
-            sourceId: 'demo-sale-56001',
-            sourceFolio: '56001',
-            sourceType: 'sale_ticket',
-            title: 'GRUPAK',
-            subtitle: 'CARTÓN AMERICANO',
-            detail: 'Ordenado por ticket',
-            amount: 238.5,
-            previewHeader: ticketPreview(
-              ticket: '56001',
-              direction: 'sale',
-              counterparty: 'GRUPAK',
-              material: 'CARTÓN AMERICANO',
-              price: 2.65,
-              gross: 120,
-              tare: 20,
-              humidity: 0,
-              trash: 10,
-              premium: 0,
-              payable: 90,
-              amount: 238.5,
-              exitOrder: 'OS-2214',
-            ),
-          ),
-          _CashCutReviewItem(
-            sourceId: 'demo-sale-56002',
-            sourceFolio: '56002',
-            sourceType: 'sale_ticket',
-            title: 'SAN PABLO',
-            subtitle: 'PET',
-            detail: 'Ordenado por ticket',
-            amount: 512.4,
-            previewHeader: ticketPreview(
-              ticket: '56002',
-              direction: 'sale',
-              counterparty: 'SAN PABLO',
-              material: 'PET',
-              price: 6.1,
-              gross: 95,
-              tare: 5,
-              humidity: 0,
-              trash: 6,
-              premium: 0,
-              payable: 84,
-              amount: 512.4,
-              exitOrder: 'OS-2215',
-            ),
-          ),
-          _CashCutReviewItem(
-            sourceId: 'demo-sale-56003',
-            sourceFolio: '56003',
-            sourceType: 'sale_ticket',
-            title: 'TDF',
-            subtitle: 'CHATARRA',
-            detail: 'Ordenado por ticket',
-            amount: 945,
-            previewHeader: ticketPreview(
-              ticket: '56003',
-              direction: 'sale',
-              counterparty: 'TDF',
-              material: 'CHATARRA',
-              price: 3.15,
-              gross: 340,
-              tare: 20,
-              humidity: 0,
-              trash: 20,
-              premium: 0,
-              payable: 300,
-              amount: 945,
-              exitOrder: 'OS-2216',
-            ),
-          ),
-        ],
-      ),
-      _CashCutReviewBatch(
-        label: 'Compras',
-        sourceType: 'purchase_ticket',
-        items: <_CashCutReviewItem>[
-          _CashCutReviewItem(
-            sourceId: 'demo-purchase-55980',
-            sourceFolio: '55980',
-            sourceType: 'purchase_ticket',
-            title: 'MAURICIO ALCALA',
-            subtitle: 'CARTÓN REVUELTO',
-            detail: 'Ordenado por ticket',
-            amount: 1220.4,
-            previewHeader: ticketPreview(
-              ticket: '55980',
-              direction: 'purchase',
-              counterparty: 'MAURICIO ALCALA',
-              material: 'CARTÓN REVUELTO',
-              price: 5.26,
-              gross: 300,
-              tare: 40,
-              humidity: 5,
-              trash: 15,
-              premium: 0,
-              payable: 232,
-              amount: 1220.4,
-            ),
-          ),
-          _CashCutReviewItem(
-            sourceId: 'demo-purchase-56012',
-            sourceFolio: '56012',
-            sourceType: 'purchase_ticket',
-            title: 'AMBROCIO PEÑAFLOR',
-            subtitle: 'CARTÓN AMERICANO',
-            detail: 'Ordenado por ticket',
-            amount: 162.54,
-            previewHeader: ticketPreview(
-              ticket: '56012',
-              direction: 'purchase',
-              counterparty: 'AMBROCIO PEÑAFLOR',
-              material: 'CARTÓN AMERICANO',
-              price: 1.35,
-              gross: 135,
-              tare: 10,
-              humidity: 4,
-              trash: 4,
-              premium: 0.05,
-              payable: 116.1,
-              amount: 162.54,
-            ),
-          ),
-          _CashCutReviewItem(
-            sourceId: 'demo-purchase-56031',
-            sourceFolio: '56031',
-            sourceType: 'purchase_ticket',
-            title: 'ANTONIO MORALES',
-            subtitle: 'CARTÓN REVUELTO',
-            detail: 'Ordenado por ticket',
-            amount: 372.6,
-            previewHeader: ticketPreview(
-              ticket: '56031',
-              direction: 'purchase',
-              counterparty: 'ANTONIO MORALES',
-              material: 'CARTÓN REVUELTO',
-              price: 2.7,
-              gross: 150,
-              tare: 5,
-              humidity: 2,
-              trash: 4,
-              premium: 0,
-              payable: 138,
-              amount: 372.6,
-            ),
-          ),
-        ],
-      ),
-    ];
   }
 
   Future<bool?> _openPendingChecksDialog() async {
@@ -3624,7 +3139,7 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
                       title: 'Dif. ${_money(difference)}',
                       tone: difference.abs() < 0.01
                           ? const Color(0xFF5A8466)
-                          : const Color(0xFF7A3422),
+                          : menudeoAreaTokens.primaryStrong,
                     ),
                     if (currentDecision != null)
                       _AlertPill(
@@ -3633,7 +3148,7 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
                             : 'No comprobado',
                         tone: currentDecision.isVerified
                             ? const Color(0xFF5A8466)
-                            : const Color(0xFF7A3422),
+                            : menudeoAreaTokens.primaryStrong,
                       ),
                   ],
                 ),
@@ -3977,17 +3492,17 @@ class _CashCutReviewDialogState extends State<_CashCutReviewDialog> {
                 children: [
                   _AlertPill(
                     title: 'Conteo real ${_money(widget.countedCashTotal)}',
-                    tone: const Color(0xFFB65C2A),
+                    tone: menudeoAreaTokens.primary,
                   ),
                   _AlertPill(
                     title: 'Teórico ${_money(widget.theoreticalCash)}',
-                    tone: const Color(0xFFC47A18),
+                    tone: menudeoAreaTokens.accent,
                   ),
                   _AlertPill(
                     title: 'Diferencia ${_money(difference)}',
                     tone: difference.abs() < 0.01
                         ? const Color(0xFF5A8466)
-                        : const Color(0xFF7A3422),
+                        : menudeoAreaTokens.primaryStrong,
                   ),
                 ],
               ),
@@ -4205,7 +3720,8 @@ class _CashCutReviewDialogState extends State<_CashCutReviewDialog> {
                                             fontWeight: FontWeight.w800,
                                             color: currentDecision.isVerified
                                                 ? const Color(0xFF356245)
-                                                : const Color(0xFF7A3422),
+                                                : menudeoAreaTokens
+                                                      .primaryStrong,
                                           ),
                                         ),
                                       ),
@@ -4518,13 +4034,13 @@ class _CashCutTicketPreviewContent extends StatelessWidget {
             ),
             _AlertPill(
               title: _displayDate(row['ticket_date']),
-              tone: const Color(0xFFC47A18),
+              tone: menudeoAreaTokens.accent,
             ),
             _AlertPill(
               title: (row['status'] ?? 'PENDIENTE').toString(),
               tone: ((row['status'] ?? '').toString() == 'PAGADO')
                   ? const Color(0xFF5A8466)
-                  : const Color(0xFF7A3422),
+                  : menudeoAreaTokens.primaryStrong,
             ),
             if (isSale && exitOrder.isNotEmpty)
               _AlertPill(
@@ -4716,13 +4232,13 @@ class _CashCutVoucherPreviewContent extends StatelessWidget {
             ),
             _AlertPill(
               title: _displayDate(header['voucher_date']),
-              tone: const Color(0xFFC47A18),
+              tone: menudeoAreaTokens.accent,
             ),
             _AlertPill(
               title: isDeposit ? 'DEPÓSITO' : 'GASTO',
               tone: isDeposit
                   ? const Color(0xFF5A8466)
-                  : const Color(0xFF7A3422),
+                  : menudeoAreaTokens.primaryStrong,
             ),
           ],
         ),
@@ -5045,7 +4561,7 @@ class _DashboardPriceReferenceBlock extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 12.5,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF7A3422),
+                        color: kMenudeoMutedText,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -5145,7 +4661,7 @@ class _MenudeoSidePanel extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0x66EFD7C2),
+                  color: tokens.primarySoft.withValues(alpha: 0.34),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
                     color: tokens.primaryStrong.withValues(alpha: 0.14),
@@ -5273,6 +4789,7 @@ class _MenudeoPanelItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
@@ -5291,33 +4808,25 @@ class _MenudeoPanelItem extends StatelessWidget {
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
               gradient: accented
-                  ? const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [Color(0xFFE5A56F), Color(0xFFCF7E59)],
-                    )
-                  : const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [Color(0xFFF6E2D1), Color(0xFFE7B992)],
-                    ),
+                  ? kMenudeoPanelAccentGradient
+                  : kMenudeoPanelGradient,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: accented
-                    ? const Color(0xFFF7DCC5)
+                    ? Colors.white.withValues(alpha: 0.72)
                     : Colors.white.withValues(alpha: 0.58),
               ),
               boxShadow: accented
                   ? [
                       BoxShadow(
-                        color: const Color(0xFFB46D4F).withValues(alpha: 0.22),
+                        color: kMenudeoPanelShadow.withValues(alpha: 0.24),
                         blurRadius: 22,
                         offset: const Offset(0, 12),
                       ),
                     ]
                   : [
                       BoxShadow(
-                        color: const Color(0xFFB97A5C).withValues(alpha: 0.12),
+                        color: kMenudeoPanelShadow.withValues(alpha: 0.12),
                         blurRadius: 16,
                         offset: const Offset(0, 8),
                       ),
@@ -5336,9 +4845,7 @@ class _MenudeoPanelItem extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w900,
-                          color: accented
-                              ? Colors.white
-                              : const Color(0xFF7E4632),
+                          color: accented ? Colors.white : tokens.primaryStrong,
                         ),
                       ),
                       if (hasSubtitle) ...[
@@ -5350,7 +4857,7 @@ class _MenudeoPanelItem extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             color: accented
                                 ? Colors.white.withValues(alpha: 0.92)
-                                : const Color(0xFF8F5A44),
+                                : tokens.badgeText,
                           ),
                         ),
                       ],

@@ -21,7 +21,6 @@ import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/utils/number_formatters.dart';
 import 'menudeo_catalog_page.dart';
 import 'menudeo_dashboard_page.dart';
-import 'menudeo_demo_mode.dart';
 import 'menudeo_deposits_expenses_page.dart';
 import 'menudeo_filter_widgets.dart';
 import 'menudeo_header_brand.dart';
@@ -55,8 +54,6 @@ class _CashCutRow {
   final int pendingChecksCount;
   final String status;
   final String notes;
-  final bool isLocalFallback;
-
   const _CashCutRow({
     required this.id,
     required this.date,
@@ -71,7 +68,6 @@ class _CashCutRow {
     required this.pendingChecksCount,
     required this.status,
     required this.notes,
-    this.isLocalFallback = false,
   });
 
   factory _CashCutRow.fromMap(Map<String, dynamic> row) {
@@ -100,32 +96,12 @@ class _CashCutRow {
       notes: (row['notes'] ?? '').toString(),
     );
   }
-
-  _CashCutRow copyWithLocalFallback() {
-    return _CashCutRow(
-      id: id,
-      date: date,
-      openingCash: openingCash,
-      salesTotal: salesTotal,
-      purchasesTotal: purchasesTotal,
-      depositsTotal: depositsTotal,
-      expensesTotal: expensesTotal,
-      theoreticalCashTotal: theoreticalCashTotal,
-      countedCashTotal: countedCashTotal,
-      differenceTotal: differenceTotal,
-      pendingChecksCount: pendingChecksCount,
-      status: status,
-      notes: notes,
-      isLocalFallback: true,
-    );
-  }
 }
 
 class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
   final SupabaseClient _supa = Supabase.instance.client;
   bool _menuOpen = false;
   bool _loading = true;
-  bool _usingFallback = false;
   bool _canReturnToDirection = false;
   int _currentPage = 0;
   int _pageSize = 40;
@@ -148,15 +124,6 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
 
   Future<void> _loadCuts() async {
     setState(() => _loading = true);
-    if (kMenudeoForceDemoMode) {
-      if (!mounted) return;
-      setState(() {
-        _rows = _fallbackCuts();
-        _usingFallback = true;
-        _loading = false;
-      });
-      return;
-    }
     try {
       final data = await _supa
           .from('vw_men_cash_cuts_grid')
@@ -168,15 +135,13 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
           .map(_CashCutRow.fromMap)
           .toList(growable: false);
       setState(() {
-        _rows = rows.isEmpty ? _fallbackCuts() : rows;
-        _usingFallback = rows.isEmpty;
+        _rows = rows;
         _loading = false;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _rows = _fallbackCuts();
-        _usingFallback = true;
+        _rows = const <_CashCutRow>[];
         _loading = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
@@ -188,43 +153,6 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
         ),
       );
     }
-  }
-
-  List<_CashCutRow> _fallbackCuts() {
-    return <_CashCutRow>[
-      _CashCutRow(
-        id: null,
-        date: DateTime.now(),
-        openingCash: 12500,
-        salesTotal: 18940,
-        purchasesTotal: 14320,
-        depositsTotal: 3500,
-        expensesTotal: 2180,
-        theoreticalCashTotal: 18440,
-        countedCashTotal: 18440,
-        differenceTotal: 0,
-        pendingChecksCount: 2,
-        status: 'CON_PENDIENTES',
-        notes: 'Faltan 2 gastos por ticket físico.',
-        isLocalFallback: true,
-      ),
-      _CashCutRow(
-        id: null,
-        date: DateTime.now().subtract(const Duration(days: 1)),
-        openingCash: 9800,
-        salesTotal: 16200,
-        purchasesTotal: 12050,
-        depositsTotal: 2100,
-        expensesTotal: 1600,
-        theoreticalCashTotal: 14450,
-        countedCashTotal: 14350,
-        differenceTotal: -100,
-        pendingChecksCount: 1,
-        status: 'CERRADO',
-        notes: 'Diferencia menor ajustada con observación.',
-        isLocalFallback: true,
-      ),
-    ];
   }
 
   int _effectiveCurrentPageFor(int totalRows) {
@@ -376,43 +304,14 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
       'notes': result.notes,
     };
 
-    if (kMenudeoForceDemoMode) {
-      setState(() {
-        final nextRows = <_CashCutRow>[
-          result.copyWithLocalFallback(),
-          ..._rows.where((r) => _fmtDate(r.date) != _fmtDate(result.date)),
-        ];
-        nextRows.sort((a, b) => b.date.compareTo(a.date));
-        _rows = nextRows;
-        _usingFallback = true;
-      });
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Corte actualizado solo en demo'),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
     try {
       await _supa.from('men_cash_cuts').upsert(payload, onConflict: 'cut_date');
       await _loadCuts();
     } catch (error) {
-      setState(() {
-        final nextRows = <_CashCutRow>[
-          result,
-          ..._rows.where((r) => _fmtDate(r.date) != _fmtDate(result.date)),
-        ];
-        nextRows.sort((a, b) => b.date.compareTo(a.date));
-        _rows = nextRows;
-        _usingFallback = true;
-      });
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text('No se pudo guardar en base todavía: $error'),
+          content: Text('No se pudo guardar el corte: $error'),
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -472,10 +371,7 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        _CashCutsModuleTopBar(
-                          rows: _rows,
-                          usingFallback: _usingFallback,
-                        ),
+                        _CashCutsModuleTopBar(rows: _rows),
                         const SizedBox(height: 16),
                         Expanded(
                           child: ContractGlassCard(
@@ -692,12 +588,8 @@ class _CashCutsGrid extends StatelessWidget {
 
 class _CashCutsModuleTopBar extends StatelessWidget {
   final List<_CashCutRow> rows;
-  final bool usingFallback;
 
-  const _CashCutsModuleTopBar({
-    required this.rows,
-    required this.usingFallback,
-  });
+  const _CashCutsModuleTopBar({required this.rows});
 
   String _money(num value) => formatMoney(value);
 
@@ -726,9 +618,7 @@ class _CashCutsModuleTopBar extends StatelessWidget {
         ),
         AppGlassToolbarPanel(
           child: Text(
-            usingFallback
-                ? 'Mostrando base local de referencia mientras se conecta el historial real.'
-                : 'Histórico automático de aperturas y cortes cerrados desde el dashboard.',
+            'Histórico automático de aperturas y cortes cerrados desde el dashboard.',
             style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
           ),
         ),
@@ -760,10 +650,8 @@ class _CashCutsModuleTopBar extends StatelessWidget {
                 icon: Icons.balance_rounded,
                 title: 'DIFERENCIA ACUM.',
                 value: _money(totalDifference),
-                detail: usingFallback
-                    ? 'Base demo activa'
-                    : 'Histórico visible',
-                accent: const Color(0xFFB27253),
+                detail: 'Histórico visible',
+                accent: menudeoAreaTokens.primary,
               ),
             ],
           ),
@@ -842,11 +730,11 @@ class _CashCutGridRowState extends State<_CashCutGridRow> {
               colors: _hovering
                   ? [
                       Colors.white.withValues(alpha: 0.90),
-                      const Color(0xFFF4E6DD).withValues(alpha: 0.82),
+                      tokens.surfaceTint.withValues(alpha: 0.84),
                     ]
                   : [
                       Colors.white.withValues(alpha: 0.74),
-                      const Color(0xFFF7ECE5).withValues(alpha: 0.68),
+                      tokens.surfaceTint.withValues(alpha: 0.72),
                     ],
             ),
             borderRadius: BorderRadius.circular(22),
@@ -952,10 +840,7 @@ class _CashCutGridRowState extends State<_CashCutGridRow> {
                             ),
                             cell(
                               width: 150,
-                              child: _CutStatusChip(
-                                status: widget.row.status,
-                                fallback: widget.row.isLocalFallback,
-                              ),
+                              child: _CutStatusChip(status: widget.row.status),
                               includeDivider: false,
                             ),
                             AnchoredActionSlot(
@@ -1697,7 +1582,7 @@ class _CutDialogHeader extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             Colors.white.withValues(alpha: 0.54),
-            const Color(0xFFF4E8E0).withValues(alpha: 0.30),
+            tokens.surfaceTint.withValues(alpha: 0.42),
           ],
         ),
         border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
@@ -1788,7 +1673,7 @@ class _CutDialogActionButton extends StatelessWidget {
               end: Alignment.bottomCenter,
               colors: [
                 Colors.white.withValues(alpha: 0.96),
-                const Color(0xFFF2E4DB).withValues(alpha: 0.88),
+                tokens.surfaceTint.withValues(alpha: 0.90),
               ],
             ),
             borderRadius: BorderRadius.circular(999),
@@ -1879,9 +1764,8 @@ class _CutTopChip extends StatelessWidget {
 
 class _CutStatusChip extends StatelessWidget {
   final String status;
-  final bool fallback;
 
-  const _CutStatusChip({required this.status, required this.fallback});
+  const _CutStatusChip({required this.status});
 
   @override
   Widget build(BuildContext context) {
@@ -1904,7 +1788,7 @@ class _CutStatusChip extends StatelessWidget {
         border: Border.all(color: tone.withValues(alpha: 0.24)),
       ),
       child: Text(
-        fallback ? '$status · LOCAL' : status,
+        status,
         style: TextStyle(
           fontSize: 12,
           fontWeight: FontWeight.w900,
@@ -2070,7 +1954,7 @@ class _CashCutsSidePanel extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0x66EFD7C2),
+                  color: tokens.primarySoft.withValues(alpha: 0.34),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
                     color: tokens.primaryStrong.withValues(alpha: 0.14),
@@ -2189,6 +2073,7 @@ class _CashCutsPanelItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
     return Material(
       color: Colors.transparent,
@@ -2207,33 +2092,25 @@ class _CashCutsPanelItem extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
             decoration: BoxDecoration(
               gradient: accented
-                  ? const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [Color(0xFFE5A56F), Color(0xFFCF7E59)],
-                    )
-                  : const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [Color(0xFFF6E2D1), Color(0xFFE7B992)],
-                    ),
+                  ? kMenudeoPanelAccentGradient
+                  : kMenudeoPanelGradient,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: accented
-                    ? const Color(0xFFF7DCC5)
+                    ? Colors.white.withValues(alpha: 0.72)
                     : Colors.white.withValues(alpha: 0.58),
               ),
               boxShadow: accented
                   ? [
                       BoxShadow(
-                        color: const Color(0xFFB46D4F).withValues(alpha: 0.22),
+                        color: kMenudeoPanelShadow.withValues(alpha: 0.24),
                         blurRadius: 22,
                         offset: const Offset(0, 12),
                       ),
                     ]
                   : [
                       BoxShadow(
-                        color: const Color(0xFFB97A5C).withValues(alpha: 0.12),
+                        color: kMenudeoPanelShadow.withValues(alpha: 0.12),
                         blurRadius: 16,
                         offset: const Offset(0, 8),
                       ),
@@ -2252,9 +2129,7 @@ class _CashCutsPanelItem extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w900,
-                          color: accented
-                              ? Colors.white
-                              : const Color(0xFF7E4632),
+                          color: accented ? Colors.white : tokens.primaryStrong,
                         ),
                       ),
                       if (hasSubtitle) ...[
@@ -2266,7 +2141,7 @@ class _CashCutsPanelItem extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             color: accented
                                 ? Colors.white.withValues(alpha: 0.92)
-                                : const Color(0xFF8F5A44),
+                                : tokens.badgeText,
                           ),
                         ),
                       ],

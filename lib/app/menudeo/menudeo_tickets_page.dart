@@ -26,7 +26,6 @@ import '../shared/utils/number_formatters.dart';
 import 'menudeo_catalog_page.dart';
 import 'menudeo_dashboard_page.dart';
 import 'menudeo_delete_confirm_dialog.dart';
-import 'menudeo_demo_mode.dart';
 import 'menudeo_deposits_expenses_page.dart';
 import 'menudeo_filter_widgets.dart';
 import 'menudeo_header_brand.dart';
@@ -76,7 +75,7 @@ Widget _ticketsPopupMenuItemChild({
 }) {
   return Row(
     children: [
-      Icon(icon, size: 18, color: const Color(0xFF8E3F2A)),
+      Icon(icon, size: 18, color: menudeoAreaTokens.primaryStrong),
       const SizedBox(width: 10),
       Expanded(
         child: Text(
@@ -122,7 +121,7 @@ List<PopupMenuEntry<_TicketGridMenuAction>> _buildTicketMenuItems({
 
 ButtonStyle _ticketsGlassToolbarActionStyle() {
   return OutlinedButton.styleFrom(
-    foregroundColor: const Color(0xFF8E3F2A),
+    foregroundColor: menudeoAreaTokens.primaryStrong,
     side: BorderSide(color: Colors.white.withValues(alpha: 0.52)),
     backgroundColor: Colors.white.withValues(alpha: 0.18),
     textStyle: const TextStyle(fontWeight: FontWeight.w700),
@@ -797,12 +796,14 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
     final lotEntries = _lotEntriesForInitialIndex(rowIndex);
     final action = await showMenu<_TicketGridMenuAction>(
       context: context,
-      color: const Color(0xFFF3E4D9).withValues(alpha: 0.96),
+      color: menudeoAreaTokens.surfaceTint.withValues(alpha: 0.98),
       elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.12),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
+        side: BorderSide(
+          color: menudeoAreaTokens.primarySoft.withValues(alpha: 0.58),
+        ),
       ),
       position: RelativeRect.fromLTRB(
         globalPosition.dx,
@@ -1077,18 +1078,6 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   }
 
   Future<void> _loadTickets() async {
-    if (kMenudeoForceDemoMode) {
-      if (!mounted) return;
-      setState(() {
-        _ticketRows = _buildMockTicketRows(_flowDirection);
-        _activeRowIndex = 0;
-        _selectedRowIndexes.clear();
-        if (_ticketRows.isNotEmpty) {
-          _selectedRowIndexes.add(0);
-        }
-      });
-      return;
-    }
     try {
       final response = await _supa
           .from('vw_men_tickets_grid')
@@ -1101,11 +1090,9 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
         final loadedRows = response
             .map((row) => _normalizeTicketRow(Map<String, dynamic>.from(row)))
             .toList(growable: true);
-        _ticketRows = loadedRows.isEmpty
-            ? _buildMockTicketRows(_flowDirection)
-            : loadedRows;
+        _ticketRows = loadedRows;
         _activeRowIndex = _ticketRows.isEmpty
-            ? 0
+            ? -1
             : _activeRowIndex.clamp(0, _ticketRows.length - 1);
         _selectedRowIndexes.removeWhere((index) => index >= _ticketRows.length);
         if (_ticketRows.isNotEmpty && _selectedRowIndexes.isEmpty) {
@@ -1115,278 +1102,12 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
     } on PostgrestException catch (e) {
       if (!mounted) return;
       setState(() {
-        _ticketRows = _buildMockTicketRows(_flowDirection);
-        _activeRowIndex = 0;
+        _ticketRows = <Map<String, dynamic>>[];
+        _activeRowIndex = -1;
         _selectedRowIndexes.clear();
-        if (_ticketRows.isNotEmpty) {
-          _selectedRowIndexes.add(0);
-        }
       });
-      _toast(
-        'No se pudieron cargar los tickets reales. Se muestran tickets demo para probar el flujo: ${e.message}',
-      );
+      _toast('No se pudieron cargar los tickets: ${e.message}');
     }
-  }
-
-  List<Map<String, dynamic>> _buildMockTicketRows(String direction) {
-    Map<String, dynamic> row({
-      required String date,
-      required String ticket,
-      required String counterparty,
-      required String material,
-      required double price,
-      required double gross,
-      required double tare,
-      required double humidity,
-      required double trash,
-      required double premium,
-      required String status,
-      String comment = '',
-      String exitOrder = '',
-    }) {
-      return <String, dynamic>{
-        'id': null,
-        'date': date,
-        'ticket': ticket,
-        'provider': counterparty,
-        'material': material,
-        'price': price,
-        'gross': gross,
-        'tare': tare,
-        'humidity': humidity,
-        'trash': trash,
-        'premium': premium,
-        'status': status,
-        'comment': comment,
-        'exit_order_number': exitOrder,
-      };
-    }
-
-    if (direction == 'sale') {
-      return <Map<String, dynamic>>[
-        row(
-          date: '14/04/2026',
-          ticket: '56001',
-          counterparty: 'GRUPAK',
-          material: 'CARTÓN AMERICANO',
-          price: 2.65,
-          gross: 120,
-          tare: 20,
-          humidity: 0,
-          trash: 10,
-          premium: 0,
-          status: 'PAGADO',
-          exitOrder: 'OS-2214',
-        ),
-        row(
-          date: '14/04/2026',
-          ticket: '56002',
-          counterparty: 'SAN PABLO',
-          material: 'PET',
-          price: 6.10,
-          gross: 95,
-          tare: 5,
-          humidity: 0,
-          trash: 6,
-          premium: 0,
-          status: 'PAGADO',
-          exitOrder: 'OS-2215',
-        ),
-        row(
-          date: '14/04/2026',
-          ticket: '56003',
-          counterparty: 'TDF',
-          material: 'CHATARRA',
-          price: 3.15,
-          gross: 340,
-          tare: 20,
-          humidity: 0,
-          trash: 20,
-          premium: 0,
-          status: 'PAGADO',
-          exitOrder: 'OS-2216',
-        ),
-        row(
-          date: '14/04/2026',
-          ticket: '56004',
-          counterparty: 'MORELIA',
-          material: 'ALUMINIO',
-          price: 24.00,
-          gross: 42,
-          tare: 2,
-          humidity: 0,
-          trash: 0,
-          premium: 0,
-          status: 'PENDIENTE',
-          exitOrder: '',
-        ),
-        row(
-          date: '13/04/2026',
-          ticket: '55995',
-          counterparty: 'DE ACERO',
-          material: 'COBRE',
-          price: 82.00,
-          gross: 18,
-          tare: 0,
-          humidity: 0,
-          trash: 0,
-          premium: 0,
-          status: 'PAGADO',
-          exitOrder: 'OS-2208',
-        ),
-        row(
-          date: '13/04/2026',
-          ticket: '55994',
-          counterparty: 'SAN LUIS',
-          material: 'HDPE',
-          price: 7.20,
-          gross: 70,
-          tare: 4,
-          humidity: 0,
-          trash: 2,
-          premium: 0,
-          status: 'PAGADO',
-          exitOrder: 'OS-2207',
-        ),
-        row(
-          date: '12/04/2026',
-          ticket: '55990',
-          counterparty: 'JAIME VELÁZQUEZ',
-          material: 'ARCHIVO',
-          price: 3.30,
-          gross: 180,
-          tare: 15,
-          humidity: 1,
-          trash: 5,
-          premium: 0,
-          status: 'PENDIENTE',
-          exitOrder: '',
-        ),
-        row(
-          date: '12/04/2026',
-          ticket: '55988',
-          counterparty: 'QUERÉTARO',
-          material: 'PLÁSTICO MIXTO',
-          price: 4.85,
-          gross: 130,
-          tare: 10,
-          humidity: 0,
-          trash: 8,
-          premium: 0.10,
-          status: 'PAGADO',
-          exitOrder: 'OS-2203',
-        ),
-      ];
-    }
-
-    return <Map<String, dynamic>>[
-      row(
-        date: '14/04/2026',
-        ticket: '56031',
-        counterparty: 'ANTONIO MORALES',
-        material: 'CARTÓN REVUELTO',
-        price: 2.70,
-        gross: 150,
-        tare: 5,
-        humidity: 2,
-        trash: 4,
-        premium: 0,
-        status: 'PAGADO',
-      ),
-      row(
-        date: '14/04/2026',
-        ticket: '56012',
-        counterparty: 'AMBROCIO PEÑAFLOR',
-        material: 'CARTÓN AMERICANO',
-        price: 1.35,
-        gross: 135,
-        tare: 10,
-        humidity: 4,
-        trash: 4,
-        premium: 0.05,
-        status: 'PAGADO',
-      ),
-      row(
-        date: '14/04/2026',
-        ticket: '55980',
-        counterparty: 'MAURICIO ALCALA',
-        material: 'CARTÓN REVUELTO',
-        price: 5.26,
-        gross: 300,
-        tare: 40,
-        humidity: 5,
-        trash: 15,
-        premium: 0,
-        status: 'PAGADO',
-      ),
-      row(
-        date: '13/04/2026',
-        ticket: '55977',
-        counterparty: 'TRICICLOS',
-        material: 'PET',
-        price: 5.90,
-        gross: 92,
-        tare: 6,
-        humidity: 0,
-        trash: 4,
-        premium: 0,
-        status: 'PENDIENTE',
-        comment: 'Falta pago',
-      ),
-      row(
-        date: '13/04/2026',
-        ticket: '55974',
-        counterparty: 'ANTONIO MORALES',
-        material: 'ARCHIVO',
-        price: 2.20,
-        gross: 110,
-        tare: 8,
-        humidity: 3,
-        trash: 2,
-        premium: 0,
-        status: 'PAGADO',
-      ),
-      row(
-        date: '12/04/2026',
-        ticket: '55970',
-        counterparty: 'AMBROCIO PEÑAFLOR',
-        material: 'CHATARRA',
-        price: 3.00,
-        gross: 220,
-        tare: 20,
-        humidity: 0,
-        trash: 10,
-        premium: 0,
-        status: 'PAGADO',
-      ),
-      row(
-        date: '12/04/2026',
-        ticket: '55968',
-        counterparty: 'TRICICLOS',
-        material: 'ALUMINIO',
-        price: 16.40,
-        gross: 34,
-        tare: 2,
-        humidity: 0,
-        trash: 0,
-        premium: 0,
-        status: 'PENDIENTE',
-        comment: 'Falta efectivo',
-      ),
-      row(
-        date: '11/04/2026',
-        ticket: '55963',
-        counterparty: 'MAURICIO ALCALA',
-        material: 'PET',
-        price: 5.75,
-        gross: 101,
-        tare: 5,
-        humidity: 1,
-        trash: 3,
-        premium: 0,
-        status: 'PAGADO',
-      ),
-    ];
   }
 
   Future<void> _createTicketsFromDraft() async {
@@ -1488,49 +1209,6 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
         ),
       );
     }
-    if (kMenudeoForceDemoMode) {
-      final fallbackRows = createdRows
-          .map((row) {
-            final gross = (row['gross_weight'] as num).toDouble();
-            final tare = (row['tare_weight'] as num).toDouble();
-            final humidity = (row['humidity_percent'] as num).toDouble();
-            final trash = (row['trash_weight'] as num).toDouble();
-            final premium = (row['premium_per_kg'] as num).toDouble();
-            final rowSuffix = (row['ticket_suffix'] ?? '').toString().trim();
-            return <String, dynamic>{
-              'date': row['ticket_date'],
-              'ticket': rowSuffix.isEmpty
-                  ? baseTicket
-                  : '$baseTicket-$rowSuffix',
-              'provider': row['counterparty_name_snapshot'],
-              'material': row['material_label_snapshot'],
-              'price': row['price_at_entry'],
-              'gross': gross,
-              'tare': tare,
-              'humidity': humidity,
-              'trash': trash,
-              'premium': premium,
-              'exit_order_number': (row['exit_order_number'] ?? '')
-                  .toString()
-                  .trim(),
-              'status': row['status'],
-              'comment': row['comment'] ?? '',
-            };
-          })
-          .toList(growable: false);
-      if (!mounted) return;
-      setState(() {
-        _ticketRows = <Map<String, dynamic>>[...fallbackRows, ..._ticketRows];
-        _activeRowIndex = 0;
-      });
-      _toast(
-        _splitEnabled
-            ? 'Se crearon ${fallbackRows.length} tickets del split en demo'
-            : 'Ticket creado en demo',
-      );
-      return;
-    }
-
     try {
       await _supa.from('men_tickets').insert(createdRows);
       await _loadTickets();
@@ -1539,46 +1217,8 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
             ? 'Se crearon ${createdRows.length} tickets del split'
             : 'Ticket creado',
       );
-    } on PostgrestException {
-      final fallbackRows = createdRows
-          .map((row) {
-            final gross = (row['gross_weight'] as num).toDouble();
-            final tare = (row['tare_weight'] as num).toDouble();
-            final humidity = (row['humidity_percent'] as num).toDouble();
-            final trash = (row['trash_weight'] as num).toDouble();
-            final premium = (row['premium_per_kg'] as num).toDouble();
-            final rowSuffix = (row['ticket_suffix'] ?? '').toString().trim();
-            return <String, dynamic>{
-              'date': row['ticket_date'],
-              'ticket': rowSuffix.isEmpty
-                  ? baseTicket
-                  : '$baseTicket-$rowSuffix',
-              'provider': row['counterparty_name_snapshot'],
-              'material': row['material_label_snapshot'],
-              'price': row['price_at_entry'],
-              'gross': gross,
-              'tare': tare,
-              'humidity': humidity,
-              'trash': trash,
-              'premium': premium,
-              'exit_order_number': (row['exit_order_number'] ?? '')
-                  .toString()
-                  .trim(),
-              'status': row['status'],
-              'comment': row['comment'] ?? '',
-            };
-          })
-          .toList(growable: false);
-      if (!mounted) return;
-      setState(() {
-        _ticketRows = <Map<String, dynamic>>[...fallbackRows, ..._ticketRows];
-        _activeRowIndex = 0;
-      });
-      _toast(
-        _splitEnabled
-            ? 'Se crearon ${fallbackRows.length} tickets del split en modo local'
-            : 'Ticket creado en modo local',
-      );
+    } on PostgrestException catch (e) {
+      _toast('No se pudo crear el ticket: ${e.message}');
     }
   }
 
@@ -2190,7 +1830,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       'comment': comment,
     };
     final id = row['id'];
-    if (id == null || kMenudeoForceDemoMode) {
+    if (id == null) {
       return updatedRow;
     }
     try {
@@ -3177,7 +2817,7 @@ class _TicketsSelectionInfo extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF8F5E4A),
+            color: kMenudeoMutedText,
           ),
           textAlign: TextAlign.right,
         ),
@@ -3187,7 +2827,7 @@ class _TicketsSelectionInfo extends StatelessWidget {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF8F5E4A),
+              color: kMenudeoMutedText,
             ),
             textAlign: TextAlign.right,
           ),
@@ -3197,7 +2837,7 @@ class _TicketsSelectionInfo extends StatelessWidget {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF8F5E4A),
+              color: kMenudeoMutedText,
             ),
             textAlign: TextAlign.right,
           ),
@@ -3225,7 +2865,7 @@ class _TicketDialogHeader extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             Colors.white.withValues(alpha: 0.54),
-            const Color(0xFFF4E8E0).withValues(alpha: 0.30),
+            tokens.surfaceTint.withValues(alpha: 0.42),
           ],
         ),
         border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
@@ -3309,7 +2949,7 @@ class _TicketDialogActionButton extends StatelessWidget {
               end: Alignment.bottomCenter,
               colors: [
                 Colors.white.withValues(alpha: 0.96),
-                const Color(0xFFF2E4DB).withValues(alpha: 0.88),
+                tokens.surfaceTint.withValues(alpha: 0.90),
               ],
             ),
             borderRadius: BorderRadius.circular(999),
@@ -4442,7 +4082,7 @@ class _TicketDetailCard extends StatelessWidget {
     final neto = bruto - tara;
     final peso = (neto * (1 - (humedad / 100))) - basura;
     final importe = peso * (precio + sobreprecio);
-    final amountTone = const Color(0xFF8F5F42);
+    final amountTone = tokens.primaryStrong;
     return ContractGlassCard(
       padding: const EdgeInsets.fromLTRB(12, 10, 12, 14),
       child: Container(
@@ -4453,7 +4093,7 @@ class _TicketDetailCard extends StatelessWidget {
             end: Alignment.bottomRight,
             colors: [
               Colors.white.withValues(alpha: 0.72),
-              const Color(0xFFF0E3DA).withValues(alpha: 0.58),
+              tokens.surfaceTint.withValues(alpha: 0.70),
             ],
           ),
           border: Border.all(color: Colors.white.withValues(alpha: 0.82)),
@@ -4672,7 +4312,7 @@ class _TicketDetailTopChip extends StatelessWidget {
       constraints: const BoxConstraints(minWidth: 146),
       padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3DACC).withValues(alpha: 0.92),
+        color: tokens.badgeBackground.withValues(alpha: 0.94),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
         boxShadow: [
@@ -4741,10 +4381,10 @@ class _TicketStatusTopChip extends StatelessWidget {
         constraints: const BoxConstraints(minWidth: 160),
         padding: const EdgeInsets.fromLTRB(18, 12, 18, 14),
         decoration: BoxDecoration(
-          gradient: const LinearGradient(
+          gradient: LinearGradient(
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
-            colors: [Color(0xFFF0B79A), Color(0xFFD87C4E)],
+            colors: [menudeoAreaTokens.accent, menudeoAreaTokens.primary],
           ),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(color: Colors.white.withValues(alpha: 0.58)),
@@ -4755,7 +4395,7 @@ class _TicketStatusTopChip extends StatelessWidget {
               offset: const Offset(-2, -2),
             ),
             BoxShadow(
-              color: const Color(0xFFA75E37).withValues(alpha: 0.20),
+              color: menudeoAreaTokens.primaryStrong.withValues(alpha: 0.20),
               blurRadius: 18,
               offset: const Offset(0, 12),
             ),
@@ -4831,7 +4471,7 @@ class _TicketRowNavigator extends StatelessWidget {
               style: const TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF8F5E4A),
+                color: kMenudeoMutedText,
               ),
             ),
           ),
@@ -4897,7 +4537,9 @@ class _TicketDetailSection extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             Colors.white.withValues(alpha: stronger ? 0.72 : 0.62),
-            const Color(0xFFF3E6DE).withValues(alpha: stronger ? 0.50 : 0.36),
+            menudeoAreaTokens.primarySoft.withValues(
+              alpha: stronger ? 0.58 : 0.42,
+            ),
           ],
         ),
         borderRadius: BorderRadius.circular(22),
@@ -5251,7 +4893,7 @@ class _TicketCommentBox extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             Colors.white.withValues(alpha: 0.82),
-            const Color(0xFFF3E6DE).withValues(alpha: 0.70),
+            tokens.surfaceTint.withValues(alpha: 0.76),
           ],
         ),
         borderRadius: BorderRadius.circular(18),
@@ -5310,7 +4952,7 @@ class _TicketSingleLineBox extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             Colors.white.withValues(alpha: 0.82),
-            const Color(0xFFF3E6DE).withValues(alpha: 0.70),
+            tokens.surfaceTint.withValues(alpha: 0.76),
           ],
         ),
         borderRadius: BorderRadius.circular(18),
@@ -5398,7 +5040,7 @@ class _TicketCompactPickerFieldState extends State<_TicketCompactPickerField> {
               end: Alignment.bottomCenter,
               colors: [
                 Colors.white.withValues(alpha: 0.82),
-                const Color(0xFFF3E6DE).withValues(alpha: 0.74),
+                tokens.surfaceTint.withValues(alpha: 0.78),
               ],
             ),
             borderRadius: BorderRadius.circular(16),
@@ -6386,7 +6028,7 @@ class _GridHeaderRow extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             Colors.white.withValues(alpha: 0.70),
-            const Color(0xFFF1E2D7).withValues(alpha: 0.62),
+            tokens.surfaceTint.withValues(alpha: 0.74),
           ],
         ),
         borderRadius: BorderRadius.circular(20),
@@ -6543,16 +6185,16 @@ class _GridDataRowState extends State<_GridDataRow> {
     final backgroundGradient = selectedContext
         ? <Color>[
             tokens.badgeBackground.withValues(alpha: 0.96),
-            const Color(0xFFF1D7C7).withValues(alpha: 0.90),
+            tokens.primarySoft.withValues(alpha: 0.92),
           ]
         : _hovering
         ? <Color>[
             Colors.white.withValues(alpha: 0.90),
-            const Color(0xFFF4E6DD).withValues(alpha: 0.82),
+            tokens.surfaceTint.withValues(alpha: 0.84),
           ]
         : <Color>[
             Colors.white.withValues(alpha: 0.74),
-            const Color(0xFFF7ECE5).withValues(alpha: 0.68),
+            tokens.surfaceTint.withValues(alpha: 0.72),
           ];
 
     Widget buildDivider() {
@@ -6758,9 +6400,9 @@ class _GridDataRowState extends State<_GridDataRow> {
                                         PopupMenuButton<_TicketGridMenuAction>(
                                           tooltip: 'Acciones',
                                           padding: EdgeInsets.zero,
-                                          color: const Color(
-                                            0xFFF3E4D9,
-                                          ).withValues(alpha: 0.96),
+                                          color: tokens.surfaceTint.withValues(
+                                            alpha: 0.98,
+                                          ),
                                           elevation: 8,
                                           shadowColor: Colors.black.withValues(
                                             alpha: 0.12,
@@ -6770,9 +6412,8 @@ class _GridDataRowState extends State<_GridDataRow> {
                                               16,
                                             ),
                                             side: BorderSide(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.7,
-                                              ),
+                                              color: tokens.primarySoft
+                                                  .withValues(alpha: 0.58),
                                             ),
                                           ),
                                           onOpened: widget.onActionMenuOpen,
@@ -6794,9 +6435,9 @@ class _GridDataRowState extends State<_GridDataRow> {
                                                   Colors.white.withValues(
                                                     alpha: 0.82,
                                                   ),
-                                                  const Color(
-                                                    0xFFF3E5DB,
-                                                  ).withValues(alpha: 0.74),
+                                                  tokens.surfaceTint.withValues(
+                                                    alpha: 0.78,
+                                                  ),
                                                 ],
                                               ),
                                               borderRadius:
@@ -6842,7 +6483,7 @@ class _TicketStatusChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final paid = status == 'PAGADO';
-    final tone = paid ? const Color(0xFF3E7B4A) : const Color(0xFF7A3422);
+    final tone = paid ? const Color(0xFF3E7B4A) : menudeoAreaTokens.primary;
     return AnimatedContainer(
       duration: const Duration(milliseconds: 140),
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
@@ -7027,7 +6668,7 @@ class _TicketsSidePanel extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0x66EFD7C2),
+                  color: tokens.primarySoft.withValues(alpha: 0.34),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
                     color: tokens.primaryStrong.withValues(alpha: 0.14),
@@ -7166,26 +6807,14 @@ class _SidePanelItem extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
             decoration: BoxDecoration(
               gradient: accented
-                  ? const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [Color(0xFFE5A56F), Color(0xFFCF7E59)],
-                    )
+                  ? kMenudeoPanelAccentGradient
                   : highlighted
-                  ? const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [Color(0xFFEFC186), Color(0xFFDFA06F)],
-                    )
-                  : const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [Color(0xFFF6E2D1), Color(0xFFE7B992)],
-                    ),
+                  ? kMenudeoPanelHighlightGradient
+                  : kMenudeoPanelGradient,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: accented
-                    ? const Color(0xFFF7DCC5)
+                    ? Colors.white.withValues(alpha: 0.72)
                     : highlighted
                     ? tokens.primaryStrong.withValues(alpha: 0.18)
                     : Colors.white.withValues(alpha: 0.58),
@@ -7193,7 +6822,7 @@ class _SidePanelItem extends StatelessWidget {
               boxShadow: accented
                   ? [
                       BoxShadow(
-                        color: const Color(0xFFB46D4F).withValues(alpha: 0.22),
+                        color: kMenudeoPanelShadow.withValues(alpha: 0.24),
                         blurRadius: 22,
                         offset: const Offset(0, 12),
                       ),
@@ -7201,14 +6830,14 @@ class _SidePanelItem extends StatelessWidget {
                   : highlighted
                   ? [
                       BoxShadow(
-                        color: const Color(0xFFB97A5C).withValues(alpha: 0.18),
+                        color: kMenudeoPanelShadow.withValues(alpha: 0.18),
                         blurRadius: 18,
                         offset: const Offset(0, 10),
                       ),
                     ]
                   : [
                       BoxShadow(
-                        color: const Color(0xFFB97A5C).withValues(alpha: 0.12),
+                        color: kMenudeoPanelShadow.withValues(alpha: 0.12),
                         blurRadius: 16,
                         offset: const Offset(0, 8),
                       ),

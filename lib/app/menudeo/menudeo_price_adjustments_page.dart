@@ -553,8 +553,9 @@ class _MenudeoPriceAdjustmentsPageState
         : rows.indexWhere(
             (row) => (row['price_id'] ?? '').toString() == _activePriceId,
           );
-    final baseIndex = currentIndex >= 0 ? currentIndex : 0;
-    final nextIndex = (baseIndex + delta).clamp(0, rows.length - 1);
+    final nextIndex = currentIndex < 0
+        ? (delta >= 0 ? 0 : rows.length - 1)
+        : (currentIndex + delta).clamp(0, rows.length - 1);
     final nextId = (rows[nextIndex]['price_id'] ?? '').toString();
     setState(() {
       _activePriceId = nextId;
@@ -5473,7 +5474,7 @@ class _PriceAdjustSidePanel extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: const Color(0x66EFD7C2),
+                  color: tokens.primarySoft.withValues(alpha: 0.34),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
                     color: tokens.primaryStrong.withValues(alpha: 0.14),
@@ -5617,26 +5618,14 @@ class _PriceAdjustPanelItemState extends State<_PriceAdjustPanelItem> {
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
                 gradient: widget.isAccent
-                    ? const LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [Color(0xFFE5A56F), Color(0xFFCF7E59)],
-                      )
+                    ? kMenudeoPanelAccentGradient
                     : active
-                    ? const LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [Color(0xFFEFC186), Color(0xFFDFA06F)],
-                      )
-                    : const LinearGradient(
-                        begin: Alignment.centerLeft,
-                        end: Alignment.centerRight,
-                        colors: [Color(0xFFF6E2D1), Color(0xFFE7B992)],
-                      ),
+                    ? kMenudeoPanelHighlightGradient
+                    : kMenudeoPanelGradient,
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: widget.isAccent
-                      ? const Color(0xFFF7DCC5)
+                      ? Colors.white.withValues(alpha: 0.72)
                       : active
                       ? tokens.primaryStrong.withValues(alpha: 0.18)
                       : Colors.white.withValues(alpha: _hovered ? 0.62 : 0.58),
@@ -5644,12 +5633,12 @@ class _PriceAdjustPanelItemState extends State<_PriceAdjustPanelItem> {
                 boxShadow: [
                   BoxShadow(
                     color: widget.isAccent
-                        ? const Color(0xFFB46D4F).withValues(alpha: 0.22)
+                        ? kMenudeoPanelShadow.withValues(alpha: 0.24)
                         : active
-                        ? const Color(0xFFB97A5C).withValues(alpha: 0.18)
-                        : const Color(
-                            0xFFB97A5C,
-                          ).withValues(alpha: _hovered ? 0.14 : 0.12),
+                        ? kMenudeoPanelShadow.withValues(alpha: 0.18)
+                        : kMenudeoPanelShadow.withValues(
+                            alpha: _hovered ? 0.14 : 0.12,
+                          ),
                     blurRadius: widget.isAccent ? 22 : (_hovered ? 18 : 16),
                     offset: Offset(0, widget.isAccent ? 12 : 8),
                   ),

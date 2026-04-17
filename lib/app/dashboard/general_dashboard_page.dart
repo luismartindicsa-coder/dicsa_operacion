@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
+import '../hr/human_resources_mock_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../services/inventory_page.dart';
@@ -79,6 +80,17 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     await Navigator.of(context).push(
       appPageRoute(
         page: const MenudeoDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openHumanResourcesMock() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const HumanResourcesMockPage(),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -203,7 +215,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       onOpenGeneralDashboard: () async {},
       onOpenOperationalDashboard: _openOperationalDashboard,
       onOpenMenudeo: _openRetailDashboard,
-      onOpenHumanResources: () => _showUpcomingArea('Recursos humanos'),
+      onOpenHumanResources: _openHumanResourcesMock,
       onOpenAdministration: () => _showUpcomingArea('Administración'),
       onOpenFinance: () => _showUpcomingArea('Finanzas'),
       onOpenAccounting: () => _showUpcomingArea('Contabilidad'),
@@ -282,18 +294,17 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
                         accent: const Color(0xFF6A3B10),
                         icon: Icons.groups_2_rounded,
                         title: 'Recursos humanos',
-                        status: 'Próximamente',
-                        statusColor: const Color(0xFFAA6A00),
+                        status: 'Mock listo',
+                        statusColor: const Color(0xFF7A4AF0),
                         description:
                             'Asistencia, plantilla, incidencias y seguimiento del personal.',
                         highlights: const [
                           'Indicadores de headcount',
                           'Ausentismo y rotación',
-                          'Pendiente de construcción',
+                          'Mock visual navegable disponible',
                         ],
-                        primaryLabel: 'Preparar área',
-                        onPrimaryTap: () =>
-                            _showUpcomingArea('Recursos humanos'),
+                        primaryLabel: 'Abrir mock',
+                        onPrimaryTap: _openHumanResourcesMock,
                       ),
                       _AreaSummaryCard(
                         width: summaryWidth,

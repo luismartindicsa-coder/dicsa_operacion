@@ -131,12 +131,12 @@ class _ContractDatePickerDialogState extends State<_ContractDatePickerDialog> {
                   colorScheme: Theme.of(context).colorScheme.copyWith(
                     primary: tokens.primaryStrong,
                     onPrimary: Colors.white,
-                    surface: const Color(0xFFFFFAF6),
-                    onSurface: const Color(0xFF2D2A28),
+                    surface: tokens.surfaceTint,
+                    onSurface: const Color(0xFF1E2633),
                     secondary: tokens.primaryStrong,
                   ),
                   datePickerTheme: DatePickerThemeData(
-                    backgroundColor: const Color(0xFFFFFAF6),
+                    backgroundColor: tokens.surfaceTint,
                     surfaceTintColor: Colors.transparent,
                     headerForegroundColor: tokens.primaryStrong,
                     dayForegroundColor: _stateColor(

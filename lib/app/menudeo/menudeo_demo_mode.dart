@@ -1,1 +1,1 @@
-const bool kMenudeoForceDemoMode = true;
+const bool kMenudeoForceDemoMode = false;

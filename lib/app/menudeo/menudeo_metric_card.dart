@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import 'menudeo_theme.dart';
+
 class MenudeoMetricCard extends StatelessWidget {
   final double width;
   final double height;
@@ -24,6 +27,7 @@ class MenudeoMetricCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return Padding(
       padding: margin,
       child: Container(
@@ -31,12 +35,12 @@ class MenudeoMetricCard extends StatelessWidget {
         height: height,
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         decoration: BoxDecoration(
-          color: const Color(0xFFF3D9CF).withValues(alpha: 0.52),
+          color: tokens.badgeBackground.withValues(alpha: 0.56),
           borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.74)),
-          boxShadow: const [
+          border: Border.all(color: Colors.white.withValues(alpha: 0.76)),
+          boxShadow: [
             BoxShadow(
-              color: Color(0x0F8E3F2A),
+              color: kMenudeoPanelShadow.withValues(alpha: 0.10),
               blurRadius: 12,
               offset: Offset(0, 6),
             ),
@@ -52,7 +56,7 @@ class MenudeoMetricCard extends StatelessWidget {
                 borderRadius: BorderRadius.circular(9),
                 border: Border.all(color: accent.withValues(alpha: 0.24)),
               ),
-              child: Icon(icon, size: 18, color: const Color(0xFF7A3422)),
+              child: Icon(icon, size: 18, color: tokens.primaryStrong),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -68,7 +72,7 @@ class MenudeoMetricCard extends StatelessWidget {
                       fontSize: 9,
                       fontWeight: FontWeight.w800,
                       letterSpacing: 0.5,
-                      color: Color(0xFF8F5E4A),
+                      color: kMenudeoMutedText,
                       height: 1.0,
                     ),
                   ),
@@ -80,7 +84,7 @@ class MenudeoMetricCard extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w800,
-                      color: Color(0xFF2D2A28),
+                      color: kMenudeoSurfaceText,
                       height: 1.0,
                     ),
                   ),
@@ -93,7 +97,7 @@ class MenudeoMetricCard extends StatelessWidget {
                       style: const TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xFF8F5E4A),
+                        color: kMenudeoMutedText,
                         height: 1.0,
                       ),
                     ),

@@ -24,7 +24,6 @@ import '../shared/utils/number_formatters.dart';
 import 'menudeo_catalog_page.dart';
 import 'menudeo_dashboard_page.dart';
 import 'menudeo_delete_confirm_dialog.dart';
-import 'menudeo_demo_mode.dart';
 import 'menudeo_filter_widgets.dart';
 import 'menudeo_header_brand.dart';
 import 'menudeo_metric_card.dart';
@@ -71,7 +70,7 @@ Widget _voucherPopupMenuItemChild({
 }) {
   return Row(
     children: [
-      Icon(icon, size: 18, color: const Color(0xFF8E3F2A)),
+      Icon(icon, size: 18, color: menudeoAreaTokens.primaryStrong),
       const SizedBox(width: 10),
       Expanded(
         child: Text(
@@ -498,16 +497,6 @@ class _MenudeoDepositsExpensesPageState
 
   Future<void> _loadVouchers() async {
     if (mounted) setState(() => _loadingRows = true);
-    if (kMenudeoForceDemoMode) {
-      if (!mounted) return;
-      setState(() {
-        _rows
-          ..clear()
-          ..addAll(_buildMockVoucherRows());
-        _loadingRows = false;
-      });
-      return;
-    }
     try {
       final voucherRows = await _supa
           .from('vw_men_cash_vouchers_grid')
@@ -591,259 +580,23 @@ class _MenudeoDepositsExpensesPageState
       setState(() {
         _rows
           ..clear()
-          ..addAll(mappedRows.isEmpty ? _buildMockVoucherRows() : mappedRows);
+          ..addAll(mappedRows);
         _folioSequence = nextSequence;
         _loadingRows = false;
       });
     } catch (error) {
       if (!mounted) return;
       setState(() {
-        _rows
-          ..clear()
-          ..addAll(_buildMockVoucherRows());
+        _rows.clear();
         _loadingRows = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(
-            'No se pudo cargar depósitos y gastos reales. Se muestran vouchers demo para probar el flujo: $error',
-          ),
+          content: Text('No se pudo cargar depósitos y gastos: $error'),
           behavior: SnackBarBehavior.floating,
         ),
       );
     }
-  }
-
-  List<_VoucherRecord> _buildMockVoucherRows() {
-    _LineItemRecord line({
-      required String concept,
-      String unit = '',
-      String quantity = '',
-      String company = '',
-      String driver = '',
-      String destination = '',
-      String subconcept = '',
-      String mode = '',
-      required String amount,
-      String comment = '',
-    }) {
-      return _LineItemRecord(
-        concept: concept,
-        unit: unit,
-        quantity: quantity,
-        company: company,
-        driver: driver,
-        destination: destination,
-        subconcept: subconcept,
-        mode: mode,
-        amount: amount,
-        comment: comment,
-      );
-    }
-
-    final rows = <_VoucherRecord>[
-      _VoucherRecord(
-        folio: '18263',
-        date: '14/04/2026',
-        type: _VoucherType.expense,
-        person: 'JESUS RODRIGUEZ',
-        rubric: 'OPERATIVO',
-        comment: 'RODOLFO VERA',
-        lines: [
-          line(
-            concept: 'BÁSCULA',
-            company: 'MONROE',
-            driver: 'RODOLFO VERA',
-            amount: '150',
-          ),
-        ],
-      ),
-      _VoucherRecord(
-        folio: '18264',
-        date: '14/04/2026',
-        type: _VoucherType.expense,
-        person: 'GIL GUIA',
-        rubric: 'OPERATIVO',
-        comment: 'REPARACIÓN DE FUGA DE AGUA PRIV.29',
-        lines: [
-          line(
-            concept: 'MANTENIMIENTO',
-            unit: 'U-17',
-            subconcept: 'MANGUERAS',
-            amount: '300',
-          ),
-        ],
-      ),
-      _VoucherRecord(
-        folio: '18265',
-        date: '14/04/2026',
-        type: _VoucherType.expense,
-        person: 'DON VICTOR',
-        rubric: 'OPERATIVO',
-        comment: 'COMISIONES',
-        lines: [line(concept: 'COMISIONES', amount: '5000')],
-      ),
-      _VoucherRecord(
-        folio: '18266',
-        date: '14/04/2026',
-        type: _VoucherType.expense,
-        person: 'GAS',
-        rubric: 'OPERATIVO',
-        comment: '109 LTS',
-        lines: [
-          line(
-            concept: 'COMBUSTIBLE',
-            unit: 'U-21',
-            quantity: '109',
-            amount: '1179.38',
-          ),
-        ],
-      ),
-      _VoucherRecord(
-        folio: '18267',
-        date: '14/04/2026',
-        type: _VoucherType.expense,
-        person: 'RIGOBERTO GONZALEZ',
-        rubric: 'OPERATIVO',
-        comment: 'DE BANDAS',
-        lines: [
-          line(
-            concept: 'MANTENIMIENTO',
-            unit: 'U-09',
-            subconcept: 'MECÁNICA',
-            amount: '755.42',
-          ),
-        ],
-      ),
-      _VoucherRecord(
-        folio: '18268',
-        date: '14/04/2026',
-        type: _VoucherType.expense,
-        person: 'OSCAR LARA',
-        rubric: 'OPERATIVO',
-        comment: '100.4 KILOS DE TRAPO',
-        lines: [
-          line(
-            concept: 'EQUIPO',
-            quantity: '100.4',
-            subconcept: 'ALMACÉN',
-            amount: '3012',
-          ),
-        ],
-      ),
-      _VoucherRecord(
-        folio: '18269',
-        date: '14/04/2026',
-        type: _VoucherType.expense,
-        person: 'MANUEL PAVANA',
-        rubric: 'OPERATIVO',
-        comment: 'COMPLEMENTARIO DE VIAJES SAN PABLO',
-        lines: [
-          line(
-            concept: 'VIAJES',
-            subconcept: 'COMIDA',
-            amount: '157.24',
-            destination: 'SAN PABLO',
-          ),
-        ],
-      ),
-      _VoucherRecord(
-        folio: '18270',
-        date: '14/04/2026',
-        type: _VoucherType.expense,
-        person: 'RENE JIMENEZ',
-        rubric: 'OPERATIVO',
-        comment: 'GKN',
-        lines: [line(concept: 'BÁSCULA', company: 'GKN', amount: '100')],
-      ),
-      _VoucherRecord(
-        folio: '18271',
-        date: '13/04/2026',
-        type: _VoucherType.expense,
-        person: 'ANGEL LOPEZ',
-        rubric: 'OPERATIVO',
-        comment: 'DECASA-MONROE',
-        lines: [line(concept: 'BÁSCULA', company: 'MONROE', amount: '350')],
-      ),
-      _VoucherRecord(
-        folio: '18272',
-        date: '13/04/2026',
-        type: _VoucherType.expense,
-        person: 'RAFAEL ABOYTES',
-        rubric: 'OPERATIVO',
-        comment: 'OXÍGENO Y BOQUILLAS',
-        lines: [line(concept: 'OXÍGENO', quantity: '2', amount: '2144.02')],
-      ),
-      _VoucherRecord(
-        folio: '18273',
-        date: '13/04/2026',
-        type: _VoucherType.expense,
-        person: 'JESUS RDZ',
-        rubric: 'OPERATIVO',
-        comment: 'DEACERO',
-        lines: [
-          line(
-            concept: 'CENA',
-            driver: 'JESUS RDZ',
-            destination: 'DE ACERO',
-            amount: '150',
-          ),
-        ],
-      ),
-      _VoucherRecord(
-        folio: '18274',
-        date: '13/04/2026',
-        type: _VoucherType.expense,
-        person: 'JESUS RODRIGUEZ',
-        rubric: 'OPERATIVO',
-        comment: 'GRUPACK-REGRESO EL DINERO',
-        lines: [
-          line(
-            concept: 'VIAJES',
-            subconcept: 'CASETA',
-            amount: '0',
-            destination: 'GRUPAK',
-          ),
-        ],
-      ),
-      _VoucherRecord(
-        folio: '14350',
-        date: '14/04/2026',
-        type: _VoucherType.deposit,
-        person: 'FATIMA CORTES',
-        rubric: 'VENTA DE MATERIAL',
-        comment: 'SRA REBE',
-        lines: [line(concept: 'DEPÓSITO', amount: '14350')],
-      ),
-      _VoucherRecord(
-        folio: '14381',
-        date: '14/04/2026',
-        type: _VoucherType.deposit,
-        person: 'CAJA GRANDE',
-        rubric: 'REPOSICIÓN DE FONDO',
-        comment: '',
-        lines: [line(concept: 'CAJA GRANDE', amount: '5000')],
-      ),
-      _VoucherRecord(
-        folio: '14382',
-        date: '13/04/2026',
-        type: _VoucherType.deposit,
-        person: 'BÓVEDA',
-        rubric: 'REPOSICIÓN DE FONDO',
-        comment: '',
-        lines: [line(concept: 'BÓVEDA', amount: '7200')],
-      ),
-    ];
-    final maxFolio = rows
-        .map(
-          (row) =>
-              int.tryParse(row.folio.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0,
-        )
-        .fold<int>(0, (max, value) => value > max ? value : max);
-    if (maxFolio > _folioSequence) {
-      _folioSequence = maxFolio;
-    }
-    return rows;
   }
 
   Future<void> _goBack() async {
@@ -1372,7 +1125,7 @@ class _MenudeoDepositsExpensesPageState
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final result = await showMenu<_VoucherGridMenuAction>(
       context: context,
-      color: const Color(0xFFF3E4D9).withValues(alpha: 0.96),
+      color: menudeoAreaTokens.surfaceTint.withValues(alpha: 0.98),
       elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.12),
       shape: RoundedRectangleBorder(
@@ -1469,7 +1222,6 @@ class _MenudeoDepositsExpensesPageState
   }
 
   Future<void> _persistVoucher(_VoucherRecord record) async {
-    if (kMenudeoForceDemoMode) return;
     final payload = <String, dynamic>{
       'voucher_date': _uiDateToIso(record.date),
       'folio': record.folio,
@@ -2159,7 +1911,7 @@ class _DepositsSidePanel extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(10),
               decoration: BoxDecoration(
-                color: const Color(0x66EFD7C2),
+                color: tokens.primarySoft.withValues(alpha: 0.34),
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
                   color: tokens.primaryStrong.withValues(alpha: 0.14),
@@ -2295,26 +2047,14 @@ class _DepositsSidePanelItem extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
             decoration: BoxDecoration(
               gradient: accented
-                  ? const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [Color(0xFFE5A56F), Color(0xFFCF7E59)],
-                    )
+                  ? kMenudeoPanelAccentGradient
                   : highlighted
-                  ? const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [Color(0xFFEFC186), Color(0xFFDFA06F)],
-                    )
-                  : const LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [Color(0xFFF6E2D1), Color(0xFFE7B992)],
-                    ),
+                  ? kMenudeoPanelHighlightGradient
+                  : kMenudeoPanelGradient,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: accented
-                    ? const Color(0xFFF7DCC5)
+                    ? Colors.white.withValues(alpha: 0.72)
                     : highlighted
                     ? tokens.primaryStrong.withValues(alpha: 0.18)
                     : Colors.white.withValues(alpha: 0.58),
@@ -2322,7 +2062,7 @@ class _DepositsSidePanelItem extends StatelessWidget {
               boxShadow: accented
                   ? [
                       BoxShadow(
-                        color: const Color(0xFFB46D4F).withValues(alpha: 0.22),
+                        color: kMenudeoPanelShadow.withValues(alpha: 0.24),
                         blurRadius: 22,
                         offset: const Offset(0, 12),
                       ),
@@ -2330,14 +2070,14 @@ class _DepositsSidePanelItem extends StatelessWidget {
                   : highlighted
                   ? [
                       BoxShadow(
-                        color: const Color(0xFFB97A5C).withValues(alpha: 0.18),
+                        color: kMenudeoPanelShadow.withValues(alpha: 0.18),
                         blurRadius: 18,
                         offset: const Offset(0, 10),
                       ),
                     ]
                   : [
                       BoxShadow(
-                        color: const Color(0xFFB97A5C).withValues(alpha: 0.12),
+                        color: kMenudeoPanelShadow.withValues(alpha: 0.12),
                         blurRadius: 16,
                         offset: const Offset(0, 8),
                       ),
@@ -2402,43 +2142,100 @@ class _DepositsExpensesBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFF7EDE6), Color(0xFFD8C1B0), Color(0xFFA88973)],
+    final tokens = AreaThemeScope.of(context);
+
+    Widget blurCircle(double size, Gradient gradient) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: gradient,
+          boxShadow: [
+            BoxShadow(
+              blurRadius: size * 0.12,
+              spreadRadius: size * 0.02,
+              color: Colors.white.withValues(alpha: 0.18),
+            ),
+          ],
         ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned(
-            top: -120,
-            right: -40,
-            child: Container(
-              width: 340,
-              height: 340,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFFD89A5C),
+        child: SizedBox(width: size, height: size),
+      );
+    }
+
+    return Stack(
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                tokens.surfaceTint,
+                tokens.primarySoft.withValues(alpha: 0.9),
+                tokens.accent.withValues(alpha: 0.38),
+              ],
+            ),
+          ),
+          child: const SizedBox.expand(),
+        ),
+        Positioned(
+          left: -260,
+          top: -110,
+          child: blurCircle(
+            760,
+            LinearGradient(
+              colors: [
+                Colors.white.withValues(alpha: 0.92),
+                tokens.primarySoft.withValues(alpha: 0.94),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          right: -210,
+          top: -70,
+          child: blurCircle(
+            620,
+            LinearGradient(
+              colors: [
+                tokens.accent.withValues(alpha: 0.82),
+                tokens.glow.withValues(alpha: 0.44),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          left: 20,
+          bottom: -250,
+          child: blurCircle(
+            620,
+            LinearGradient(
+              colors: [
+                tokens.primary.withValues(alpha: 0.32),
+                tokens.primarySoft.withValues(alpha: 0.92),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          right: -110,
+          bottom: -120,
+          child: Container(
+            width: 320,
+            height: 500,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(220),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  tokens.accent.withValues(alpha: 0.95),
+                  tokens.primaryStrong.withValues(alpha: 0.92),
+                ],
               ),
             ),
           ),
-          Positioned(
-            left: -120,
-            bottom: -160,
-            child: Container(
-              width: 460,
-              height: 460,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFFE4BCA7),
-              ),
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -2754,12 +2551,6 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
       },
       onExit: (_) => setState(() => _hovering = false),
       child: Listener(
-        onPointerDown: (event) {
-          if (event.kind == PointerDeviceKind.mouse &&
-              (event.buttons & kPrimaryMouseButton) != 0) {
-            widget.onPrimaryPointerDown();
-          }
-        },
         onPointerUp: (_) => widget.onPointerEnd(),
         onPointerCancel: (_) => widget.onPointerEnd(),
         child: AnimatedScale(
@@ -2775,16 +2566,16 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                 colors: selectedContext
                     ? [
                         tokens.badgeBackground.withValues(alpha: 0.96),
-                        const Color(0xFFF1D7C7).withValues(alpha: 0.90),
+                        tokens.primarySoft.withValues(alpha: 0.92),
                       ]
                     : _hovering
                     ? [
                         Colors.white.withValues(alpha: 0.90),
-                        const Color(0xFFF4E6DD).withValues(alpha: 0.82),
+                        tokens.surfaceTint.withValues(alpha: 0.84),
                       ]
                     : [
                         Colors.white.withValues(alpha: 0.74),
-                        const Color(0xFFF7ECE5).withValues(alpha: 0.68),
+                        tokens.surfaceTint.withValues(alpha: 0.72),
                       ],
               ),
               borderRadius: BorderRadius.circular(22),
@@ -2897,9 +2688,9 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                                       PopupMenuButton<_VoucherGridMenuAction>(
                                         tooltip: 'Acciones',
                                         padding: EdgeInsets.zero,
-                                        color: const Color(
-                                          0xFFF3E4D9,
-                                        ).withValues(alpha: 0.96),
+                                        color: tokens.surfaceTint.withValues(
+                                          alpha: 0.98,
+                                        ),
                                         elevation: 8,
                                         shadowColor: Colors.black.withValues(
                                           alpha: 0.12,
@@ -2909,9 +2700,8 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                                             16,
                                           ),
                                           side: BorderSide(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.7,
-                                            ),
+                                            color: tokens.primarySoft
+                                                .withValues(alpha: 0.58),
                                           ),
                                         ),
                                         onSelected: (action) {
@@ -3096,7 +2886,7 @@ class _VouchersModuleTopBar extends StatelessWidget {
                 title: 'TOTAL DEPÓSITOS',
                 value: _money(visibleDepositTotal),
                 detail: '$depositCount visibles',
-                accent: const Color(0xFFB27253),
+                accent: menudeoAreaTokens.primary,
               ),
               MenudeoMetricCard(
                 icon: Icons.arrow_upward_rounded,
@@ -3145,7 +2935,7 @@ class _VouchersSelectionInfo extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF8F5E4A),
+            color: kMenudeoMutedText,
           ),
           textAlign: TextAlign.right,
         ),
@@ -3155,7 +2945,7 @@ class _VouchersSelectionInfo extends StatelessWidget {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF8F5E4A),
+              color: kMenudeoMutedText,
             ),
             textAlign: TextAlign.right,
           ),
@@ -3165,7 +2955,7 @@ class _VouchersSelectionInfo extends StatelessWidget {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF8F5E4A),
+              color: kMenudeoMutedText,
             ),
             textAlign: TextAlign.right,
           ),
@@ -3176,9 +2966,11 @@ class _VouchersSelectionInfo extends StatelessWidget {
 
 ButtonStyle _vouchersGlassToolbarActionStyle() {
   return OutlinedButton.styleFrom(
-    foregroundColor: const Color(0xFF2D2A28),
+    foregroundColor: menudeoAreaTokens.primaryStrong,
     backgroundColor: Colors.white.withValues(alpha: 0.22),
-    disabledForegroundColor: const Color(0xFF2D2A28).withValues(alpha: 0.42),
+    disabledForegroundColor: menudeoAreaTokens.primaryStrong.withValues(
+      alpha: 0.42,
+    ),
     side: BorderSide(color: Colors.white.withValues(alpha: 0.58)),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -3444,12 +3236,16 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                 ),
               ),
               popupMenuTheme: PopupMenuThemeData(
-                color: const Color(0xFFF3E4D9).withValues(alpha: 0.96),
+                color: menudeoAreaTokens.surfaceTint.withValues(alpha: 0.98),
                 elevation: 8,
                 shadowColor: Colors.black.withValues(alpha: 0.12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.7)),
+                  side: BorderSide(
+                    color: menudeoAreaTokens.primarySoft.withValues(
+                      alpha: 0.58,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -3876,7 +3672,7 @@ class _VoucherDialogHeader extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             Colors.white.withValues(alpha: 0.54),
-            const Color(0xFFF4E8E0).withValues(alpha: 0.30),
+            tokens.surfaceTint.withValues(alpha: 0.40),
           ],
         ),
         border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
@@ -3978,7 +3774,7 @@ class _VoucherDialogActionButton extends StatelessWidget {
               end: Alignment.bottomCenter,
               colors: [
                 Colors.white.withValues(alpha: 0.96),
-                const Color(0xFFF2E4DB).withValues(alpha: 0.88),
+                tokens.surfaceTint.withValues(alpha: 0.90),
               ],
             ),
             borderRadius: BorderRadius.circular(999),
@@ -4038,11 +3834,11 @@ class _VoucherTopChip extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             emphasized
-                ? const Color(0xFFF5D4C2).withValues(alpha: 0.98)
+                ? tokens.primarySoft.withValues(alpha: 0.98)
                 : Colors.white.withValues(alpha: 0.92),
             emphasized
-                ? const Color(0xFFE8B89B).withValues(alpha: 0.90)
-                : const Color(0xFFF2E4DB).withValues(alpha: 0.86),
+                ? tokens.primary.withValues(alpha: 0.28)
+                : tokens.surfaceTint.withValues(alpha: 0.88),
           ],
         ),
         borderRadius: BorderRadius.circular(18),

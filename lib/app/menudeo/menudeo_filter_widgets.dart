@@ -29,6 +29,7 @@ class MenudeoGridHeaderFilterCell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return Row(
       children: [
         if (onTap != null) ...[
@@ -40,20 +41,16 @@ class MenudeoGridHeaderFilterCell extends StatelessWidget {
               curve: Curves.easeOutCubic,
               padding: const EdgeInsets.all(4),
               decoration: BoxDecoration(
-                color: active
-                    ? const Color(0xFFC96A4A)
-                    : const Color(0xFFF3D9CF),
+                color: active ? tokens.primary : tokens.badgeBackground,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
-                  color: active
-                      ? const Color(0xFF8E3F2A)
-                      : const Color(0xFFE4B9A8),
+                  color: active ? tokens.primaryStrong : tokens.border,
                 ),
               ),
               child: Icon(
                 active ? Icons.filter_alt : Icons.filter_alt_outlined,
                 size: 15,
-                color: active ? Colors.white : const Color(0xFF7A3422),
+                color: active ? Colors.white : tokens.badgeText,
               ),
             ),
           ),

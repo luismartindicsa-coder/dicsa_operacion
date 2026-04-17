@@ -84,17 +84,15 @@ class _MenudeoDeleteConfirmDialog extends StatelessWidget {
                         width: 42,
                         height: 42,
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF3D9CF),
+                          color: tokens.badgeBackground,
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: const Color(
-                              0xFF8E3F2A,
-                            ).withValues(alpha: 0.18),
+                            color: tokens.primaryStrong.withValues(alpha: 0.18),
                           ),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.delete_outline_rounded,
-                          color: Color(0xFF8E3F2A),
+                          color: tokens.primaryStrong,
                         ),
                       ),
                       const SizedBox(width: 12),
@@ -130,7 +128,7 @@ class _MenudeoDeleteConfirmDialog extends StatelessWidget {
                     style: const TextStyle(
                       fontSize: 14.5,
                       height: 1.35,
-                      color: Color(0xFF5A5552),
+                      color: kMenudeoMutedText,
                     ),
                   ),
                   const SizedBox(height: 14),

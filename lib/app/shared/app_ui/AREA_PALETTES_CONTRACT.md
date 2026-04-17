@@ -59,19 +59,51 @@ Estas areas ya quedan oficiales con base en la UI actual y no deben reinterpreta
   - `#D99532`
   - `#FFD27A`
 
-## Areas propuestas v1
+## Areas congeladas adicionales
 
-Estas areas quedan aprobadas solo como direccion cromatica inicial. Sus tokens finales se definiran despues contra este mismo contrato.
+Estas areas ya quedan oficiales con paleta congelada y no deben reinterpretarse sin actualizar este contrato.
 
 ### Recursos Humanos
 
-- caracter: calido sobrio, humano, institucional
-- familia sugerida: miel / ambar tostado
+- estado: `congelada`
+- caracter: humano, institucional, ejecutivo-operativo
+- familia oficial: morado corporativo / violeta profundo
+- objetivo de diferenciacion:
+  - no confundirse con `Menudeo`
+  - no confundirse con `Contabilidad`
+- anclas actuales:
+  - `#6F3FE8`
+  - `#2B114F`
+  - `#EEE5FF`
+  - `#A66BFF`
+  - `#F6F1FF`
+  - `#D6C6F4`
+  - `#E9DEFF`
+  - `#5B2AB5`
+  - `#8D63E8`
 
 ### Menudeo
 
-- caracter: comercial, agil, energetico
-- familia sugerida: coral terracota
+- estado: `congelada`
+- caracter: comercial, agil, institucional
+- familia oficial: azul royal / navy / midnight
+- objetivo de diferenciacion:
+  - no confundirse con `Recursos Humanos`
+  - no regresar a coral, terracota, miel o ambar
+- anclas actuales:
+  - `#1149B5`
+  - `#06152E`
+  - `#D6E1F2`
+  - `#245FCF`
+  - `#EEF3FA`
+  - `#9EB3D6`
+  - `#DFE9F8`
+  - `#123B89`
+  - `#3F69BD`
+
+## Areas propuestas v1
+
+Estas areas quedan aprobadas solo como direccion cromatica inicial. Sus tokens finales se definiran despues contra este mismo contrato.
 
 ### Mayoreo
 
@@ -122,8 +154,8 @@ Cada area debe definirse unicamente con:
 
 ## Regla de implementacion
 
-- `Operaciones` y `Direccion` se respetan tal como ya estan.
-- Las otras areas se construyen tomando como referencia estas dos paletas congeladas.
+- `Operaciones`, `Direccion`, `Recursos Humanos` y `Menudeo` se respetan tal como ya estan.
+- Las otras areas se construyen tomando como referencia estas paletas congeladas.
 - Ninguna nueva area puede alterar glass, blur, radios, sombras, spacing, botones, foco, teclado o patrones de interaccion.
 
 ## Nota de alcance
