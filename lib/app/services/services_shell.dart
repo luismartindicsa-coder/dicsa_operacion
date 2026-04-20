@@ -2,6 +2,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import '../auth/auth_access.dart';
 
 enum ServicesOverlayNavModule {
@@ -84,6 +85,21 @@ class _ServicesShellState extends State<ServicesShell>
   void dispose() {
     _c.dispose();
     super.dispose();
+  }
+
+  Future<void> _openMailHostinger() async {
+    const url = 'https://mail.hostinger.com/';
+    final opened = await launchUrlString(
+      url,
+      mode: LaunchMode.externalApplication,
+    );
+    if (opened || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No se pudo abrir mail.hostinger.com'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
   }
 
   @override
@@ -189,6 +205,17 @@ class _ServicesShellState extends State<ServicesShell>
                             ),
                           ),
                         );
+                        final mailButton = AnimatedBuilder(
+                          animation: _content,
+                          builder: (context, child) => Opacity(
+                            opacity: _content.value,
+                            child: _HeaderActionButton(
+                              label: 'Correo',
+                              icon: Icons.mail_outline_rounded,
+                              onTap: _openMailHostinger,
+                            ),
+                          ),
+                        );
                         final moveLogoutBelow = constraints.maxWidth < 980;
                         final topActionButtons = Wrap(
                           spacing: 8,
@@ -198,6 +225,7 @@ class _ServicesShellState extends State<ServicesShell>
                           children: [
                             helpButton,
                             if (guideButton != null) ...[guideButton],
+                            mailButton,
                             if (!moveLogoutBelow) logoutButton,
                           ],
                         );

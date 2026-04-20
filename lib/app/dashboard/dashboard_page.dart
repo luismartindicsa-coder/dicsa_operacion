@@ -4,6 +4,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
@@ -174,6 +175,21 @@ class _DashboardPageState extends State<DashboardPage> {
     await signOutAndRouteToLogin(context);
   }
 
+  Future<void> _openMailHostinger() async {
+    const url = 'https://mail.hostinger.com/';
+    final opened = await launchUrlString(
+      url,
+      mode: LaunchMode.externalApplication,
+    );
+    if (opened || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No se pudo abrir mail.hostinger.com'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Focus(
@@ -207,10 +223,21 @@ class _DashboardPageState extends State<DashboardPage> {
         ),
         centerBuilder: (_, contentAnim) =>
             _DashboardBrand(contentAnim: contentAnim),
-        trailingBuilder: (_, _) => _HeaderIconButton(
-          label: 'Cerrar sesión',
-          icon: Icons.logout,
-          onTap: () => _logout(context),
+        trailingBuilder: (_, _) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _HeaderIconButton(
+              label: 'Correo',
+              icon: Icons.mail_outline_rounded,
+              onTap: _openMailHostinger,
+            ),
+            const SizedBox(width: 10),
+            _HeaderIconButton(
+              label: 'Cerrar sesión',
+              icon: Icons.logout,
+              onTap: () => _logout(context),
+            ),
+          ],
         ),
         child: Padding(
           padding: const EdgeInsets.fromLTRB(10, 2, 8, 8),

@@ -28,6 +28,7 @@ const double _kTrActionsColW = 180;
 const double _kTrCellGap = 8;
 const double _kTrActionsGap = 10;
 const double _kTrActionButtonW = 34;
+const double _kTransformationConsumptionFactor = 0.8;
 const Color _kTrFilterAccent = Color(0xFF5D7F9E);
 const Color _kTrFilterAccentSoft = Color(0xFFDCE7F2);
 const double _kTrFixedColsW =
@@ -130,6 +131,16 @@ class _InventoryTransformationGridState
   String get _unitsHintText => _usesBaleLanguage ? 'Pacas' : 'Unidades';
   String get _unitsHeaderLabel => _usesBaleLanguage ? 'PACAS' : 'UNIDADES';
   String get _unitsValidationLabel => _usesBaleLanguage ? 'Pacas' : 'Unidades';
+
+  double _effectiveInputKg({
+    required double? inputKg,
+    required double? outputKg,
+  }) {
+    final base = inputKg ?? outputKg ?? 0;
+    return double.parse(
+      (base * _kTransformationConsumptionFactor).toStringAsFixed(3),
+    );
+  }
 
   @override
   void initState() {
@@ -1116,7 +1127,10 @@ class _InventoryTransformationGridState
 
     setState(() => _saving = true);
     try {
-      final effectiveInputKg = inputKg ?? outputKg!;
+      final effectiveInputKg = _effectiveInputKg(
+        inputKg: inputKg,
+        outputKg: outputKg,
+      );
       final runInsert = await supa
           .from('material_transformation_runs_v2')
           .insert({
@@ -1184,7 +1198,10 @@ class _InventoryTransformationGridState
       return;
     }
     try {
-      final effectiveInputKg = inputKg ?? outputKg!;
+      final effectiveInputKg = _effectiveInputKg(
+        inputKg: inputKg,
+        outputKg: outputKg,
+      );
       await supa
           .from('material_transformation_runs_v2')
           .update({
@@ -1332,7 +1349,7 @@ class _InventoryTransformationGridState
                         decoration: const InputDecoration(
                           labelText: 'Consumo real kg (opcional)',
                           helperText:
-                              'Si lo dejas vacío, se usa el mismo valor que kg salida.',
+                              'Se aplica automatico 80% del valor capturado; si lo dejas vacio, se usa 80% de kg salida.',
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -1391,7 +1408,10 @@ class _InventoryTransformationGridState
                   return;
                 }
                 try {
-                  final effectiveInputKg = inputKg ?? outputKg!;
+                  final effectiveInputKg = _effectiveInputKg(
+                    inputKg: inputKg,
+                    outputKg: outputKg,
+                  );
                   await supa
                       .from('material_transformation_runs_v2')
                       .update({
@@ -1642,8 +1662,12 @@ class _InventoryTransformationGridState
     if (inputKg != null && inputKg <= 0) {
       return 'Consumo real debe ser mayor a 0 cuando se captura.';
     }
-    if (inputKg != null && outputKg > inputKg) {
-      return 'Kg salida no puede ser mayor que kg entrada.';
+    final effectiveInputKg = _effectiveInputKg(
+      inputKg: inputKg,
+      outputKg: outputKg,
+    );
+    if (outputKg > effectiveInputKg) {
+      return 'Kg salida no puede ser mayor que consumo aplicado.';
     }
     final commercialCode = _commercialOptions
         .where((option) => option.id == commercialId)

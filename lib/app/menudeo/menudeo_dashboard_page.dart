@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
@@ -675,6 +676,21 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     );
   }
 
+  Future<void> _openMailHostinger() async {
+    const url = 'https://mail.hostinger.com/';
+    final opened = await launchUrlString(
+      url,
+      mode: LaunchMode.externalApplication,
+    );
+    if (opened || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No se pudo abrir mail.hostinger.com'),
+        behavior: SnackBarBehavior.floating,
+      ),
+    );
+  }
+
   Future<void> _goBack() async {
     if (!_canReturnToDirection || !mounted) return;
     if (!mounted) return;
@@ -870,6 +886,12 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
                     ? Icons.notifications_none_rounded
                     : Icons.notifications_active_rounded,
                 onTap: _openPendingChecksDialog,
+              ),
+              const SizedBox(width: 10),
+              _MenudeoHeaderButton(
+                label: 'Correo',
+                icon: Icons.mail_outline_rounded,
+                onTap: _openMailHostinger,
               ),
               const SizedBox(width: 10),
               _MenudeoHeaderButton(
