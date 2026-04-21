@@ -4,7 +4,7 @@ Este proyecto ya queda preparado para este flujo:
 
 1. Instalas la app en cada PC una sola vez con `DicsaOperacionSetup.exe`.
 2. Cada vez que publicas una version nueva, GitHub Actions genera el instalador.
-3. La app en Windows revisa `version.json` al arrancar.
+3. La app en Windows revisa `version.json` al arrancar, al volver al frente y periodicamente mientras sigue abierta.
 4. Si detecta una version mas nueva, muestra un dialogo para descargar la actualizacion.
 
 ## Lo que ya hace el proyecto
@@ -77,7 +77,7 @@ En cada PC nueva:
 
 En las PCs ya instaladas:
 
-- la app detecta la nueva version al abrir
+- la app detecta la nueva version al abrir, al volver a enfocar la ventana o en la siguiente revision automatica
 - muestra el aviso
 - abre la descarga del instalador nuevo
 

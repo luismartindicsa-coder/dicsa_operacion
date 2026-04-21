@@ -25,15 +25,18 @@ class _AuthGateState extends State<AuthGate>
   static const _preSwapSignInMs = 180;
   static const _preSwapSignOutMs = 60;
   static const _postSwapDissolveMs = 520;
+  static const _appUpdatePollInterval = Duration(minutes: 15);
 
   late final StreamSubscription<AuthState> _authSub;
   late final AnimationController _switchFx;
+  Timer? _appUpdateTimer;
   bool _expiring = false;
   bool _hasSession = false;
   bool _transitionToSession = false;
   bool _transitioning = false;
   bool? _queuedSessionState;
-  bool _checkedAppUpdate = false;
+  bool _checkingAppUpdate = false;
+  String? _lastPromptedUpdateVersion;
 
   @override
   void initState() {
@@ -72,18 +75,23 @@ class _AuthGateState extends State<AuthGate>
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(_checkForAppUpdate());
     });
+    _appUpdateTimer = Timer.periodic(_appUpdatePollInterval, (_) {
+      unawaited(_checkForAppUpdate());
+    });
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       unawaited(_handleSessionResumed());
+      unawaited(_checkForAppUpdate());
     }
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _appUpdateTimer?.cancel();
     _authSub.cancel();
     _switchFx.dispose();
     super.dispose();
@@ -164,10 +172,10 @@ class _AuthGateState extends State<AuthGate>
   }
 
   Future<void> _checkForAppUpdate() async {
-    if (_checkedAppUpdate || !mounted) {
+    if (_checkingAppUpdate || !mounted) {
       return;
     }
-    _checkedAppUpdate = true;
+    _checkingAppUpdate = true;
 
     try {
       final update = await AppUpdateService.checkForUpdate();
@@ -175,9 +183,16 @@ class _AuthGateState extends State<AuthGate>
         return;
       }
 
+      if (_lastPromptedUpdateVersion == update.latestVersion) {
+        return;
+      }
+
+      _lastPromptedUpdateVersion = update.latestVersion;
       await showAppUpdatePrompt(context, update);
     } catch (_) {
       // Ignora errores de red o configuracion para no bloquear el acceso.
+    } finally {
+      _checkingAppUpdate = false;
     }
   }
 
