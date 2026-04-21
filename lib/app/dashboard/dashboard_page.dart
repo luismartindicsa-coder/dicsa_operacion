@@ -230,6 +230,7 @@ class _DashboardPageState extends State<DashboardPage> {
               label: 'Correo',
               icon: Icons.mail_outline_rounded,
               onTap: _openMailHostinger,
+              compact: true,
             ),
             const SizedBox(width: 10),
             _HeaderIconButton(
@@ -479,11 +480,13 @@ class _HeaderIconButton extends StatefulWidget {
   final String label;
   final IconData icon;
   final Future<void> Function()? onTap;
+  final bool compact;
 
   const _HeaderIconButton({
     required this.label,
     required this.icon,
     required this.onTap,
+    this.compact = false,
   });
 
   @override
@@ -515,7 +518,7 @@ class _HeaderIconButtonState extends State<_HeaderIconButton> {
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
-            width: 158,
+            width: widget.compact ? 48 : 158,
             height: 48,
             transform: Matrix4.translationValues(0, highlighted ? -2 : 0, 0),
             decoration: BoxDecoration(
@@ -540,26 +543,38 @@ class _HeaderIconButtonState extends State<_HeaderIconButton> {
             ),
             child: Row(
               children: [
-                const SizedBox(width: 10),
-                Icon(widget.icon, size: 18, color: const Color(0xFF0B2B2B)),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      widget.label,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0B2B2B),
+                if (widget.compact)
+                  Expanded(
+                    child: Center(
+                      child: Icon(
+                        widget.icon,
+                        size: 18,
+                        color: const Color(0xFF0B2B2B),
+                      ),
+                    ),
+                  )
+                else ...[
+                  const SizedBox(width: 10),
+                  Icon(widget.icon, size: 18, color: const Color(0xFF0B2B2B)),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        widget.label,
+                        maxLines: 1,
+                        softWrap: false,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF0B2B2B),
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
+                  const SizedBox(width: 10),
+                ],
               ],
             ),
           ),

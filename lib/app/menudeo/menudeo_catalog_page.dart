@@ -222,7 +222,9 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
       <String, GlobalKey<_CommercialMaterialInlineEditRowState>>{};
   final Map<String, GlobalKey<_PriceInlineEditRowState>> _priceEditRowKeys =
       <String, GlobalKey<_PriceInlineEditRowState>>{};
-  final ScrollController _catalogRowsScrollController = ScrollController();
+  final ScrollController _counterpartyRowsScrollController = ScrollController();
+  final ScrollController _materialsRowsScrollController = ScrollController();
+  final ScrollController _pricesRowsScrollController = ScrollController();
   final GlobalKey _counterpartyRowsViewportKey = GlobalKey(
     debugLabel: 'men_rows_viewport_counterparties',
   );
@@ -232,7 +234,6 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
   final GlobalKey _pricesRowsViewportKey = GlobalKey(
     debugLabel: 'men_rows_viewport_prices',
   );
-  final ScrollController _catalogScrollController = ScrollController();
   final FocusNode _counterpartyDraftKindFocus = FocusNode();
   final FocusNode _counterpartyDraftGroupFocus = FocusNode();
   final FocusNode _counterpartyDraftSiteFocus = FocusNode();
@@ -290,7 +291,6 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
   @override
   void dispose() {
     _counterpartyDraftNameC.dispose();
-    _catalogScrollController.dispose();
     _counterpartyDraftNotesC.dispose();
     _materialDraftNameC.dispose();
     _materialDraftNotesC.dispose();
@@ -299,7 +299,9 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
     _counterpartyDraftNameFocus.dispose();
     _gridRowsFocusNode.dispose();
     _dragAutoScrollTimer?.cancel();
-    _catalogRowsScrollController.dispose();
+    _counterpartyRowsScrollController.dispose();
+    _materialsRowsScrollController.dispose();
+    _pricesRowsScrollController.dispose();
     _counterpartyDraftKindFocus.dispose();
     _counterpartyDraftGroupFocus.dispose();
     _counterpartyDraftSiteFocus.dispose();
@@ -903,6 +905,17 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
     }
   }
 
+  ScrollController get _activeRowsScrollController {
+    switch (_activeTabIndex) {
+      case 0:
+        return _counterpartyRowsScrollController;
+      case 1:
+        return _materialsRowsScrollController;
+      default:
+        return _pricesRowsScrollController;
+    }
+  }
+
   List<_CatalogKeyboardActionRow> _selectedKeyboardRows(
     List<_CatalogKeyboardActionRow> rows,
   ) {
@@ -1239,18 +1252,18 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
   void _tickDragAutoScroll() {
     if (!_dragSelectionActive ||
         _dragAutoScrollVelocity == 0 ||
-        !_catalogRowsScrollController.hasClients) {
+        !_activeRowsScrollController.hasClients) {
       _dragAutoScrollTimer?.cancel();
       _dragAutoScrollTimer = null;
       return;
     }
-    final position = _catalogRowsScrollController.position;
+    final position = _activeRowsScrollController.position;
     final next = (position.pixels + _dragAutoScrollVelocity).clamp(
       position.minScrollExtent,
       position.maxScrollExtent,
     );
     if (next == position.pixels) return;
-    _catalogRowsScrollController.jumpTo(next);
+    _activeRowsScrollController.jumpTo(next);
     final pointerLocal = _dragPointerLocal;
     if (pointerLocal == null) return;
     final box =
@@ -2556,7 +2569,7 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
               child: _CatalogTableList(
                 emptyLabel: 'No hay contrapartes para mostrar.',
                 contentWidth: _kCounterpartyContentW,
-                controller: _catalogRowsScrollController,
+                controller: _counterpartyRowsScrollController,
                 viewportKey: _counterpartyRowsViewportKey,
                 rows: visibleRows
                     .map((row) {
@@ -3004,7 +3017,7 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
               child: _CatalogTableList(
                 emptyLabel: 'No hay materiales para mostrar.',
                 contentWidth: _kMaterialsContentW,
-                controller: _catalogRowsScrollController,
+                controller: _materialsRowsScrollController,
                 viewportKey: _materialsRowsViewportKey,
                 rows: visibleMaterialRows
                     .map((row) {
@@ -3509,7 +3522,7 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
               child: _CatalogTableList(
                 emptyLabel: 'No hay precios para mostrar.',
                 contentWidth: _kPricesContentW,
-                controller: _catalogRowsScrollController,
+                controller: _pricesRowsScrollController,
                 viewportKey: _pricesRowsViewportKey,
                 rows: visibleRows
                     .map((row) {
