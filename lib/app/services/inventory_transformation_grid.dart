@@ -28,7 +28,6 @@ const double _kTrActionsColW = 180;
 const double _kTrCellGap = 8;
 const double _kTrActionsGap = 10;
 const double _kTrActionButtonW = 34;
-const double _kTransformationConsumptionFactor = 0.8;
 const Color _kTrFilterAccent = Color(0xFF5D7F9E);
 const Color _kTrFilterAccentSoft = Color(0xFFDCE7F2);
 const double _kTrFixedColsW =
@@ -136,10 +135,7 @@ class _InventoryTransformationGridState
     required double? inputKg,
     required double? outputKg,
   }) {
-    final base = inputKg ?? outputKg ?? 0;
-    return double.parse(
-      (base * _kTransformationConsumptionFactor).toStringAsFixed(3),
-    );
+    return double.parse(((inputKg ?? outputKg ?? 0)).toStringAsFixed(3));
   }
 
   @override
@@ -1349,7 +1345,7 @@ class _InventoryTransformationGridState
                         decoration: const InputDecoration(
                           labelText: 'Consumo real kg (opcional)',
                           helperText:
-                              'Se aplica automatico 80% del valor capturado; si lo dejas vacio, se usa 80% de kg salida.',
+                              'Si lo dejas vacio, el sistema usa los mismos kg de salida como consumo.',
                         ),
                       ),
                       const SizedBox(height: 12),
