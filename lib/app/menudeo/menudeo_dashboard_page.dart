@@ -1696,23 +1696,35 @@ class _DashboardCashCutDialogState extends State<_DashboardCashCutDialog> {
   @override
   Widget build(BuildContext context) {
     final tokens = menudeoAreaTokens;
+    final compactOpeningDialog = widget.openingOnly;
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+      insetPadding: EdgeInsets.symmetric(
+        horizontal: compactOpeningDialog ? 22 : 22,
+        vertical: compactOpeningDialog ? 80 : 18,
+      ),
       child: AreaThemeScope(
         tokens: tokens,
         child: Theme(
           data: _menudeoDashboardDialogTheme(Theme.of(context), tokens),
           child: ContractPopupSurface(
-            constraints: const BoxConstraints(
-              minWidth: 620,
-              maxWidth: 860,
-              maxHeight: 760,
+            constraints: BoxConstraints(
+              minWidth: compactOpeningDialog ? 360 : 620,
+              maxWidth: compactOpeningDialog ? 420 : 860,
+              maxHeight: compactOpeningDialog ? 290 : 760,
             ),
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            padding: EdgeInsets.fromLTRB(
+              compactOpeningDialog ? 16 : 18,
+              compactOpeningDialog ? 16 : 18,
+              compactOpeningDialog ? 16 : 18,
+              compactOpeningDialog ? 16 : 18,
+            ),
             child: StatefulBuilder(
               builder: (context, setLocalState) {
                 return Column(
+                  mainAxisSize: compactOpeningDialog
+                      ? MainAxisSize.min
+                      : MainAxisSize.max,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Row(
@@ -1722,8 +1734,8 @@ class _DashboardCashCutDialogState extends State<_DashboardCashCutDialog> {
                             widget.openingOnly
                                 ? 'Apertura de caja'
                                 : 'Hacer corte',
-                            style: const TextStyle(
-                              fontSize: 24,
+                            style: TextStyle(
+                              fontSize: compactOpeningDialog ? 20 : 24,
                               fontWeight: FontWeight.w900,
                             ),
                           ),
@@ -1734,21 +1746,63 @@ class _DashboardCashCutDialogState extends State<_DashboardCashCutDialog> {
                         ),
                       ],
                     ),
-                    const SizedBox(height: 10),
+                    SizedBox(height: compactOpeningDialog ? 8 : 10),
                     if (widget.openingOnly)
-                      _DashboardCutField(
-                        label: 'Monto de apertura',
-                        child: TextField(
-                          controller: _openingC,
-                          style: _dashboardCutInputTextStyle(tokens),
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                      Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _DashboardCutField(
+                            label: 'Monto de apertura',
+                            child: TextField(
+                              controller: _openingC,
+                              autofocus: true,
+                              style: _dashboardCutInputTextStyle(tokens),
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
+                                  ),
+                              decoration: InputDecoration.collapsed(
+                                hintText: '0.00',
+                                hintStyle: _dashboardCutHintTextStyle(tokens),
+                              ),
+                            ),
                           ),
-                          decoration: InputDecoration.collapsed(
-                            hintText: '0.00',
-                            hintStyle: _dashboardCutHintTextStyle(tokens),
+                          const SizedBox(height: 12),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              OutlinedButton(
+                                style: _dashboardCutSecondaryButtonStyle(
+                                  tokens,
+                                ),
+                                onPressed: () => Navigator.of(context).pop(),
+                                child: const Text('Cancelar'),
+                              ),
+                              const SizedBox(width: 10),
+                              FilledButton.icon(
+                                style: _dashboardCutPrimaryButtonStyle(tokens),
+                                onPressed: () {
+                                  Navigator.of(context).pop(
+                                    widget.initial.copyWith(
+                                      openingCash: _parse(_openingC),
+                                      depositsTotal: _parse(_depositsC),
+                                      expensesTotal: _parse(_expensesC),
+                                      countedCashTotal: _parse(_countedC),
+                                      pendingChecksCount:
+                                          int.tryParse(_pendingC.text.trim()) ??
+                                          0,
+                                      status: 'ABIERTO',
+                                      notes: _notesC.text.trim(),
+                                    ),
+                                  );
+                                },
+                                icon: const Icon(Icons.save_rounded),
+                                label: const Text('Guardar apertura'),
+                              ),
+                            ],
                           ),
-                        ),
+                        ],
                       )
                     else
                       Expanded(
@@ -1925,43 +1979,39 @@ class _DashboardCashCutDialogState extends State<_DashboardCashCutDialog> {
                           ),
                         ),
                       ),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        OutlinedButton(
-                          style: _dashboardCutSecondaryButtonStyle(tokens),
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text('Cancelar'),
-                        ),
-                        const SizedBox(width: 10),
-                        FilledButton.icon(
-                          style: _dashboardCutPrimaryButtonStyle(tokens),
-                          onPressed: () {
-                            Navigator.of(context).pop(
-                              widget.initial.copyWith(
-                                openingCash: _parse(_openingC),
-                                depositsTotal: _parse(_depositsC),
-                                expensesTotal: _parse(_expensesC),
-                                countedCashTotal: _parse(_countedC),
-                                pendingChecksCount:
-                                    int.tryParse(_pendingC.text.trim()) ?? 0,
-                                status: widget.openingOnly
-                                    ? 'ABIERTO'
-                                    : _status,
-                                notes: _notesC.text.trim(),
-                              ),
-                            );
-                          },
-                          icon: const Icon(Icons.save_rounded),
-                          label: Text(
-                            widget.openingOnly
-                                ? 'Guardar apertura'
-                                : 'Guardar corte',
+                    if (!compactOpeningDialog) ...[
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            style: _dashboardCutSecondaryButtonStyle(tokens),
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Cancelar'),
                           ),
-                        ),
-                      ],
-                    ),
+                          const SizedBox(width: 10),
+                          FilledButton.icon(
+                            style: _dashboardCutPrimaryButtonStyle(tokens),
+                            onPressed: () {
+                              Navigator.of(context).pop(
+                                widget.initial.copyWith(
+                                  openingCash: _parse(_openingC),
+                                  depositsTotal: _parse(_depositsC),
+                                  expensesTotal: _parse(_expensesC),
+                                  countedCashTotal: _parse(_countedC),
+                                  pendingChecksCount:
+                                      int.tryParse(_pendingC.text.trim()) ?? 0,
+                                  status: _status,
+                                  notes: _notesC.text.trim(),
+                                ),
+                              );
+                            },
+                            icon: const Icon(Icons.save_rounded),
+                            label: const Text('Guardar corte'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ],
                 );
               },
