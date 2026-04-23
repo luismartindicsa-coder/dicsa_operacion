@@ -10,6 +10,7 @@ class ContractEditableHoverCapsule extends StatelessWidget {
   final BorderRadius borderRadius;
   final Duration duration;
   final Curve curve;
+  final EdgeInsetsGeometry padding;
 
   const ContractEditableHoverCapsule({
     super.key,
@@ -20,6 +21,7 @@ class ContractEditableHoverCapsule extends StatelessWidget {
     this.borderRadius = const BorderRadius.all(Radius.circular(12)),
     this.duration = const Duration(milliseconds: 110),
     this.curve = Curves.easeOutCubic,
+    this.padding = EdgeInsets.zero,
   });
 
   @override
@@ -91,7 +93,7 @@ class ContractEditableHoverCapsule extends StatelessWidget {
               ]
             : null,
       ),
-      child: child,
+      child: Padding(padding: padding, child: child),
     );
   }
 }

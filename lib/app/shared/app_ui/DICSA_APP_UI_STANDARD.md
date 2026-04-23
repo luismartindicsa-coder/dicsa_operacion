@@ -34,6 +34,12 @@ Referencia funcional principal:
 Referencia visual secundaria:
 - `Servicios`, pero solo para tokens o acabados visuales que ya existan
 
+Excepción declarada para `Ventas Mayoreo`:
+- referencia principal de secuencia comercial y modelado operativo: `Menudeo`
+- referencia obligatoria de interacción base de grid: `Entradas y Salidas`
+- referencia visual de área: tokens `Mayoreo` del contrato cromático vigente
+- `Menudeo` no sustituye el contrato de foco, teclado, hover, selección ni refresh del arquetipo `Grid Editable`
+
 Aplica a:
 - cualquier pagina con tabla editable como superficie principal
 - implementaciones homologadas actuales:
@@ -163,9 +169,11 @@ Reglas obligatorias:
 #### Paletas congeladas vigentes
 
 - `Menudeo` queda congelado en familia `azul royal / navy / midnight`.
+- `Mayoreo` queda aprobado con direccion `amarillo institucional / oro comercial`.
 - `Recursos Humanos` queda congelado en familia `morado corporativo / violeta profundo`.
 - `Menudeo` no puede reutilizar morados base de `Recursos Humanos`.
 - `Recursos Humanos` no puede reciclar azules base de `Menudeo`.
+- `Mayoreo` no debe parecer estado de warning ni reciclar teal de `Operaciones`.
 - Si una de estas dos areas cambia de direccion cromatica, se debe actualizar tambien `AREA_PALETTES_CONTRACT.md`.
 
 #### Implementacion obligatoria
@@ -173,6 +181,10 @@ Reglas obligatorias:
 - El tema debe aplicarse por contenedor, shell o contexto de area; no por widget aislado.
 - Una pagina nueva debe declarar primero su arquetipo funcional y despues su area visual.
 - Si una pagina mezcla modulos de varias areas, domina la paleta del shell anfitrion y los modulos internos no redefinen el kit visual base.
+- Cualquier superficie auxiliar abierta desde una pagina de area debe heredar el `AreaThemeScope` del anfitrion.
+- Ningun popup, picker, date picker, menu contextual, dropdown, tooltip, selector de rango, modal de filtro o surface auxiliar puede caer al color base azul del sistema si la pagina anfitriona pertenece a otra area.
+- Si un componente compartido puede abrirse desde varias areas, su implementacion debe consumir tokens del contexto anfitrion en tiempo de apertura; no puede resolver color por defaults internos.
+- Resolver un problema cromatico local con overrides dentro de una sola pantalla no cierra el contrato: la correccion debe vivir en el componente compartido o en la capa de tema que lo abastece.
 
 #### Checklist minimo antes de aprobar una pagina de area nueva
 
@@ -180,6 +192,7 @@ Reglas obligatorias:
 - La pagina reutiliza el mismo lenguaje visual base de la app.
 - Todos los colores del area entran por tokens.
 - No hay colores hardcodeados dentro de componentes.
+- No existe ninguna fuga al azul base del sistema en surfaces auxiliares.
 - El contraste sigue siendo legible.
 - La pagina se siente parte de la misma app, no una subapp distinta.
 
@@ -200,6 +213,32 @@ Reglas obligatorias:
 ## Arquetipo 1: Grid Editable
 
 Este es el contrato más estricto y el que debe usarse como base cuando una página es realmente una tabla editable.
+
+Regla específica para `Ventas Mayoreo` dentro de este arquetipo:
+
+- usar `Menudeo` para secuencia comercial, catálogo, precios, reportes de venta, flujo de efectivo y jerarquía operativa del módulo
+- usar `Entradas y Salidas` para foco, caret, hover editable, navegación, selección, click derecho, edición inline, multiedición y refresh silencioso
+- si existe conflicto entre ambos, domina `Entradas y Salidas` en interacción y domina `Menudeo` en flujo comercial
+- la traducción visual del área entra únicamente por tokens `Mayoreo`
+
+Regla de clonado máximo para `Ventas Mayoreo`:
+
+- ante una página nueva, primero buscar la pantalla espejo más cercana en `Menudeo`
+- copiar 1:1 su composición general antes de tocar campos:
+  - shell
+  - top bar
+  - métricas
+  - tabs
+  - header row
+  - insert row
+  - filas
+  - paginación
+  - ubicación de acciones
+- sustituir solo:
+  - datos y entidades de `Mayoreo`
+  - reglas donde `Mayoreo` de verdad difiera
+  - tokens cromáticos del área
+- no “reinterpretar” `Menudeo` al arrancar; cualquier desviación visual o estructural debe asumirse incorrecta hasta demostrar que responde a una diferencia real del módulo o a una obligación del contrato de grid
 
 ### Layout
 
@@ -299,6 +338,9 @@ No usar como patrón base:
   - `PROVEEDOR GRANDE`
   - `TRICICLOS`
 
+Regla derivada para `Ventas Mayoreo`:
+- cuando el módulo comparta naturaleza comercial con `Menudeo`, debe heredar primero el enfoque de catálogos controlados, precios vigentes, reportabilidad y clasificación comercial homologada, antes de inventar texto libre o capturas ambiguas
+
 ### Regla de vigencia para precios de Menudeo
 
 - El sistema opera siempre sobre `precio vigente actual`.
@@ -367,7 +409,33 @@ Este checklist ya quedó probado en `Contrapartes y precios` y debe reutilizarse
 - Multiedición:
   - La multiedición debe vivir dentro del grid, sobre las filas seleccionadas, no como banda ajena al arquetipo de referencia.
   - `Enter`, `Esc` y `Cmd/Ctrl + S` deben respetar el mismo contrato contextual de la app.
-  - La selección no se pierde al abrir `...`, menú contextual o acciones de grupo.
+- La selección no se pierde al abrir `...`, menú contextual o acciones de grupo.
+
+### Checklist de cierre homologado para Ventas Mayoreo
+
+Este checklist existe para reducir al máximo el ciclo de correcciones manuales pantalla por pantalla.
+
+- Referencia:
+  - La página declara cuál es su espejo principal en `Menudeo`.
+  - La implementación partió de esa referencia y no de una composición nueva.
+  - Toda diferencia visible respecto a `Menudeo` queda justificada por:
+    - datos propios de `Mayoreo`
+    - una diferencia comercial real
+    - una obligación contractual de interacción base del grid
+- Composición:
+  - Header, top bar, cards, tabs, filtros, insert row, filas y paginación conservan la misma jerarquía y ubicación que la referencia de `Menudeo`.
+  - El insert row pertenece a la misma familia estructural de `Menudeo`; no a una variante local.
+  - El botón `Agregar`, el slot `...`, badges, switches y acciones compactas usan el mismo reparto espacial que la referencia.
+  - No hay subtítulos, botones extra, textos explicativos o cards inventadas si no existen en la pantalla espejo.
+- Descubribilidad:
+  - Si una acción vive en `...`, click derecho, header o top bar en `Menudeo`, en `Mayoreo` debe vivir en el mismo lugar salvo razón fuerte.
+  - Si `Menudeo` usa picker, filtro popup o catálogo controlado, `Mayoreo` arranca con el mismo patrón.
+- Captura:
+  - Nombres y capturas operativas se normalizan a mayúsculas limpias cuando aplique.
+  - Clasificaciones comerciales repetibles no se capturan como texto libre.
+  - Modelos comerciales equivalentes deben heredar primero la estructura de `Menudeo`.
+- Regla visual de control:
+  - Si al comparar capturas lado a lado entre `Menudeo` y `Mayoreo` aparece una diferencia no explicada por color, datos o contrato de grid, debe tratarse como desviación contractual y corregirse antes de cerrar.
 
 ### Descubribilidad visual
 
@@ -544,6 +612,44 @@ Referencia homologada: `Dashboard`
 - `Esc` cierra si aplica
 - `Enter` confirma si aplica
 - Foco inicial definido cuando haya captura
+- Heredan siempre tokens del area anfitriona; nunca usan azul base por omision
+- Esto incluye:
+  - filtros popup
+  - pickers simples y buscables
+  - selectores de fecha y rango
+  - menús contextuales
+  - dropdown surfaces
+  - diálogos de creación/edición/relación
+- El orden visual interno debe ser homogéneo:
+  - título
+  - resumen o métricas superiores cuando aplique
+  - bloques de captura ordenados en filas uniformes
+  - acciones finales al pie
+- Los campos comparables dentro de un mismo virtual deben compartir huella:
+  - misma altura de card
+  - mismo ritmo vertical entre filas
+  - mismo alineado de labels
+  - mismo tamaño visual entre textfields, pickers y toggles equivalentes
+- No introducir espacio muerto artificial dentro de virtuales; el alto del diálogo debe responder al contenido real salvo que el flujo exija scroll operativo.
+- En virtuales de captura, el campo principal vive en el cuadro principal del control; no debe montarse una cápsula secundaria interna que interfiera con caret, texto o percepción de foco.
+- La cápsula hover editable es contrato de grid, no contrato universal de dialogs:
+  - en grids sí puede existir como affordance local de celda
+  - en virtuales solo se usa si la referencia homologada lo exige explícitamente
+- Filtros y pickers deben conservar el mismo patrón de interacción entre áreas:
+  - búsqueda
+  - multiselección cuando aplique
+  - `Aplicar`, `Limpiar`, `Cancelar`
+  - `Enter`, `Space` y `Esc`
+
+### Checklist de cierre para superficies auxiliares
+
+- Ningún popup o picker hereda azul base ajeno al área anfitriona.
+- Los filtros, menús y date pickers usan la misma paleta del shell que los abrió.
+- Los virtuales muestran bloques ordenados, con filas parejas y sin saltos visuales entre controles equivalentes.
+- No hay espacio muerto grande bajo el contenido ni arriba de las acciones.
+- Los resúmenes superiores usan la misma jerarquía y alineado del flujo espejo homologado.
+- Los campos de lectura y captura comparten una huella consistente cuando representan la misma familia visual.
+- Si la referencia espejo ya resuelve orden, jerarquía o composición, no se reinterpretan localmente.
 
 ## Reglas que quedan descartadas o ajustadas
 
@@ -551,6 +657,7 @@ Estas reglas no deben seguir tratándose como verdad universal:
 
 - “Toda página de la app debe ser réplica 1:1 de Entradas y Salidas”
   - Incorrecto para `Mantenimiento`, `Almacén` y `Dashboard`
+  - En `Ventas Mayoreo`, solo la interacción base de grid se clona 1:1; la secuencia comercial puede apoyarse en `Menudeo`
 
 - “Servicios” como base funcional general
   - `Servicios` puede seguir siendo referencia visual puntual, no segunda fuente de verdad funcional

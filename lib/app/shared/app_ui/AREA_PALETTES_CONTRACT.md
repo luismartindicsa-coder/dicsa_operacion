@@ -107,8 +107,16 @@ Estas areas quedan aprobadas solo como direccion cromatica inicial. Sus tokens f
 
 ### Mayoreo
 
-- caracter: comercial institucional, mas robusto que Menudeo
-- familia sugerida: azul petroleo
+- estado: `direccion aprobada`
+- caracter: comercial institucional, mas robusto que Menudeo, orientado a venta mayorista
+- familia sugerida: amarillo institucional / oro comercial
+- objetivo de diferenciacion:
+  - no confundirse con `Menudeo`
+  - no reciclar teal de `Operaciones`
+  - no sentirse advertencia, error o estado de sistema
+- direccion de uso:
+  - la paleta amarilla vive solo en tokens semanticos de area
+  - glass, blur, sombras, layout y microinteracciones permanecen iguales al lenguaje base de la app
 
 ### Gestion Documental
 
@@ -134,6 +142,7 @@ Estas areas quedan aprobadas solo como direccion cromatica inicial. Sus tokens f
 
 - `Operaciones` y `Finanzas` no deben verse iguales.
 - `Menudeo` y `Mayoreo` deben sentirse relacionadas, pero no intercambiables.
+- `Mayoreo` usa direccion amarilla propia; no debe leerse como `warning`, `pending` o estado de alerta.
 - `Finanzas` y `Contabilidad` deben ser hermanas, no gemelas.
 - `Apaseo` debe sentirse como sede o territorio, no como nueva marca.
 - `Direccion` no usa la paleta azul de la tarjeta de `Administracion`; usa la paleta real del dashboard general.
@@ -155,6 +164,7 @@ Cada area debe definirse unicamente con:
 ## Regla de implementacion
 
 - `Operaciones`, `Direccion`, `Recursos Humanos` y `Menudeo` se respetan tal como ya estan.
+- `Mayoreo` se implementa con familia amarilla propia, sin tocar el lenguaje visual base del sistema.
 - Las otras areas se construyen tomando como referencia estas paletas congeladas.
 - Ninguna nueva area puede alterar glass, blur, radios, sombras, spacing, botones, foco, teclado o patrones de interaccion.
 

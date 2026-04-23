@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
@@ -23,28 +22,26 @@ import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/number_formatters.dart';
-import 'menudeo_catalog_page.dart';
-import 'menudeo_cash_taxonomy_page.dart';
-import 'menudeo_cash_taxonomy_store.dart';
-import 'menudeo_dashboard_page.dart';
-import 'menudeo_delete_confirm_dialog.dart';
-import 'menudeo_filter_widgets.dart';
-import 'menudeo_header_brand.dart';
-import 'menudeo_metric_card.dart';
-import 'menudeo_price_adjustments_page.dart';
-import 'menudeo_session_confirm_dialog.dart';
-import 'menudeo_sales_page.dart';
-import 'menudeo_tickets_page.dart';
-import 'menudeo_theme.dart';
+import '../menudeo/menudeo_delete_confirm_dialog.dart';
+import '../menudeo/menudeo_filter_widgets.dart';
+import '../menudeo/menudeo_header_brand.dart';
+import '../menudeo/menudeo_metric_card.dart';
+import '../menudeo/menudeo_session_confirm_dialog.dart';
+import 'mayoreo_catalog_page.dart';
+import 'mayoreo_cash_taxonomy_page.dart';
+import 'mayoreo_cash_taxonomy_store.dart';
+import 'mayoreo_dashboard_preview_page.dart';
+import 'mayoreo_price_adjustments_page.dart';
+import 'mayoreo_theme.dart';
 
-class MenudeoDepositsExpensesPage extends StatefulWidget {
+class MayoreoCashEntriesExitsPage extends StatefulWidget {
   final bool instantOpen;
 
-  const MenudeoDepositsExpensesPage({super.key, this.instantOpen = false});
+  const MayoreoCashEntriesExitsPage({super.key, this.instantOpen = false});
 
   @override
-  State<MenudeoDepositsExpensesPage> createState() =>
-      _MenudeoDepositsExpensesPageState();
+  State<MayoreoCashEntriesExitsPage> createState() =>
+      _MayoreoCashEntriesExitsPageState();
 }
 
 enum _VoucherType { deposit, expense }
@@ -74,7 +71,7 @@ Widget _voucherPopupMenuItemChild({
 }) {
   return Row(
     children: [
-      Icon(icon, size: 18, color: menudeoAreaTokens.primaryStrong),
+      Icon(icon, size: 18, color: mayoreoAreaTokens.primaryStrong),
       const SizedBox(width: 10),
       Expanded(
         child: Text(
@@ -95,7 +92,7 @@ List<PopupMenuEntry<_VoucherGridMenuAction>> _buildVoucherMenuItems({
       value: _VoucherGridMenuAction.open,
       child: _voucherPopupMenuItemChild(
         icon: Icons.open_in_new_rounded,
-        label: 'Abrir voucher',
+        label: 'Abrir movimiento',
       ),
     ),
     const PopupMenuDivider(height: 1),
@@ -103,7 +100,7 @@ List<PopupMenuEntry<_VoucherGridMenuAction>> _buildVoucherMenuItems({
       value: _VoucherGridMenuAction.deleteSelection,
       child: _voucherPopupMenuItemChild(
         icon: Icons.delete_outline_rounded,
-        label: selectedCount > 1 ? 'Eliminar selección' : 'Eliminar voucher',
+        label: selectedCount > 1 ? 'Eliminar selección' : 'Eliminar movimiento',
       ),
     ),
   ];
@@ -113,6 +110,7 @@ class _ConceptConfig {
   final String label;
   final bool requiresUnit;
   final bool requiresQuantity;
+  final bool requiresPrice;
   final bool requiresCompany;
   final bool requiresDriver;
   final bool requiresDestination;
@@ -120,11 +118,23 @@ class _ConceptConfig {
   final bool requiresMode;
   final List<String> subconcepts;
   final List<String> modes;
+  final List<String> companyOptions;
+  final List<String> driverOptions;
+  final List<String> destinationOptions;
+  final bool companyIsText;
+  final bool subconceptIsText;
+  final String quantityLabel;
+  final String priceLabel;
+  final String amountLabel;
+  final String companyLabel;
+  final String subconceptLabel;
+  final String commentLabel;
 
   const _ConceptConfig({
     required this.label,
     this.requiresUnit = false,
     this.requiresQuantity = false,
+    this.requiresPrice = false,
     this.requiresCompany = false,
     this.requiresDriver = false,
     this.requiresDestination = false,
@@ -132,6 +142,17 @@ class _ConceptConfig {
     this.requiresMode = false,
     this.subconcepts = const <String>[],
     this.modes = const <String>[],
+    this.companyOptions = const <String>[],
+    this.driverOptions = const <String>[],
+    this.destinationOptions = const <String>[],
+    this.companyIsText = false,
+    this.subconceptIsText = false,
+    this.quantityLabel = 'Cantidad',
+    this.priceLabel = 'Precio',
+    this.amountLabel = 'Importe',
+    this.companyLabel = 'Empresa',
+    this.subconceptLabel = 'Subconcepto',
+    this.commentLabel = 'Comentario corto',
   });
 }
 
@@ -139,6 +160,7 @@ class _LineItemRecord {
   final String concept;
   final String unit;
   final String quantity;
+  final String price;
   final String company;
   final String driver;
   final String destination;
@@ -151,6 +173,7 @@ class _LineItemRecord {
     required this.concept,
     required this.unit,
     required this.quantity,
+    required this.price,
     required this.company,
     required this.driver,
     required this.destination,
@@ -200,6 +223,7 @@ class _LineItemDraft {
   String concept = '';
   String unit = '';
   String quantity = '';
+  final TextEditingController priceC = TextEditingController();
   String company = '';
   String driver = '';
   String destination = '';
@@ -209,6 +233,7 @@ class _LineItemDraft {
   final TextEditingController commentC = TextEditingController();
 
   void dispose() {
+    priceC.dispose();
     amountC.dispose();
     commentC.dispose();
   }
@@ -218,6 +243,7 @@ class _LineItemDraft {
       concept: concept,
       unit: unit,
       quantity: quantity,
+      price: priceC.text.trim(),
       company: company,
       driver: driver,
       destination: destination,
@@ -233,6 +259,7 @@ class _LineItemDraft {
     draft.concept = record.concept;
     draft.unit = record.unit;
     draft.quantity = record.quantity;
+    draft.priceC.text = record.price;
     draft.company = record.company;
     draft.driver = record.driver;
     draft.destination = record.destination;
@@ -244,17 +271,33 @@ class _LineItemDraft {
   }
 }
 
-_VoucherType _movementTypeToVoucherType(MenudeoCashMovementType movementType) {
-  return movementType == MenudeoCashMovementType.deposit
+const List<String> _mayoreoEntryClients = <String>[
+  'Apaseo',
+  'Norma',
+  'Juan Solis',
+  'Asuncion',
+];
+
+const List<String> _voucherDestinations = <String>[
+  'El Palomar',
+  'Servin',
+  'San Pablo',
+  'Cristo',
+  'Caja',
+];
+
+_VoucherType _movementTypeToVoucherType(MayoreoCashMovementType movementType) {
+  return movementType == MayoreoCashMovementType.entry
       ? _VoucherType.deposit
       : _VoucherType.expense;
 }
 
-_ConceptConfig _conceptConfigFromCatalog(MenudeoCashConceptDefinition concept) {
+_ConceptConfig _conceptConfigFromCatalog(MayoreoCashConceptDefinition concept) {
   return _ConceptConfig(
     label: concept.label,
     requiresUnit: concept.requiresUnit,
     requiresQuantity: concept.requiresQuantity,
+    requiresPrice: concept.requiresPrice,
     requiresCompany: concept.requiresCompany,
     requiresDriver: concept.requiresDriver,
     requiresDestination: concept.requiresDestination,
@@ -262,13 +305,24 @@ _ConceptConfig _conceptConfigFromCatalog(MenudeoCashConceptDefinition concept) {
     requiresMode: concept.requiresMode,
     subconcepts: concept.subconcepts,
     modes: concept.modes,
+    companyOptions: concept.companyOptions,
+    driverOptions: concept.driverOptions,
+    destinationOptions: concept.destinationOptions,
+    companyIsText: concept.companyIsText,
+    subconceptIsText: concept.subconceptIsText,
+    quantityLabel: concept.quantityLabel,
+    priceLabel: concept.priceLabel,
+    amountLabel: concept.amountLabel,
+    companyLabel: concept.companyLabel,
+    subconceptLabel: concept.subconceptLabel,
+    commentLabel: concept.commentLabel,
   );
 }
 
 Map<_VoucherType, Map<String, List<_ConceptConfig>>>
 _voucherConfigFromCatalog() {
   final result = <_VoucherType, Map<String, List<_ConceptConfig>>>{};
-  for (final rubric in MenudeoCashTaxonomyStore.instance.value) {
+  for (final rubric in MayoreoCashTaxonomyStore.instance.value) {
     final type = _movementTypeToVoucherType(rubric.movementType);
     result.putIfAbsent(type, () => <String, List<_ConceptConfig>>{});
     result[type]![rubric.label] = rubric.concepts
@@ -278,21 +332,142 @@ _voucherConfigFromCatalog() {
   return result;
 }
 
-const List<String> _voucherDestinations = <String>[
-  'De Acero',
-  'Grupak',
-  'San Pablo',
-  'San Luis',
-  'Jaime Velázquez',
-  'TDF',
-  'Morelia',
-  'Querétaro',
-  'Queretania',
+List<String> _seedMayoreoCashCompanies() => <String>[
+  ..._mayoreoEntryClients,
+  'El Palomar',
+  'Servin',
+  'Desperdicios Queretana San Pablo',
+  'Desperdicios Queretana Cristo',
+  'Nómina',
 ];
 
-class _MenudeoDepositsExpensesPageState
-    extends State<MenudeoDepositsExpensesPage> {
-  final SupabaseClient _supa = Supabase.instance.client;
+List<_VoucherRecord> _seedMayoreoCashVouchers() {
+  return <_VoucherRecord>[
+    _VoucherRecord(
+      id: 'may-cash-1',
+      folio: '18421',
+      date: '22/04/2026',
+      type: _VoucherType.deposit,
+      person: 'APASEO',
+      rubric: 'Venta de material',
+      comment: 'Entrada comercial cerrada del turno matutino.',
+      lines: const <_LineItemRecord>[
+        _LineItemRecord(
+          concept: 'Apaseo',
+          unit: 'KG',
+          quantity: '1240',
+          price: '16.01',
+          company: '',
+          driver: '',
+          destination: '',
+          subconcept: 'Bolsa',
+          mode: '',
+          amount: '19850',
+          comment: 'Factura del día',
+        ),
+      ],
+    ),
+    _VoucherRecord(
+      id: 'may-cash-2',
+      folio: '18422',
+      date: '22/04/2026',
+      type: _VoucherType.deposit,
+      person: 'BÓVEDA',
+      rubric: 'Reposición de fondo',
+      comment: 'Reposición operativa para caja principal.',
+      lines: const <_LineItemRecord>[
+        _LineItemRecord(
+          concept: 'Bóveda',
+          unit: '',
+          quantity: '',
+          price: '',
+          company: '',
+          driver: '',
+          destination: '',
+          subconcept: 'Luis',
+          mode: '',
+          amount: '12000',
+          comment: 'Reposición semanal',
+        ),
+      ],
+    ),
+    _VoucherRecord(
+      id: 'may-cash-3',
+      folio: '18423',
+      date: '21/04/2026',
+      type: _VoucherType.deposit,
+      person: 'EL PALOMAR',
+      rubric: 'Cheque',
+      comment: 'Cheque pendiente por cambiar.',
+      lines: const <_LineItemRecord>[
+        _LineItemRecord(
+          concept: 'El Palomar',
+          unit: '',
+          quantity: '',
+          price: '',
+          company: '',
+          driver: '',
+          destination: '',
+          subconcept: '',
+          mode: '',
+          amount: '8500',
+          comment: 'CHK-88314',
+        ),
+      ],
+    ),
+    _VoucherRecord(
+      id: 'may-cash-4',
+      folio: '18424',
+      date: '21/04/2026',
+      type: _VoucherType.expense,
+      person: 'COMPRA DIRECTA',
+      rubric: 'Compra de material',
+      comment: 'Compra puntual de material recuperado.',
+      lines: const <_LineItemRecord>[
+        _LineItemRecord(
+          concept: 'Compra directa',
+          unit: 'KG',
+          quantity: '480',
+          price: '13.33',
+          company: 'CLIENTE OCASIONAL',
+          driver: '',
+          destination: '',
+          subconcept: 'Tarima',
+          mode: '',
+          amount: '6400',
+          comment: 'Pago en efectivo',
+        ),
+      ],
+    ),
+    _VoucherRecord(
+      id: 'may-cash-5',
+      folio: '18425',
+      date: '20/04/2026',
+      type: _VoucherType.expense,
+      person: 'CAJA',
+      rubric: 'Gastos operativos',
+      comment: 'Salida operativa autorizada.',
+      lines: const <_LineItemRecord>[
+        _LineItemRecord(
+          concept: 'Combustible',
+          unit: 'LTS',
+          quantity: '85',
+          price: '',
+          company: '',
+          driver: '',
+          destination: '',
+          subconcept: '',
+          mode: '',
+          amount: '2450',
+          comment: 'Ruta San Pablo',
+        ),
+      ],
+    ),
+  ];
+}
+
+class _MayoreoCashEntriesExitsPageState
+    extends State<MayoreoCashEntriesExitsPage> {
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
   final ScrollController _voucherRowsScrollC = ScrollController();
   final GlobalKey _voucherRowsViewportKey = GlobalKey();
@@ -329,8 +504,8 @@ class _MenudeoDepositsExpensesPageState
     super.initState();
     unawaited(HardwareKeyboard.instance.syncKeyboardState());
     unawaited(_resolveNavigationAccess());
-    unawaited(_loadVouchers());
-    unawaited(_loadCatalogOptions());
+    _loadCatalogOptions();
+    _loadVouchers();
   }
 
   @override
@@ -355,174 +530,42 @@ class _MenudeoDepositsExpensesPageState
     );
   }
 
-  Future<void> _loadCatalogOptions() async {
-    try {
-      final results = await Future.wait<dynamic>([
-        _supa
-            .from('sites')
-            .select('id,name,type')
-            .eq('type', 'cliente')
-            .eq('is_active', true)
-            .order('name'),
-        _supa
-            .from('employees')
-            .select('id,full_name')
-            .eq('is_driver', true)
-            .eq('is_active', true)
-            .order('full_name'),
-        _supa
-            .from('vehicles')
-            .select('id,code,status')
-            .eq('status', 'activo')
-            .order('code'),
-      ]);
-
-      if (!mounted) return;
-      setState(() {
-        _companyOptions =
-            ((results[0] as List).cast<Map<String, dynamic>>())
-                .map((row) => (row['name'] ?? '').toString().trim())
-                .where((value) => value.isNotEmpty)
-                .toSet()
-                .toList()
-              ..sort();
-        _driverOptions =
-            ((results[1] as List).cast<Map<String, dynamic>>())
-                .map((row) => (row['full_name'] ?? '').toString().trim())
-                .where((value) => value.isNotEmpty)
-                .toSet()
-                .toList()
-              ..sort();
-        _unitOptions =
-            ((results[2] as List).cast<Map<String, dynamic>>())
-                .map((row) => (row['code'] ?? '').toString().trim())
-                .where((value) => value.isNotEmpty)
-                .toSet()
-                .toList()
-              ..sort();
-      });
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            'No se pudieron cargar unidades, choferes y empresas desde Operación: $error',
-          ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-    }
+  void _loadCatalogOptions() {
+    final companies = _seedMayoreoCashCompanies().toSet().toList()..sort();
+    if (!mounted) return;
+    setState(() {
+      _companyOptions = companies;
+      _driverOptions = <String>['Luis', 'Sra Mary', 'Diana'];
+      _unitOptions = <String>['KG', 'TON', 'LTS', 'SERVICIO'];
+    });
   }
 
-  Future<void> _loadVouchers() async {
-    if (mounted) setState(() => _loadingRows = true);
-    try {
-      final voucherRows = await _supa
-          .from('vw_men_cash_vouchers_grid')
-          .select('*')
-          .order('voucher_date', ascending: false)
-          .order('folio_sort', ascending: false)
-          .order('folio', ascending: false);
-
-      final vouchers = (voucherRows as List).cast<Map<String, dynamic>>();
-      final ids = vouchers
-          .map((row) => row['id']?.toString() ?? '')
-          .where((id) => id.isNotEmpty)
-          .toList(growable: false);
-
-      Map<String, List<_LineItemRecord>> linesByVoucher =
-          <String, List<_LineItemRecord>>{};
-      if (ids.isNotEmpty) {
-        final lineRows = await _supa
-            .from('men_cash_voucher_lines')
-            .select(
-              'voucher_id,line_order,concept,unit,quantity,company,driver,destination,subconcept,mode,amount,comment',
-            )
-            .inFilter('voucher_id', ids)
-            .order('line_order');
-        for (final raw in (lineRows as List).cast<Map<String, dynamic>>()) {
-          final voucherId = (raw['voucher_id'] ?? '').toString();
-          if (voucherId.isEmpty) continue;
-          linesByVoucher
-              .putIfAbsent(voucherId, () => <_LineItemRecord>[])
-              .add(
-                _LineItemRecord(
-                  concept: (raw['concept'] ?? '').toString(),
-                  unit: (raw['unit'] ?? '').toString(),
-                  quantity: (raw['quantity'] ?? '').toString(),
-                  company: (raw['company'] ?? '').toString(),
-                  driver: (raw['driver'] ?? '').toString(),
-                  destination: (raw['destination'] ?? '').toString(),
-                  subconcept: (raw['subconcept'] ?? '').toString(),
-                  mode: (raw['mode'] ?? '').toString(),
-                  amount: (raw['amount'] ?? '0').toString(),
-                  comment: (raw['comment'] ?? '').toString(),
-                ),
-              );
-        }
-      }
-
-      int nextSequence = _folioSequence;
-      final mappedRows = vouchers
-          .map((row) {
-            final folio = (row['folio'] ?? '').toString();
-            final numericFolio = int.tryParse(
-              folio.replaceAll(RegExp(r'[^0-9]'), ''),
-            );
-            if (numericFolio != null && numericFolio > nextSequence) {
-              nextSequence = numericFolio;
-            }
-            final rawDate = DateTime.tryParse(
-              (row['voucher_date'] ?? '').toString(),
-            );
-            final date = rawDate == null
-                ? (row['voucher_date'] ?? '').toString()
-                : '${rawDate.day.toString().padLeft(2, '0')}/${rawDate.month.toString().padLeft(2, '0')}/${rawDate.year}';
-            final type = ((row['voucher_type'] ?? '').toString() == 'deposit')
-                ? _VoucherType.deposit
-                : _VoucherType.expense;
-            final id = (row['id'] ?? '').toString();
-            return _VoucherRecord(
-              id: id.isEmpty ? null : id,
-              folio: folio,
-              date: date,
-              type: type,
-              person: (row['person_label'] ?? '').toString(),
-              rubric: (row['rubric'] ?? '').toString(),
-              comment: (row['comment'] ?? '').toString(),
-              lines: linesByVoucher[id] ?? const <_LineItemRecord>[],
-            );
-          })
-          .toList(growable: false);
-
-      if (!mounted) return;
-      setState(() {
-        _rows
-          ..clear()
-          ..addAll(mappedRows);
-        _folioSequence = nextSequence;
-        _loadingRows = false;
-      });
-    } catch (error) {
-      if (!mounted) return;
-      setState(() {
-        _rows.clear();
-        _loadingRows = false;
-      });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No se pudo cargar depósitos y gastos: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+  void _loadVouchers() {
+    final seededRows = _seedMayoreoCashVouchers();
+    int nextSequence = _folioSequence;
+    for (final row in seededRows) {
+      final numericFolio = int.tryParse(
+        row.folio.replaceAll(RegExp(r'[^0-9]'), ''),
       );
+      if (numericFolio != null && numericFolio > nextSequence) {
+        nextSequence = numericFolio;
+      }
     }
+    if (!mounted) return;
+    setState(() {
+      _rows
+        ..clear()
+        ..addAll(seededRows);
+      _folioSequence = nextSequence;
+      _loadingRows = false;
+    });
   }
 
   Future<void> _goBack() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       appPageRoute(
-        page: const MenudeoDashboardPage(instantOpen: true),
+        page: const MayoreoDashboardPreviewPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -533,7 +576,7 @@ class _MenudeoDepositsExpensesPageState
     if (!mounted) return;
     await Navigator.of(context).push(
       appPageRoute(
-        page: const MenudeoCatalogPage(instantOpen: true),
+        page: const MayoreoCatalogPage(instantOpen: true),
         duration: const Duration(milliseconds: 300),
         reverseDuration: const Duration(milliseconds: 220),
       ),
@@ -544,29 +587,7 @@ class _MenudeoDepositsExpensesPageState
     if (!mounted) return;
     await Navigator.of(context).push(
       appPageRoute(
-        page: const MenudeoPriceAdjustmentsPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openTicketsPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoTicketsPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openSalesPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MenudeoSalesPage(instantOpen: true),
+        page: const MayoreoPriceAdjustmentsPage(instantOpen: true),
         duration: const Duration(milliseconds: 300),
         reverseDuration: const Duration(milliseconds: 220),
       ),
@@ -577,7 +598,7 @@ class _MenudeoDepositsExpensesPageState
     if (!mounted) return;
     await Navigator.of(context).push(
       appPageRoute(
-        page: const MenudeoCashTaxonomyPage(instantOpen: true),
+        page: const MayoreoCashTaxonomyPage(instantOpen: true),
         duration: const Duration(milliseconds: 300),
         reverseDuration: const Duration(milliseconds: 220),
       ),
@@ -589,25 +610,22 @@ class _MenudeoDepositsExpensesPageState
       case 'Dashboard Dirección':
         unawaited(_openDirectionDashboard());
         return;
-      case 'Dashboard Menudeo':
+      case 'Dashboard Mayoreo':
         unawaited(_goBack());
         return;
       case 'Catálogo':
         unawaited(_openCatalogPage());
         return;
-      case 'Ajuste de precios':
-        unawaited(_openPriceAdjustmentsPage());
-        return;
-      case 'Tickets de menudeo':
-        unawaited(_openTicketsPage());
-        return;
-      case 'Ventas menudeo':
-        unawaited(_openSalesPage());
-        return;
       case 'Catálogo efectivo':
         unawaited(_openCashTaxonomyPage());
         return;
-      case 'Depósitos y gastos':
+      case 'Ajuste de precios':
+        unawaited(_openPriceAdjustmentsPage());
+        return;
+      case 'Entradas y salidas de efectivo':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        return;
+      default:
         if (_menuOpen) setState(() => _menuOpen = false);
         return;
     }
@@ -635,8 +653,8 @@ class _MenudeoDepositsExpensesPageState
             return false;
           }
           final typeLabel = row.type == _VoucherType.deposit
-              ? 'DEPÓSITO'
-              : 'GASTO';
+              ? 'ENTRADA'
+              : 'SALIDA';
           if (_voucherTypeFilter.isNotEmpty &&
               !_voucherTypeFilter.contains(typeLabel)) {
             return false;
@@ -1010,40 +1028,25 @@ class _MenudeoDepositsExpensesPageState
     final confirmed = await showMenudeoDeleteConfirmDialog(
       context,
       title: selectedRows.length == 1
-          ? 'Eliminar voucher'
+          ? 'Eliminar movimiento'
           : 'Eliminar selección',
       message: selectedRows.length == 1
-          ? '¿Seguro que deseas eliminar el voucher ${selectedRows.first.folio}?'
-          : '¿Seguro que deseas eliminar ${selectedRows.length} vouchers?',
+          ? '¿Seguro que deseas eliminar el movimiento ${selectedRows.first.folio}?'
+          : '¿Seguro que deseas eliminar ${selectedRows.length} movimientos?',
       impactLabel: selectedRows.length == 1
-          ? 'El voucher saldrá del grid y del corte actual.'
-          : '${selectedRows.length} vouchers saldrán del grid actual.',
+          ? 'El movimiento saldrá del grid y del corte actual.'
+          : '${selectedRows.length} movimientos saldrán del grid actual.',
       subtitle: selectedRows.length == 1
-          ? 'Confirma la baja del voucher visible.'
+          ? 'Confirma la baja del movimiento visible.'
           : 'Confirma la baja de la selección activa.',
     );
     if (confirmed != true || !mounted) return;
-    final ids = selectedRows
-        .map((row) => row.id)
-        .whereType<String>()
-        .where((id) => id.isNotEmpty)
-        .toList(growable: false);
-    try {
-      if (ids.isNotEmpty) {
-        await _supa.from('men_cash_vouchers').delete().inFilter('id', ids);
-      }
-      await _loadVouchers();
-      if (!mounted) return;
-      setState(_clearVoucherSelection);
-    } catch (error) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('No se pudieron eliminar los vouchers: $error'),
-          behavior: SnackBarBehavior.floating,
-        ),
+    setState(() {
+      _rows.removeWhere(
+        (row) => _selectedVoucherKeys.contains(row.selectionKey),
       );
-    }
+      _clearVoucherSelection();
+    });
   }
 
   Future<void> _openVoucherContextMenu({
@@ -1061,7 +1064,7 @@ class _MenudeoDepositsExpensesPageState
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final result = await showMenu<_VoucherGridMenuAction>(
       context: context,
-      color: menudeoAreaTokens.surfaceTint.withValues(alpha: 0.98),
+      color: mayoreoAreaTokens.surfaceTint.withValues(alpha: 0.98),
       elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.12),
       shape: RoundedRectangleBorder(
@@ -1148,65 +1151,27 @@ class _MenudeoDepositsExpensesPageState
     await signOutAndRouteToLogin(context);
   }
 
-  String _uiDateToIso(String raw) {
-    final parsed = _tryParseVoucherDate(raw);
-    if (parsed == null) {
-      final now = DateTime.now();
-      return '${now.year.toString().padLeft(4, '0')}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
-    }
-    return '${parsed.year.toString().padLeft(4, '0')}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
-  }
-
   Future<void> _persistVoucher(_VoucherRecord record) async {
-    final payload = <String, dynamic>{
-      'voucher_date': _uiDateToIso(record.date),
-      'folio': record.folio,
-      'voucher_type': record.type == _VoucherType.deposit
-          ? 'deposit'
-          : 'expense',
-      'person_label': record.person,
-      'rubric': record.rubric,
-      'comment': record.comment,
-      'total_amount': record.total,
-    };
-
-    String voucherId = record.id ?? '';
-    if (voucherId.isEmpty) {
-      final inserted = await _supa
-          .from('men_cash_vouchers')
-          .insert(payload)
-          .select('id')
-          .single();
-      voucherId = (inserted['id'] ?? '').toString();
-    } else {
-      await _supa.from('men_cash_vouchers').update(payload).eq('id', voucherId);
-      await _supa
-          .from('men_cash_voucher_lines')
-          .delete()
-          .eq('voucher_id', voucherId);
-    }
-
-    if (record.lines.isNotEmpty) {
-      final linesPayload = <Map<String, dynamic>>[];
-      for (var i = 0; i < record.lines.length; i++) {
-        final line = record.lines[i];
-        linesPayload.add(<String, dynamic>{
-          'voucher_id': voucherId,
-          'line_order': i + 1,
-          'concept': line.concept,
-          'unit': line.unit,
-          'quantity': line.quantity,
-          'company': line.company,
-          'driver': line.driver,
-          'destination': line.destination,
-          'subconcept': line.subconcept,
-          'mode': line.mode,
-          'amount': double.tryParse(line.amount) ?? 0,
-          'comment': line.comment,
-        });
+    final normalized = _VoucherRecord(
+      id: record.id ?? 'may-cash-${DateTime.now().microsecondsSinceEpoch}',
+      folio: record.folio,
+      date: record.date,
+      type: record.type,
+      person: record.person,
+      rubric: record.rubric,
+      comment: record.comment,
+      lines: record.lines,
+    );
+    final existingIndex = _rows.indexWhere(
+      (row) => row.selectionKey == (record.id ?? record.selectionKey),
+    );
+    setState(() {
+      if (existingIndex >= 0) {
+        _rows[existingIndex] = normalized;
+      } else {
+        _rows.insert(0, normalized);
       }
-      await _supa.from('men_cash_voucher_lines').insert(linesPayload);
-    }
+    });
   }
 
   Future<void> _openVoucherDialog({_VoucherRecord? initial, int? index}) async {
@@ -1247,11 +1212,11 @@ class _MenudeoDepositsExpensesPageState
             unitOptions: _unitOptions,
             companyOptions: _companyOptions,
             driverOptions: _driverOptions,
-            depositPeopleOptions: MenudeoCashTaxonomyStore.instance.peopleFor(
-              MenudeoCashMovementType.deposit,
+            entryPeopleOptions: MayoreoCashTaxonomyStore.instance.peopleFor(
+              MayoreoCashMovementType.entry,
             ),
-            expensePeopleOptions: MenudeoCashTaxonomyStore.instance.peopleFor(
-              MenudeoCashMovementType.expense,
+            exitPeopleOptions: MayoreoCashTaxonomyStore.instance.peopleFor(
+              MayoreoCashMovementType.exit,
             ),
             canGoPrevious: index != null && currentPosition > 0,
             canGoNext:
@@ -1274,12 +1239,11 @@ class _MenudeoDepositsExpensesPageState
       if (saved == null) return;
       try {
         await _persistVoucher(saved);
-        await _loadVouchers();
       } catch (error) {
         if (!mounted) return;
         messenger.showSnackBar(
           SnackBar(
-            content: Text('No se pudo guardar el voucher: $error'),
+            content: Text('No se pudo guardar el movimiento: $error'),
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -1290,7 +1254,7 @@ class _MenudeoDepositsExpensesPageState
 
   String _money(num value) => formatMoney(value);
   String _voucherTypeLabel(_VoucherType type) =>
-      type == _VoucherType.deposit ? 'DEPÓSITO' : 'GASTO';
+      type == _VoucherType.deposit ? 'ENTRADA' : 'SALIDA';
 
   Future<void> _exportFilteredVouchersCsv(List<_VoucherRecord> rows) async {
     if (_exportingCsv) return;
@@ -1318,8 +1282,8 @@ class _MenudeoDepositsExpensesPageState
       }
       final stamp = DateTime.now().millisecondsSinceEpoch;
       await saveCsvFile(
-        fileName: 'menudeo_vouchers_$stamp.csv',
-        dialogTitle: 'Guardar CSV de vouchers',
+        fileName: 'mayoreo_entradas_salidas_$stamp.csv',
+        dialogTitle: 'Guardar CSV de movimientos',
         content: buffer.toString(),
       );
     } finally {
@@ -1365,7 +1329,7 @@ class _MenudeoDepositsExpensesPageState
         (_voucherRubricFilter.isNotEmpty ? 1 : 0) +
         (_voucherConceptFilter.isNotEmpty ? 1 : 0);
     return AreaThemeScope(
-      tokens: menudeoAreaTokens,
+      tokens: mayoreoAreaTokens,
       child: Focus(
         autofocus: true,
         onKeyEvent: (_, event) {
@@ -1451,7 +1415,7 @@ class _MenudeoDepositsExpensesPageState
           ),
           centerBuilder: (_, contentAnim) => MenudeoHeaderBrand(
             contentAnim: contentAnim,
-            title: 'Depósitos y Gastos',
+            title: 'Entradas y Salidas de Efectivo',
           ),
           trailingBuilder: (_, anim) => _DepositsHeaderButton(
             label: 'Cerrar sesión',
@@ -1838,107 +1802,95 @@ class _DepositsSidePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return ContractGlassCard(
-      borderRadius: BorderRadius.circular(28),
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Menudeo',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: tokens.primaryStrong,
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (canReturnToDirection) ...[
-              _DepositsSidePanelItem(
-                icon: Icons.arrow_back_rounded,
-                title: 'Volver a Dirección',
-                onTapSync: () => onNavigate('Dashboard Dirección'),
-              ),
-              const SizedBox(height: 10),
-            ],
-            const _DepositsSectionHeader(label: 'MENU'),
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: tokens.primarySoft.withValues(alpha: 0.34),
-                borderRadius: BorderRadius.circular(22),
-                border: Border.all(
-                  color: tokens.primaryStrong.withValues(alpha: 0.14),
+    return Padding(
+      padding: const EdgeInsets.only(right: 12),
+      child: ContractGlassCard(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        child: SingleChildScrollView(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'Mayoreo',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: tokens.primaryStrong,
                 ),
               ),
-              child: Column(
-                children: [
-                  _DepositsSidePanelItem(
-                    icon: Icons.receipt_long_rounded,
-                    title: 'Compras',
-                    subtitle: 'Tickets virtuales de compra',
-                    onTapSync: () => onNavigate('Tickets de menudeo'),
-                  ),
-                  const SizedBox(height: 8),
-                  _DepositsSidePanelItem(
-                    icon: Icons.point_of_sale_rounded,
-                    title: 'Ventas',
-                    subtitle: 'Tickets virtuales de venta',
-                    onTapSync: () => onNavigate('Ventas menudeo'),
-                  ),
-                  const SizedBox(height: 8),
-                  _DepositsSidePanelItem(
-                    icon: Icons.account_balance_wallet_rounded,
-                    title: 'Depósitos y gastos',
-                    subtitle: 'Vouchers de caja y egresos',
-                    highlighted: true,
-                  ),
-                  const SizedBox(height: 8),
-                  _DepositsSidePanelItem(
-                    icon: Icons.auto_graph_rounded,
-                    title: 'Ajuste de precios',
-                    subtitle: 'Cambios e historial',
-                    onTapSync: () => onNavigate('Ajuste de precios'),
-                  ),
-                  const SizedBox(height: 8),
-                  _DepositsSidePanelItem(
-                    icon: Icons.price_check_rounded,
-                    title: 'Catálogo',
-                    subtitle: 'Materiales, grupos y precios',
-                    onTapSync: () => onNavigate('Catálogo'),
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 14),
-            const _DepositsSectionHeader(label: 'ACCESOS'),
-            const SizedBox(height: 8),
-            if (canReturnToDirection) ...[
-              _DepositsSidePanelItem(
-                icon: Icons.tune_rounded,
-                title: 'Catálogo efectivo',
-                subtitle: 'Conceptos y parametros',
-                onTapSync: () => onNavigate('Catálogo efectivo'),
-              ),
+              const SizedBox(height: 16),
+              if (canReturnToDirection) ...[
+                _DepositsSidePanelItem(
+                  icon: Icons.arrow_back_rounded,
+                  title: 'Volver a Dirección',
+                  onTapSync: () => onNavigate('Dashboard Dirección'),
+                ),
+                const SizedBox(height: 10),
+              ],
+              const _DepositsSectionHeader(label: 'MENU'),
               const SizedBox(height: 8),
-              _DepositsSidePanelItem(
-                icon: Icons.assessment_outlined,
-                title: 'Dashboard Dirección',
-                subtitle: 'Vista global del negocio',
-                onTapSync: () => onNavigate('Dashboard Dirección'),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: tokens.primarySoft.withValues(alpha: 0.34),
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: tokens.primaryStrong.withValues(alpha: 0.14),
+                  ),
+                ),
+                child: Column(
+                  children: [
+                    _DepositsSidePanelItem(
+                      icon: Icons.account_balance_wallet_rounded,
+                      title: 'Entradas y salidas',
+                      subtitle: 'Caja, cheques y egresos',
+                      highlighted: true,
+                    ),
+                    const SizedBox(height: 8),
+                    _DepositsSidePanelItem(
+                      icon: Icons.request_quote_rounded,
+                      title: 'Ajuste de precios',
+                      subtitle: 'Cambios e historial',
+                      onTapSync: () => onNavigate('Ajuste de precios'),
+                    ),
+                    const SizedBox(height: 8),
+                    _DepositsSidePanelItem(
+                      icon: Icons.price_check_rounded,
+                      title: 'Catálogo',
+                      subtitle: 'Materiales, grupos y precios',
+                      onTapSync: () => onNavigate('Catálogo'),
+                    ),
+                  ],
+                ),
               ),
+              const SizedBox(height: 14),
+              const _DepositsSectionHeader(label: 'ACCESOS'),
               const SizedBox(height: 8),
+              if (canReturnToDirection) ...[
+                _DepositsSidePanelItem(
+                  icon: Icons.tune_rounded,
+                  title: 'Catálogo efectivo',
+                  subtitle: 'Conceptos y parametros',
+                  onTapSync: () => onNavigate('Catálogo efectivo'),
+                ),
+                const SizedBox(height: 8),
+                _DepositsSidePanelItem(
+                  icon: Icons.assessment_outlined,
+                  title: 'Dashboard Dirección',
+                  subtitle: 'Vista global del negocio',
+                  onTapSync: () => onNavigate('Dashboard Dirección'),
+                ),
+                const SizedBox(height: 8),
+              ],
+              _DepositsSidePanelItem(
+                icon: Icons.space_dashboard_rounded,
+                title: 'Dashboard Mayoreo',
+                subtitle: 'Vista general del área',
+                accented: true,
+                onTap: onBack,
+              ),
             ],
-            _DepositsSidePanelItem(
-              icon: Icons.space_dashboard_rounded,
-              title: 'Dashboard Menudeo',
-              subtitle: 'Vista general del área',
-              accented: true,
-              onTap: onBack,
-            ),
-          ],
+          ),
         ),
       ),
     );
@@ -2019,14 +1971,29 @@ class _DepositsSidePanelItem extends StatelessWidget {
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
             decoration: BoxDecoration(
               gradient: accented
-                  ? kMenudeoPanelAccentGradient
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFFFFF0A4), Color(0xFFFBC20F)],
+                    )
                   : highlighted
-                  ? kMenudeoPanelHighlightGradient
-                  : kMenudeoPanelGradient,
+                  ? const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [Color(0xFFFFF8DF), Color(0xFFFFE97C)],
+                    )
+                  : LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.82),
+                        tokens.surfaceTint.withValues(alpha: 0.92),
+                      ],
+                    ),
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: accented
-                    ? Colors.white.withValues(alpha: 0.72)
+                    ? tokens.primaryStrong.withValues(alpha: 0.18)
                     : highlighted
                     ? tokens.primaryStrong.withValues(alpha: 0.18)
                     : Colors.white.withValues(alpha: 0.58),
@@ -2034,7 +2001,7 @@ class _DepositsSidePanelItem extends StatelessWidget {
               boxShadow: accented
                   ? [
                       BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.24),
+                        color: tokens.primaryStrong.withValues(alpha: 0.16),
                         blurRadius: 22,
                         offset: const Offset(0, 12),
                       ),
@@ -2042,14 +2009,14 @@ class _DepositsSidePanelItem extends StatelessWidget {
                   : highlighted
                   ? [
                       BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.18),
+                        color: tokens.primaryStrong.withValues(alpha: 0.12),
                         blurRadius: 18,
                         offset: const Offset(0, 10),
                       ),
                     ]
                   : [
                       BoxShadow(
-                        color: kMenudeoPanelShadow.withValues(alpha: 0.12),
+                        color: Colors.black.withValues(alpha: 0.08),
                         blurRadius: 16,
                         offset: const Offset(0, 8),
                       ),
@@ -2057,7 +2024,7 @@ class _DepositsSidePanelItem extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(icon, color: Colors.white),
+                Icon(icon, color: tokens.primaryStrong),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -2065,6 +2032,8 @@ class _DepositsSidePanelItem extends StatelessWidget {
                     children: [
                       Text(
                         title,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
@@ -2075,6 +2044,8 @@ class _DepositsSidePanelItem extends StatelessWidget {
                         const SizedBox(height: 2),
                         Text(
                           subtitle!,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
@@ -2094,9 +2065,9 @@ class _DepositsSidePanelItem extends StatelessWidget {
                   ),
                 ] else ...[
                   const SizedBox(width: 8),
-                  const Icon(
+                  Icon(
                     Icons.chevron_right_rounded,
-                    color: Colors.white,
+                    color: tokens.primaryStrong,
                     size: 22,
                   ),
                 ],
@@ -2399,7 +2370,7 @@ class _VoucherGrid extends StatelessWidget {
           Expanded(
             child: Center(
               child: Text(
-                'Sin vouchers con los filtros actuales.',
+                'Sin movimientos con los filtros actuales.',
                 style: TextStyle(
                   fontWeight: FontWeight.w700,
                   color: tokens.badgeText,
@@ -2626,8 +2597,8 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                                   width: 110,
                                   child: Text(
                                     widget.row.type == _VoucherType.deposit
-                                        ? 'DEPÓSITO'
-                                        : 'GASTO',
+                                        ? 'ENTRADA'
+                                        : 'SALIDA',
                                   ),
                                 ),
                                 cell(
@@ -2772,7 +2743,7 @@ class _VouchersModuleTopBar extends StatelessWidget {
         const Padding(
           padding: EdgeInsets.only(left: 2, bottom: 10),
           child: Text(
-            'Depósitos / Gastos',
+            'Entradas / Salidas',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
           ),
         ),
@@ -2814,7 +2785,7 @@ class _VouchersModuleTopBar extends StatelessWidget {
                     style: contractPrimaryButtonStyle(context),
                     onPressed: () => unawaited(onShowNewVoucher()),
                     icon: const Icon(Icons.add_circle_outline_rounded),
-                    label: const Text('Nuevo voucher'),
+                    label: const Text('Nuevo movimiento'),
                   ),
                 ],
               );
@@ -2848,26 +2819,26 @@ class _VouchersModuleTopBar extends StatelessWidget {
             children: [
               MenudeoMetricCard(
                 icon: Icons.receipt_long_rounded,
-                title: 'VOUCHERS',
+                title: 'MOVIMIENTOS',
                 value: '$filteredCount',
-                detail: '$depositCount depósitos · $expenseCount gastos',
-                accent: menudeoAreaTokens.primaryStrong,
+                detail: '$depositCount entradas · $expenseCount salidas',
+                accent: mayoreoAreaTokens.primaryStrong,
               ),
               MenudeoMetricCard(
                 icon: Icons.arrow_downward_rounded,
-                title: 'TOTAL DEPÓSITOS',
+                title: 'TOTAL ENTRADAS',
                 value: _money(visibleDepositTotal),
                 detail: '$depositCount visibles',
-                accent: menudeoAreaTokens.primary,
+                accent: mayoreoAreaTokens.primary,
               ),
               MenudeoMetricCard(
                 icon: Icons.arrow_upward_rounded,
-                title: 'TOTAL GASTOS',
+                title: 'TOTAL SALIDAS',
                 value: _money(visibleExpenseTotal),
                 detail: activeFilterCount > 0
                     ? '$expenseCount visibles · $activeFilterCount filtros'
                     : '$expenseCount visibles',
-                accent: menudeoAreaTokens.accent,
+                accent: mayoreoAreaTokens.accent,
               ),
             ],
           ),
@@ -2907,7 +2878,7 @@ class _VouchersSelectionInfo extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: kMenudeoMutedText,
+            color: kMayoreoMutedInk,
           ),
           textAlign: TextAlign.right,
         ),
@@ -2917,7 +2888,7 @@ class _VouchersSelectionInfo extends StatelessWidget {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: kMenudeoMutedText,
+              color: kMayoreoMutedInk,
             ),
             textAlign: TextAlign.right,
           ),
@@ -2927,7 +2898,7 @@ class _VouchersSelectionInfo extends StatelessWidget {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: kMenudeoMutedText,
+              color: kMayoreoMutedInk,
             ),
             textAlign: TextAlign.right,
           ),
@@ -2938,9 +2909,9 @@ class _VouchersSelectionInfo extends StatelessWidget {
 
 ButtonStyle _vouchersGlassToolbarActionStyle() {
   return OutlinedButton.styleFrom(
-    foregroundColor: menudeoAreaTokens.primaryStrong,
+    foregroundColor: mayoreoAreaTokens.primaryStrong,
     backgroundColor: Colors.white.withValues(alpha: 0.22),
-    disabledForegroundColor: menudeoAreaTokens.primaryStrong.withValues(
+    disabledForegroundColor: mayoreoAreaTokens.primaryStrong.withValues(
       alpha: 0.42,
     ),
     side: BorderSide(color: Colors.white.withValues(alpha: 0.58)),
@@ -2956,8 +2927,8 @@ class _VoucherEditorDialog extends StatefulWidget {
   final List<String> unitOptions;
   final List<String> companyOptions;
   final List<String> driverOptions;
-  final List<String> depositPeopleOptions;
-  final List<String> expensePeopleOptions;
+  final List<String> entryPeopleOptions;
+  final List<String> exitPeopleOptions;
   final bool canGoPrevious;
   final bool canGoNext;
   final String? positionLabel;
@@ -2968,8 +2939,8 @@ class _VoucherEditorDialog extends StatefulWidget {
     required this.unitOptions,
     required this.companyOptions,
     required this.driverOptions,
-    required this.depositPeopleOptions,
-    required this.expensePeopleOptions,
+    required this.entryPeopleOptions,
+    required this.exitPeopleOptions,
     this.canGoPrevious = false,
     this.canGoNext = false,
     this.positionLabel,
@@ -2983,8 +2954,8 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
   late _VoucherType _type;
   late final TextEditingController _folioC;
   late final TextEditingController _dateC;
-  late String _person;
   late final TextEditingController _generalCommentC;
+  late String _person;
   String _rubric = '';
   final List<_LineItemDraft> _lines = <_LineItemDraft>[];
 
@@ -3053,7 +3024,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
       initialDate: _parseDateOrNow(_dateC.text),
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
-      title: 'Selecciona fecha del voucher',
+      title: 'Selecciona fecha del movimiento',
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -3063,8 +3034,8 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
 
   List<String> _peopleOptionsForType(_VoucherType type) {
     return type == _VoucherType.deposit
-        ? widget.depositPeopleOptions
-        : widget.expensePeopleOptions;
+        ? widget.entryPeopleOptions
+        : widget.exitPeopleOptions;
   }
 
   List<String> _rubricOptionsForType(_VoucherType type) {
@@ -3098,6 +3069,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
       line.concept = '';
       line.unit = '';
       line.quantity = '';
+      line.priceC.clear();
       line.company = '';
       line.driver = '';
       line.destination = '';
@@ -3120,7 +3092,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Completa folio, persona y al menos un renglón válido.',
+            'Completa folio, referencia y al menos un renglón válido.',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -3147,7 +3119,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = menudeoAreaTokens;
+    final tokens = mayoreoAreaTokens;
     final totalLabel = formatMoney(_total);
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -3169,37 +3141,37 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
           return KeyEventResult.ignored;
         },
         child: AreaThemeScope(
-          tokens: menudeoAreaTokens,
+          tokens: mayoreoAreaTokens,
           child: Theme(
             data: Theme.of(context).copyWith(
               colorScheme: Theme.of(context).colorScheme.copyWith(
-                primary: menudeoAreaTokens.primaryStrong,
-                secondary: menudeoAreaTokens.primaryStrong,
+                primary: mayoreoAreaTokens.primaryStrong,
+                secondary: mayoreoAreaTokens.primaryStrong,
                 surface: const Color(0xFFFFFAF6),
                 onSurface: const Color(0xFF2D2A28),
               ),
               textSelectionTheme: TextSelectionThemeData(
-                cursorColor: menudeoAreaTokens.primaryStrong,
-                selectionColor: menudeoAreaTokens.primarySoft.withValues(
+                cursorColor: mayoreoAreaTokens.primaryStrong,
+                selectionColor: mayoreoAreaTokens.primarySoft.withValues(
                   alpha: 0.48,
                 ),
-                selectionHandleColor: menudeoAreaTokens.primaryStrong,
+                selectionHandleColor: mayoreoAreaTokens.primaryStrong,
               ),
-              splashColor: menudeoAreaTokens.primarySoft.withValues(
+              splashColor: mayoreoAreaTokens.primarySoft.withValues(
                 alpha: 0.16,
               ),
-              highlightColor: menudeoAreaTokens.primarySoft.withValues(
+              highlightColor: mayoreoAreaTokens.primarySoft.withValues(
                 alpha: 0.10,
               ),
               filledButtonTheme: FilledButtonThemeData(
-                style: _voucherPrimaryButtonStyle(menudeoAreaTokens),
+                style: _voucherPrimaryButtonStyle(mayoreoAreaTokens),
               ),
               outlinedButtonTheme: OutlinedButtonThemeData(
-                style: _voucherSecondaryButtonStyle(menudeoAreaTokens),
+                style: _voucherSecondaryButtonStyle(mayoreoAreaTokens),
               ),
               textButtonTheme: TextButtonThemeData(
                 style: TextButton.styleFrom(
-                  foregroundColor: menudeoAreaTokens.primaryStrong,
+                  foregroundColor: mayoreoAreaTokens.primaryStrong,
                 ),
               ),
               segmentedButtonTheme: SegmentedButtonThemeData(
@@ -3209,13 +3181,13 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                     horizontal: 8,
                     vertical: 8,
                   ),
-                  foregroundColor: menudeoAreaTokens.primaryStrong,
-                  selectedForegroundColor: menudeoAreaTokens.primaryStrong,
-                  selectedBackgroundColor: menudeoAreaTokens.badgeBackground
+                  foregroundColor: mayoreoAreaTokens.primaryStrong,
+                  selectedForegroundColor: mayoreoAreaTokens.primaryStrong,
+                  selectedBackgroundColor: mayoreoAreaTokens.badgeBackground
                       .withValues(alpha: 0.92),
                   backgroundColor: Colors.white.withValues(alpha: 0.72),
                   side: BorderSide(
-                    color: menudeoAreaTokens.primarySoft.withValues(
+                    color: mayoreoAreaTokens.primarySoft.withValues(
                       alpha: 0.42,
                     ),
                   ),
@@ -3226,13 +3198,13 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                 ),
               ),
               popupMenuTheme: PopupMenuThemeData(
-                color: menudeoAreaTokens.surfaceTint.withValues(alpha: 0.98),
+                color: mayoreoAreaTokens.surfaceTint.withValues(alpha: 0.98),
                 elevation: 8,
                 shadowColor: Colors.black.withValues(alpha: 0.12),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
-                    color: menudeoAreaTokens.primarySoft.withValues(
+                    color: mayoreoAreaTokens.primarySoft.withValues(
                       alpha: 0.58,
                     ),
                   ),
@@ -3367,11 +3339,11 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                                           segments: const [
                                             ButtonSegment(
                                               value: _VoucherType.deposit,
-                                              label: Text('Depósito'),
+                                              label: Text('Entrada'),
                                             ),
                                             ButtonSegment(
                                               value: _VoucherType.expense,
-                                              label: Text('Gasto'),
+                                              label: Text('Salida'),
                                             ),
                                           ],
                                           selected: <_VoucherType>{_type},
@@ -3450,7 +3422,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                                     style: _voucherInputTextStyle(tokens),
                                     decoration: InputDecoration.collapsed(
                                       hintText:
-                                          'Observación general del voucher',
+                                          'Observación general del movimiento',
                                       hintStyle: _voucherHintTextStyle(tokens),
                                     ),
                                   ),
@@ -3530,7 +3502,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                         style: _voucherPrimaryButtonStyle(tokens),
                         onPressed: _save,
                         icon: const Icon(Icons.save_rounded),
-                        label: const Text('Guardar voucher'),
+                        label: const Text('Guardar movimiento'),
                       ),
                     ],
                   ),
@@ -3956,6 +3928,7 @@ class _VoucherLineCard extends StatelessWidget {
                       line.concept = value;
                       line.unit = '';
                       line.quantity = '';
+                      line.priceC.clear();
                       line.company = '';
                       line.driver = '';
                       line.destination = '';
@@ -3969,7 +3942,7 @@ class _VoucherLineCard extends StatelessWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: _VoucherField(
-                  label: 'Importe',
+                  label: concept?.amountLabel ?? 'Importe',
                   compact: true,
                   child: TextField(
                     controller: line.amountC,
@@ -3989,7 +3962,7 @@ class _VoucherLineCard extends StatelessWidget {
                 const SizedBox(width: 8),
                 Expanded(
                   child: _VoucherField(
-                    label: 'Cantidad',
+                    label: concept?.quantityLabel ?? 'Cantidad',
                     compact: true,
                     child: TextField(
                       controller: TextEditingController.fromValue(
@@ -4013,11 +3986,32 @@ class _VoucherLineCard extends StatelessWidget {
                   ),
                 ),
               ],
+              if (concept?.requiresPrice ?? false) ...[
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _VoucherField(
+                    label: concept?.priceLabel ?? 'Precio',
+                    compact: true,
+                    child: TextField(
+                      controller: line.priceC,
+                      onChanged: (_) => onChanged(),
+                      style: _voucherInputTextStyle(tokens),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      decoration: InputDecoration.collapsed(
+                        hintText: 'Precio',
+                        hintStyle: _voucherHintTextStyle(tokens),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
               const SizedBox(width: 8),
               Expanded(
                 flex: 2,
                 child: _VoucherField(
-                  label: 'Comentario corto',
+                  label: concept?.commentLabel ?? 'Comentario corto',
                   compact: true,
                   child: TextField(
                     controller: line.commentC,
@@ -4066,17 +4060,39 @@ class _VoucherLineCard extends StatelessWidget {
                   SizedBox(
                     width: 170,
                     child: _VoucherField(
-                      label: 'Empresa',
+                      label: concept!.companyLabel,
                       compact: true,
-                      child: _InlineDropdown(
-                        value: line.company,
-                        items: companyOptions,
-                        hint: 'Empresa',
-                        onChanged: (value) {
-                          line.company = value;
-                          onChanged();
-                        },
-                      ),
+                      child: concept!.companyIsText
+                          ? TextField(
+                              controller: TextEditingController.fromValue(
+                                TextEditingValue(
+                                  text: line.company,
+                                  selection: TextSelection.collapsed(
+                                    offset: line.company.length,
+                                  ),
+                                ),
+                              ),
+                              onChanged: (value) {
+                                line.company = value;
+                                onChanged();
+                              },
+                              style: _voucherInputTextStyle(tokens),
+                              decoration: InputDecoration.collapsed(
+                                hintText: concept!.companyLabel,
+                                hintStyle: _voucherHintTextStyle(tokens),
+                              ),
+                            )
+                          : _InlineDropdown(
+                              value: line.company,
+                              items: concept!.companyOptions.isNotEmpty
+                                  ? concept!.companyOptions
+                                  : companyOptions,
+                              hint: concept!.companyLabel,
+                              onChanged: (value) {
+                                line.company = value;
+                                onChanged();
+                              },
+                            ),
                     ),
                   ),
                 if (concept!.requiresDriver)
@@ -4087,7 +4103,9 @@ class _VoucherLineCard extends StatelessWidget {
                       compact: true,
                       child: _InlineDropdown(
                         value: line.driver,
-                        items: driverOptions,
+                        items: concept!.driverOptions.isNotEmpty
+                            ? concept!.driverOptions
+                            : driverOptions,
                         hint: 'Chofer',
                         onChanged: (value) {
                           line.driver = value;
@@ -4104,7 +4122,9 @@ class _VoucherLineCard extends StatelessWidget {
                       compact: true,
                       child: _InlineDropdown(
                         value: line.destination,
-                        items: _voucherDestinations,
+                        items: concept!.destinationOptions.isNotEmpty
+                            ? concept!.destinationOptions
+                            : _voucherDestinations,
                         hint: 'Destino',
                         onChanged: (value) {
                           line.destination = value;
@@ -4117,17 +4137,37 @@ class _VoucherLineCard extends StatelessWidget {
                   SizedBox(
                     width: 180,
                     child: _VoucherField(
-                      label: 'Subconcepto',
+                      label: concept!.subconceptLabel,
                       compact: true,
-                      child: _InlineDropdown(
-                        value: line.subconcept,
-                        items: concept!.subconcepts,
-                        hint: 'Subconcepto',
-                        onChanged: (value) {
-                          line.subconcept = value;
-                          onChanged();
-                        },
-                      ),
+                      child: concept!.subconceptIsText
+                          ? TextField(
+                              controller: TextEditingController.fromValue(
+                                TextEditingValue(
+                                  text: line.subconcept,
+                                  selection: TextSelection.collapsed(
+                                    offset: line.subconcept.length,
+                                  ),
+                                ),
+                              ),
+                              onChanged: (value) {
+                                line.subconcept = value;
+                                onChanged();
+                              },
+                              style: _voucherInputTextStyle(tokens),
+                              decoration: InputDecoration.collapsed(
+                                hintText: concept!.subconceptLabel,
+                                hintStyle: _voucherHintTextStyle(tokens),
+                              ),
+                            )
+                          : _InlineDropdown(
+                              value: line.subconcept,
+                              items: concept!.subconcepts,
+                              hint: concept!.subconceptLabel,
+                              onChanged: (value) {
+                                line.subconcept = value;
+                                onChanged();
+                              },
+                            ),
                     ),
                   ),
                 if (concept!.requiresMode)

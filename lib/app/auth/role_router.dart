@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'auth_access.dart';
 import '../maintenance/maintenance_page.dart';
 import '../dashboard/general_dashboard_page.dart';
+import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../services/services_page.dart';
 import '../dashboard/dashboard_page.dart';
@@ -32,6 +33,8 @@ class _RoleRouterState extends State<RoleRouter> {
     switch (AuthAccess.routeKeyForProfile(profile)) {
       case 'menudeo_dashboard':
         return const MenudeoDashboardPage();
+      case 'mayoreo_dashboard':
+        return const MayoreoDashboardPreviewPage();
       case 'services':
         return const ServicesPage();
       case 'maintenance':

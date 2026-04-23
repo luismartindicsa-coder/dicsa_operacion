@@ -21,14 +21,21 @@ Future<T?> showSearchablePickerDialog<T>(
   T? initialValue,
   bool allowClear = false,
 }) {
+  final tokens = AreaThemeScope.of(context);
   return showDialog<T>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
-    builder: (_) => _SearchablePickerDialog<T>(
-      title: title,
-      options: options,
-      initialValue: initialValue,
-      allowClear: allowClear,
+    builder: (_) => AreaThemeScope(
+      tokens: tokens,
+      child: Theme(
+        data: _searchablePickerTheme(context, tokens),
+        child: _SearchablePickerDialog<T>(
+          title: title,
+          options: options,
+          initialValue: initialValue,
+          allowClear: allowClear,
+        ),
+      ),
     ),
   );
 }
@@ -49,6 +56,63 @@ class _SearchablePickerDialog<T> extends StatefulWidget {
   @override
   State<_SearchablePickerDialog<T>> createState() =>
       _SearchablePickerDialogState<T>();
+}
+
+ThemeData _searchablePickerTheme(
+  BuildContext context,
+  ContractAreaTokens tokens,
+) {
+  final base = Theme.of(context);
+  return base.copyWith(
+    colorScheme: base.colorScheme.copyWith(
+      primary: tokens.primaryStrong,
+      onPrimary: Colors.white,
+      secondary: tokens.primary,
+      onSecondary: tokens.primaryStrong,
+      surface: tokens.surfaceTint,
+      onSurface: tokens.primaryStrong,
+      outline: tokens.border,
+    ),
+    dialogTheme: DialogThemeData(backgroundColor: Colors.transparent),
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: tokens.primaryStrong,
+      selectionColor: tokens.primary.withValues(alpha: 0.22),
+      selectionHandleColor: tokens.primaryStrong,
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: tokens.primaryStrong,
+        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+    ),
+    iconTheme: IconThemeData(color: tokens.primaryStrong),
+    popupMenuTheme: PopupMenuThemeData(
+      color: tokens.surfaceTint,
+      textStyle: TextStyle(
+        color: tokens.primaryStrong,
+        fontWeight: FontWeight.w800,
+      ),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: tokens.surfaceTint.withValues(alpha: 0.92),
+      hintStyle: TextStyle(
+        color: tokens.primaryStrong.withValues(alpha: 0.42),
+        fontWeight: FontWeight.w400,
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(color: tokens.border.withValues(alpha: 0.58)),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: BorderSide(
+          color: tokens.primary.withValues(alpha: 0.86),
+          width: 1.2,
+        ),
+      ),
+    ),
+  );
 }
 
 class _SearchablePickerDialogState<T>

@@ -7,6 +7,8 @@ import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../hr/human_resources_mock_page.dart';
 import '../maintenance/maintenance_page.dart';
+import '../mayoreo/mayoreo_cash_entries_exits_page.dart';
+import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../services/inventory_page.dart';
 import '../services/services_catalog_page.dart';
@@ -80,6 +82,28 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     await Navigator.of(context).push(
       appPageRoute(
         page: const MenudeoDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openMayoreoPreviewDashboard() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const MayoreoDashboardPreviewPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openMayoreoCashWorkspace() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const MayoreoCashEntriesExitsPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -215,6 +239,8 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       onOpenGeneralDashboard: () async {},
       onOpenOperationalDashboard: _openOperationalDashboard,
       onOpenMenudeo: _openRetailDashboard,
+      onOpenMayoreo: _openMayoreoPreviewDashboard,
+      onOpenMayoreoCashWorkspace: _openMayoreoCashWorkspace,
       onOpenHumanResources: _openHumanResourcesMock,
       onOpenAdministration: () => _showUpcomingArea('Administración'),
       onOpenFinance: () => _showUpcomingArea('Finanzas'),
@@ -288,6 +314,23 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
                         ],
                         primaryLabel: 'Abrir dashboard',
                         onPrimaryTap: _openRetailDashboard,
+                      ),
+                      _AreaSummaryCard(
+                        width: summaryWidth,
+                        accent: const Color(0xFF8C6700),
+                        icon: Icons.inventory_2_rounded,
+                        title: 'Mayoreo',
+                        status: 'Preview',
+                        statusColor: const Color(0xFFC59517),
+                        description:
+                            'Sandbox inicial para validar la paleta amarilla y el ritmo visual del futuro dashboard comercial mayorista.',
+                        highlights: const [
+                          'Paleta amarilla institucional del área',
+                          'Prueba de contraste, glow, badges y widgets',
+                          'Listo para abrir el preview de dashboard',
+                        ],
+                        primaryLabel: 'Abrir preview',
+                        onPrimaryTap: _openMayoreoPreviewDashboard,
                       ),
                       _AreaSummaryCard(
                         width: summaryWidth,
@@ -1028,6 +1071,8 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final Future<void> Function()? onOpenGeneralDashboard;
   final Future<void> Function()? onOpenOperationalDashboard;
   final Future<void> Function()? onOpenMenudeo;
+  final Future<void> Function()? onOpenMayoreo;
+  final Future<void> Function()? onOpenMayoreoCashWorkspace;
   final Future<void> Function()? onOpenHumanResources;
   final Future<void> Function()? onOpenAdministration;
   final Future<void> Function()? onOpenFinance;
@@ -1045,6 +1090,8 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onOpenGeneralDashboard,
     this.onOpenOperationalDashboard,
     this.onOpenMenudeo,
+    this.onOpenMayoreo,
+    this.onOpenMayoreoCashWorkspace,
     this.onOpenHumanResources,
     this.onOpenAdministration,
     this.onOpenFinance,
@@ -1130,6 +1177,20 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                       title: 'Menudeo',
                       subtitle: 'Dashboard comercial del área',
                       onTap: onOpenMenudeo,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.inventory_2_rounded,
+                      title: 'Mayoreo',
+                      subtitle: 'Preview de paleta y tokens',
+                      onTap: onOpenMayoreo,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.account_balance_wallet_rounded,
+                      title: 'Mayoreo efectivo',
+                      subtitle: 'Subpágina resguardada de Dirección',
+                      onTap: onOpenMayoreoCashWorkspace,
                     ),
                     const SizedBox(height: 8),
                     _MenuActionItem(

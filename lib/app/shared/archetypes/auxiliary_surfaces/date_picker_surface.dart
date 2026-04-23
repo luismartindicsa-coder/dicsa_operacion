@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../../ui_contract_core/theme/area_theme_scope.dart';
+import '../../ui_contract_core/theme/contract_tokens.dart';
 
 Future<DateTime?> showContractDatePickerSurface(
   BuildContext context, {
@@ -11,14 +12,21 @@ Future<DateTime?> showContractDatePickerSurface(
   required DateTime lastDate,
   String title = 'Selecciona fecha',
 }) {
+  final tokens = AreaThemeScope.of(context);
   return showDialog<DateTime>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
-    builder: (_) => _ContractDatePickerDialog(
-      initialDate: initialDate,
-      firstDate: firstDate,
-      lastDate: lastDate,
-      title: title,
+    builder: (_) => AreaThemeScope(
+      tokens: tokens,
+      child: Theme(
+        data: _datePickerTheme(context, tokens),
+        child: _ContractDatePickerDialog(
+          initialDate: initialDate,
+          firstDate: firstDate,
+          lastDate: lastDate,
+          title: title,
+        ),
+      ),
     ),
   );
 }
@@ -39,6 +47,44 @@ class _ContractDatePickerDialog extends StatefulWidget {
   @override
   State<_ContractDatePickerDialog> createState() =>
       _ContractDatePickerDialogState();
+}
+
+ThemeData _datePickerTheme(BuildContext context, ContractAreaTokens tokens) {
+  final base = Theme.of(context);
+  return base.copyWith(
+    colorScheme: base.colorScheme.copyWith(
+      primary: tokens.primaryStrong,
+      onPrimary: Colors.white,
+      secondary: tokens.primary,
+      onSecondary: tokens.primaryStrong,
+      surface: tokens.surfaceTint,
+      onSurface: tokens.primaryStrong,
+      outline: tokens.border,
+    ),
+    dialogTheme: DialogThemeData(backgroundColor: Colors.transparent),
+    iconTheme: IconThemeData(color: tokens.primaryStrong),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: tokens.primaryStrong,
+        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        backgroundColor: tokens.primaryStrong,
+        foregroundColor: Colors.white,
+        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: tokens.primaryStrong,
+        backgroundColor: Colors.white.withValues(alpha: 0.55),
+        side: BorderSide(color: tokens.primarySoft.withValues(alpha: 0.9)),
+        textStyle: const TextStyle(fontWeight: FontWeight.w800),
+      ),
+    ),
+  );
 }
 
 class _ContractDatePickerDialogState extends State<_ContractDatePickerDialog> {

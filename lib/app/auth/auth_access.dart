@@ -22,6 +22,7 @@ class AuthAccess {
   static const String _directionEmail = 'direccion@dicsamx.com';
   static const String _operationsEmail = 'operacion@dicsamx.com';
   static const String _menudeoEmail = 'menudeo@dicsamx.com';
+  static const String _mayoreoEmail = 'mayoreo@dicsamx.com';
 
   static String _normalizeRoleValue(String? raw) {
     final value = (raw ?? '').toLowerCase().trim();
@@ -65,6 +66,19 @@ class AuthAccess {
     return (email ?? '').toLowerCase().trim() == _menudeoEmail;
   }
 
+  static bool _isMayoreoRoleValue(String role) {
+    return role == 'mayoreo' ||
+        role == 'wholesale' ||
+        role == 'ventas_mayoreo' ||
+        role == 'mayoreo_ventas' ||
+        role.startsWith('mayoreo_') ||
+        role.endsWith('_mayoreo');
+  }
+
+  static bool _isMayoreoEmailValue(String? email) {
+    return (email ?? '').toLowerCase().trim() == _mayoreoEmail;
+  }
+
   static bool _roleIn(AuthResolvedProfile? profile, Set<String> roles) {
     if (profile == null || !profile.isActive) return false;
     return roles.contains(profile.role);
@@ -98,6 +112,13 @@ class AuthAccess {
     if (isDirectionRole(profile)) return true;
     return _isMenudeoRoleValue(profile.role) ||
         _isMenudeoEmailValue(profile.email);
+  }
+
+  static bool hasMayoreoAccess(AuthResolvedProfile? profile) {
+    if (profile == null || !profile.isActive) return false;
+    if (isDirectionRole(profile)) return true;
+    return _isMayoreoRoleValue(profile.role) ||
+        _isMayoreoEmailValue(profile.email);
   }
 
   static Future<AuthResolvedProfile?> resolveCurrentProfile() async {
@@ -143,6 +164,10 @@ class AuthAccess {
     return hasMenudeoAccess(profile);
   }
 
+  static bool canAccessMayoreoDashboard(AuthResolvedProfile? profile) {
+    return hasMayoreoAccess(profile);
+  }
+
   static bool canAccessOperationalModule(
     AuthResolvedProfile? profile,
     ServicesOverlayNavModule module,
@@ -168,6 +193,7 @@ class AuthAccess {
     if (profile == null || !profile.isActive) return 'blocked';
     if (isDirectionRole(profile)) return 'dashboard_general';
     if (hasMenudeoAccess(profile)) return 'menudeo_dashboard';
+    if (hasMayoreoAccess(profile)) return 'mayoreo_dashboard';
 
     switch (profile.role) {
       case 'services':
