@@ -420,9 +420,9 @@ class _MenudeoDepositsExpensesPageState
       final voucherRows = await _supa
           .from('vw_men_cash_vouchers_grid')
           .select('*')
-          .order('voucher_date', ascending: false)
-          .order('folio_sort', ascending: false)
-          .order('folio', ascending: false);
+          .order('voucher_date', ascending: true)
+          .order('folio_sort', ascending: true)
+          .order('folio', ascending: true);
 
       final vouchers = (voucherRows as List).cast<Map<String, dynamic>>();
       final ids = vouchers

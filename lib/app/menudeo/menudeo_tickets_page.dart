@@ -1084,8 +1084,8 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
           .from('vw_men_tickets_grid')
           .select()
           .eq('direction', _flowDirection)
-          .order('ticket_date', ascending: false)
-          .order('ticket_number');
+          .order('ticket_date', ascending: true)
+          .order('ticket_number', ascending: true);
       if (!mounted) return;
       setState(() {
         final loadedRows = response
