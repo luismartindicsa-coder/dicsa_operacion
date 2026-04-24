@@ -548,7 +548,7 @@ class _NewConceptDialogState extends State<_NewConceptDialog> {
   }
 }
 
-class _PeopleCatalogCard extends StatelessWidget {
+class _PeopleCatalogCard extends StatefulWidget {
   final String title;
   final List<String> people;
   final TextEditingController controller;
@@ -564,22 +564,52 @@ class _PeopleCatalogCard extends StatelessWidget {
   });
 
   @override
+  State<_PeopleCatalogCard> createState() => _PeopleCatalogCardState();
+}
+
+class _PeopleCatalogCardState extends State<_PeopleCatalogCard> {
+  late final ScrollController _scrollController;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController = ScrollController();
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          title,
+          widget.title,
           style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900),
         ),
         const SizedBox(height: 8),
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            for (final item in people)
-              Chip(label: Text(item), onDeleted: () => onDelete(item)),
-          ],
+        SizedBox(
+          height: 220,
+          child: SingleChildScrollView(
+            controller: _scrollController,
+            primary: false,
+            padding: const EdgeInsets.only(right: 6),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final item in widget.people)
+                  Chip(
+                    label: Text(item),
+                    onDeleted: () => widget.onDelete(item),
+                  ),
+              ],
+            ),
+          ),
         ),
         const SizedBox(height: 8),
         Row(
@@ -587,17 +617,17 @@ class _PeopleCatalogCard extends StatelessWidget {
             Expanded(
               child: _EditorTextField(
                 label: 'Agregar opción',
-                controller: controller,
+                controller: widget.controller,
               ),
             ),
             const SizedBox(width: 8),
             FilledButton(
               style: contractPrimaryButtonStyle(context),
               onPressed: () {
-                final value = controller.text.trim();
+                final value = widget.controller.text.trim();
                 if (value.isEmpty) return;
-                onAdd(value);
-                controller.clear();
+                widget.onAdd(value);
+                widget.controller.clear();
               },
               child: const Text('Agregar'),
             ),

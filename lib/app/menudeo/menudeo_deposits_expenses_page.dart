@@ -12,6 +12,7 @@ import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/archetypes/auxiliary_surfaces/date_picker_surface.dart';
+import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
@@ -3000,12 +3001,18 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
       text: initial?.date ?? _formatDate(DateTime.now()),
     );
     final availablePeople = _peopleOptionsForType(_type);
+    final availableRubrics = _rubricOptionsForType(_type);
     final initialPerson = (initial?.person ?? '').trim().toUpperCase();
     _person = availablePeople.contains(initialPerson)
         ? initialPerson
         : (availablePeople.isNotEmpty ? availablePeople.first : initialPerson);
     _generalCommentC = TextEditingController(text: initial?.comment ?? '');
-    _rubric = initial?.rubric ?? _rubricOptionsForType(_type).first;
+    final initialRubric = (initial?.rubric ?? '').trim();
+    _rubric = availableRubrics.contains(initialRubric)
+        ? initialRubric
+        : (availableRubrics.isNotEmpty
+              ? availableRubrics.first
+              : initialRubric);
     if (initial != null) {
       for (final line in initial.lines) {
         _lines.add(_LineItemDraft.fromRecord(line));
@@ -3380,12 +3387,14 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                                               _type = value.first;
                                               final availablePeople =
                                                   _peopleOptionsForType(_type);
+                                              final availableRubrics =
+                                                  _rubricOptionsForType(_type);
                                               _person = availablePeople.isEmpty
                                                   ? ''
                                                   : availablePeople.first;
-                                              _rubric = _rubricOptionsForType(
-                                                _type,
-                                              ).first;
+                                              _rubric = availableRubrics.isEmpty
+                                                  ? ''
+                                                  : availableRubrics.first;
                                               for (final line in _lines) {
                                                 _syncLineWithRubric(line);
                                               }
@@ -4176,55 +4185,70 @@ class _InlineDropdown extends StatelessWidget {
       ...items,
     ];
     final tokens = AreaThemeScope.of(context);
-    return DropdownButtonHideUnderline(
-      child: Theme(
-        data: Theme.of(context).copyWith(
-          splashColor: tokens.primarySoft.withValues(alpha: 0.14),
-          highlightColor: tokens.primarySoft.withValues(alpha: 0.08),
-          hoverColor: tokens.primarySoft.withValues(alpha: 0.10),
-          focusColor: Colors.transparent,
+    final displayText = value.trim().isEmpty ? hint : value;
+    final hasValue = value.trim().isNotEmpty;
+    return FocusableActionDetector(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<Intent>(
+          onInvoke: (_) {
+            _openPicker(context, resolvedItems);
+            return null;
+          },
         ),
-        child: DropdownButton<String>(
-          isExpanded: true,
-          value: resolvedItems.contains(value) ? value : null,
-          borderRadius: BorderRadius.circular(16),
-          dropdownColor: const Color(0xFFFFFAF6),
-          focusColor: Colors.transparent,
-          menuMaxHeight: 320,
-          hint: Text(
-            hint,
-            style: TextStyle(color: tokens.badgeText.withValues(alpha: 0.92)),
-          ),
-          icon: Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: tokens.primaryStrong,
-          ),
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: tokens.primaryStrong,
-          ),
-          items: resolvedItems
-              .map(
-                (item) => DropdownMenuItem<String>(
-                  value: item,
-                  child: Text(
-                    item,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: tokens.primaryStrong,
-                    ),
+      },
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _openPicker(context, resolvedItems),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  displayText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: hasValue
+                        ? tokens.primaryStrong
+                        : tokens.badgeText.withValues(alpha: 0.92),
                   ),
                 ),
-              )
-              .toList(growable: false),
-          onChanged: (value) {
-            if (value != null) onChanged(value);
-          },
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: tokens.primaryStrong,
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _openPicker(
+    BuildContext context,
+    List<String> resolvedItems,
+  ) async {
+    final selected = await showSearchablePickerDialog<String>(
+      context,
+      title: hint,
+      options: resolvedItems
+          .map(
+            (item) => SearchablePickerOption<String>(value: item, label: item),
+          )
+          .toList(growable: false),
+      initialValue: resolvedItems.contains(value) ? value : null,
+    );
+    if (selected != null) {
+      onChanged(selected);
+    }
   }
 }

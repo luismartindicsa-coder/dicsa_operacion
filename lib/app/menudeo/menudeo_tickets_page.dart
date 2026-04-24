@@ -142,6 +142,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   final TextEditingController _comentarioC = TextEditingController();
 
   bool _menuOpen = false;
+  bool _creatingTicketDraft = false;
   bool _splitEnabled = false;
   bool _loadingCatalogPrices = false;
   bool _exportingCsv = false;
@@ -1111,15 +1112,16 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
     }
   }
 
-  Future<void> _createTicketsFromDraft() async {
+  Future<bool> _createTicketsFromDraft() async {
+    if (_creatingTicketDraft) return false;
     final baseTicket = _ticketC.text.trim();
     if (baseTicket.isEmpty) {
       _toast('El ticket es obligatorio');
-      return;
+      return false;
     }
     if (_selectedProvider.trim().isEmpty) {
       _toast('Selecciona un ${_counterpartyLabel.toLowerCase()}');
-      return;
+      return false;
     }
     if (_splitEnabled) {
       _syncSplitDrafts();
@@ -1134,7 +1136,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
           priceAtEntry == null ||
           selectedPriceRow == null) {
         _toast('Completa el ticket principal para generar $baseTicket-A');
-        return;
+        return false;
       }
       createdRows.add(
         _buildTicketInsertRow(
@@ -1157,7 +1159,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
           _toast(
             'Selecciona material para $baseTicket-${String.fromCharCode(66 + index)}',
           );
-          return;
+          return false;
         }
         final selectedPriceRow = _selectedCatalogPriceRowFor(material);
         final priceAtEntry = selectedPriceRow == null
@@ -1165,7 +1167,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
             : ((selectedPriceRow['final_price'] ?? 0) as num).toDouble();
         if (priceAtEntry == null || selectedPriceRow == null) {
           _toast('No hay precio vigente para $material');
-          return;
+          return false;
         }
         createdRows.add(
           _buildTicketInsertRow(
@@ -1193,7 +1195,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
         _toast(
           'Selecciona ${_counterpartyLabel.toLowerCase()} y material con precio vigente',
         );
-        return;
+        return false;
       }
       createdRows.add(
         _buildTicketInsertRow(
@@ -1210,6 +1212,41 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
         ),
       );
     }
+    final candidateTicketNumbers =
+        createdRows
+            .map(
+              (row) => _ticketNumberFromParts(
+                row['ticket_base']?.toString() ?? '',
+                row['ticket_suffix']?.toString(),
+              ),
+            )
+            .where((value) => value.isNotEmpty)
+            .toSet()
+            .toList()
+          ..sort();
+    try {
+      final existingRaw = await _supa
+          .from('men_tickets')
+          .select('ticket_number')
+          .inFilter('ticket_number', candidateTicketNumbers);
+      final existing = (existingRaw as List)
+          .map((row) => (row as Map<String, dynamic>)['ticket_number'])
+          .whereType<String>()
+          .toSet();
+      if (existing.isNotEmpty) {
+        final duplicates = existing.toList()..sort();
+        _toast(
+          duplicates.length == 1
+              ? 'Ya existe el ticket ${duplicates.first}'
+              : 'Ya existen los tickets ${duplicates.join(', ')}',
+        );
+        return false;
+      }
+    } on PostgrestException catch (e) {
+      _toast('No se pudo validar el número de ticket: ${e.message}');
+      return false;
+    }
+    setState(() => _creatingTicketDraft = true);
     try {
       await _supa.from('men_tickets').insert(createdRows);
       await _loadTickets();
@@ -1218,8 +1255,20 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
             ? 'Se crearon ${createdRows.length} tickets del split'
             : 'Ticket creado',
       );
+      return true;
     } on PostgrestException catch (e) {
-      _toast('No se pudo crear el ticket: ${e.message}');
+      if (_isDuplicateTicketError(e)) {
+        _toast(
+          'Ya existe un ticket con ese número. Usa un subticket distinto.',
+        );
+      } else {
+        _toast('No se pudo crear el ticket: ${e.message}');
+      }
+      return false;
+    } finally {
+      if (mounted) {
+        setState(() => _creatingTicketDraft = false);
+      }
     }
   }
 
@@ -1262,6 +1311,22 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       'status': _selectedStatus,
       'comment': comment.isEmpty ? null : comment,
     };
+  }
+
+  String _ticketNumberFromParts(String baseTicket, String? suffix) {
+    final base = baseTicket.trim();
+    final normalizedSuffix = suffix?.trim().toUpperCase() ?? '';
+    if (base.isEmpty) return '';
+    if (normalizedSuffix.isEmpty) return base;
+    return '$base-$normalizedSuffix';
+  }
+
+  bool _isDuplicateTicketError(PostgrestException error) {
+    final message = error.message.toString().toLowerCase();
+    final details = (error.details ?? '').toString().toLowerCase();
+    return error.code == '23505' &&
+        (message.contains('ticket_number') ||
+            details.contains('ticket_number'));
   }
 
   List<String> get _providerOptions {
@@ -1612,10 +1677,11 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                             setDialogState(() {});
                           },
                           loadingCatalogPrice: _loadingCatalogPrices,
+                          creatingTicketDraft: _creatingTicketDraft,
                           hasCatalogPrice: _catalogPriceForSelection() != null,
                           onCreateTicket: () async {
-                            await _createTicketsFromDraft();
-                            if (dialogContext.mounted) {
+                            final created = await _createTicketsFromDraft();
+                            if (created && dialogContext.mounted) {
                               Navigator.of(dialogContext).pop();
                             }
                           },
@@ -3095,6 +3161,7 @@ class _NewTicketCard extends StatelessWidget {
   final String Function(num value) formatMoney;
   final double? Function(String material) catalogPriceForMaterial;
   final bool loadingCatalogPrice;
+  final bool creatingTicketDraft;
   final bool hasCatalogPrice;
   final ValueChanged<String> onProviderChanged;
   final ValueChanged<String> onMaterialChanged;
@@ -3129,6 +3196,7 @@ class _NewTicketCard extends StatelessWidget {
     required this.formatMoney,
     required this.catalogPriceForMaterial,
     required this.loadingCatalogPrice,
+    required this.creatingTicketDraft,
     required this.hasCatalogPrice,
     required this.onProviderChanged,
     required this.onMaterialChanged,
@@ -3509,14 +3577,29 @@ class _NewTicketCard extends StatelessWidget {
                         children: [
                           FilledButton.icon(
                             style: contractPrimaryButtonStyle(context),
-                            onPressed: splitEnabled
+                            onPressed: creatingTicketDraft
+                                ? null
+                                : splitEnabled
                                 ? onCreateTicket
                                 : hasCatalogPrice
                                 ? onCreateTicket
                                 : null,
-                            icon: const Icon(Icons.add_circle_outline_rounded),
+                            icon: creatingTicketDraft
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.2,
+                                      color: Colors.white,
+                                    ),
+                                  )
+                                : const Icon(Icons.add_circle_outline_rounded),
                             label: Text(
-                              splitEnabled ? 'Crear split' : 'Crear ticket',
+                              creatingTicketDraft
+                                  ? 'Guardando...'
+                                  : splitEnabled
+                                  ? 'Crear split'
+                                  : 'Crear ticket',
                             ),
                           ),
                         ],
