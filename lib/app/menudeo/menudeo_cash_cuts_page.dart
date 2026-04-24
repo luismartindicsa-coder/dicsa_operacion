@@ -43,6 +43,8 @@ class MenudeoCashCutsPage extends StatefulWidget {
 class _CashCutRow {
   final String? id;
   final DateTime date;
+  final DateTime? openedAt;
+  final DateTime? closedAt;
   final double openingCash;
   final double salesTotal;
   final double purchasesTotal;
@@ -57,6 +59,8 @@ class _CashCutRow {
   const _CashCutRow({
     required this.id,
     required this.date,
+    required this.openedAt,
+    required this.closedAt,
     required this.openingCash,
     required this.salesTotal,
     required this.purchasesTotal,
@@ -81,7 +85,9 @@ class _CashCutRow {
 
     return _CashCutRow(
       id: row['id']?.toString(),
-      date: parseDate(row['cut_date']),
+      date: parseDate(row['opened_at'] ?? row['cut_date']),
+      openedAt: DateTime.tryParse((row['opened_at'] ?? '').toString()),
+      closedAt: DateTime.tryParse((row['closed_at'] ?? '').toString()),
       openingCash: parseNum(row['opening_cash']),
       salesTotal: parseNum(row['sales_total']),
       purchasesTotal: parseNum(row['purchases_total']),
@@ -128,7 +134,8 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
       final data = await _supa
           .from('vw_men_cash_cuts_grid')
           .select('*')
-          .order('cut_date', ascending: false);
+          .not('closed_at', 'is', null)
+          .order('opened_at', ascending: false);
       if (!mounted) return;
       final rows = (data as List)
           .cast<Map<String, dynamic>>()
@@ -291,6 +298,7 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
 
     final payload = <String, dynamic>{
       'cut_date': result.date.toIso8601String().split('T').first,
+      'opened_at': (result.openedAt ?? result.date.toUtc()).toIso8601String(),
       'opening_cash': result.openingCash,
       'sales_total': result.salesTotal,
       'purchases_total': result.purchasesTotal,
@@ -305,7 +313,14 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
     };
 
     try {
-      await _supa.from('men_cash_cuts').upsert(payload, onConflict: 'cut_date');
+      if ((initial?.id ?? '').isEmpty) {
+        await _supa.from('men_cash_cuts').insert(payload);
+      } else {
+        await _supa
+            .from('men_cash_cuts')
+            .update(payload)
+            .eq('id', initial!.id!);
+      }
       await _loadCuts();
     } catch (error) {
       if (!mounted) return;
@@ -987,6 +1002,8 @@ class _CashCutEditorDialogState extends State<_CashCutEditorDialog> {
       _CashCutRow(
         id: widget.initial?.id,
         date: _parseUiDate(_dateC.text),
+        openedAt: widget.initial?.openedAt ?? _parseUiDate(_dateC.text).toUtc(),
+        closedAt: widget.initial?.closedAt,
         openingCash: _parseMoney(_openingC),
         salesTotal: _parseMoney(_salesC),
         purchasesTotal: _parseMoney(_purchasesC),
@@ -2162,43 +2179,81 @@ class _CashCutsBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFF7EDE6), Color(0xFFD8C1B0), Color(0xFFA88973)],
+    final tokens = AreaThemeScope.of(context);
+
+    Widget blurCircle(double size, Gradient gradient) {
+      return DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: gradient,
+          boxShadow: [
+            BoxShadow(
+              blurRadius: size * 0.12,
+              spreadRadius: size * 0.02,
+              color: Colors.white.withValues(alpha: 0.18),
+            ),
+          ],
         ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned(
-            top: -120,
-            right: -40,
-            child: Container(
-              width: 340,
-              height: 340,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFFD89A5C),
-              ),
+        child: SizedBox(width: size, height: size),
+      );
+    }
+
+    return Stack(
+      children: [
+        DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                tokens.surfaceTint,
+                tokens.primarySoft.withValues(alpha: 0.9),
+                tokens.accent.withValues(alpha: 0.38),
+              ],
             ),
           ),
-          Positioned(
-            left: -120,
-            bottom: -160,
-            child: Container(
-              width: 460,
-              height: 460,
-              decoration: const BoxDecoration(
-                shape: BoxShape.circle,
-                color: Color(0xFFE4BCA7),
-              ),
+          child: const SizedBox.expand(),
+        ),
+        Positioned(
+          left: -260,
+          top: -110,
+          child: blurCircle(
+            760,
+            LinearGradient(
+              colors: [
+                Colors.white.withValues(alpha: 0.92),
+                tokens.primarySoft.withValues(alpha: 0.94),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+        Positioned(
+          right: -210,
+          top: -70,
+          child: blurCircle(
+            620,
+            LinearGradient(
+              colors: [
+                tokens.accent.withValues(alpha: 0.82),
+                tokens.glow.withValues(alpha: 0.44),
+              ],
+            ),
+          ),
+        ),
+        Positioned(
+          left: 20,
+          bottom: -250,
+          child: blurCircle(
+            620,
+            LinearGradient(
+              colors: [
+                tokens.primarySoft.withValues(alpha: 0.78),
+                Colors.white.withValues(alpha: 0.44),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 }

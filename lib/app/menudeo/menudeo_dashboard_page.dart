@@ -73,25 +73,32 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
 
   Future<void> _loadDashboardData() async {
     setState(() => _loadingDashboard = true);
-    final today = DateTime.now();
-    final todayIso = _toIsoDate(today);
     try {
+      final openCutRows = await _supa
+          .from('vw_men_cash_cuts_grid')
+          .select('*')
+          .isFilter('closed_at', null)
+          .order('opened_at', ascending: false)
+          .limit(1);
+      final currentCutRows = (openCutRows as List).cast<Map<String, dynamic>>();
+      final currentCut = currentCutRows.isEmpty ? null : currentCutRows.first;
+      final currentCutId = currentCut?['id']?.toString();
+
       final results = await Future.wait<dynamic>([
-        _supa
-            .from('vw_men_tickets_grid')
-            .select(
-              'amount_total,direction,status,payable_weight,material_label_snapshot,counterparty_name_snapshot',
-            )
-            .eq('ticket_date', todayIso),
-        _supa
-            .from('vw_men_cash_vouchers_grid')
-            .select('total_amount,voucher_type')
-            .eq('voucher_date', todayIso),
-        _supa
-            .from('vw_men_cash_cuts_grid')
-            .select('*')
-            .eq('cut_date', todayIso)
-            .limit(1),
+        currentCutId == null
+            ? Future.value(<Map<String, dynamic>>[])
+            : _supa
+                  .from('vw_men_tickets_grid')
+                  .select(
+                    'amount_total,direction,status,payable_weight,material_label_snapshot,counterparty_name_snapshot',
+                  )
+                  .eq('cash_cut_id', currentCutId),
+        currentCutId == null
+            ? Future.value(<Map<String, dynamic>>[])
+            : _supa
+                  .from('vw_men_cash_vouchers_grid')
+                  .select('total_amount,voucher_type')
+                  .eq('cash_cut_id', currentCutId),
         _supa
             .from('men_cash_cut_checks')
             .select(
@@ -104,9 +111,8 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
 
       final ticketRows = (results[0] as List).cast<Map<String, dynamic>>();
       final voucherRows = (results[1] as List).cast<Map<String, dynamic>>();
-      final cutRows = (results[2] as List).cast<Map<String, dynamic>>();
-      final pendingRows = (results[3] as List).cast<Map<String, dynamic>>();
-      final priceRows = (results[4] as List).cast<Map<String, dynamic>>();
+      final pendingRows = (results[2] as List).cast<Map<String, dynamic>>();
+      final priceRows = (results[3] as List).cast<Map<String, dynamic>>();
 
       double sales = 0;
       double purchases = 0;
@@ -142,9 +148,9 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       }
 
       if (!mounted) return;
-      final baseCut = cutRows.isEmpty
-          ? _MenudeoCashCutDraft.forDate(today)
-          : _MenudeoCashCutDraft.fromMap(cutRows.first);
+      final baseCut = currentCut == null
+          ? _MenudeoCashCutDraft.forDate(DateTime.now())
+          : _MenudeoCashCutDraft.fromMap(currentCut);
       final purchaseMaterialRows = _buildTopWeightRows(
         ticketRows: ticketRows,
         labelField: 'material_label_snapshot',
@@ -187,7 +193,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         _purchaseMaterialRows = const <_DashboardWeightRow>[];
         _purchaseProviderRows = const <_DashboardWeightRow>[];
         _priceReferenceRows = const <_DashboardPriceReferenceRow>[];
-        _todayCut = _MenudeoCashCutDraft.forDate(today);
+        _todayCut = _MenudeoCashCutDraft.forDate(DateTime.now());
         _pendingChecks = const <_PendingCashCheck>[];
         _loadingDashboard = false;
       });
@@ -352,6 +358,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     final difference = result.countedCashTotal - theoreticalCash;
     final payload = <String, dynamic>{
       'cut_date': _toIsoDate(result.date),
+      'opened_at': (result.openedAt ?? DateTime.now()).toIso8601String(),
       'opening_cash': result.openingCash,
       'sales_total': _salesToday,
       'purchases_total': _purchasesToday,
@@ -366,7 +373,11 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     };
 
     try {
-      await _supa.from('men_cash_cuts').upsert(payload, onConflict: 'cut_date');
+      if ((result.id ?? '').isEmpty) {
+        await _supa.from('men_cash_cuts').insert(payload);
+      } else {
+        await _supa.from('men_cash_cuts').update(payload).eq('id', result.id!);
+      }
       await _loadDashboardData();
     } catch (error) {
       if (!mounted) return;
@@ -379,13 +390,13 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     }
   }
 
-  Future<String> _ensureTodayCutId({
+  Future<String> _ensureCurrentCutId({
+    required String? existingId,
+    required DateTime openedAt,
     required double openingCash,
     required double countedCashTotal,
     required String notes,
   }) async {
-    final today = DateTime.now();
-    final todayIso = _toIsoDate(today);
     final theoreticalCash =
         openingCash +
         _salesToday +
@@ -393,14 +404,9 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         _purchasesToday -
         _expensesToday;
     final difference = countedCashTotal - theoreticalCash;
-    final existingRows = await _supa
-        .from('men_cash_cuts')
-        .select('id')
-        .eq('cut_date', todayIso)
-        .limit(1);
-    final existing = (existingRows as List).cast<Map<String, dynamic>>();
     final payload = <String, dynamic>{
-      'cut_date': todayIso,
+      'cut_date': _toIsoDate(openedAt),
+      'opened_at': openedAt.toIso8601String(),
       'opening_cash': openingCash,
       'sales_total': _salesToday,
       'purchases_total': _purchasesToday,
@@ -411,7 +417,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       'difference_total': difference,
       'notes': notes,
     };
-    if (existing.isEmpty) {
+    if ((existingId ?? '').isEmpty) {
       final inserted = await _supa
           .from('men_cash_cuts')
           .insert(payload)
@@ -419,7 +425,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
           .single();
       return (inserted['id'] ?? '').toString();
     }
-    final cashCutId = (existing.first['id'] ?? '').toString();
+    final cashCutId = existingId!;
     await _supa.from('men_cash_cuts').update(payload).eq('id', cashCutId);
     return cashCutId;
   }
@@ -439,15 +445,27 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     );
     if (capture == null || !mounted) return;
 
+    final currentCutId = base.id;
+    if ((currentCutId ?? '').isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Primero abre una caja para iniciar el bloque activo.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    final currentCutIdValue = currentCutId!;
+
     try {
-      final todayIso = _toIsoDate(base.date);
       final results = await Future.wait<dynamic>([
         _supa
             .from('vw_men_cash_vouchers_grid')
             .select(
               'id,folio,person_label,rubric,concepts_preview,total_amount',
             )
-            .eq('voucher_date', todayIso)
+            .eq('cash_cut_id', currentCutIdValue)
             .eq('voucher_type', 'expense')
             .order('folio_sort', ascending: true)
             .order('folio', ascending: true),
@@ -456,7 +474,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
             .select(
               'id,folio,person_label,rubric,concepts_preview,total_amount',
             )
-            .eq('voucher_date', todayIso)
+            .eq('cash_cut_id', currentCutIdValue)
             .eq('voucher_type', 'deposit')
             .order('folio_sort', ascending: true)
             .order('folio', ascending: true),
@@ -465,7 +483,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
             .select(
               'id,ticket_number,counterparty_name_snapshot,material_label_snapshot,amount_total',
             )
-            .eq('ticket_date', todayIso)
+            .eq('cash_cut_id', currentCutIdValue)
             .eq('direction', 'sale')
             .order('ticket_number', ascending: true),
         _supa
@@ -473,7 +491,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
             .select(
               'id,ticket_number,counterparty_name_snapshot,material_label_snapshot,amount_total',
             )
-            .eq('ticket_date', todayIso)
+            .eq('cash_cut_id', currentCutIdValue)
             .eq('direction', 'purchase')
             .order('ticket_number', ascending: true),
       ]);
@@ -590,7 +608,9 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       );
       if (review == null || !mounted) return;
 
-      final cashCutId = await _ensureTodayCutId(
+      final cashCutId = await _ensureCurrentCutId(
+        existingId: base.id,
+        openedAt: base.openedAt ?? DateTime.now(),
         openingCash: base.openingCash,
         countedCashTotal: capture.countedCashTotal,
         notes: capture.notes,
@@ -1048,7 +1068,7 @@ class _MenudeoBody extends StatelessWidget {
                       _MenudeoMetricCard(
                         width: cardWidth,
                         icon: Icons.shopping_basket_rounded,
-                        title: 'Compra de hoy',
+                        title: 'Compra del bloque',
                         value: loadingDashboard
                             ? 'Cargando...'
                             : _money(purchasesToday),
@@ -1059,7 +1079,7 @@ class _MenudeoBody extends StatelessWidget {
                       _MenudeoMetricCard(
                         width: cardWidth,
                         icon: Icons.point_of_sale_rounded,
-                        title: 'Venta de hoy',
+                        title: 'Venta del bloque',
                         value: loadingDashboard
                             ? 'Cargando...'
                             : _money(salesToday),
@@ -1070,7 +1090,7 @@ class _MenudeoBody extends StatelessWidget {
                       _MenudeoMetricCard(
                         width: cardWidth,
                         icon: Icons.account_balance_wallet_rounded,
-                        title: 'Gastos de hoy',
+                        title: 'Gastos del bloque',
                         value: loadingDashboard
                             ? 'Cargando...'
                             : _money(expensesToday),
@@ -1081,7 +1101,7 @@ class _MenudeoBody extends StatelessWidget {
                       _MenudeoMetricCard(
                         width: cardWidth,
                         icon: Icons.savings_rounded,
-                        title: 'Depósitos de hoy',
+                        title: 'Depósitos del bloque',
                         value: loadingDashboard
                             ? 'Cargando...'
                             : _money(depositsToday),
@@ -1545,7 +1565,10 @@ class _MenudeoInsightCardState extends State<_MenudeoInsightCard> {
 }
 
 class _MenudeoCashCutDraft {
+  final String? id;
   final DateTime date;
+  final DateTime? openedAt;
+  final DateTime? closedAt;
   final double openingCash;
   final double depositsTotal;
   final double expensesTotal;
@@ -1557,7 +1580,10 @@ class _MenudeoCashCutDraft {
   final String notes;
 
   const _MenudeoCashCutDraft({
+    required this.id,
     required this.date,
+    required this.openedAt,
+    required this.closedAt,
     required this.openingCash,
     required this.depositsTotal,
     required this.expensesTotal,
@@ -1571,7 +1597,10 @@ class _MenudeoCashCutDraft {
 
   factory _MenudeoCashCutDraft.forDate(DateTime date) {
     return _MenudeoCashCutDraft(
+      id: null,
       date: DateTime(date.year, date.month, date.day),
+      openedAt: null,
+      closedAt: null,
       openingCash: 0,
       depositsTotal: 0,
       expensesTotal: 0,
@@ -1589,9 +1618,14 @@ class _MenudeoCashCutDraft {
         double.tryParse((value ?? '').toString()) ?? 0;
 
     return _MenudeoCashCutDraft(
+      id: row['id']?.toString(),
       date:
-          DateTime.tryParse((row['cut_date'] ?? '').toString()) ??
+          DateTime.tryParse(
+            (row['opened_at'] ?? row['cut_date'] ?? '').toString(),
+          ) ??
           DateTime.now(),
+      openedAt: DateTime.tryParse((row['opened_at'] ?? '').toString()),
+      closedAt: DateTime.tryParse((row['closed_at'] ?? '').toString()),
       openingCash: parseNum(row['opening_cash']),
       depositsTotal: parseNum(row['deposits_total']),
       expensesTotal: parseNum(row['expenses_total']),
@@ -1606,7 +1640,10 @@ class _MenudeoCashCutDraft {
   }
 
   _MenudeoCashCutDraft copyWith({
+    String? id,
     DateTime? date,
+    DateTime? openedAt,
+    DateTime? closedAt,
     double? openingCash,
     double? depositsTotal,
     double? expensesTotal,
@@ -1618,7 +1655,10 @@ class _MenudeoCashCutDraft {
     String? notes,
   }) {
     return _MenudeoCashCutDraft(
+      id: id ?? this.id,
       date: date ?? this.date,
+      openedAt: openedAt ?? this.openedAt,
+      closedAt: closedAt ?? this.closedAt,
       openingCash: openingCash ?? this.openingCash,
       depositsTotal: depositsTotal ?? this.depositsTotal,
       expensesTotal: expensesTotal ?? this.expensesTotal,

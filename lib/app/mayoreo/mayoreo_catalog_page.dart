@@ -17,6 +17,7 @@ import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../services/inventory_movements_grid.dart';
+import 'mayoreo_accounts_page.dart';
 import 'mayoreo_dashboard_preview_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
@@ -379,6 +380,13 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
     );
   }
 
+  Future<void> _openAccounts() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const MayoreoAccountsPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _openDirectionDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -401,6 +409,10 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
       case 'Ventas Mayoreo':
         if (_menuOpen) setState(() => _menuOpen = false);
         unawaited(_openSalesReports());
+        return;
+      case 'Cuentas':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openAccounts());
         return;
       case 'Catálogo':
         if (_menuOpen) setState(() => _menuOpen = false);
@@ -4420,6 +4432,13 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
                       title: 'Ventas',
                       subtitle: 'Pedidos y cierre comercial',
                       onTap: () async => onNavigate('Ventas Mayoreo'),
+                    ),
+                    const SizedBox(height: 8),
+                    _MayoreoCatalogNavItem(
+                      icon: Icons.account_balance_wallet_outlined,
+                      title: 'Cuentas',
+                      subtitle: 'Factura, cheque y cobranza',
+                      onTap: () async => onNavigate('Cuentas'),
                     ),
                     const SizedBox(height: 8),
                     _MayoreoCatalogNavItem(

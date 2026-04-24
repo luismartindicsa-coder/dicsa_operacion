@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher_string.dart';
 
 import '../auth/auth_access.dart';
 import '../dashboard/general_dashboard_page.dart';
@@ -27,6 +28,7 @@ import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/number_formatters.dart';
+import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
 import 'mayoreo_dashboard_preview_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
@@ -336,10 +338,32 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
     );
   }
 
+  Future<void> _openAccounts() async {
+    if (!mounted) return;
+    await Navigator.of(
+      context,
+    ).push(appPageRoute(page: const MayoreoAccountsPage(instantOpen: true)));
+  }
+
   Future<void> _openDirectionDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const GeneralDashboardPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openMailHostinger() async {
+    const url = 'https://mail.hostinger.com/';
+    final opened = await launchUrlString(
+      url,
+      mode: LaunchMode.externalApplication,
+    );
+    if (opened || !mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('No se pudo abrir mail.hostinger.com'),
+        behavior: SnackBarBehavior.floating,
+      ),
     );
   }
 
@@ -353,6 +377,10 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
         return;
       case 'Ventas Mayoreo':
         if (_menuOpen) setState(() => _menuOpen = false);
+        return;
+      case 'Cuentas':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openAccounts());
         return;
       case 'Catálogo':
         if (_menuOpen) setState(() => _menuOpen = false);
@@ -1830,10 +1858,22 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
               onTapSync: () => setState(() => _menuOpen = !_menuOpen),
             ),
             centerBuilder: (_, _) => const _SalesHeaderBrand(),
-            trailingBuilder: (_, _) => _SalesHeaderButton(
-              label: 'Cerrar sesión',
-              icon: Icons.logout_rounded,
-              onTap: () async {},
+            trailingBuilder: (_, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _SalesHeaderButton(
+                  label: 'Correo',
+                  icon: Icons.mail_outline_rounded,
+                  compact: true,
+                  onTap: _openMailHostinger,
+                ),
+                const SizedBox(width: 10),
+                _SalesHeaderButton(
+                  label: 'Cerrar sesión',
+                  icon: Icons.logout_rounded,
+                  onTap: () async {},
+                ),
+              ],
             ),
             child: Stack(
               children: [
@@ -3180,12 +3220,14 @@ class _SalesHeaderButton extends StatefulWidget {
   final IconData icon;
   final Future<void> Function()? onTap;
   final VoidCallback? onTapSync;
+  final bool compact;
 
   const _SalesHeaderButton({
     required this.label,
     required this.icon,
     this.onTap,
     this.onTapSync,
+    this.compact = false,
   });
 
   @override
@@ -3228,7 +3270,12 @@ class _SalesHeaderButtonState extends State<_SalesHeaderButton> {
                 highlighted ? -2.5 : 0,
                 0,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              padding: EdgeInsets.symmetric(
+                horizontal: widget.compact ? 0 : 18,
+                vertical: widget.compact ? 0 : 14,
+              ),
+              width: widget.compact ? 48 : 158,
+              height: 48,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -3259,16 +3306,36 @@ class _SalesHeaderButtonState extends State<_SalesHeaderButton> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(widget.icon, color: tokens.primaryStrong),
-                  const SizedBox(width: 10),
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      color: tokens.primaryStrong,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                  if (widget.compact)
+                    Expanded(
+                      child: Center(
+                        child: Icon(
+                          widget.icon,
+                          size: 18,
+                          color: tokens.primaryStrong,
+                        ),
+                      ),
+                    )
+                  else ...[
+                    Icon(widget.icon, size: 24, color: tokens.primaryStrong),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(
+                          widget.label,
+                          maxLines: 1,
+                          softWrap: false,
+                          style: TextStyle(
+                            color: tokens.primaryStrong,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
@@ -3335,6 +3402,13 @@ class _SalesSidePanel extends StatelessWidget {
                       title: 'Ventas',
                       subtitle: 'Reporte inicial de salidas',
                       accented: true,
+                    ),
+                    const SizedBox(height: 8),
+                    _SalesNavItem(
+                      icon: Icons.account_balance_wallet_outlined,
+                      title: 'Cuentas',
+                      subtitle: 'Factura, cheque y cobranza',
+                      onTapSync: () => onNavigate('Cuentas'),
                     ),
                     const SizedBox(height: 8),
                     _SalesNavItem(

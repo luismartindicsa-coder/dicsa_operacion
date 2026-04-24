@@ -1,20 +1,27 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../auth/auth_access.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/number_formatters.dart';
+import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
 import 'mayoreo_theme.dart';
+
+const String _kMayoreoDashboardPendingPrefsKey =
+    'mayoreo_dashboard_pending_items_v1';
 
 class MayoreoDashboardPreviewPage extends StatefulWidget {
   final bool instantOpen;
@@ -30,11 +37,13 @@ class _MayoreoDashboardPreviewPageState
     extends State<MayoreoDashboardPreviewPage> {
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
+  List<_MayoreoPendingTask> _pendingTasks = const <_MayoreoPendingTask>[];
 
   @override
   void initState() {
     super.initState();
     unawaited(_resolveNavigationAccess());
+    unawaited(_loadPendingTasks());
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -43,6 +52,35 @@ class _MayoreoDashboardPreviewPageState
     setState(() {
       _canReturnToDirection = AuthAccess.isDirectionRole(profile);
     });
+  }
+
+  Future<void> _loadPendingTasks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_kMayoreoDashboardPendingPrefsKey);
+    if (raw == null || raw.trim().isEmpty) return;
+    try {
+      final decoded = jsonDecode(raw) as List<dynamic>;
+      final tasks = decoded
+          .whereType<Map>()
+          .map(
+            (item) => _MayoreoPendingTask.fromJson(
+              Map<String, dynamic>.from(item.cast<String, dynamic>()),
+            ),
+          )
+          .toList(growable: false);
+      if (!mounted) return;
+      setState(() => _pendingTasks = tasks);
+    } catch (_) {}
+  }
+
+  Future<void> _persistPendingTasks() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(
+      _kMayoreoDashboardPendingPrefsKey,
+      jsonEncode(
+        _pendingTasks.map((task) => task.toJson()).toList(growable: false),
+      ),
+    );
   }
 
   Future<void> _openDirectionDashboard() async {
@@ -85,6 +123,17 @@ class _MayoreoDashboardPreviewPageState
     );
   }
 
+  Future<void> _openAccounts() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const MayoreoAccountsPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   void _showStub(String label) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -95,6 +144,23 @@ class _MayoreoDashboardPreviewPageState
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  Future<void> _openPendingTasksDialog() async {
+    final nextTasks = await showDialog<List<_MayoreoPendingTask>>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) => AreaThemeScope(
+        tokens: mayoreoAreaTokens,
+        child: _MayoreoPendingTasksDialog(
+          initialTasks: _pendingTasks,
+          defaultSource: _canReturnToDirection ? 'DIRECCION' : 'VENTAS',
+        ),
+      ),
+    );
+    if (!mounted || nextTasks == null) return;
+    setState(() => _pendingTasks = nextTasks);
+    await _persistPendingTasks();
   }
 
   void _handleNavigationAction(String label) {
@@ -108,6 +174,10 @@ class _MayoreoDashboardPreviewPageState
       case 'Ventas Mayoreo':
         if (_menuOpen) setState(() => _menuOpen = false);
         unawaited(_openSalesReports());
+        return;
+      case 'Cuentas':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openAccounts());
         return;
       case 'Catálogo':
         if (_menuOpen) setState(() => _menuOpen = false);
@@ -125,6 +195,7 @@ class _MayoreoDashboardPreviewPageState
 
   @override
   Widget build(BuildContext context) {
+    final openPendingCount = _pendingTasks.where((task) => !task.isDone).length;
     return AreaThemeScope(
       tokens: mayoreoAreaTokens,
       child: Focus(
@@ -156,13 +227,8 @@ class _MayoreoDashboardPreviewPageState
               _MayoreoHeaderButton(
                 label: 'Pendientes',
                 icon: Icons.notifications_none_rounded,
-                onTap: () async {},
-              ),
-              const SizedBox(width: 10),
-              _MayoreoHeaderButton(
-                label: 'Reportes',
-                icon: Icons.assessment_outlined,
-                onTap: () async {},
+                notificationCount: openPendingCount,
+                onTap: _openPendingTasksDialog,
               ),
               const SizedBox(width: 10),
               _MayoreoHeaderButton(
@@ -175,8 +241,10 @@ class _MayoreoDashboardPreviewPageState
           child: Stack(
             children: [
               _MayoreoPreviewBody(
+                onOpenAccounts: _openAccounts,
                 onOpenCatalog: _openCatalog,
                 onOpenPriceAdjustments: _openPriceAdjustments,
+                pendingTasks: _pendingTasks,
               ),
               Positioned.fill(
                 child: IgnorePointer(
@@ -364,12 +432,16 @@ class _MayoreoHeaderBrand extends StatelessWidget {
 }
 
 class _MayoreoPreviewBody extends StatelessWidget {
+  final Future<void> Function() onOpenAccounts;
   final Future<void> Function() onOpenCatalog;
   final Future<void> Function() onOpenPriceAdjustments;
+  final List<_MayoreoPendingTask> pendingTasks;
 
   const _MayoreoPreviewBody({
+    required this.onOpenAccounts,
     required this.onOpenCatalog,
     required this.onOpenPriceAdjustments,
+    required this.pendingTasks,
   });
 
   @override
@@ -384,6 +456,7 @@ class _MayoreoPreviewBody extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               _MayoreoActionTopBar(
+                onOpenAccounts: onOpenAccounts,
                 onOpenCatalog: onOpenCatalog,
                 onOpenPriceAdjustments: onOpenPriceAdjustments,
               ),
@@ -450,7 +523,7 @@ class _MayoreoPreviewBody extends StatelessWidget {
                 },
               ),
               const SizedBox(height: 16),
-              const _MayoreoInsightGrid(),
+              _MayoreoInsightGrid(tasks: pendingTasks),
             ],
           ),
         ),
@@ -460,10 +533,12 @@ class _MayoreoPreviewBody extends StatelessWidget {
 }
 
 class _MayoreoActionTopBar extends StatelessWidget {
+  final Future<void> Function() onOpenAccounts;
   final Future<void> Function() onOpenCatalog;
   final Future<void> Function() onOpenPriceAdjustments;
 
   const _MayoreoActionTopBar({
+    required this.onOpenAccounts,
     required this.onOpenCatalog,
     required this.onOpenPriceAdjustments,
   });
@@ -480,6 +555,11 @@ class _MayoreoActionTopBar extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: [
+              _MayoreoHeroActionIconButton(
+                tooltip: 'Cuentas por cobrar',
+                icon: Icons.account_balance_wallet_outlined,
+                onTap: () async => onOpenAccounts(),
+              ),
               _MayoreoHeroActionIconButton(
                 tooltip: 'Abrir catálogo',
                 icon: Icons.inventory_2_outlined,
@@ -744,38 +824,26 @@ class _MayoreoMetricCardState extends State<_MayoreoMetricCard> {
 }
 
 class _MayoreoInsightGrid extends StatelessWidget {
-  const _MayoreoInsightGrid();
+  final List<_MayoreoPendingTask> tasks;
+
+  const _MayoreoInsightGrid({required this.tasks});
 
   @override
   Widget build(BuildContext context) {
+    final openTasks =
+        tasks.where((task) => !task.isDone).toList(growable: false)
+          ..sort((a, b) => a.dueDate.compareTo(b.dueDate));
     return LayoutBuilder(
       builder: (context, constraints) {
         final stacked = constraints.maxWidth < 980;
         final topRow = stacked
-            ? const Column(
+            ? Column(
                 children: [
                   _MayoreoInsightCard(
-                    child: _DashboardListBlock(
-                      title: 'Pendientes por atender',
-                      subtitle: 'Lo inmediato para liberar operación comercial',
-                      items: [
-                        _DashboardListItem(
-                          label: 'Facturas por pagar',
-                          value: '14',
-                        ),
-                        _DashboardListItem(
-                          label: 'Cheques por cambiar',
-                          value: '6',
-                        ),
-                        _DashboardListItem(
-                          label: 'Reportes por relacionar',
-                          value: '9',
-                        ),
-                      ],
-                    ),
+                    child: _MayoreoPendingPreviewBlock(tasks: openTasks),
                   ),
-                  SizedBox(height: 16),
-                  _MayoreoInsightCard(
+                  const SizedBox(height: 16),
+                  const _MayoreoInsightCard(
                     child: _DashboardListBlock(
                       title: 'Precios principales de chatarra',
                       subtitle: 'Mock inicial para definir lectura comercial',
@@ -792,34 +860,16 @@ class _MayoreoInsightGrid extends StatelessWidget {
                   ),
                 ],
               )
-            : const Row(
+            : Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
                     child: _MayoreoInsightCard(
-                      child: _DashboardListBlock(
-                        title: 'Pendientes por atender',
-                        subtitle:
-                            'Lo inmediato para liberar operación comercial',
-                        items: [
-                          _DashboardListItem(
-                            label: 'Facturas por pagar',
-                            value: '14',
-                          ),
-                          _DashboardListItem(
-                            label: 'Cheques por cambiar',
-                            value: '6',
-                          ),
-                          _DashboardListItem(
-                            label: 'Reportes por relacionar',
-                            value: '9',
-                          ),
-                        ],
-                      ),
+                      child: _MayoreoPendingPreviewBlock(tasks: openTasks),
                     ),
                   ),
-                  SizedBox(width: 16),
-                  Expanded(
+                  const SizedBox(width: 16),
+                  const Expanded(
                     child: _MayoreoInsightCard(
                       child: _DashboardListBlock(
                         title: 'Precios principales de chatarra',
@@ -1035,17 +1085,686 @@ class _DashboardListRow extends StatelessWidget {
 
 String _money(num value) => formatMoney(value);
 
+class _MayoreoPendingPreviewBlock extends StatelessWidget {
+  final List<_MayoreoPendingTask> tasks;
+
+  const _MayoreoPendingPreviewBlock({required this.tasks});
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = tasks.take(4).toList(growable: false);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Pendientes por atender',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: kMayoreoInk,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Text(
+          tasks.isEmpty
+              ? 'No hay pendientes activos. Usa el botón superior para capturar tareas nuevas.'
+              : '${tasks.length} pendientes abiertos capturados por Dirección o Ventas.',
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: kMayoreoMutedInk,
+            height: 1.45,
+          ),
+        ),
+        const SizedBox(height: 18),
+        if (preview.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.88),
+                  mayoreoAreaTokens.badgeBackground.withValues(alpha: 0.70),
+                ],
+              ),
+              borderRadius: BorderRadius.circular(20),
+              border: Border.all(
+                color: mayoreoAreaTokens.border.withValues(alpha: 0.84),
+              ),
+            ),
+            child: const Text(
+              'Sin pendientes activos.',
+              style: TextStyle(
+                fontSize: 13.5,
+                fontWeight: FontWeight.w800,
+                color: kMayoreoInk,
+              ),
+            ),
+          )
+        else
+          ...preview.map(
+            (task) => Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: _MayoreoPendingPreviewRow(task: task),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _MayoreoPendingPreviewRow extends StatelessWidget {
+  final _MayoreoPendingTask task;
+
+  const _MayoreoPendingPreviewRow({required this.task});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.88),
+            tokens.badgeBackground.withValues(alpha: 0.70),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: tokens.border.withValues(alpha: 0.84)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 10,
+            height: 10,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: task.source == 'DIRECCION'
+                  ? const Color(0xFFC78A00)
+                  : tokens.primaryStrong,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  task.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: kMayoreoInk,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${task.source} · ${_formatDashboardDate(task.dueDate)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: kMayoreoMutedInk,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MayoreoPendingTasksDialog extends StatefulWidget {
+  final List<_MayoreoPendingTask> initialTasks;
+  final String defaultSource;
+
+  const _MayoreoPendingTasksDialog({
+    required this.initialTasks,
+    required this.defaultSource,
+  });
+
+  @override
+  State<_MayoreoPendingTasksDialog> createState() =>
+      _MayoreoPendingTasksDialogState();
+}
+
+class _MayoreoPendingTasksDialogState
+    extends State<_MayoreoPendingTasksDialog> {
+  late final TextEditingController _titleC;
+  late List<_MayoreoPendingTask> _tasks;
+  late String _source;
+  DateTime? _dueDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _titleC = TextEditingController();
+    _tasks = widget.initialTasks.toList(growable: true);
+    _source = widget.defaultSource;
+  }
+
+  @override
+  void dispose() {
+    _titleC.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickDate() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dueDate ?? now,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 5),
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: ColorScheme.light(
+            primary: mayoreoAreaTokens.primaryStrong,
+            onPrimary: Colors.white,
+            surface: mayoreoAreaTokens.surfaceTint,
+            onSurface: kMayoreoInk,
+          ),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _dueDate = picked);
+  }
+
+  void _addTask() {
+    final title = _titleC.text.trim();
+    if (title.isEmpty || _dueDate == null) return;
+    setState(() {
+      _tasks = <_MayoreoPendingTask>[
+        _MayoreoPendingTask(
+          id: DateTime.now().microsecondsSinceEpoch.toString(),
+          title: title,
+          dueDate: _dueDate!,
+          source: _source,
+          isDone: false,
+        ),
+        ..._tasks,
+      ];
+      _titleC.clear();
+      _dueDate = null;
+      _source = widget.defaultSource;
+    });
+  }
+
+  void _toggleTask(String id) {
+    setState(() {
+      _tasks = _tasks
+          .map(
+            (task) =>
+                task.id == id ? task.copyWith(isDone: !task.isDone) : task,
+          )
+          .toList(growable: false);
+    });
+  }
+
+  void _removeTask(String id) {
+    setState(() {
+      _tasks = _tasks.where((task) => task.id != id).toList(growable: false);
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final openTasks = _tasks.where((task) => !task.isDone).length;
+    final doneTasks = _tasks.length - openTasks;
+    final sortedTasks = _tasks.toList(growable: false)
+      ..sort((a, b) {
+        if (a.isDone != b.isDone) return a.isDone ? 1 : -1;
+        return a.dueDate.compareTo(b.dueDate);
+      });
+
+    return ContractDialogShell(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 860, maxHeight: 720),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: _PendingTitleBlock(
+                      title: 'Pendientes',
+                      subtitle:
+                          'Lista operativa compartida entre Dirección y Ventas.',
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(_tasks),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: _PendingSummaryCard(
+                      label: 'Abiertos',
+                      value: '$openTasks',
+                      icon: Icons.pending_actions_rounded,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: _PendingSummaryCard(
+                      label: 'Hechos',
+                      value: '$doneTasks',
+                      icon: Icons.task_alt_rounded,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              ContractGlassCard(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Nuevo pendiente',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: kMayoreoInk,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextField(
+                      controller: _titleC,
+                      onChanged: (_) => setState(() {}),
+                      decoration: const InputDecoration(
+                        hintText: 'Escribe el pendiente',
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: mayoreoAreaTokens.primaryStrong,
+                              side: BorderSide(color: mayoreoAreaTokens.border),
+                              minimumSize: const Size.fromHeight(44),
+                            ),
+                            onPressed: _pickDate,
+                            icon: const Icon(Icons.calendar_month_rounded),
+                            label: Text(
+                              _dueDate == null
+                                  ? 'Fecha'
+                                  : _formatDashboardDate(_dueDate!),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        SegmentedButton<String>(
+                          segments: const [
+                            ButtonSegment<String>(
+                              value: 'DIRECCION',
+                              label: Text('Dirección'),
+                            ),
+                            ButtonSegment<String>(
+                              value: 'VENTAS',
+                              label: Text('Ventas'),
+                            ),
+                          ],
+                          selected: <String>{_source},
+                          onSelectionChanged: (next) {
+                            setState(() => _source = next.first);
+                          },
+                        ),
+                        const SizedBox(width: 10),
+                        FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: mayoreoAreaTokens.primaryStrong,
+                            foregroundColor: Colors.white,
+                            minimumSize: const Size(0, 44),
+                          ),
+                          onPressed:
+                              _titleC.text.trim().isEmpty || _dueDate == null
+                              ? null
+                              : _addTask,
+                          icon: const Icon(Icons.add_rounded),
+                          label: const Text('Agregar'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: ContractGlassCard(
+                  padding: const EdgeInsets.all(14),
+                  child: sortedTasks.isEmpty
+                      ? const Center(
+                          child: Text(
+                            'Todavía no hay pendientes capturados.',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color: kMayoreoMutedInk,
+                            ),
+                          ),
+                        )
+                      : ListView.separated(
+                          itemCount: sortedTasks.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final task = sortedTasks[index];
+                            return _PendingTaskRow(
+                              task: task,
+                              onToggleDone: () => _toggleTask(task.id),
+                              onDelete: () => _removeTask(task.id),
+                            );
+                          },
+                        ),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: mayoreoAreaTokens.primaryStrong,
+                      side: BorderSide(color: mayoreoAreaTokens.border),
+                    ),
+                    onPressed: () => Navigator.of(context).pop(_tasks),
+                    icon: const Icon(Icons.close_rounded),
+                    label: const Text('Cerrar'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PendingTitleBlock extends StatelessWidget {
+  final String title;
+  final String subtitle;
+
+  const _PendingTitleBlock({required this.title, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 48,
+          height: 48,
+          decoration: BoxDecoration(
+            gradient: kMayoreoHeroGradient,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: mayoreoAreaTokens.primaryStrong.withValues(alpha: 0.18),
+            ),
+          ),
+          child: Icon(
+            Icons.notifications_none_rounded,
+            color: mayoreoAreaTokens.primaryStrong,
+          ),
+        ),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: kMayoreoInk,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Text(
+                subtitle,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: kMayoreoMutedInk,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PendingSummaryCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _PendingSummaryCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      decoration: BoxDecoration(
+        gradient: kMayoreoPanelGradient,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: mayoreoAreaTokens.border.withValues(alpha: 0.8),
+        ),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, color: mayoreoAreaTokens.primaryStrong),
+          const SizedBox(width: 10),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: 0.5,
+                ),
+              ),
+              const SizedBox(height: 2),
+              Text(
+                value,
+                style: const TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PendingTaskRow extends StatelessWidget {
+  final _MayoreoPendingTask task;
+  final VoidCallback onToggleDone;
+  final VoidCallback onDelete;
+
+  const _PendingTaskRow({
+    required this.task,
+    required this.onToggleDone,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = task.source == 'DIRECCION'
+        ? const Color(0xFFC78A00)
+        : mayoreoAreaTokens.primaryStrong;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: mayoreoAreaTokens.border.withValues(alpha: 0.72),
+        ),
+      ),
+      child: Row(
+        children: [
+          InkWell(
+            onTap: onToggleDone,
+            borderRadius: BorderRadius.circular(999),
+            child: Container(
+              width: 26,
+              height: 26,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: task.isDone
+                    ? accent.withValues(alpha: 0.18)
+                    : Colors.transparent,
+                border: Border.all(color: accent, width: 1.4),
+              ),
+              child: task.isDone
+                  ? Icon(Icons.check_rounded, size: 16, color: accent)
+                  : null,
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  task.title,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w800,
+                    color: kMayoreoInk,
+                    decoration: task.isDone
+                        ? TextDecoration.lineThrough
+                        : TextDecoration.none,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  '${task.source} · ${_formatDashboardDate(task.dueDate)}',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: kMayoreoMutedInk,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          IconButton(
+            onPressed: onDelete,
+            icon: const Icon(Icons.delete_outline_rounded),
+            color: kMayoreoMutedInk,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MayoreoPendingTask {
+  final String id;
+  final String title;
+  final DateTime dueDate;
+  final String source;
+  final bool isDone;
+
+  const _MayoreoPendingTask({
+    required this.id,
+    required this.title,
+    required this.dueDate,
+    required this.source,
+    required this.isDone,
+  });
+
+  _MayoreoPendingTask copyWith({
+    String? id,
+    String? title,
+    DateTime? dueDate,
+    String? source,
+    bool? isDone,
+  }) {
+    return _MayoreoPendingTask(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      dueDate: dueDate ?? this.dueDate,
+      source: source ?? this.source,
+      isDone: isDone ?? this.isDone,
+    );
+  }
+
+  Map<String, dynamic> toJson() => <String, dynamic>{
+    'id': id,
+    'title': title,
+    'dueDate': dueDate.toIso8601String(),
+    'source': source,
+    'isDone': isDone,
+  };
+
+  factory _MayoreoPendingTask.fromJson(Map<String, dynamic> json) {
+    return _MayoreoPendingTask(
+      id: (json['id'] as String?) ?? '',
+      title: (json['title'] as String?) ?? '',
+      dueDate:
+          DateTime.tryParse((json['dueDate'] as String?) ?? '') ??
+          DateTime.now(),
+      source: ((json['source'] as String?) ?? 'VENTAS').toUpperCase(),
+      isDone: json['isDone'] == true,
+    );
+  }
+}
+
+String _formatDashboardDate(DateTime value) {
+  final day = value.day.toString().padLeft(2, '0');
+  final month = value.month.toString().padLeft(2, '0');
+  final year = value.year.toString();
+  return '$day/$month/$year';
+}
+
 class _MayoreoHeaderButton extends StatefulWidget {
   final String label;
   final IconData icon;
   final Future<void> Function()? onTap;
   final VoidCallback? onTapSync;
+  final int notificationCount;
 
   const _MayoreoHeaderButton({
     required this.label,
     required this.icon,
     this.onTap,
     this.onTapSync,
+    this.notificationCount = 0,
   });
 
   @override
@@ -1128,19 +1847,65 @@ class _MayoreoHeaderButtonState extends State<_MayoreoHeaderButton> {
                   ),
                 ],
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
+              child: Stack(
+                clipBehavior: Clip.none,
                 children: [
-                  Icon(widget.icon, color: tokens.primaryStrong),
-                  const SizedBox(width: 10),
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      color: tokens.primaryStrong,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(widget.icon, color: tokens.primaryStrong),
+                      const SizedBox(width: 10),
+                      Text(
+                        widget.label,
+                        style: TextStyle(
+                          color: tokens.primaryStrong,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ],
                   ),
+                  if (widget.notificationCount > 0)
+                    Positioned(
+                      right: -6,
+                      top: -8,
+                      child: Container(
+                        constraints: const BoxConstraints(
+                          minWidth: 18,
+                          minHeight: 18,
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 5),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFD92D20),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.92),
+                            width: 1.4,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              blurRadius: 12,
+                              color: const Color(
+                                0xFFD92D20,
+                              ).withValues(alpha: 0.26),
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Center(
+                          child: Text(
+                            widget.notificationCount > 9
+                                ? '9+'
+                                : '${widget.notificationCount}',
+                            style: const TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w900,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -1206,6 +1971,13 @@ class _MayoreoSidePanel extends StatelessWidget {
                       title: 'Ventas',
                       subtitle: 'Seguimiento de pedidos y cierre',
                       onTapSync: () => onNavigate('Ventas Mayoreo'),
+                    ),
+                    const SizedBox(height: 8),
+                    _MayoreoNavItem(
+                      icon: Icons.account_balance_wallet_outlined,
+                      title: 'Cuentas',
+                      subtitle: 'Facturas, cheques y cobranza',
+                      onTapSync: () => onNavigate('Cuentas'),
                     ),
                     const SizedBox(height: 8),
                     _MayoreoNavItem(
