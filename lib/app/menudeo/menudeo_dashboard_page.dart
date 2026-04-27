@@ -102,7 +102,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         _supa
             .from('men_cash_cut_checks')
             .select(
-              'id,source_type,source_folio,reason,is_verified,men_cash_cuts!inner(cut_date)',
+              'id,source_type,source_id,source_folio,reason,is_verified,men_cash_cuts!inner(id,cut_date)',
             )
             .eq('is_verified', false)
             .order('created_at'),
@@ -459,6 +459,9 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     final currentCutIdValue = currentCutId!;
 
     try {
+      final inheritedPendingBatches = await _buildInheritedPendingBatches(
+        currentCutIdValue,
+      );
       final results = await Future.wait<dynamic>([
         _supa
             .from('vw_men_cash_vouchers_grid')
@@ -497,6 +500,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       ]);
 
       final batches = <_CashCutReviewBatch>[
+        ...inheritedPendingBatches,
         _CashCutReviewBatch(
           label: 'Gastos',
           sourceType: 'expense_voucher',
@@ -604,9 +608,29 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
               _depositsToday -
               _purchasesToday -
               _expensesToday,
+          onOpenSourceEditor: _openSourceEditorFromCutFlow,
+          onRefreshTheoreticalCash: () => _loadTheoreticalCashForCut(
+            currentCutIdValue,
+            openingCash: base.openingCash,
+          ),
         ),
       );
       if (review == null || !mounted) return;
+
+      final theoreticalCash =
+          base.openingCash +
+          _salesToday +
+          _depositsToday -
+          _purchasesToday -
+          _expensesToday;
+      final difference = capture.countedCashTotal - theoreticalCash;
+      final finalizeCut = await _askFinalizeCashCut(
+        pendingCount: review.pendingCount,
+        countedCashTotal: capture.countedCashTotal,
+        theoreticalCash: theoreticalCash,
+        difference: difference,
+      );
+      if (finalizeCut == null || !mounted) return;
 
       final cashCutId = await _ensureCurrentCutId(
         existingId: base.id,
@@ -645,8 +669,10 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
           .from('men_cash_cuts')
           .update({
             'pending_checks_count': review.pendingCount,
-            'status': review.pendingCount == 0 ? 'CERRADO' : 'CON_PENDIENTES',
-            'closed_at': DateTime.now().toIso8601String(),
+            'status': finalizeCut
+                ? (review.pendingCount == 0 ? 'CERRADO' : 'CON_PENDIENTES')
+                : 'EN_CONCILIACION',
+            'closed_at': finalizeCut ? DateTime.now().toIso8601String() : null,
             'notes': capture.notes,
           })
           .eq('id', cashCutId);
@@ -656,9 +682,13 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            review.pendingCount == 0
-                ? 'Corte guardado y comprobado completo'
-                : 'Corte guardado con ${review.pendingCount} pendientes',
+            finalizeCut
+                ? review.pendingCount == 0
+                      ? 'Corte cerrado y comprobado completo'
+                      : 'Corte cerrado con ${review.pendingCount} pendientes'
+                : review.pendingCount == 0
+                ? 'Conciliacion guardada. Caja sigue abierta para seguir revisando.'
+                : 'Conciliacion guardada con ${review.pendingCount} pendientes. Caja sigue abierta.',
           ),
           behavior: SnackBarBehavior.floating,
         ),
@@ -672,6 +702,312 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         ),
       );
     }
+  }
+
+  Future<bool?> _askFinalizeCashCut({
+    required int pendingCount,
+    required double countedCashTotal,
+    required double theoreticalCash,
+    required double difference,
+  }) async {
+    if (!mounted) return null;
+    return showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.24),
+      builder: (context) => _CashCutFinalizeDialog(
+        pendingCount: pendingCount,
+        countedCashTotal: countedCashTotal,
+        theoreticalCash: theoreticalCash,
+        difference: difference,
+      ),
+    );
+  }
+
+  Future<List<_CashCutReviewBatch>> _buildInheritedPendingBatches(
+    String currentCutId,
+  ) async {
+    final rows = await _supa
+        .from('men_cash_cut_checks')
+        .select(
+          'source_type,source_id,source_folio,reason,men_cash_cuts!inner(id,cut_date)',
+        )
+        .eq('is_verified', false)
+        .neq('cash_cut_id', currentCutId)
+        .order('created_at');
+    final unresolved = (rows as List)
+        .cast<Map<String, dynamic>>()
+        .map(_PendingCashCheck.fromMap)
+        .where((item) => item.sourceId.isNotEmpty)
+        .toList(growable: false);
+    if (unresolved.isEmpty) {
+      return const <_CashCutReviewBatch>[];
+    }
+
+    final expenseIds = <String>[];
+    final depositIds = <String>[];
+    final saleIds = <String>[];
+    final purchaseIds = <String>[];
+    for (final item in unresolved) {
+      switch (item.sourceType) {
+        case 'expense_voucher':
+          expenseIds.add(item.sourceId);
+          break;
+        case 'deposit_voucher':
+          depositIds.add(item.sourceId);
+          break;
+        case 'sale_ticket':
+          saleIds.add(item.sourceId);
+          break;
+        case 'purchase_ticket':
+          purchaseIds.add(item.sourceId);
+          break;
+      }
+    }
+
+    final expenseRows = expenseIds.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : (await _supa
+                      .from('vw_men_cash_vouchers_grid')
+                      .select(
+                        'id,folio,person_label,rubric,concepts_preview,total_amount',
+                      )
+                      .inFilter('id', expenseIds)
+                  as List)
+              .cast<Map<String, dynamic>>();
+    final depositRows = depositIds.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : (await _supa
+                      .from('vw_men_cash_vouchers_grid')
+                      .select(
+                        'id,folio,person_label,rubric,concepts_preview,total_amount',
+                      )
+                      .inFilter('id', depositIds)
+                  as List)
+              .cast<Map<String, dynamic>>();
+    final saleRows = saleIds.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : (await _supa
+                      .from('vw_men_tickets_grid')
+                      .select(
+                        'id,ticket_number,counterparty_name_snapshot,material_label_snapshot,amount_total',
+                      )
+                      .inFilter('id', saleIds)
+                  as List)
+              .cast<Map<String, dynamic>>();
+    final purchaseRows = purchaseIds.isEmpty
+        ? const <Map<String, dynamic>>[]
+        : (await _supa
+                      .from('vw_men_tickets_grid')
+                      .select(
+                        'id,ticket_number,counterparty_name_snapshot,material_label_snapshot,amount_total',
+                      )
+                      .inFilter('id', purchaseIds)
+                  as List)
+              .cast<Map<String, dynamic>>();
+
+    final expenseById = {
+      for (final row in expenseRows) (row['id'] ?? '').toString(): row,
+    };
+    final depositById = {
+      for (final row in depositRows) (row['id'] ?? '').toString(): row,
+    };
+    final saleById = {
+      for (final row in saleRows) (row['id'] ?? '').toString(): row,
+    };
+    final purchaseById = {
+      for (final row in purchaseRows) (row['id'] ?? '').toString(): row,
+    };
+
+    final inheritedExpenses = <_CashCutReviewItem>[];
+    final inheritedDeposits = <_CashCutReviewItem>[];
+    final inheritedSales = <_CashCutReviewItem>[];
+    final inheritedPurchases = <_CashCutReviewItem>[];
+
+    for (final pending in unresolved) {
+      final inheritedDetail =
+          'Pendiente desde ${_toIsoDate(pending.cutDate)}'
+          '${pending.reason.isEmpty ? '' : ' · ${pending.reason}'}';
+      switch (pending.sourceType) {
+        case 'expense_voucher':
+          final row = expenseById[pending.sourceId];
+          if (row == null) continue;
+          inheritedExpenses.add(
+            _CashCutReviewItem(
+              sourceId: pending.sourceId,
+              sourceFolio: (row['folio'] ?? pending.sourceFolio).toString(),
+              sourceType: pending.sourceType,
+              title: (row['person_label'] ?? '').toString(),
+              subtitle: (row['rubric'] ?? '').toString(),
+              detail:
+                  '$inheritedDetail${(row['concepts_preview'] ?? '').toString().isEmpty ? '' : ' · ${(row['concepts_preview'] ?? '').toString()}'}',
+              amount:
+                  double.tryParse((row['total_amount'] ?? '').toString()) ?? 0,
+            ),
+          );
+          break;
+        case 'deposit_voucher':
+          final row = depositById[pending.sourceId];
+          if (row == null) continue;
+          inheritedDeposits.add(
+            _CashCutReviewItem(
+              sourceId: pending.sourceId,
+              sourceFolio: (row['folio'] ?? pending.sourceFolio).toString(),
+              sourceType: pending.sourceType,
+              title: (row['person_label'] ?? '').toString(),
+              subtitle: (row['rubric'] ?? '').toString(),
+              detail:
+                  '$inheritedDetail${(row['concepts_preview'] ?? '').toString().isEmpty ? '' : ' · ${(row['concepts_preview'] ?? '').toString()}'}',
+              amount:
+                  double.tryParse((row['total_amount'] ?? '').toString()) ?? 0,
+            ),
+          );
+          break;
+        case 'sale_ticket':
+          final row = saleById[pending.sourceId];
+          if (row == null) continue;
+          inheritedSales.add(
+            _CashCutReviewItem(
+              sourceId: pending.sourceId,
+              sourceFolio: (row['ticket_number'] ?? pending.sourceFolio)
+                  .toString(),
+              sourceType: pending.sourceType,
+              title: (row['counterparty_name_snapshot'] ?? '').toString(),
+              subtitle: (row['material_label_snapshot'] ?? '').toString(),
+              detail: inheritedDetail,
+              amount:
+                  double.tryParse((row['amount_total'] ?? '').toString()) ?? 0,
+            ),
+          );
+          break;
+        case 'purchase_ticket':
+          final row = purchaseById[pending.sourceId];
+          if (row == null) continue;
+          inheritedPurchases.add(
+            _CashCutReviewItem(
+              sourceId: pending.sourceId,
+              sourceFolio: (row['ticket_number'] ?? pending.sourceFolio)
+                  .toString(),
+              sourceType: pending.sourceType,
+              title: (row['counterparty_name_snapshot'] ?? '').toString(),
+              subtitle: (row['material_label_snapshot'] ?? '').toString(),
+              detail: inheritedDetail,
+              amount:
+                  double.tryParse((row['amount_total'] ?? '').toString()) ?? 0,
+            ),
+          );
+          break;
+      }
+    }
+
+    return <_CashCutReviewBatch>[
+      if (inheritedExpenses.isNotEmpty)
+        _CashCutReviewBatch(
+          label: 'Pendientes · Gastos',
+          sourceType: 'expense_voucher',
+          items: inheritedExpenses,
+        ),
+      if (inheritedDeposits.isNotEmpty)
+        _CashCutReviewBatch(
+          label: 'Pendientes · Depósitos',
+          sourceType: 'deposit_voucher',
+          items: inheritedDeposits,
+        ),
+      if (inheritedSales.isNotEmpty)
+        _CashCutReviewBatch(
+          label: 'Pendientes · Ventas',
+          sourceType: 'sale_ticket',
+          items: inheritedSales,
+        ),
+      if (inheritedPurchases.isNotEmpty)
+        _CashCutReviewBatch(
+          label: 'Pendientes · Compras',
+          sourceType: 'purchase_ticket',
+          items: inheritedPurchases,
+        ),
+    ];
+  }
+
+  Future<double> _loadTheoreticalCashForCut(
+    String cutId, {
+    required double openingCash,
+  }) async {
+    final results = await Future.wait<dynamic>([
+      _supa
+          .from('vw_men_tickets_grid')
+          .select('amount_total,direction,status')
+          .eq('cash_cut_id', cutId),
+      _supa
+          .from('vw_men_cash_vouchers_grid')
+          .select('total_amount,voucher_type')
+          .eq('cash_cut_id', cutId),
+    ]);
+
+    final ticketRows = (results[0] as List).cast<Map<String, dynamic>>();
+    final voucherRows = (results[1] as List).cast<Map<String, dynamic>>();
+
+    double sales = 0;
+    double purchases = 0;
+    double deposits = 0;
+    double expenses = 0;
+
+    for (final row in ticketRows) {
+      final amount =
+          double.tryParse((row['amount_total'] ?? '').toString()) ?? 0;
+      final direction = (row['direction'] ?? '').toString();
+      final status = (row['status'] ?? '').toString().toUpperCase();
+      if (status != 'PAGADO') continue;
+      if (direction == 'sale') {
+        sales += amount;
+      } else {
+        purchases += amount;
+      }
+    }
+
+    for (final row in voucherRows) {
+      final amount =
+          double.tryParse((row['total_amount'] ?? '').toString()) ?? 0;
+      final type = (row['voucher_type'] ?? '').toString();
+      if (type == 'deposit') {
+        deposits += amount;
+      } else if (type == 'expense') {
+        expenses += amount;
+      }
+    }
+
+    return openingCash + sales + deposits - purchases - expenses;
+  }
+
+  Future<void> _openSourceEditorFromCutFlow(_CashCutReviewItem item) async {
+    if (!mounted) return;
+    if (item.sourceType == 'expense_voucher' ||
+        item.sourceType == 'deposit_voucher') {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: MenudeoDepositsExpensesPage(
+            instantOpen: true,
+            initialVoucherId: item.sourceId,
+          ),
+          duration: const Duration(milliseconds: 300),
+          reverseDuration: const Duration(milliseconds: 220),
+        ),
+      );
+      return;
+    }
+
+    final flow = item.sourceType == 'sale_ticket'
+        ? MenudeoTicketFlow.sale
+        : MenudeoTicketFlow.purchase;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: MenudeoTicketsPage(
+          instantOpen: true,
+          flow: flow,
+          initialTicketId: item.sourceId,
+        ),
+        duration: const Duration(milliseconds: 300),
+        reverseDuration: const Duration(milliseconds: 220),
+      ),
+    );
   }
 
   Future<bool?> _openPendingChecksDialog() async {
@@ -1045,6 +1381,7 @@ class _MenudeoBody extends StatelessWidget {
             children: [
               _MenudeoDashboardTopBar(
                 totalCash: loadingDashboard ? 'Cargando...' : _money(totalCash),
+                cutStatus: cut?.status ?? 'ABIERTO',
                 onOpenCashCuts: onOpenCashCuts,
                 onOpenOpening: onOpenOpening,
                 onOpenCut: onOpenCut,
@@ -1136,12 +1473,14 @@ class _MenudeoBody extends StatelessWidget {
 
 class _MenudeoDashboardTopBar extends StatelessWidget {
   final String totalCash;
+  final String cutStatus;
   final Future<void> Function() onOpenCashCuts;
   final Future<void> Function() onOpenOpening;
   final Future<void> Function() onOpenCut;
 
   const _MenudeoDashboardTopBar({
     required this.totalCash,
+    required this.cutStatus,
     required this.onOpenCashCuts,
     required this.onOpenOpening,
     required this.onOpenCut,
@@ -1166,7 +1505,9 @@ class _MenudeoDashboardTopBar extends StatelessWidget {
                 onTap: () => unawaited(onOpenOpening()),
               ),
               _MenudeoHeroActionIconButton(
-                tooltip: 'Hacer corte',
+                tooltip: cutStatus == 'EN_CONCILIACION'
+                    ? 'Reanudar conciliacion'
+                    : 'Hacer corte',
                 icon: Icons.request_quote_rounded,
                 onTap: () => unawaited(onOpenCut()),
               ),
@@ -2194,16 +2535,20 @@ ButtonStyle _dashboardCutSegmentedStyle(ContractAreaTokens tokens) {
 }
 
 class _PendingCashCheck {
+  final String sourceId;
   final String sourceType;
   final String sourceFolio;
   final String reason;
   final DateTime cutDate;
+  final String cashCutId;
 
   const _PendingCashCheck({
+    required this.sourceId,
     required this.sourceType,
     required this.sourceFolio,
     required this.reason,
     required this.cutDate,
+    required this.cashCutId,
   });
 
   factory _PendingCashCheck.fromMap(Map<String, dynamic> row) {
@@ -2218,12 +2563,14 @@ class _PendingCashCheck {
       }
     }
     return _PendingCashCheck(
+      sourceId: (row['source_id'] ?? '').toString(),
       sourceType: (row['source_type'] ?? '').toString(),
       sourceFolio: (row['source_folio'] ?? '').toString(),
       reason: (row['reason'] ?? '').toString(),
       cutDate:
           DateTime.tryParse((cashCut?['cut_date'] ?? '').toString()) ??
           DateTime.now(),
+      cashCutId: (cashCut?['id'] ?? '').toString(),
     );
   }
 
@@ -2295,7 +2642,7 @@ class _PendingChecksDialog extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Estos folios o tickets quedaron abiertos en cortes anteriores. Puedes revisar la lista y después continuar con la apertura si así lo decides.',
+                'Estos folios o tickets quedaron abiertos en cortes anteriores. Seguirán apareciendo en los próximos cortes hasta que queden comprobados.',
                 style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 14),
@@ -2771,6 +3118,134 @@ class _CashCountDialogState extends State<_CashCountDialog> {
   }
 }
 
+class _CashCutFinalizeDialog extends StatelessWidget {
+  final int pendingCount;
+  final double countedCashTotal;
+  final double theoreticalCash;
+  final double difference;
+
+  const _CashCutFinalizeDialog({
+    required this.pendingCount,
+    required this.countedCashTotal,
+    required this.theoreticalCash,
+    required this.difference,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 24),
+      child: ContractPopupSurface(
+        constraints: const BoxConstraints(maxWidth: 620),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Antes de cerrar el corte',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: tokens.primaryStrong,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  icon: const Icon(Icons.close_rounded),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Podemos guardar la conciliacion sin resetear caja para seguir corrigiendo en tickets y vouchers. Solo cuando ustedes lo decidan se cierra definitivamente el bloque.',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: tokens.badgeText,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 10,
+              runSpacing: 10,
+              children: [
+                _AlertPill(
+                  title: 'Conteo ${formatMoney(countedCashTotal)}',
+                  tone: tokens.primary,
+                ),
+                _AlertPill(
+                  title: 'Teorico ${formatMoney(theoreticalCash)}',
+                  tone: tokens.accent,
+                ),
+                _AlertPill(
+                  title: 'Diferencia ${formatMoney(difference)}',
+                  tone: difference.abs() < 0.01
+                      ? const Color(0xFF5A8466)
+                      : tokens.primaryStrong,
+                ),
+                _AlertPill(
+                  title: pendingCount == 0
+                      ? 'Sin pendientes'
+                      : '$pendingCount pendientes',
+                  tone: pendingCount == 0
+                      ? const Color(0xFF5A8466)
+                      : tokens.primaryStrong,
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            if (pendingCount > 0)
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: tokens.primarySoft.withValues(alpha: 0.16),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: tokens.primaryStrong.withValues(alpha: 0.18),
+                  ),
+                ),
+                child: Text(
+                  'Puedes cerrar el corte aunque queden pendientes. Esos folios se seguirán arrastrando en próximos cortes hasta quedar comprobados.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                    color: tokens.primaryStrong,
+                  ),
+                ),
+              ),
+            if (pendingCount > 0) const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton.icon(
+                  style: contractSecondaryButtonStyle(context),
+                  onPressed: () => Navigator.of(context).pop(false),
+                  icon: const Icon(Icons.save_as_rounded),
+                  label: const Text('Guardar conciliacion'),
+                ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  style: contractPrimaryButtonStyle(context),
+                  onPressed: () => Navigator.of(context).pop(true),
+                  icon: const Icon(Icons.task_alt_rounded),
+                  label: const Text('Cerrar corte'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _CashCutReviewBatch {
   final String label;
   final String sourceType;
@@ -2826,8 +3301,13 @@ class _CashCutCheckDecision {
 class _CashCutReviewResult {
   final List<_CashCutCheckDecision> checks;
   final String notes;
+  final bool finalizeCut;
 
-  const _CashCutReviewResult({required this.checks, required this.notes});
+  const _CashCutReviewResult({
+    required this.checks,
+    required this.notes,
+    required this.finalizeCut,
+  });
 
   int get pendingCount => checks.where((item) => !item.isVerified).length;
 }
@@ -2883,6 +3363,8 @@ class _CashCutVirtualFlowDialog extends StatefulWidget {
   final double countedCashTotal;
   final double openingCash;
   final double theoreticalCash;
+  final Future<void> Function(_CashCutReviewItem item) onOpenSourceEditor;
+  final Future<double> Function() onRefreshTheoreticalCash;
 
   const _CashCutVirtualFlowDialog({
     required this.batches,
@@ -2892,6 +3374,8 @@ class _CashCutVirtualFlowDialog extends StatefulWidget {
     required this.countedCashTotal,
     required this.openingCash,
     required this.theoreticalCash,
+    required this.onOpenSourceEditor,
+    required this.onRefreshTheoreticalCash,
   });
 
   @override
@@ -2906,6 +3390,7 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
   final Map<String, _CashCutCheckDecision> _decisions =
       <String, _CashCutCheckDecision>{};
   bool _loading = true;
+  bool _refreshingTotals = false;
   String _error = '';
   Map<String, dynamic>? _ticketRow;
   Map<String, dynamic>? _voucherHeader;
@@ -2913,6 +3398,7 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
   late final List<_CashCutReviewBatch> _nonEmptyBatches;
   late int _batchIndex;
   late int _itemIndex;
+  late double _theoreticalCash;
 
   @override
   void initState() {
@@ -2941,6 +3427,7 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _focusNode.requestFocus();
     });
+    _theoreticalCash = widget.theoreticalCash;
     unawaited(_loadCurrent());
   }
 
@@ -3149,6 +3636,30 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
     }
   }
 
+  Future<void> _refreshTheoreticalCash() async {
+    setState(() => _refreshingTotals = true);
+    try {
+      final latest = await widget.onRefreshTheoreticalCash();
+      if (!mounted) return;
+      setState(() {
+        _theoreticalCash = latest;
+      });
+      await _loadCurrent();
+    } finally {
+      if (mounted) {
+        setState(() => _refreshingTotals = false);
+      }
+    }
+  }
+
+  Future<void> _openAndCorrectCurrent() async {
+    final item = _currentItem;
+    if (item == null) return;
+    await widget.onOpenSourceEditor(item);
+    if (!mounted) return;
+    await _refreshTheoreticalCash();
+  }
+
   KeyEventResult _handleKey(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     if (event.logicalKey == LogicalKeyboardKey.arrowLeft) {
@@ -3188,7 +3699,7 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
     final currentBatch = _currentBatch;
     final currentItem = _currentItem;
     final currentDecision = _currentDecision;
-    final difference = widget.countedCashTotal - widget.theoreticalCash;
+    final difference = widget.countedCashTotal - _theoreticalCash;
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -3248,7 +3759,9 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
                       tone: const Color(0xFF8C6C5A),
                     ),
                     _AlertPill(
-                      title: 'Dif. ${_money(difference)}',
+                      title: _refreshingTotals
+                          ? 'Actualizando...'
+                          : 'Dif. ${_money(difference)}',
                       tone: difference.abs() < 0.01
                           ? const Color(0xFF5A8466)
                           : menudeoAreaTokens.primaryStrong,
@@ -3321,6 +3834,30 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
                       onPressed: () => _setVerified(true),
                       icon: const Icon(Icons.check_rounded),
                       label: const Text('Comprobado'),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      style: _dashboardCutTonalButtonStyle(tokens),
+                      onPressed: _openAndCorrectCurrent,
+                      icon: const Icon(Icons.edit_rounded),
+                      label: const Text('Abrir y corregir'),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: FilledButton.tonalIcon(
+                      style: _dashboardCutTonalButtonStyle(tokens),
+                      onPressed: _refreshingTotals
+                          ? null
+                          : _refreshTheoreticalCash,
+                      icon: const Icon(Icons.refresh_rounded),
+                      label: const Text('Refrescar'),
                     ),
                   ),
                 ],
@@ -3472,9 +4009,13 @@ class _CashCutReviewDialogState extends State<_CashCutReviewDialog> {
         );
       }
     }
-    Navigator.of(
-      context,
-    ).pop(_CashCutReviewResult(checks: checks, notes: _notesC.text.trim()));
+    Navigator.of(context).pop(
+      _CashCutReviewResult(
+        checks: checks,
+        notes: _notesC.text.trim(),
+        finalizeCut: false,
+      ),
+    );
   }
 
   Future<void> _markCurrentAsVerified() async {

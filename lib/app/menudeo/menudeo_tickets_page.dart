@@ -37,11 +37,13 @@ import 'menudeo_theme.dart';
 class MenudeoTicketsPage extends StatefulWidget {
   final bool instantOpen;
   final MenudeoTicketFlow flow;
+  final String? initialTicketId;
 
   const MenudeoTicketsPage({
     super.key,
     this.instantOpen = false,
     this.flow = MenudeoTicketFlow.purchase,
+    this.initialTicketId,
   });
 
   @override
@@ -162,6 +164,8 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   DateTimeRange? _ticketDateFilter;
   List<Map<String, dynamic>> _catalogPriceRows = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _ticketRows = <Map<String, dynamic>>[];
+  String? _pendingInitialTicketId;
+  bool _initialTicketOpenScheduled = false;
   final List<_SplitDraft> _splitDrafts = <_SplitDraft>[];
   final Set<int> _selectedRowIndexes = <int>{};
   final ScrollController _ticketsRowsScrollController = ScrollController();
@@ -202,6 +206,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   @override
   void initState() {
     super.initState();
+    _pendingInitialTicketId = widget.initialTicketId;
     unawaited(HardwareKeyboard.instance.syncKeyboardState());
     unawaited(_loadCatalogPrices());
     unawaited(_loadTickets());
@@ -1085,7 +1090,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
           .from('vw_men_tickets_grid')
           .select()
           .eq('direction', _flowDirection)
-          .order('ticket_date', ascending: true)
+          .order('ticket_date', ascending: false)
           .order('ticket_number', ascending: true);
       if (!mounted) return;
       setState(() {
@@ -1101,6 +1106,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
           _selectedRowIndexes.add(_activeRowIndex);
         }
       });
+      _scheduleInitialTicketOpen();
     } on PostgrestException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1110,6 +1116,22 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       });
       _toast('No se pudieron cargar los tickets: ${e.message}');
     }
+  }
+
+  void _scheduleInitialTicketOpen() {
+    if (_initialTicketOpenScheduled) return;
+    final targetId = _pendingInitialTicketId;
+    if (targetId == null || targetId.isEmpty || !mounted) return;
+    final rowIndex = _ticketRows.indexWhere(
+      (row) => (row['id'] ?? '').toString() == targetId,
+    );
+    if (rowIndex < 0) return;
+    _initialTicketOpenScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      _pendingInitialTicketId = null;
+      await _showTicketDetailDialog(rowIndex);
+    });
   }
 
   Future<bool> _createTicketsFromDraft() async {

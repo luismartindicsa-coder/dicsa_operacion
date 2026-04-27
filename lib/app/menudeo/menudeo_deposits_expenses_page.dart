@@ -40,8 +40,13 @@ import 'menudeo_theme.dart';
 
 class MenudeoDepositsExpensesPage extends StatefulWidget {
   final bool instantOpen;
+  final String? initialVoucherId;
 
-  const MenudeoDepositsExpensesPage({super.key, this.instantOpen = false});
+  const MenudeoDepositsExpensesPage({
+    super.key,
+    this.instantOpen = false,
+    this.initialVoucherId,
+  });
 
   @override
   State<MenudeoDepositsExpensesPage> createState() =>
@@ -324,10 +329,13 @@ class _MenudeoDepositsExpensesPageState
   List<String> _companyOptions = <String>[];
   List<String> _driverOptions = <String>[];
   final List<_VoucherRecord> _rows = <_VoucherRecord>[];
+  String? _pendingInitialVoucherId;
+  bool _initialVoucherOpenScheduled = false;
 
   @override
   void initState() {
     super.initState();
+    _pendingInitialVoucherId = widget.initialVoucherId;
     unawaited(HardwareKeyboard.instance.syncKeyboardState());
     unawaited(_resolveNavigationAccess());
     unawaited(_loadVouchers());
@@ -421,7 +429,7 @@ class _MenudeoDepositsExpensesPageState
       final voucherRows = await _supa
           .from('vw_men_cash_vouchers_grid')
           .select('*')
-          .order('voucher_date', ascending: true)
+          .order('voucher_date', ascending: false)
           .order('folio_sort', ascending: true)
           .order('folio', ascending: true);
 
@@ -504,6 +512,7 @@ class _MenudeoDepositsExpensesPageState
         _folioSequence = nextSequence;
         _loadingRows = false;
       });
+      _scheduleInitialVoucherOpen();
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -517,6 +526,21 @@ class _MenudeoDepositsExpensesPageState
         ),
       );
     }
+  }
+
+  void _scheduleInitialVoucherOpen() {
+    if (_initialVoucherOpenScheduled) return;
+    final targetId = _pendingInitialVoucherId;
+    if (targetId == null || targetId.isEmpty || !mounted) return;
+    final rowIndex = _rows.indexWhere((row) => row.id == targetId);
+    if (rowIndex < 0) return;
+    _initialVoucherOpenScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      final row = _rows[rowIndex];
+      _pendingInitialVoucherId = null;
+      await _openVoucherDialog(initial: row, index: rowIndex);
+    });
   }
 
   Future<void> _goBack() async {
