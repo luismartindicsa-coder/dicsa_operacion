@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../auth/auth_access.dart';
@@ -29,9 +28,8 @@ import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
 import 'mayoreo_theme.dart';
 
-const String _kMayoreoSalesReportPrefsBridgeKey =
-    'mayoreo_sales_report_page_state_v1';
-const String _kMayoreoAccountsPrefsKey = 'mayoreo_accounts_page_state_v1';
+const String _kMayoreoSalesReportsTable = 'mayoreo_sales_reports';
+const String _kMayoreoAccountsTable = 'mayoreo_accounts';
 
 const double _kAccountsDateW = 112;
 const double _kAccountsTicketW = 108;
@@ -76,6 +74,7 @@ class MayoreoAccountsPage extends StatefulWidget {
 }
 
 class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
+  final SupabaseClient _supa = Supabase.instance.client;
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   bool _exportingCsv = false;
@@ -97,6 +96,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
   final Set<String> _operationFilters = <String>{};
   final Set<String> _documentFilters = <String>{};
   final Set<String> _statusFilters = <String>{};
+  bool _overdueEstimatedPaymentOnly = false;
   final ScrollController _rowsScrollController = ScrollController();
   final GlobalKey _rowsViewportKey = GlobalKey();
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
@@ -232,97 +232,12 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
   }
 
   Future<void> _loadAccounts() async {
-    final prefs = await SharedPreferences.getInstance();
-    final persistedStateRaw = prefs.getString(_kMayoreoAccountsPrefsKey);
     final sourceRows = await _loadSourceReports();
     final persistedRows = <String, _MayoreoAccountRow>{};
 
-    if (persistedStateRaw != null && persistedStateRaw.trim().isNotEmpty) {
-      try {
-        final data = jsonDecode(persistedStateRaw) as Map<String, dynamic>;
-        final savedRows = (data['rows'] as List<dynamic>? ?? const <dynamic>[])
-            .whereType<Map>()
-            .map(
-              (item) => _MayoreoAccountRow.fromJson(
-                Map<String, dynamic>.from(item.cast<String, dynamic>()),
-              ),
-            )
-            .toList(growable: false);
-        for (final row in savedRows) {
-          persistedRows[row.id] = row;
-        }
-        _dateFilterFrom = _tryParseDate(data['dateFilterFrom'] as String?);
-        _dateFilterTo = _tryParseDate(data['dateFilterTo'] as String?);
-        _invoiceDateFilterFrom = _tryParseDate(
-          data['invoiceDateFilterFrom'] as String?,
-        );
-        _invoiceDateFilterTo = _tryParseDate(
-          data['invoiceDateFilterTo'] as String?,
-        );
-        _paymentDateFilterFrom = _tryParseDate(
-          data['paymentDateFilterFrom'] as String?,
-        );
-        _paymentDateFilterTo = _tryParseDate(
-          data['paymentDateFilterTo'] as String?,
-        );
-        _ticketFilters
-          ..clear()
-          ..addAll(
-            (data['ticketFilters'] as List<dynamic>? ?? const <dynamic>[])
-                .whereType<String>(),
-          );
-        _clientFilters
-          ..clear()
-          ..addAll(
-            (data['clientFilters'] as List<dynamic>? ?? const <dynamic>[])
-                .whereType<String>(),
-          );
-        _remisionFilters
-          ..clear()
-          ..addAll(
-            (data['remisionFilters'] as List<dynamic>? ?? const <dynamic>[])
-                .whereType<String>(),
-          );
-        _materialFilters
-          ..clear()
-          ..addAll(
-            (data['materialFilters'] as List<dynamic>? ?? const <dynamic>[])
-                .whereType<String>(),
-          );
-        _operationFilters
-          ..clear()
-          ..addAll(
-            (data['operationFilters'] as List<dynamic>? ?? const <dynamic>[])
-                .whereType<String>(),
-          );
-        _documentFilters
-          ..clear()
-          ..addAll(
-            (data['documentFilters'] as List<dynamic>? ?? const <dynamic>[])
-                .whereType<String>(),
-          );
-        _statusFilters
-          ..clear()
-          ..addAll(
-            (data['statusFilters'] as List<dynamic>? ?? const <dynamic>[])
-                .whereType<String>(),
-          );
-        _selectedRowId = data['selectedRowId'] as String?;
-        _selectedRowIds
-          ..clear()
-          ..addAll(
-            (data['selectedRowIds'] as List<dynamic>? ?? const <dynamic>[])
-                .whereType<String>(),
-          );
-        _selectionAnchorId = data['selectionAnchorId'] as String?;
-        _currentPage = ((data['currentPage'] as num?) ?? 0).toInt();
-        final parsedPageSize = ((data['pageSize'] as num?) ?? 40).toInt();
-        _pageSize = switch (parsedPageSize) {
-          40 || 80 || 120 => parsedPageSize,
-          _ => 40,
-        };
-      } catch (_) {}
-    }
+    try {
+      persistedRows.addAll(await _loadRemotePersistedAccounts());
+    } catch (_) {}
 
     final rows = sourceRows
         .map((source) {
@@ -362,56 +277,69 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
   }
 
   Future<List<_MayoreoSourceReportRow>> _loadSourceReports() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kMayoreoSalesReportPrefsBridgeKey);
-    if (raw == null || raw.trim().isEmpty) {
-      return _seedSourceReports();
-    }
     try {
-      final data = jsonDecode(raw) as Map<String, dynamic>;
-      final rows = (data['rows'] as List<dynamic>? ?? const <dynamic>[])
-          .whereType<Map>()
+      final response = await _supa
+          .from(_kMayoreoSalesReportsTable)
+          .select()
+          .order('sale_date', ascending: false)
+          .order('created_at', ascending: false);
+      final rows = (response as List)
           .map(
-            (item) => _MayoreoSourceReportRow.fromJson(
-              Map<String, dynamic>.from(item.cast<String, dynamic>()),
+            (item) => _MayoreoSourceReportRow.fromSupabase(
+              Map<String, dynamic>.from(item as Map),
             ),
           )
           .where((row) => row.isRelated)
+          .where((row) => !_isSeedAccountSourceId(row.id))
           .toList(growable: false);
-      return rows.isEmpty ? _seedSourceReports() : rows;
+      return rows;
     } catch (_) {
-      return _seedSourceReports();
+      return const <_MayoreoSourceReportRow>[];
+    }
+  }
+
+  Future<Map<String, _MayoreoAccountRow>> _loadRemotePersistedAccounts() async {
+    final response = await _supa
+        .from(_kMayoreoAccountsTable)
+        .select()
+        .order('sale_date', ascending: false)
+        .order('updated_at', ascending: false);
+    final rows = (response as List)
+        .map(
+          (item) => _MayoreoAccountRow.fromSupabase(
+            Map<String, dynamic>.from(item as Map),
+          ),
+        )
+        .where((row) => !_isSeedAccountSourceId(row.id))
+        .toList(growable: false);
+    return <String, _MayoreoAccountRow>{for (final row in rows) row.id: row};
+  }
+
+  Future<void> _persistRowsToSupabase() async {
+    if (_rows.isNotEmpty) {
+      await _supa
+          .from(_kMayoreoAccountsTable)
+          .upsert(
+            _rows.map((row) => row.toSupabase()).toList(growable: false),
+            onConflict: 'id',
+          );
+    }
+    final existing = await _supa.from(_kMayoreoAccountsTable).select('id');
+    final existingIds = (existing as List)
+        .map((row) => (row as Map)['id'].toString())
+        .toSet();
+    final nextIds = _rows.map((row) => row.id).toSet();
+    final deletedIds = existingIds.difference(nextIds).toList(growable: false);
+    if (deletedIds.isNotEmpty) {
+      await _supa
+          .from(_kMayoreoAccountsTable)
+          .delete()
+          .inFilter('id', deletedIds);
     }
   }
 
   void _persistState() {
-    unawaited(_persistStateToPrefs());
-  }
-
-  Future<void> _persistStateToPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final payload = <String, dynamic>{
-      'dateFilterFrom': _dateFilterFrom?.toIso8601String(),
-      'dateFilterTo': _dateFilterTo?.toIso8601String(),
-      'invoiceDateFilterFrom': _invoiceDateFilterFrom?.toIso8601String(),
-      'invoiceDateFilterTo': _invoiceDateFilterTo?.toIso8601String(),
-      'paymentDateFilterFrom': _paymentDateFilterFrom?.toIso8601String(),
-      'paymentDateFilterTo': _paymentDateFilterTo?.toIso8601String(),
-      'ticketFilters': _ticketFilters.toList(growable: false),
-      'clientFilters': _clientFilters.toList(growable: false),
-      'remisionFilters': _remisionFilters.toList(growable: false),
-      'materialFilters': _materialFilters.toList(growable: false),
-      'operationFilters': _operationFilters.toList(growable: false),
-      'documentFilters': _documentFilters.toList(growable: false),
-      'statusFilters': _statusFilters.toList(growable: false),
-      'selectedRowId': _selectedRowId,
-      'selectedRowIds': _selectedRowIds.toList(growable: false),
-      'selectionAnchorId': _selectionAnchorId,
-      'currentPage': _currentPage,
-      'pageSize': _pageSize,
-      'rows': _rows.map((row) => row.toJson()).toList(growable: false),
-    };
-    await prefs.setString(_kMayoreoAccountsPrefsKey, jsonEncode(payload));
+    unawaited(_persistRowsToSupabase());
   }
 
   List<_MayoreoAccountRow> get _filteredRows {
@@ -496,6 +424,10 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
           }
           if (_statusFilters.isNotEmpty &&
               !_statusFilters.contains(row.status.name)) {
+            return false;
+          }
+          if (_overdueEstimatedPaymentOnly &&
+              !row.hasEstimatedPaymentReminder) {
             return false;
           }
           return true;
@@ -1159,21 +1091,24 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
   }
 
   Future<void> _openStatusFilterDialog() async {
+    const overdueLabel = 'COBRO VENCIDO';
     final selected = await _showMayoreoValueFilterDialog(
       context,
       title: 'Filtrar estatus',
-      options: _MayoreoAccountsStatus.values
-          .map((item) => _financialStatusLabel(item))
-          .toList(growable: false),
-      initialValues: _statusFilters
-          .map(
-            (value) => _financialStatusLabel(
-              _MayoreoAccountsStatus.values.firstWhere(
-                (item) => item.name == value,
-              ),
+      options: <String>[
+        ..._MayoreoAccountsStatus.values.map(_financialStatusLabel),
+        overdueLabel,
+      ],
+      initialValues: {
+        ..._statusFilters.map(
+          (value) => _financialStatusLabel(
+            _MayoreoAccountsStatus.values.firstWhere(
+              (item) => item.name == value,
             ),
-          )
-          .toSet(),
+          ),
+        ),
+        if (_overdueEstimatedPaymentOnly) overdueLabel,
+      },
     );
     if (selected == null) return;
     setState(() {
@@ -1184,6 +1119,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
               .where((item) => selected.contains(_financialStatusLabel(item)))
               .map((item) => item.name),
         );
+      _overdueEstimatedPaymentOnly = selected.contains(overdueLabel);
       _currentPage = 0;
     });
     _persistState();
@@ -1331,6 +1267,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
       _operationFilters.clear();
       _documentFilters.clear();
       _statusFilters.clear();
+      _overdueEstimatedPaymentOnly = false;
       _currentPage = 0;
     });
     _persistState();
@@ -1349,7 +1286,8 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
       _materialFilters.isNotEmpty ||
       _operationFilters.isNotEmpty ||
       _documentFilters.isNotEmpty ||
-      _statusFilters.isNotEmpty;
+      _statusFilters.isNotEmpty ||
+      _overdueEstimatedPaymentOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -2452,6 +2390,7 @@ class _AccountsGridRowState extends State<_AccountsGridRow> {
   Widget build(BuildContext context) {
     final row = widget.row;
     final highlighted = widget.selected || widget.active || _hovered;
+    final overdueReminder = row.hasEstimatedPaymentReminder;
 
     Widget cell(double width, Widget child) {
       return SizedBox(
@@ -2477,6 +2416,11 @@ class _AccountsGridRowState extends State<_AccountsGridRow> {
                     mayoreoAreaTokens.badgeBackground.withValues(alpha: 0.98),
                     mayoreoAreaTokens.primarySoft.withValues(alpha: 0.94),
                   ]
+                : overdueReminder
+                ? [
+                    const Color(0xFFFFEFE8).withValues(alpha: 0.92),
+                    const Color(0xFFFFD9C7).withValues(alpha: 0.84),
+                  ]
                 : [
                     Colors.white.withValues(alpha: 0.78),
                     mayoreoAreaTokens.surfaceTint.withValues(alpha: 0.74),
@@ -2486,6 +2430,8 @@ class _AccountsGridRowState extends State<_AccountsGridRow> {
           border: Border.all(
             color: highlighted
                 ? mayoreoAreaTokens.primaryStrong.withValues(alpha: 0.22)
+                : overdueReminder
+                ? const Color(0xFFD86A3A).withValues(alpha: 0.44)
                 : mayoreoAreaTokens.border.withValues(alpha: 0.54),
           ),
         ),
@@ -2567,6 +2513,14 @@ class _AccountsGridRowState extends State<_AccountsGridRow> {
                           row.settlementDate == null
                               ? '—'
                               : _formatDate(row.settlementDate!),
+                          style: TextStyle(
+                            fontWeight: overdueReminder
+                                ? FontWeight.w900
+                                : FontWeight.w700,
+                            color: overdueReminder
+                                ? const Color(0xFFB14E20)
+                                : kMayoreoInk,
+                          ),
                         ),
                       ),
                       cell(
@@ -2687,6 +2641,7 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
   late final TextEditingController _notesC;
   late _MayoreoAccountsStatus _status;
   late DateTime? _documentDate;
+  late DateTime? _estimatedPaymentDate;
   late DateTime? _settlementDate;
 
   @override
@@ -2701,6 +2656,7 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
     _notesC = TextEditingController(text: widget.row.financialNotes);
     _status = widget.row.status;
     _documentDate = widget.row.documentDate;
+    _estimatedPaymentDate = widget.row.estimatedPaymentDate;
     _settlementDate = widget.row.settlementDate;
   }
 
@@ -2736,6 +2692,7 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
       widget.row.copyWith(
         documentNumber: documentNumber,
         documentDate: _documentDate,
+        estimatedPaymentDate: _estimatedPaymentDate,
         settlementDate: _settlementDate,
         status: normalizedStatus,
         paidAmount: paidAmount,
@@ -2768,6 +2725,7 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
         row.operationType == _MayoreoAccountsOperationType.factura
         ? 'FECHA DE FACTURA'
         : 'FECHA DE CHEQUE';
+    const estimatedPaymentLabel = 'FECHA DE PAGO ESTIMADA';
     final settlementLabel =
         row.operationType == _MayoreoAccountsOperationType.factura
         ? 'FECHA DE PAGO'
@@ -2932,6 +2890,22 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                                       const SizedBox(height: 10),
                                       _DetailFieldsRow(
                                         left: _DatePickerField(
+                                          label: estimatedPaymentLabel,
+                                          value: _estimatedPaymentDate,
+                                          onTap: () async {
+                                            final picked =
+                                                await _pickMayoreoDate(
+                                                  context,
+                                                  _estimatedPaymentDate,
+                                                );
+                                            if (picked == null) return;
+                                            setState(
+                                              () => _estimatedPaymentDate =
+                                                  picked,
+                                            );
+                                          },
+                                        ),
+                                        right: _DatePickerField(
                                           label: settlementLabel,
                                           value: _settlementDate,
                                           onTap: () async {
@@ -2946,7 +2920,10 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                                             );
                                           },
                                         ),
-                                        right: _EditableFieldShell(
+                                      ),
+                                      const SizedBox(height: 10),
+                                      _DetailFieldsRow(
+                                        left: _EditableFieldShell(
                                           label: 'MONTO PAGADO',
                                           child: TextField(
                                             controller: _paidAmountC,
@@ -2960,16 +2937,17 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                                             onChanged: (_) => setState(() {}),
                                           ),
                                         ),
-                                      ),
-                                      const SizedBox(height: 10),
-                                      _DetailFieldsRow(
-                                        left: _StatusPickerField(
+                                        right: _StatusPickerField(
                                           label: 'ESTATUS',
                                           value: _status,
                                           operationType: row.operationType,
                                           onChanged: (value) =>
                                               setState(() => _status = value),
                                         ),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      _DetailFieldsRow(
+                                        left: const SizedBox.shrink(),
                                         right: _ReadOnlyField(
                                           label: 'SALDO PENDIENTE',
                                           value: formatMoney(
@@ -3900,21 +3878,22 @@ class _MayoreoSourceReportRow {
 
   bool get isRelated => approvedWeight > 0 && approvedPrice > 0;
 
-  factory _MayoreoSourceReportRow.fromJson(Map<String, dynamic> json) {
+  factory _MayoreoSourceReportRow.fromSupabase(Map<String, dynamic> json) {
     return _MayoreoSourceReportRow(
       id: (json['id'] as String?) ?? '',
       ticket: (json['ticket'] as String?) ?? '',
       saleDate:
-          DateTime.tryParse((json['date'] as String?) ?? '') ?? DateTime.now(),
-      clientId: (json['clientId'] as String?) ?? '',
-      clientName: (json['clientName'] as String?) ?? '',
+          DateTime.tryParse((json['sale_date'] as String?) ?? '') ??
+          DateTime.now(),
+      clientId: (json['client_id'] as String?) ?? '',
+      clientName: (json['client_name_snapshot'] as String?) ?? '',
       remision: (json['remision'] as String?) ?? '',
-      materialName: (json['materialName'] as String?) ?? '',
-      approvedWeight: ((json['approvedWeight'] as num?) ?? 0).toDouble(),
-      approvedPrice: ((json['approvedPrice'] as num?) ?? 0).toDouble(),
-      approvedAmount: ((json['approvedAmount'] as num?) ?? 0).toDouble(),
+      materialName: (json['material_name_snapshot'] as String?) ?? '',
+      approvedWeight: ((json['approved_weight'] as num?) ?? 0).toDouble(),
+      approvedPrice: ((json['approved_price'] as num?) ?? 0).toDouble(),
+      approvedAmount: ((json['approved_amount'] as num?) ?? 0).toDouble(),
       operationType:
-          ((json['operationType'] as String?) ?? 'factura') == 'cheque'
+          ((json['operation_type'] as String?) ?? 'factura') == 'cheque'
           ? _MayoreoAccountsOperationType.cheque
           : _MayoreoAccountsOperationType.factura,
       observations: (json['observations'] as String?) ?? '',
@@ -3937,6 +3916,7 @@ class _MayoreoAccountRow {
   final String saleNotes;
   final String documentNumber;
   final DateTime? documentDate;
+  final DateTime? estimatedPaymentDate;
   final DateTime? settlementDate;
   final _MayoreoAccountsStatus status;
   final String financialNotes;
@@ -3957,6 +3937,7 @@ class _MayoreoAccountRow {
     required this.saleNotes,
     required this.documentNumber,
     required this.documentDate,
+    required this.estimatedPaymentDate,
     required this.settlementDate,
     required this.status,
     required this.financialNotes,
@@ -3979,6 +3960,7 @@ class _MayoreoAccountRow {
       saleNotes: source.observations,
       documentNumber: '',
       documentDate: null,
+      estimatedPaymentDate: null,
       settlementDate: null,
       status: source.operationType == _MayoreoAccountsOperationType.factura
           ? _MayoreoAccountsStatus.pendienteFactura
@@ -3988,34 +3970,37 @@ class _MayoreoAccountRow {
     );
   }
 
-  factory _MayoreoAccountRow.fromJson(Map<String, dynamic> json) {
+  factory _MayoreoAccountRow.fromSupabase(Map<String, dynamic> json) {
     return _MayoreoAccountRow(
       id: (json['id'] as String?) ?? '',
       ticket: (json['ticket'] as String?) ?? '',
       saleDate:
-          DateTime.tryParse((json['saleDate'] as String?) ?? '') ??
+          DateTime.tryParse((json['sale_date'] as String?) ?? '') ??
           DateTime.now(),
-      clientId: (json['clientId'] as String?) ?? '',
-      clientName: (json['clientName'] as String?) ?? '',
+      clientId: (json['client_id'] as String?) ?? '',
+      clientName: (json['client_name_snapshot'] as String?) ?? '',
       remision: (json['remision'] as String?) ?? '',
-      materialName: (json['materialName'] as String?) ?? '',
-      approvedWeight: ((json['approvedWeight'] as num?) ?? 0).toDouble(),
-      approvedPrice: ((json['approvedPrice'] as num?) ?? 0).toDouble(),
-      approvedAmount: ((json['approvedAmount'] as num?) ?? 0).toDouble(),
+      materialName: (json['material_name_snapshot'] as String?) ?? '',
+      approvedWeight: ((json['approved_weight'] as num?) ?? 0).toDouble(),
+      approvedPrice: ((json['approved_price'] as num?) ?? 0).toDouble(),
+      approvedAmount: ((json['approved_amount'] as num?) ?? 0).toDouble(),
       operationType:
-          ((json['operationType'] as String?) ?? 'factura') == 'cheque'
+          ((json['operation_type'] as String?) ?? 'factura') == 'cheque'
           ? _MayoreoAccountsOperationType.cheque
           : _MayoreoAccountsOperationType.factura,
-      saleNotes: (json['saleNotes'] as String?) ?? '',
-      documentNumber: (json['documentNumber'] as String?) ?? '',
-      documentDate: _tryParseDate(json['documentDate'] as String?),
-      settlementDate: _tryParseDate(json['settlementDate'] as String?),
+      saleNotes: (json['sale_notes'] as String?) ?? '',
+      documentNumber: (json['document_number'] as String?) ?? '',
+      documentDate: _tryParseDate(json['document_date'] as String?),
+      estimatedPaymentDate: _tryParseDate(
+        json['estimated_payment_date'] as String?,
+      ),
+      settlementDate: _tryParseDate(json['settlement_date'] as String?),
       status: _MayoreoAccountsStatus.values.firstWhere(
         (item) => item.name == ((json['status'] as String?) ?? ''),
         orElse: () => _MayoreoAccountsStatus.porRevisar,
       ),
-      financialNotes: (json['financialNotes'] as String?) ?? '',
-      paidAmount: ((json['paidAmount'] as num?) ?? 0).toDouble(),
+      financialNotes: (json['financial_notes'] as String?) ?? '',
+      paidAmount: ((json['paid_amount'] as num?) ?? 0).toDouble(),
     );
   }
 
@@ -4035,10 +4020,35 @@ class _MayoreoAccountRow {
       'saleNotes': saleNotes,
       'documentNumber': documentNumber,
       'documentDate': documentDate?.toIso8601String(),
+      'estimatedPaymentDate': estimatedPaymentDate?.toIso8601String(),
       'settlementDate': settlementDate?.toIso8601String(),
       'status': status.name,
       'financialNotes': financialNotes,
       'paidAmount': paidAmount,
+    };
+  }
+
+  Map<String, dynamic> toSupabase() {
+    return <String, dynamic>{
+      'id': id,
+      'ticket': ticket,
+      'sale_date': saleDate.toIso8601String(),
+      'client_id': clientId,
+      'client_name_snapshot': clientName,
+      'remision': remision,
+      'material_name_snapshot': materialName,
+      'approved_weight': approvedWeight,
+      'approved_price': approvedPrice,
+      'approved_amount': approvedAmount,
+      'operation_type': operationType.name,
+      'sale_notes': saleNotes.isEmpty ? null : saleNotes,
+      'document_number': documentNumber,
+      'document_date': documentDate?.toIso8601String(),
+      'estimated_payment_date': estimatedPaymentDate?.toIso8601String(),
+      'settlement_date': settlementDate?.toIso8601String(),
+      'status': status.name,
+      'financial_notes': financialNotes.isEmpty ? null : financialNotes,
+      'paid_amount': paidAmount,
     };
   }
 
@@ -4048,6 +4058,12 @@ class _MayoreoAccountRow {
       status != _MayoreoAccountsStatus.pagada &&
       status != _MayoreoAccountsStatus.chequeCanjeado &&
       status != _MayoreoAccountsStatus.cancelada;
+
+  bool get hasEstimatedPaymentReminder {
+    if (!isFinanciallyOpen || estimatedPaymentDate == null) return false;
+    final today = DateUtils.dateOnly(DateTime.now());
+    return !DateUtils.dateOnly(estimatedPaymentDate!).isAfter(today);
+  }
 
   _MayoreoAccountRow syncOperational(_MayoreoSourceReportRow source) {
     return copyWith(
@@ -4079,6 +4095,7 @@ class _MayoreoAccountRow {
     String? saleNotes,
     String? documentNumber,
     DateTime? documentDate,
+    DateTime? estimatedPaymentDate,
     DateTime? settlementDate,
     _MayoreoAccountsStatus? status,
     String? financialNotes,
@@ -4098,8 +4115,9 @@ class _MayoreoAccountRow {
       operationType: operationType ?? this.operationType,
       saleNotes: saleNotes ?? this.saleNotes,
       documentNumber: documentNumber ?? this.documentNumber,
-      documentDate: documentDate,
-      settlementDate: settlementDate,
+      documentDate: documentDate ?? this.documentDate,
+      estimatedPaymentDate: estimatedPaymentDate ?? this.estimatedPaymentDate,
+      settlementDate: settlementDate ?? this.settlementDate,
       status: status ?? this.status,
       financialNotes: financialNotes ?? this.financialNotes,
       paidAmount: paidAmount ?? this.paidAmount,
@@ -5022,51 +5040,8 @@ IconData _statusIcon(_MayoreoAccountsStatus status) {
   }
 }
 
-List<_MayoreoSourceReportRow> _seedSourceReports() {
-  return [
-    _MayoreoSourceReportRow(
-      id: 'rep_1',
-      ticket: 'SV-24001',
-      saleDate: DateTime(2026, 4, 23),
-      clientId: 'co_1',
-      clientName: 'ACEROS DEL BAJIO',
-      remision: 'RM-9842',
-      materialName: 'VARILLA 3/8 GRADO 42',
-      approvedWeight: 12.31,
-      approvedPrice: 19930,
-      approvedAmount: 245348.30,
-      operationType: _MayoreoAccountsOperationType.factura,
-      observations: 'Carga liberada para factura de cierre semanal.',
-    ),
-    _MayoreoSourceReportRow(
-      id: 'rep_3',
-      ticket: 'SV-24003',
-      saleDate: DateTime(2026, 4, 22),
-      clientId: 'co_3',
-      clientName: 'FERRETODO CENTRO',
-      remision: 'RM-9838',
-      materialName: 'LAMINA LISA CAL 20',
-      approvedWeight: 6.75,
-      approvedPrice: 624,
-      approvedAmount: 4212,
-      operationType: _MayoreoAccountsOperationType.factura,
-      observations: 'Sin ajuste de aprobación.',
-    ),
-    _MayoreoSourceReportRow(
-      id: 'rep_4',
-      ticket: 'SV-24004',
-      saleDate: DateTime(2026, 4, 21),
-      clientId: 'co_2',
-      clientName: 'CONSTRUCTORA NOVA',
-      remision: 'RM-9832',
-      materialName: 'COBRE',
-      approvedWeight: 4.10,
-      approvedPrice: 12600,
-      approvedAmount: 51660,
-      operationType: _MayoreoAccountsOperationType.cheque,
-      observations: 'Cliente pidió proceso con cheque y canje posterior.',
-    ),
-  ];
+bool _isSeedAccountSourceId(String id) {
+  return id.startsWith('rep_');
 }
 
 double? _parseDouble(String raw) {

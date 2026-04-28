@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
@@ -7,7 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../auth/auth_access.dart';
@@ -30,6 +29,7 @@ import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/number_formatters.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
+import 'mayoreo_data_store.dart';
 import 'mayoreo_dashboard_preview_page.dart';
 import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
@@ -50,8 +50,7 @@ const double _kReportActionsW = 154;
 const double _kSalesGridBodyMinHeight = 430;
 const double _kVoucherFieldMinHeight = 84;
 const double _kVoucherInteractiveMinHeight = 24;
-const String _kMayoreoSalesReportPrefsKey =
-    'mayoreo_sales_report_page_state_v1';
+const String _kMayoreoSalesReportsTable = 'mayoreo_sales_reports';
 
 enum _MayoreoReportOperationType { factura, cheque }
 
@@ -67,6 +66,7 @@ class MayoreoSalesReportPage extends StatefulWidget {
 }
 
 class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
+  final SupabaseClient _supa = Supabase.instance.client;
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   bool _dragSelectingRows = false;
@@ -95,18 +95,15 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
   double _dragAutoScrollVelocity = 0;
   Timer? _dragAutoScrollTimer;
 
-  late final List<_MayoreoSalesClient> _clients;
-  late final List<_MayoreoSalesMaterial> _materials;
-  late final List<_MayoreoSalesCatalogPrice> _prices;
+  List<_MayoreoSalesClient> _clients = const <_MayoreoSalesClient>[];
+  List<_MayoreoSalesMaterial> _materials = const <_MayoreoSalesMaterial>[];
+  List<_MayoreoSalesCatalogPrice> _prices = const <_MayoreoSalesCatalogPrice>[];
   late List<_MayoreoSalesReportRow> _rows;
 
   @override
   void initState() {
     super.initState();
     unawaited(_resolveNavigationAccess());
-    _clients = _seedClients();
-    _materials = _seedMaterials();
-    _prices = _seedCatalogPrices();
     final savedState = _MayoreoSalesReportPageMemory.current;
     if (savedState != null) {
       _rows = savedState.rows
@@ -137,7 +134,8 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       }
       _persistState();
     }
-    unawaited(_loadPersistedState());
+    unawaited(_loadCatalogData());
+    unawaited(_loadRemoteRows());
   }
 
   @override
@@ -146,6 +144,39 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
     _bodyScrollController.dispose();
     _persistState();
     super.dispose();
+  }
+
+  Future<void> _loadCatalogData() async {
+    final snapshot = await MayoreoDataStore.loadCatalogSnapshot();
+    final clients = snapshot.companies
+        .where((row) => row.active && row.name.trim().isNotEmpty)
+        .map((row) => _MayoreoSalesClient(id: row.id, name: row.name))
+        .toList(growable: false);
+    final materials = snapshot.materials
+        .where(
+          (row) =>
+              row.active &&
+              row.level == 'COMERCIAL' &&
+              row.name.trim().isNotEmpty,
+        )
+        .map((row) => _MayoreoSalesMaterial(id: row.id, name: row.name))
+        .toList(growable: false);
+    final prices = snapshot.prices
+        .where((row) => row.active)
+        .map(
+          (row) => _MayoreoSalesCatalogPrice(
+            clientId: row.companyId,
+            materialId: row.materialId,
+            finalPrice: row.amount,
+          ),
+        )
+        .toList(growable: false);
+    if (!mounted) return;
+    setState(() {
+      _clients = clients;
+      _materials = materials;
+      _prices = prices;
+    });
   }
 
   void _persistState() {
@@ -165,116 +196,25 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       pageSize: _pageSize,
       selectionAnchorRowId: _selectionAnchorRowId,
     );
-    unawaited(_persistStateToPrefs());
   }
 
-  Future<void> _persistStateToPrefs() async {
-    final prefs = await SharedPreferences.getInstance();
-    final payload = <String, dynamic>{
-      'selectedRowId': _selectedRowId,
-      'clientFilterIds': _clientFilterIds.toList(growable: false),
-      'materialFilterIds': _materialFilterIds.toList(growable: false),
-      'operationFilters': _operationFilters.toList(growable: false),
-      'statusFilters': _statusFilters.toList(growable: false),
-      'ticketFilters': _ticketFilters.toList(growable: false),
-      'remisionFilters': _remisionFilters.toList(growable: false),
-      'dateFilterFrom': _dateFilterFrom?.toIso8601String(),
-      'dateFilterTo': _dateFilterTo?.toIso8601String(),
-      'selectedRowIds': _selectedRowIds.toList(growable: false),
-      'currentPage': _currentPage,
-      'pageSize': _pageSize,
-      'selectionAnchorRowId': _selectionAnchorRowId,
-      'rows': _rows.map((row) => row.toJson()).toList(growable: false),
-    };
-    await prefs.setString(_kMayoreoSalesReportPrefsKey, jsonEncode(payload));
-  }
-
-  Future<void> _loadPersistedState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kMayoreoSalesReportPrefsKey);
-    if (raw == null || raw.trim().isEmpty) return;
+  Future<void> _loadRemoteRows() async {
     try {
-      final data = jsonDecode(raw) as Map<String, dynamic>;
-      final loadedRows = ((data['rows'] as List<dynamic>? ?? const <dynamic>[]))
-          .whereType<Map>()
+      final response = await _supa
+          .from(_kMayoreoSalesReportsTable)
+          .select()
+          .order('sale_date', ascending: false)
+          .order('created_at', ascending: false);
+      final remoteRows = (response as List)
           .map(
-            (row) => _MayoreoSalesReportRow.fromJson(
-              Map<String, dynamic>.from(row.cast<String, dynamic>()),
+            (row) => _MayoreoSalesReportRow.fromSupabase(
+              Map<String, dynamic>.from(row as Map),
             ),
           )
-          .where((row) => !_isSeedReportRow(row))
           .toList(growable: false);
       if (!mounted) return;
       setState(() {
-        _rows = loadedRows;
-        _selectedRowId = data['selectedRowId'] as String?;
-        _clientFilterIds
-          ..clear()
-          ..addAll(
-            ((data['clientFilterIds'] as List<dynamic>? ?? const <dynamic>[]) +
-                    ((data['clientFilterId'] as String?) == null
-                        ? const <dynamic>[]
-                        : <dynamic>[data['clientFilterId']]))
-                .whereType<String>(),
-          );
-        _materialFilterIds
-          ..clear()
-          ..addAll(
-            ((data['materialFilterIds'] as List<dynamic>? ??
-                        const <dynamic>[]) +
-                    ((data['materialFilterId'] as String?) == null
-                        ? const <dynamic>[]
-                        : <dynamic>[data['materialFilterId']]))
-                .whereType<String>(),
-          );
-        _ticketFilters
-          ..clear()
-          ..addAll(
-            ((data['ticketFilters'] as List<dynamic>? ?? const <dynamic>[]) +
-                    ((data['ticketFilter'] as String?) == null
-                        ? const <dynamic>[]
-                        : <dynamic>[data['ticketFilter']]))
-                .whereType<String>(),
-          );
-        _remisionFilters
-          ..clear()
-          ..addAll(
-            ((data['remisionFilters'] as List<dynamic>? ?? const <dynamic>[]) +
-                    ((data['remisionFilter'] as String?) == null
-                        ? const <dynamic>[]
-                        : <dynamic>[data['remisionFilter']]))
-                .whereType<String>(),
-          );
-        _dateFilterFrom = _tryParseDate(data['dateFilterFrom'] as String?);
-        _dateFilterTo = _tryParseDate(data['dateFilterTo'] as String?);
-        _operationFilters
-          ..clear()
-          ..addAll(
-            ((data['operationFilters'] as List<dynamic>? ?? const <dynamic>[]) +
-                    ((data['operationFilter'] as String?) == null
-                        ? const <dynamic>[]
-                        : <dynamic>[data['operationFilter']]))
-                .whereType<String>(),
-          );
-        final legacyRelated = data['relatedFilter'] as bool?;
-        _statusFilters
-          ..clear()
-          ..addAll(
-            ((data['statusFilters'] as List<dynamic>? ?? const <dynamic>[]) +
-                    (legacyRelated == null
-                        ? const <dynamic>[]
-                        : <dynamic>[legacyRelated ? 'related' : 'pending']))
-                .whereType<String>(),
-          );
-        _selectedRowIds
-          ..clear()
-          ..addAll(
-            ((data['selectedRowIds'] as List<dynamic>? ?? const <dynamic>[]))
-                .whereType<String>(),
-          );
-        _currentPage = (data['currentPage'] as num?)?.toInt() ?? 0;
-        _pageSize = (data['pageSize'] as num?)?.toInt() ?? 40;
-        _selectionAnchorRowId = data['selectionAnchorRowId'] as String?;
+        _rows = remoteRows;
         if (_rows.isNotEmpty &&
             (_selectedRowId == null ||
                 !_rows.any((row) => row.id == _selectedRowId))) {
@@ -289,25 +229,40 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
           _selectionAnchorRowId = null;
         }
       });
-      _MayoreoSalesReportPageMemory.current = _MayoreoSalesReportPageMemory(
-        rows: _rows.map((row) => row.copyWith()).toList(growable: false),
-        selectedRowId: _selectedRowId,
-        clientFilterIds: _clientFilterIds.toList(growable: false),
-        materialFilterIds: _materialFilterIds.toList(growable: false),
-        operationFilters: _operationFilters.toList(growable: false),
-        statusFilters: _statusFilters.toList(growable: false),
-        ticketFilters: _ticketFilters.toList(growable: false),
-        remisionFilters: _remisionFilters.toList(growable: false),
-        dateFilterFrom: _dateFilterFrom,
-        dateFilterTo: _dateFilterTo,
-        selectedRowIds: _selectedRowIds.toList(growable: false),
-        currentPage: _currentPage,
-        pageSize: _pageSize,
-        selectionAnchorRowId: _selectionAnchorRowId,
-      );
-    } catch (_) {
-      return;
+      _persistState();
+    } on PostgrestException catch (e) {
+      _toast('No se pudo cargar ventas Mayoreo desde Supabase: ${e.message}');
+    } catch (_) {}
+  }
+
+  Future<void> _persistRowsToSupabase(List<_MayoreoSalesReportRow> rows) async {
+    if (rows.isNotEmpty) {
+      await _supa
+          .from(_kMayoreoSalesReportsTable)
+          .upsert(
+            rows.map((row) => row.toSupabase()).toList(growable: false),
+            onConflict: 'id',
+          );
     }
+    final existingIdsResponse = await _supa
+        .from(_kMayoreoSalesReportsTable)
+        .select('id');
+    final existingIds = (existingIdsResponse as List)
+        .map((row) => (row as Map)['id'].toString())
+        .toSet();
+    final nextIds = rows.map((row) => row.id).toSet();
+    final deletedIds = existingIds.difference(nextIds).toList(growable: false);
+    if (deletedIds.isNotEmpty) {
+      await _supa
+          .from(_kMayoreoSalesReportsTable)
+          .delete()
+          .inFilter('id', deletedIds);
+    }
+  }
+
+  void _persistRows() {
+    final snapshot = _rows.map((row) => row.copyWith()).toList(growable: false);
+    unawaited(_persistRowsToSupabase(snapshot));
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -514,6 +469,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       }
     });
     _persistState();
+    _persistRows();
   }
 
   void _selectSingleRow(_MayoreoSalesReportRow row) {
@@ -684,6 +640,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       _dragAutoScrollTimer = null;
     });
     _persistState();
+    _persistRows();
   }
 
   Future<void> _showContextMenuForRow(
@@ -1204,6 +1161,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       builder: (_) => _SalesReportDialog(
         clients: _clients,
         materials: _materials,
+        prices: _prices,
         priceLookup: _currentCatalogPrice,
       ),
     );
@@ -1245,6 +1203,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
         initial: row,
         clients: _clients,
         materials: _materials,
+        prices: _prices,
         priceLookup: _currentCatalogPrice,
       ),
     );
@@ -1304,6 +1263,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
             _selectionAnchorRowId = row.id;
           });
           _persistState();
+          _persistRows();
         },
       ),
     );
@@ -1416,6 +1376,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       _selectionAnchorRowId = _selectedRowId;
     });
     _persistState();
+    _persistRows();
   }
 
   Future<void> _handleRowMenuAction(
@@ -3627,12 +3588,14 @@ class _SalesReportDialog extends StatefulWidget {
   final _MayoreoSalesReportRow? initial;
   final List<_MayoreoSalesClient> clients;
   final List<_MayoreoSalesMaterial> materials;
+  final List<_MayoreoSalesCatalogPrice> prices;
   final double? Function(String clientId, String materialId) priceLookup;
 
   const _SalesReportDialog({
     this.initial,
     required this.clients,
     required this.materials,
+    required this.prices,
     required this.priceLookup,
   });
 
@@ -3653,6 +3616,18 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
 
   bool get _isEditing => widget.initial != null;
 
+  List<_MayoreoSalesMaterial> get _availableMaterials {
+    final clientId = _clientId;
+    if (clientId == null) return const <_MayoreoSalesMaterial>[];
+    final allowedIds = widget.prices
+        .where((row) => row.clientId == clientId)
+        .map((row) => row.materialId)
+        .toSet();
+    return widget.materials
+        .where((row) => allowedIds.contains(row.id))
+        .toList(growable: false);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -3668,9 +3643,10 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
     _observationsC = TextEditingController(text: initial?.observations ?? '');
     _date = initial?.date ?? DateTime.now();
     _clientId = initial?.clientId ?? widget.clients.firstOrNull?.id;
-    _materialId = initial?.materialId ?? widget.materials.firstOrNull?.id;
+    _materialId = initial?.materialId;
     _operationType =
         initial?.operationType ?? _MayoreoReportOperationType.factura;
+    _syncMaterialAvailability();
     if (initial == null) {
       _syncPriceFromCatalog();
     }
@@ -3706,6 +3682,20 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
     _priceC.text = price == null ? '' : formatDecimal(price);
   }
 
+  void _syncMaterialAvailability() {
+    final available = _availableMaterials;
+    if (available.isEmpty) {
+      _materialId = null;
+      _priceC.text = '';
+      return;
+    }
+    final stillValid =
+        _materialId != null && available.any((item) => item.id == _materialId);
+    if (!stillValid) {
+      _materialId = available.first.id;
+    }
+  }
+
   Future<void> _pickClient() async {
     final picked = await _showMayoreoSalesSingleSelectDialog<String>(
       context,
@@ -3723,18 +3713,27 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
     if (picked == null || !mounted) return;
     setState(() {
       _clientId = picked;
-      if (!_isEditing) {
-        _syncPriceFromCatalog();
-      }
+      _syncMaterialAvailability();
+      _syncPriceFromCatalog();
     });
   }
 
   Future<void> _pickMaterial() async {
+    final available = _availableMaterials;
+    if (available.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Esa empresa no tiene materiales con precio vigente.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
     final picked = await _showMayoreoSalesSingleSelectDialog<String>(
       context,
       title: 'Seleccionar material',
       initialValue: _materialId,
-      options: widget.materials
+      options: available
           .map(
             (item) => _MayoreoSalesPickerOption<String>(
               value: item.id,
@@ -3746,9 +3745,7 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
     if (picked == null || !mounted) return;
     setState(() {
       _materialId = picked;
-      if (!_isEditing) {
-        _syncPriceFromCatalog();
-      }
+      _syncPriceFromCatalog();
     });
   }
 
@@ -6343,23 +6340,44 @@ class _MayoreoSalesReportRow {
     };
   }
 
-  factory _MayoreoSalesReportRow.fromJson(Map<String, dynamic> json) {
-    final operationName = (json['operationType'] as String?) ?? 'factura';
+  Map<String, dynamic> toSupabase() {
+    return <String, dynamic>{
+      'id': id,
+      'ticket': ticket,
+      'sale_date': date.toIso8601String(),
+      'client_id': clientId,
+      'client_name_snapshot': clientName,
+      'remision': remision,
+      'material_id': materialId,
+      'material_name_snapshot': materialName,
+      'exit_weight': exitWeight,
+      'price_snapshot': priceSnapshot,
+      'approved_weight': approvedWeight,
+      'approved_price': approvedPrice,
+      'approved_amount': approvedAmount,
+      'operation_type': operationType.name,
+      'observations': observations.isEmpty ? null : observations,
+    };
+  }
+
+  factory _MayoreoSalesReportRow.fromSupabase(Map<String, dynamic> json) {
+    final operationName = (json['operation_type'] as String?) ?? 'factura';
     return _MayoreoSalesReportRow(
       id: (json['id'] as String?) ?? '',
       ticket: (json['ticket'] as String?) ?? '',
       date:
-          DateTime.tryParse((json['date'] as String?) ?? '') ?? DateTime.now(),
-      clientId: (json['clientId'] as String?) ?? '',
-      clientName: (json['clientName'] as String?) ?? '',
+          DateTime.tryParse((json['sale_date'] as String?) ?? '') ??
+          DateTime.now(),
+      clientId: (json['client_id'] as String?) ?? '',
+      clientName: (json['client_name_snapshot'] as String?) ?? '',
       remision: (json['remision'] as String?) ?? '',
-      materialId: (json['materialId'] as String?) ?? '',
-      materialName: (json['materialName'] as String?) ?? '',
-      exitWeight: ((json['exitWeight'] as num?) ?? 0).toDouble(),
-      priceSnapshot: ((json['priceSnapshot'] as num?) ?? 0).toDouble(),
-      approvedWeight: (json['approvedWeight'] as num?)?.toDouble(),
-      approvedPrice: (json['approvedPrice'] as num?)?.toDouble(),
-      approvedAmount: ((json['approvedAmount'] as num?) ?? 0).toDouble(),
+      materialId: (json['material_id'] as String?) ?? '',
+      materialName: (json['material_name_snapshot'] as String?) ?? '',
+      exitWeight: ((json['exit_weight'] as num?) ?? 0).toDouble(),
+      priceSnapshot: ((json['price_snapshot'] as num?) ?? 0).toDouble(),
+      approvedWeight: (json['approved_weight'] as num?)?.toDouble(),
+      approvedPrice: (json['approved_price'] as num?)?.toDouble(),
+      approvedAmount: ((json['approved_amount'] as num?) ?? 0).toDouble(),
       operationType: _MayoreoReportOperationType.values.firstWhere(
         (item) => item.name == operationName,
         orElse: () => _MayoreoReportOperationType.factura,
@@ -6444,11 +6462,6 @@ String _mayoreoSalesMonthNameEs(int month) {
   return names[month];
 }
 
-DateTime? _tryParseDate(String? raw) {
-  if (raw == null || raw.trim().isEmpty) return null;
-  return DateTime.tryParse(raw);
-}
-
 String _csvCell(Object? value) {
   final text = (value ?? '').toString().replaceAll('"', '""');
   return '"$text"';
@@ -6467,18 +6480,6 @@ int _effectiveCurrentPageForCount(
 int _totalPagesForCount(int pageSize, int totalRows) {
   if (totalRows <= 0) return 1;
   return ((totalRows - 1) ~/ pageSize) + 1;
-}
-
-List<_MayoreoSalesClient> _seedClients() {
-  return const <_MayoreoSalesClient>[];
-}
-
-List<_MayoreoSalesMaterial> _seedMaterials() {
-  return const <_MayoreoSalesMaterial>[];
-}
-
-List<_MayoreoSalesCatalogPrice> _seedCatalogPrices() {
-  return const <_MayoreoSalesCatalogPrice>[];
 }
 
 bool _isSeedReportRow(_MayoreoSalesReportRow row) {

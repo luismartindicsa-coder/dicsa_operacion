@@ -21,6 +21,7 @@ import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/number_formatters.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
+import 'mayoreo_data_store.dart';
 import 'mayoreo_dashboard_preview_page.dart';
 import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_sales_report_page.dart';
@@ -50,8 +51,87 @@ class _MayoreoPriceAdjustmentsPageState
   void initState() {
     super.initState();
     unawaited(_resolveNavigationAccess());
-    _rows = _seedPriceRows();
-    _historyRows = _seedHistoryRows();
+    _rows = <_MayoreoSalePriceRow>[];
+    _historyRows = <_MayoreoPriceHistoryRow>[];
+    unawaited(_loadPricingData());
+  }
+
+  Future<void> _loadPricingData() async {
+    final snapshot = await MayoreoDataStore.loadCatalogSnapshot();
+    final history = await MayoreoDataStore.loadPriceHistory();
+    final companyById = <String, MayoreoCatalogCompanyRecord>{
+      for (final row in snapshot.companies) row.id: row,
+    };
+    final materialById = <String, MayoreoCatalogMaterialRecord>{
+      for (final row in snapshot.materials) row.id: row,
+    };
+    final rows = snapshot.prices
+        .map((row) {
+          final company = companyById[row.companyId];
+          final material = materialById[row.materialId];
+          if (company == null || material == null) return null;
+          return _MayoreoSalePriceRow(
+            id: row.id,
+            companyId: row.companyId,
+            companyName: company.name,
+            materialId: row.materialId,
+            materialName: material.name,
+            currentPrice: row.amount,
+            active: row.active,
+            notes: row.notes,
+            updatedAt: row.updatedAt ?? DateTime.now(),
+          );
+        })
+        .whereType<_MayoreoSalePriceRow>()
+        .toList(growable: false);
+    final historyRows = history
+        .map(
+          (row) => _MayoreoPriceHistoryRow(
+            id: row.id,
+            companyId: row.companyId,
+            companyName: row.companyName,
+            materialId: row.materialId,
+            materialName: row.materialName,
+            previousPrice: row.previousPrice,
+            newPrice: row.newPrice,
+            reason: row.reason,
+            createdAt: row.createdAt,
+          ),
+        )
+        .toList(growable: false);
+    if (!mounted) return;
+    setState(() {
+      _rows = rows;
+      _historyRows = historyRows;
+    });
+  }
+
+  Future<void> _persistPricingData() async {
+    final snapshot = await MayoreoDataStore.loadCatalogSnapshot();
+    final rowById = <String, _MayoreoSalePriceRow>{
+      for (final row in _rows) row.id: row,
+    };
+    final updatedSnapshot = MayoreoCatalogSnapshot(
+      companies: snapshot.companies,
+      materials: snapshot.materials,
+      prices: snapshot.prices
+          .map((row) {
+            final updated = rowById[row.id];
+            if (updated == null) return row;
+            return MayoreoCatalogPriceRecord(
+              id: row.id,
+              companyId: updated.companyId,
+              materialId: updated.materialId,
+              amount: updated.currentPrice,
+              active: updated.active,
+              notes: updated.notes,
+              updatedAt: updated.updatedAt,
+            );
+          })
+          .toList(growable: false),
+    );
+    await MayoreoDataStore.saveCatalogSnapshot(updatedSnapshot);
+    await _loadPricingData();
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -102,6 +182,8 @@ class _MayoreoPriceAdjustmentsPageState
     await Navigator.of(
       context,
     ).push(appPageRoute(page: const MayoreoCatalogPage(instantOpen: true)));
+    if (!mounted) return;
+    await _loadPricingData();
   }
 
   Future<void> _openElPalomar() async {
@@ -112,9 +194,23 @@ class _MayoreoPriceAdjustmentsPageState
   }
 
   Future<void> _exportClientPdfReport() async {
+    final currentRows = _rows
+        .where((row) {
+          if (!row.active) return false;
+          if (_historyCompanyFilter != null &&
+              row.companyName != _historyCompanyFilter) {
+            return false;
+          }
+          if (_historyMaterialFilter != null &&
+              row.materialName != _historyMaterialFilter) {
+            return false;
+          }
+          return true;
+        })
+        .toList(growable: false);
     final historyRows = _filteredHistoryRows;
-    if (historyRows.isEmpty) {
-      _toast('No hay movimientos para exportar en PDF.');
+    if (currentRows.isEmpty) {
+      _toast('No hay precios vigentes para exportar en PDF.');
       return;
     }
 
@@ -154,17 +250,12 @@ class _MayoreoPriceAdjustmentsPageState
             .add(row);
       }
 
-      final visibleCompanies = groupedHistory.keys.toSet();
-      final currentRows = _rows
-          .where((row) {
-            if (!visibleCompanies.contains(row.companyName)) return false;
-            if (_historyMaterialFilter != null &&
-                row.materialName != _historyMaterialFilter) {
-              return false;
-            }
-            return true;
-          })
-          .toList(growable: false);
+      final groupedCurrentRows = <String, List<_MayoreoSalePriceRow>>{};
+      for (final row in currentRows) {
+        groupedCurrentRows
+            .putIfAbsent(row.companyName, () => <_MayoreoSalePriceRow>[])
+            .add(row);
+      }
 
       final now = DateTime.now();
       final dateLabel =
@@ -182,29 +273,25 @@ class _MayoreoPriceAdjustmentsPageState
       final text = const PdfColor.fromInt(0xFF3A2F1B);
       var writtenCount = 0;
 
-      final companyNames = groupedHistory.keys.toList()..sort();
+      final companyNames = groupedCurrentRows.keys.toList()..sort();
       for (final companyName in companyNames) {
-        final companyHistoryRows = groupedHistory[companyName]!
-          ..sort((a, b) {
-            final byMaterial = a.materialName.compareTo(b.materialName);
-            if (byMaterial != 0) return byMaterial;
-            return b.createdAt.compareTo(a.createdAt);
-          });
+        final companyHistoryRows =
+            groupedHistory[companyName] ?? <_MayoreoPriceHistoryRow>[]
+              ..sort((a, b) {
+                final byMaterial = a.materialName.compareTo(b.materialName);
+                if (byMaterial != 0) return byMaterial;
+                return b.createdAt.compareTo(a.createdAt);
+              });
         final companyCurrentRows =
-            currentRows
-                .where((row) => row.companyName == companyName)
-                .toList(growable: false)
+            (groupedCurrentRows[companyName] ?? <_MayoreoSalePriceRow>[])
               ..sort((a, b) => a.materialName.compareTo(b.materialName));
-        final lastAdjustmentAt = companyHistoryRows
-            .map((row) => row.createdAt)
-            .reduce((a, b) => a.isAfter(b) ? a : b);
-        final totalCurrent = companyCurrentRows.fold<double>(
-          0,
-          (sum, row) => sum + row.currentPrice,
-        );
-        final avgCurrent = companyCurrentRows.isEmpty
-            ? 0.0
-            : totalCurrent / companyCurrentRows.length;
+        final lastAdjustmentAt = companyHistoryRows.isEmpty
+            ? companyCurrentRows
+                  .map((row) => row.updatedAt)
+                  .reduce((a, b) => a.isAfter(b) ? a : b)
+            : companyHistoryRows
+                  .map((row) => row.createdAt)
+                  .reduce((a, b) => a.isAfter(b) ? a : b);
         final latestHistoryByMaterial = <String, _MayoreoPriceHistoryRow>{};
         for (final row in companyHistoryRows) {
           latestHistoryByMaterial.putIfAbsent(row.materialName, () => row);
@@ -221,7 +308,7 @@ class _MayoreoPriceAdjustmentsPageState
             ),
             build: (_) => [
               pw.Container(
-                padding: const pw.EdgeInsets.fromLTRB(18, 16, 18, 16),
+                padding: const pw.EdgeInsets.fromLTRB(16, 14, 16, 14),
                 decoration: pw.BoxDecoration(
                   color: PdfColors.white,
                   borderRadius: pw.BorderRadius.circular(18),
@@ -292,203 +379,175 @@ class _MayoreoPriceAdjustmentsPageState
                         ),
                       ],
                     ),
-                    pw.SizedBox(height: 16),
-                    pw.Container(
-                      width: double.infinity,
-                      padding: const pw.EdgeInsets.fromLTRB(14, 12, 14, 12),
-                      decoration: pw.BoxDecoration(
-                        color: softAccent,
-                        borderRadius: pw.BorderRadius.circular(16),
-                      ),
-                      child: pw.Column(
-                        crossAxisAlignment: pw.CrossAxisAlignment.start,
-                        children: [
-                          pw.Text(
-                            companyName,
-                            style: pw.TextStyle(
-                              color: accent,
-                              fontWeight: pw.FontWeight.bold,
-                              fontSize: 18,
-                            ),
-                          ),
-                          pw.SizedBox(height: 4),
-                          pw.Text(
-                            'MAYOREO · ${_movementFilterLabel(_historyMovementFilter)}',
-                            style: pw.TextStyle(
-                              color: text,
-                              fontWeight: pw.FontWeight.bold,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    pw.SizedBox(height: 16),
-                    pw.Row(
-                      children: [
-                        _pdfSummaryTile(
-                          label: 'MATERIALES VIGENTES',
-                          value: companyCurrentRows.length.toString(),
-                          accent: accent,
-                          softAccent: softAccent,
-                        ),
-                        pw.SizedBox(width: 10),
-                        _pdfSummaryTile(
-                          label: 'PROMEDIO FINAL',
-                          value: formatMoney(avgCurrent),
-                          accent: accent,
-                          softAccent: softAccent,
-                        ),
-                        pw.SizedBox(width: 10),
-                        _pdfSummaryTile(
-                          label: 'ULTIMO CAMBIO',
-                          value: _formatDateTime(lastAdjustmentAt),
-                          accent: accent,
-                          softAccent: softAccent,
-                        ),
-                      ],
-                    ),
-                    pw.SizedBox(height: 14),
-                    pw.Container(
-                      decoration: pw.BoxDecoration(
-                        color: PdfColors.white,
-                        borderRadius: pw.BorderRadius.circular(16),
-                        border: pw.Border.all(color: border, width: 1),
-                      ),
-                      child: pw.TableHelper.fromTextArray(
-                        headers: const ['MATERIAL', 'PRECIO FINAL'],
-                        data: companyCurrentRows
-                            .map(
-                              (row) => [
-                                row.materialName.toUpperCase(),
-                                formatMoney(row.currentPrice),
-                              ],
-                            )
-                            .toList(growable: false),
-                        cellAlignment: pw.Alignment.centerLeft,
-                        headerStyle: pw.TextStyle(
-                          color: PdfColors.white,
-                          fontWeight: pw.FontWeight.bold,
-                          fontSize: 10,
-                        ),
-                        cellStyle: pw.TextStyle(color: text, fontSize: 10),
-                        headerDecoration: pw.BoxDecoration(
-                          color: accent,
-                          borderRadius: const pw.BorderRadius.only(
-                            topLeft: pw.Radius.circular(15),
-                            topRight: pw.Radius.circular(15),
-                          ),
-                        ),
-                        rowDecoration: const pw.BoxDecoration(
-                          color: PdfColors.white,
-                        ),
-                        oddRowDecoration: pw.BoxDecoration(color: softAccent),
-                        border: pw.TableBorder(
-                          horizontalInside: pw.BorderSide(
-                            color: border,
-                            width: 0.7,
-                          ),
-                        ),
-                        headerPadding: const pw.EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 8,
-                        ),
-                        cellPadding: const pw.EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 7,
-                        ),
-                        columnWidths: <int, pw.TableColumnWidth>{
-                          0: const pw.FlexColumnWidth(4),
-                          1: const pw.FlexColumnWidth(1.5),
-                        },
-                      ),
-                    ),
-                    if (companyHistoryRows.isNotEmpty) ...[
-                      pw.SizedBox(height: 12),
-                      pw.Text(
-                        'HISTORIAL RECIENTE POR MATERIAL',
-                        style: pw.TextStyle(
-                          color: accent,
-                          fontWeight: pw.FontWeight.bold,
-                          fontSize: 10.5,
-                        ),
-                      ),
-                      pw.SizedBox(height: 6),
-                      pw.Container(
-                        decoration: pw.BoxDecoration(
-                          color: PdfColors.white,
-                          borderRadius: pw.BorderRadius.circular(16),
-                          border: pw.Border.all(color: border, width: 1),
-                        ),
-                        child: pw.TableHelper.fromTextArray(
-                          headers: const [
-                            'FECHA',
-                            'MATERIAL',
-                            'ANTERIOR',
-                            'NUEVO',
-                            'PRECIO FINAL',
-                          ],
-                          data: latestHistoryRows
-                              .map(
-                                (row) => [
-                                  _formatDateTime(row.createdAt),
-                                  row.materialName.toUpperCase(),
-                                  formatMoney(row.previousPrice),
-                                  formatMoney(row.newPrice),
-                                  formatMoney(row.newPrice),
-                                ],
-                              )
-                              .toList(growable: false),
-                          cellAlignment: pw.Alignment.centerLeft,
-                          headerStyle: pw.TextStyle(
-                            color: PdfColors.white,
-                            fontWeight: pw.FontWeight.bold,
-                            fontSize: 9.6,
-                          ),
-                          cellStyle: pw.TextStyle(color: text, fontSize: 9.3),
-                          headerDecoration: pw.BoxDecoration(
-                            color: accent,
-                            borderRadius: const pw.BorderRadius.only(
-                              topLeft: pw.Radius.circular(15),
-                              topRight: pw.Radius.circular(15),
-                            ),
-                          ),
-                          rowDecoration: const pw.BoxDecoration(
-                            color: PdfColors.white,
-                          ),
-                          oddRowDecoration: pw.BoxDecoration(color: softAccent),
-                          border: pw.TableBorder(
-                            horizontalInside: pw.BorderSide(
-                              color: border,
-                              width: 0.7,
-                            ),
-                          ),
-                          headerPadding: const pw.EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          cellPadding: const pw.EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 7,
-                          ),
-                          columnWidths: <int, pw.TableColumnWidth>{
-                            0: const pw.FlexColumnWidth(1.6),
-                            1: const pw.FlexColumnWidth(2.7),
-                            2: const pw.FlexColumnWidth(1.2),
-                            3: const pw.FlexColumnWidth(1.2),
-                            4: const pw.FlexColumnWidth(1.3),
-                          },
-                        ),
-                      ),
-                      pw.SizedBox(height: 10),
-                      pw.Text(
-                        'Este documento refleja los precios finales vigentes al momento de su emision.',
-                        style: pw.TextStyle(color: text, fontSize: 9),
-                      ),
-                    ],
                   ],
                 ),
               ),
+              pw.SizedBox(height: 10),
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.fromLTRB(14, 11, 14, 11),
+                decoration: pw.BoxDecoration(
+                  color: softAccent,
+                  borderRadius: pw.BorderRadius.circular(16),
+                ),
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      companyName,
+                      style: pw.TextStyle(
+                        color: accent,
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      companyHistoryRows.isEmpty
+                          ? 'MAYOREO · PRECIOS VIGENTES'
+                          : 'MAYOREO · ${_movementFilterLabel(_historyMovementFilter)}',
+                      style: pw.TextStyle(
+                        color: text,
+                        fontWeight: pw.FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.SizedBox(height: 10),
+              pw.Row(
+                children: [
+                  _pdfSummaryTile(
+                    label: 'MATERIALES VIGENTES',
+                    value: companyCurrentRows.length.toString(),
+                    accent: accent,
+                    softAccent: softAccent,
+                  ),
+                  pw.SizedBox(width: 10),
+                  _pdfSummaryTile(
+                    label: 'ULTIMO CAMBIO',
+                    value: _formatDateTime(lastAdjustmentAt),
+                    accent: accent,
+                    softAccent: softAccent,
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 10),
+              pw.Text(
+                'PRECIOS VIGENTES',
+                style: pw.TextStyle(
+                  color: accent,
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 10.5,
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              pw.TableHelper.fromTextArray(
+                headers: const ['MATERIAL', 'PRECIO FINAL'],
+                data: companyCurrentRows
+                    .map(
+                      (row) => [
+                        row.materialName.toUpperCase(),
+                        formatMoney(row.currentPrice),
+                      ],
+                    )
+                    .toList(growable: false),
+                cellAlignment: pw.Alignment.centerLeft,
+                headerStyle: pw.TextStyle(
+                  color: PdfColors.white,
+                  fontWeight: pw.FontWeight.bold,
+                  fontSize: 10,
+                ),
+                cellStyle: pw.TextStyle(color: text, fontSize: 10),
+                headerDecoration: pw.BoxDecoration(color: accent),
+                rowDecoration: const pw.BoxDecoration(color: PdfColors.white),
+                oddRowDecoration: pw.BoxDecoration(color: softAccent),
+                border: pw.TableBorder(
+                  top: pw.BorderSide(color: border, width: 1),
+                  bottom: pw.BorderSide(color: border, width: 1),
+                  horizontalInside: pw.BorderSide(color: border, width: 0.7),
+                ),
+                headerPadding: const pw.EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 7,
+                ),
+                cellPadding: const pw.EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 6,
+                ),
+                columnWidths: <int, pw.TableColumnWidth>{
+                  0: const pw.FlexColumnWidth(4),
+                  1: const pw.FlexColumnWidth(1.5),
+                },
+              ),
+              if (companyHistoryRows.isNotEmpty) ...[
+                pw.SizedBox(height: 12),
+                pw.Text(
+                  'HISTORIAL RECIENTE POR MATERIAL',
+                  style: pw.TextStyle(
+                    color: accent,
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 10.5,
+                  ),
+                ),
+                pw.SizedBox(height: 6),
+                pw.TableHelper.fromTextArray(
+                  headers: const [
+                    'FECHA',
+                    'MATERIAL',
+                    'ANTERIOR',
+                    'NUEVO',
+                    'PRECIO FINAL',
+                  ],
+                  data: latestHistoryRows
+                      .map(
+                        (row) => [
+                          _formatDateTime(row.createdAt),
+                          row.materialName.toUpperCase(),
+                          formatMoney(row.previousPrice),
+                          formatMoney(row.newPrice),
+                          formatMoney(row.newPrice),
+                        ],
+                      )
+                      .toList(growable: false),
+                  cellAlignment: pw.Alignment.centerLeft,
+                  headerStyle: pw.TextStyle(
+                    color: PdfColors.white,
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 9.6,
+                  ),
+                  cellStyle: pw.TextStyle(color: text, fontSize: 9.3),
+                  headerDecoration: pw.BoxDecoration(color: accent),
+                  rowDecoration: const pw.BoxDecoration(color: PdfColors.white),
+                  oddRowDecoration: pw.BoxDecoration(color: softAccent),
+                  border: pw.TableBorder(
+                    top: pw.BorderSide(color: border, width: 1),
+                    bottom: pw.BorderSide(color: border, width: 1),
+                    horizontalInside: pw.BorderSide(color: border, width: 0.7),
+                  ),
+                  headerPadding: const pw.EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 7,
+                  ),
+                  cellPadding: const pw.EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 6,
+                  ),
+                  columnWidths: <int, pw.TableColumnWidth>{
+                    0: const pw.FlexColumnWidth(1.6),
+                    1: const pw.FlexColumnWidth(2.7),
+                    2: const pw.FlexColumnWidth(1.2),
+                    3: const pw.FlexColumnWidth(1.2),
+                    4: const pw.FlexColumnWidth(1.3),
+                  },
+                ),
+                pw.SizedBox(height: 8),
+                pw.Text(
+                  'Este documento refleja los precios finales vigentes al momento de su emision.',
+                  style: pw.TextStyle(color: text, fontSize: 9),
+                ),
+              ],
             ],
           ),
         );
@@ -742,7 +801,9 @@ class _MayoreoPriceAdjustmentsPageState
                       ...selectedRows.map(
                         (row) => _MayoreoPriceHistoryRow(
                           id: '${row.id}-${now.microsecondsSinceEpoch}',
+                          companyId: row.companyId,
                           companyName: row.companyName,
+                          materialId: row.materialId,
                           materialName: row.materialName,
                           previousPrice: row.currentPrice,
                           newPrice: computeNewPrice(row.currentPrice),
@@ -753,6 +814,7 @@ class _MayoreoPriceAdjustmentsPageState
                       ..._historyRows,
                     ];
                   });
+                  unawaited(_persistPricingData());
                   Navigator.of(dialogContext).pop();
                   _toast(
                     'Ajuste aplicado a ${selectedPriceIds.length} precio(s)',
@@ -3322,7 +3384,9 @@ class _MayoreoPriceNavItem extends StatelessWidget {
 
 class _MayoreoSalePriceRow {
   final String id;
+  final String companyId;
   final String companyName;
+  final String materialId;
   final String materialName;
   final double currentPrice;
   final bool active;
@@ -3331,7 +3395,9 @@ class _MayoreoSalePriceRow {
 
   const _MayoreoSalePriceRow({
     required this.id,
+    required this.companyId,
     required this.companyName,
+    required this.materialId,
     required this.materialName,
     required this.currentPrice,
     required this.active,
@@ -3347,7 +3413,9 @@ class _MayoreoSalePriceRow {
   }) {
     return _MayoreoSalePriceRow(
       id: id,
+      companyId: companyId,
       companyName: companyName,
+      materialId: materialId,
       materialName: materialName,
       currentPrice: currentPrice ?? this.currentPrice,
       active: active ?? this.active,
@@ -3359,7 +3427,9 @@ class _MayoreoSalePriceRow {
 
 class _MayoreoPriceHistoryRow {
   final String id;
+  final String companyId;
   final String companyName;
+  final String materialId;
   final String materialName;
   final double previousPrice;
   final double newPrice;
@@ -3368,7 +3438,9 @@ class _MayoreoPriceHistoryRow {
 
   const _MayoreoPriceHistoryRow({
     required this.id,
+    required this.companyId,
     required this.companyName,
+    required this.materialId,
     required this.materialName,
     required this.previousPrice,
     required this.newPrice,
@@ -3381,90 +3453,6 @@ class _MayoreoPriceHistoryRow {
     if (newPrice < previousPrice) return 'BAJA';
     return 'IGUAL';
   }
-}
-
-List<_MayoreoSalePriceRow> _seedPriceRows() {
-  final now = DateTime.now();
-  return [
-    _MayoreoSalePriceRow(
-      id: 'price-1',
-      companyName: 'ACEROS DEL BAJIO',
-      materialName: 'VARILLA 3/8 GRADO 42',
-      currentPrice: 19850,
-      active: true,
-      notes: 'LISTA PREFERENTE POR VOLUMEN',
-      updatedAt: now.subtract(const Duration(days: 2)),
-    ),
-    _MayoreoSalePriceRow(
-      id: 'price-2',
-      companyName: 'CONSTRUCTORA NOVA',
-      materialName: 'LAMINA LISA CAL 20',
-      currentPrice: 842,
-      active: true,
-      notes: 'NEGOCIACION VIGENTE DE QUINCENA',
-      updatedAt: now.subtract(const Duration(days: 1)),
-    ),
-    _MayoreoSalePriceRow(
-      id: 'price-3',
-      companyName: 'FERRETODO CENTRO',
-      materialName: 'LAMINA LISA CAL 20',
-      currentPrice: 624,
-      active: true,
-      notes: 'PROMOCION DE INTRODUCCION',
-      updatedAt: now.subtract(const Duration(days: 3)),
-    ),
-    _MayoreoSalePriceRow(
-      id: 'price-4',
-      companyName: 'RECICLADOS PALMIRA',
-      materialName: 'CH MIXTA',
-      currentPrice: 4350,
-      active: true,
-      notes: 'PRECIO GUIA DE CHATARRA',
-      updatedAt: now.subtract(const Duration(days: 2)),
-    ),
-    _MayoreoSalePriceRow(
-      id: 'price-5',
-      companyName: 'INDUSTRIAS DEL NORTE',
-      materialName: 'COBRE',
-      currentPrice: 118000,
-      active: true,
-      notes: 'AJUSTE SUJETO A MERCADO',
-      updatedAt: now.subtract(const Duration(days: 4)),
-    ),
-  ];
-}
-
-List<_MayoreoPriceHistoryRow> _seedHistoryRows() {
-  final now = DateTime.now();
-  return [
-    _MayoreoPriceHistoryRow(
-      id: 'hist-1',
-      companyName: 'ACEROS DEL BAJIO',
-      materialName: 'VARILLA 3/8 GRADO 42',
-      previousPrice: 19400,
-      newPrice: 19850,
-      reason: 'ALZA COMERCIAL DE SEMANA',
-      createdAt: now.subtract(const Duration(hours: 12)),
-    ),
-    _MayoreoPriceHistoryRow(
-      id: 'hist-2',
-      companyName: 'CONSTRUCTORA NOVA',
-      materialName: 'LAMINA LISA CAL 20',
-      previousPrice: 790,
-      newPrice: 842,
-      reason: 'AJUSTE POR NEGOCIACION DE QUINCENA',
-      createdAt: now.subtract(const Duration(days: 1, hours: 2)),
-    ),
-    _MayoreoPriceHistoryRow(
-      id: 'hist-3',
-      companyName: 'RECICLADOS PALMIRA',
-      materialName: 'CH MIXTA',
-      previousPrice: 4200,
-      newPrice: 4350,
-      reason: 'ALZA DE REFERENCIA EN CHATARRA',
-      createdAt: now.subtract(const Duration(days: 2)),
-    ),
-  ];
 }
 
 String _formatDateTime(DateTime value) {

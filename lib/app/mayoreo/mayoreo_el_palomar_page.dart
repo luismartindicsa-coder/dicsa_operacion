@@ -1,10 +1,9 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../auth/auth_access.dart';
@@ -25,9 +24,8 @@ import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
 import 'mayoreo_theme.dart';
 
-const String _kMayoreoElPalomarPrefsKey = 'mayoreo_el_palomar_page_state_v1';
-const String _kMayoreoSalesReportBridgeKey =
-    'mayoreo_sales_report_page_state_v1';
+const String _kMayoreoSalesReportsTable = 'mayoreo_sales_reports';
+const String _kMayoreoPalomarMovementsTable = 'mayoreo_palomar_movements';
 const double _kPalomarReferenceLineAmount = 1000000;
 
 enum _PalomarMovementType {
@@ -52,6 +50,7 @@ class MayoreoElPalomarPage extends StatefulWidget {
 }
 
 class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
+  final SupabaseClient _supa = Supabase.instance.client;
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   final ScrollController _bodyScrollController = ScrollController();
@@ -104,21 +103,22 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   }
 
   Future<void> _loadState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final persisted = prefs.getString(_kMayoreoElPalomarPrefsKey);
     List<_PalomarMovement> restoredMovements = const <_PalomarMovement>[];
-    if (persisted != null && persisted.trim().isNotEmpty) {
-      try {
-        final data = jsonDecode(persisted) as Map<String, dynamic>;
-        restoredMovements = (data['movements'] as List<dynamic>? ?? const [])
-            .whereType<Map>()
-            .map(
-              (item) => _PalomarMovement.fromJson(
-                Map<String, dynamic>.from(item.cast<String, dynamic>()),
-              ),
-            )
-            .toList(growable: false);
-      } catch (_) {}
+    try {
+      final response = await _supa
+          .from(_kMayoreoPalomarMovementsTable)
+          .select()
+          .order('date', ascending: true)
+          .order('created_at', ascending: true);
+      restoredMovements = (response as List)
+          .map(
+            (item) => _PalomarMovement.fromSupabase(
+              Map<String, dynamic>.from(item as Map),
+            ),
+          )
+          .toList(growable: false);
+    } catch (_) {
+      restoredMovements = const <_PalomarMovement>[];
     }
     final remissions = await _loadSourceRemissions();
     if (!mounted) return;
@@ -129,28 +129,42 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   }
 
   Future<void> _persistState() async {
-    final prefs = await SharedPreferences.getInstance();
-    final payload = <String, dynamic>{
-      'movements': _movements
-          .map((movement) => movement.toJson())
-          .toList(growable: false),
-    };
-    await prefs.setString(_kMayoreoElPalomarPrefsKey, jsonEncode(payload));
+    if (_movements.isNotEmpty) {
+      await _supa
+          .from(_kMayoreoPalomarMovementsTable)
+          .upsert(
+            _movements
+                .map((movement) => movement.toSupabase())
+                .toList(growable: false),
+            onConflict: 'id',
+          );
+    }
+    final existing = await _supa
+        .from(_kMayoreoPalomarMovementsTable)
+        .select('id');
+    final existingIds = (existing as List)
+        .map((row) => (row as Map)['id'].toString())
+        .toSet();
+    final nextIds = _movements.map((movement) => movement.id).toSet();
+    final deletedIds = existingIds.difference(nextIds).toList(growable: false);
+    if (deletedIds.isNotEmpty) {
+      await _supa
+          .from(_kMayoreoPalomarMovementsTable)
+          .delete()
+          .inFilter('id', deletedIds);
+    }
   }
 
   Future<List<_PalomarSourceRemission>> _loadSourceRemissions() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kMayoreoSalesReportBridgeKey);
-    if (raw == null || raw.trim().isEmpty) {
-      return const <_PalomarSourceRemission>[];
-    }
     try {
-      final data = jsonDecode(raw) as Map<String, dynamic>;
-      final rows = (data['rows'] as List<dynamic>? ?? const <dynamic>[])
-          .whereType<Map>()
+      final response = await _supa
+          .from(_kMayoreoSalesReportsTable)
+          .select()
+          .order('sale_date', ascending: false);
+      final rows = (response as List)
           .map(
-            (item) => _PalomarSourceRemission.fromJson(
-              Map<String, dynamic>.from(item.cast<String, dynamic>()),
+            (item) => _PalomarSourceRemission.fromSupabase(
+              Map<String, dynamic>.from(item as Map),
             ),
           )
           .where((row) => _isPalomarClientName(row.clientName))
@@ -1664,45 +1678,42 @@ class _PalomarTopBar extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Wrap(
-                spacing: 10,
-                runSpacing: 10,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                alignment: WrapAlignment.spaceBetween,
-                children: [
-                  _PalomarStatementBalanceCard(
-                    balance: currentBalance,
-                    releasedTotal: totalChecksReleased,
-                    appliedTotal: totalApplied,
-                    availableToRequestAmount: availableToRequestAmount,
-                    statusLabel: accountStatusLabel,
-                    statusColor: accountStatusColor,
-                  ),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      FilledButton.icon(
-                        style: _palomarPrimaryButtonStyle(),
-                        onPressed: () => unawaited(onRegisterCheck()),
-                        icon: const Icon(Icons.add_card_rounded),
-                        label: const Text('Registrar cheque'),
-                      ),
-                      OutlinedButton.icon(
-                        style: _palomarSecondaryButtonStyle(),
-                        onPressed: () => unawaited(onApplyRemissions()),
-                        icon: const Icon(Icons.link_rounded),
-                        label: const Text('Aplicar remisiones'),
-                      ),
-                      OutlinedButton.icon(
-                        style: _palomarSecondaryButtonStyle(),
-                        onPressed: () => unawaited(onAdjustment()),
-                        icon: const Icon(Icons.tune_rounded),
-                        label: const Text('Ajuste'),
-                      ),
-                    ],
-                  ),
-                ],
+              Align(
+                alignment: Alignment.centerRight,
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  alignment: WrapAlignment.end,
+                  children: [
+                    FilledButton.icon(
+                      style: _palomarPrimaryButtonStyle(),
+                      onPressed: () => unawaited(onRegisterCheck()),
+                      icon: const Icon(Icons.add_card_rounded),
+                      label: const Text('Registrar cheque'),
+                    ),
+                    OutlinedButton.icon(
+                      style: _palomarSecondaryButtonStyle(),
+                      onPressed: () => unawaited(onApplyRemissions()),
+                      icon: const Icon(Icons.link_rounded),
+                      label: const Text('Aplicar remisiones'),
+                    ),
+                    OutlinedButton.icon(
+                      style: _palomarSecondaryButtonStyle(),
+                      onPressed: () => unawaited(onAdjustment()),
+                      icon: const Icon(Icons.tune_rounded),
+                      label: const Text('Ajuste'),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              _PalomarStatementBalanceCard(
+                balance: currentBalance,
+                releasedTotal: totalChecksReleased,
+                appliedTotal: totalApplied,
+                availableToRequestAmount: availableToRequestAmount,
+                statusLabel: accountStatusLabel,
+                statusColor: accountStatusColor,
               ),
               const SizedBox(height: 12),
               Wrap(
@@ -5406,11 +5417,38 @@ class _PalomarMovement {
     'periodAdjustmentsTotal': periodAdjustmentsTotal,
   };
 
-  factory _PalomarMovement.fromJson(Map<String, dynamic> json) {
+  Map<String, dynamic> toSupabase() => <String, dynamic>{
+    'id': id,
+    'created_at': createdAt.toIso8601String(),
+    'date': date.toIso8601String(),
+    'type': type.name,
+    'reference': reference,
+    'check_number': checkNumber,
+    'remision': remision,
+    'ticket': ticket,
+    'client_name_snapshot': client,
+    'material_name_snapshot': material,
+    'exit_weight': exitWeight,
+    'approved_weight': approvedWeight,
+    'approved_price': approvedPrice,
+    'amount': amount,
+    'notes': notes.isEmpty ? null : notes,
+    'bank_reference': bankReference.isEmpty ? null : bankReference,
+    'source_report_id': sourceReportId,
+    'period_start': periodStart?.toIso8601String(),
+    'period_end': periodEnd?.toIso8601String(),
+    'period_opening_balance': periodOpeningBalance,
+    'period_closing_balance': periodClosingBalance,
+    'period_checks_total': periodChecksTotal,
+    'period_applied_total': periodAppliedTotal,
+    'period_adjustments_total': periodAdjustmentsTotal,
+  };
+
+  factory _PalomarMovement.fromSupabase(Map<String, dynamic> json) {
     return _PalomarMovement(
       id: (json['id'] as String?) ?? '',
       createdAt:
-          DateTime.tryParse((json['createdAt'] as String?) ?? '') ??
+          DateTime.tryParse((json['created_at'] as String?) ?? '') ??
           DateTime.now(),
       date:
           DateTime.tryParse((json['date'] as String?) ?? '') ?? DateTime.now(),
@@ -5419,25 +5457,27 @@ class _PalomarMovement {
         orElse: () => _PalomarMovementType.chequeLiberado,
       ),
       reference: (json['reference'] as String?) ?? '',
-      checkNumber: (json['checkNumber'] as String?) ?? '',
+      checkNumber: (json['check_number'] as String?) ?? '',
       remision: (json['remision'] as String?) ?? '',
       ticket: (json['ticket'] as String?) ?? '',
-      client: (json['client'] as String?) ?? '',
-      material: (json['material'] as String?) ?? '',
-      exitWeight: (json['exitWeight'] as num?)?.toDouble(),
-      approvedWeight: (json['approvedWeight'] as num?)?.toDouble(),
-      approvedPrice: (json['approvedPrice'] as num?)?.toDouble(),
+      client: (json['client_name_snapshot'] as String?) ?? '',
+      material: (json['material_name_snapshot'] as String?) ?? '',
+      exitWeight: (json['exit_weight'] as num?)?.toDouble(),
+      approvedWeight: (json['approved_weight'] as num?)?.toDouble(),
+      approvedPrice: (json['approved_price'] as num?)?.toDouble(),
       amount: ((json['amount'] as num?) ?? 0).toDouble(),
       notes: (json['notes'] as String?) ?? '',
-      bankReference: (json['bankReference'] as String?) ?? '',
-      sourceReportId: json['sourceReportId'] as String?,
-      periodStart: DateTime.tryParse((json['periodStart'] as String?) ?? ''),
-      periodEnd: DateTime.tryParse((json['periodEnd'] as String?) ?? ''),
-      periodOpeningBalance: (json['periodOpeningBalance'] as num?)?.toDouble(),
-      periodClosingBalance: (json['periodClosingBalance'] as num?)?.toDouble(),
-      periodChecksTotal: (json['periodChecksTotal'] as num?)?.toDouble(),
-      periodAppliedTotal: (json['periodAppliedTotal'] as num?)?.toDouble(),
-      periodAdjustmentsTotal: (json['periodAdjustmentsTotal'] as num?)
+      bankReference: (json['bank_reference'] as String?) ?? '',
+      sourceReportId: json['source_report_id'] as String?,
+      periodStart: DateTime.tryParse((json['period_start'] as String?) ?? ''),
+      periodEnd: DateTime.tryParse((json['period_end'] as String?) ?? ''),
+      periodOpeningBalance: (json['period_opening_balance'] as num?)
+          ?.toDouble(),
+      periodClosingBalance: (json['period_closing_balance'] as num?)
+          ?.toDouble(),
+      periodChecksTotal: (json['period_checks_total'] as num?)?.toDouble(),
+      periodAppliedTotal: (json['period_applied_total'] as num?)?.toDouble(),
+      periodAdjustmentsTotal: (json['period_adjustments_total'] as num?)
           ?.toDouble(),
     );
   }
@@ -5559,19 +5599,20 @@ class _PalomarSourceRemission {
   bool get isRelated =>
       approvedWeight != null && approvedPrice != null && approvedWeight! > 0;
 
-  factory _PalomarSourceRemission.fromJson(Map<String, dynamic> json) {
+  factory _PalomarSourceRemission.fromSupabase(Map<String, dynamic> json) {
     return _PalomarSourceRemission(
       id: (json['id'] as String?) ?? '',
       saleDate:
-          DateTime.tryParse((json['date'] as String?) ?? '') ?? DateTime.now(),
+          DateTime.tryParse((json['sale_date'] as String?) ?? '') ??
+          DateTime.now(),
       ticket: (json['ticket'] as String?) ?? '',
       remision: (json['remision'] as String?) ?? '',
-      clientName: (json['clientName'] as String?) ?? '',
-      materialName: (json['materialName'] as String?) ?? '',
-      exitWeight: ((json['exitWeight'] as num?) ?? 0).toDouble(),
-      approvedWeight: (json['approvedWeight'] as num?)?.toDouble(),
-      approvedPrice: (json['approvedPrice'] as num?)?.toDouble(),
-      approvedAmount: ((json['approvedAmount'] as num?) ?? 0).toDouble(),
+      clientName: (json['client_name_snapshot'] as String?) ?? '',
+      materialName: (json['material_name_snapshot'] as String?) ?? '',
+      exitWeight: ((json['exit_weight'] as num?) ?? 0).toDouble(),
+      approvedWeight: (json['approved_weight'] as num?)?.toDouble(),
+      approvedPrice: (json['approved_price'] as num?)?.toDouble(),
+      approvedAmount: ((json['approved_amount'] as num?) ?? 0).toDouble(),
     );
   }
 }

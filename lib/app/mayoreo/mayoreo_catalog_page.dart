@@ -19,6 +19,7 @@ import '../shared/utils/csv_file_save.dart';
 import '../services/inventory_movements_grid.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_dashboard_preview_page.dart';
+import 'mayoreo_data_store.dart';
 import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
@@ -231,94 +232,105 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
   void initState() {
     super.initState();
     unawaited(_resolveNavigationAccess());
-    _companies = <_MayoreoCompany>[
-      _MayoreoCompany(
-        id: 'co_1',
-        code: 'ACEROS_DEL_BAJIO',
-        name: 'ACEROS DEL BAJIO',
-        contact: 'MARIO RUIZ',
-        notes: 'Cuenta clave del corredor industrial.',
-      ),
-      _MayoreoCompany(
-        id: 'co_2',
-        code: 'CONSTRUCTORA_NOVA',
-        name: 'CONSTRUCTORA NOVA',
-        contact: 'PAOLA MEJIA',
-        notes: 'Compra por volumen y pide cotización semanal.',
-      ),
-      _MayoreoCompany(
-        id: 'co_3',
-        code: 'FERRETODO_CENTRO',
-        name: 'FERRETODO CENTRO',
-        contact: 'SERGIO PEREZ',
-        notes: 'Requiere seguimiento rápido de inventario comercial.',
-      ),
-    ];
-    _materials = <_MayoreoMaterial>[
-      _MayoreoMaterial(
-        id: 'ma_1',
-        code: 'VARILLA_3_8',
-        level: 'GENERAL',
-        name: 'VARILLA 3/8',
-        unit: 'TON',
-        category: 'METAL',
-        notes: 'Catalogo base para acero corrugado.',
-      ),
-      _MayoreoMaterial(
-        id: 'ma_2',
-        code: 'LAMINA_LISA',
-        level: 'GENERAL',
-        name: 'LAMINA LISA',
-        unit: 'KG',
-        category: 'METAL',
-        notes: 'Catalogo base para lamina comercial.',
-      ),
-      _MayoreoMaterial(
-        id: 'ma_3',
-        code: 'VARILLA_3_8_GRADO_42',
-        level: 'COMERCIAL',
-        name: 'VARILLA 3/8 GRADO 42',
-        unit: 'TON',
-        category: 'METAL',
-        family: 'METAL',
-        generalMaterialId: 'ma_1',
-        notes: 'Presentacion comercial para mayoreo industrial.',
-      ),
-      _MayoreoMaterial(
-        id: 'ma_4',
-        code: 'LAMINA_LISA_CAL_20',
-        level: 'COMERCIAL',
-        name: 'LAMINA LISA CAL 20',
-        unit: 'KG',
-        category: 'METAL',
-        family: 'METAL',
-        generalMaterialId: 'ma_2',
-        notes: 'Precio sensible a ajustes semanales.',
-      ),
-    ];
-    _prices = <_MayoreoPrice>[
-      _MayoreoPrice(
-        id: 'pr_1',
-        companyId: 'co_1',
-        materialId: 'ma_3',
-        amount: 19850,
-        notes: 'Lista preferente por volumen.',
-      ),
-      _MayoreoPrice(
-        id: 'pr_2',
-        companyId: 'co_2',
-        materialId: 'ma_4',
-        amount: 842,
-        notes: 'Precio negociado para esta quincena.',
-      ),
-      _MayoreoPrice(
-        id: 'pr_3',
-        companyId: 'co_3',
-        materialId: 'ma_4',
-        amount: 624,
-        notes: 'Promoción de introducción comercial.',
-      ),
-    ];
+    _companies = <_MayoreoCompany>[];
+    _materials = <_MayoreoMaterial>[];
+    _prices = <_MayoreoPrice>[];
+    unawaited(_loadCatalogSnapshot());
+  }
+
+  Future<void> _loadCatalogSnapshot() async {
+    final snapshot = await MayoreoDataStore.loadCatalogSnapshot();
+    if (!mounted) return;
+    setState(() {
+      _companies = snapshot.companies
+          .map(
+            (row) => _MayoreoCompany(
+              id: row.id,
+              code: row.code,
+              name: row.name,
+              contact: row.contact,
+              active: row.active,
+              notes: row.notes,
+            ),
+          )
+          .toList(growable: false);
+      _materials = snapshot.materials
+          .map(
+            (row) => _MayoreoMaterial(
+              id: row.id,
+              code: row.code,
+              level: row.level,
+              name: row.name,
+              unit: row.unit,
+              category: row.category,
+              family: row.family,
+              generalMaterialId: row.generalMaterialId,
+              active: row.active,
+              notes: row.notes,
+            ),
+          )
+          .toList(growable: false);
+      _prices = snapshot.prices
+          .map(
+            (row) => _MayoreoPrice(
+              id: row.id,
+              companyId: row.companyId,
+              materialId: row.materialId,
+              amount: row.amount,
+              active: row.active,
+              notes: row.notes,
+              updatedAt: row.updatedAt,
+            ),
+          )
+          .toList(growable: false);
+    });
+  }
+
+  Future<void> _persistCatalogSnapshot() async {
+    final snapshot = MayoreoCatalogSnapshot(
+      companies: _companies
+          .map(
+            (row) => MayoreoCatalogCompanyRecord(
+              id: row.id,
+              code: row.code,
+              name: row.name,
+              contact: row.contact,
+              active: row.active,
+              notes: row.notes,
+            ),
+          )
+          .toList(growable: false),
+      materials: _materials
+          .map(
+            (row) => MayoreoCatalogMaterialRecord(
+              id: row.id,
+              code: row.code,
+              level: row.level,
+              name: row.name,
+              unit: row.unit,
+              category: row.category,
+              family: row.family,
+              generalMaterialId: row.generalMaterialId,
+              active: row.active,
+              notes: row.notes,
+            ),
+          )
+          .toList(growable: false),
+      prices: _prices
+          .map(
+            (row) => MayoreoCatalogPriceRecord(
+              id: row.id,
+              companyId: row.companyId,
+              materialId: row.materialId,
+              amount: row.amount,
+              active: row.active,
+              notes: row.notes,
+              updatedAt: row.updatedAt,
+            ),
+          )
+          .toList(growable: false),
+    );
+    await MayoreoDataStore.saveCatalogSnapshot(snapshot);
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -480,6 +492,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
       _selectedRowKey = 'co:${company.id}';
       _resetCompanyDraft();
     });
+    unawaited(_persistCatalogSnapshot());
     _companyNameFocus.requestFocus();
   }
 
@@ -512,6 +525,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
       _selectedRowKey = 'ma:${material.id}';
       _resetMaterialDraft();
     });
+    unawaited(_persistCatalogSnapshot());
     _materialNameFocus.requestFocus();
   }
 
@@ -530,11 +544,13 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
         materialId: materialId,
         amount: amount,
         notes: _priceNotesC.text.trim(),
+        updatedAt: DateTime.now(),
       );
       _prices = [price, ..._prices];
       _selectedRowKey = 'pr:${price.id}';
       _resetPriceDraft();
     });
+    unawaited(_persistCatalogSnapshot());
     _priceCompanyFocus.requestFocus();
   }
 
@@ -950,6 +966,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
           )
           .toList(growable: false);
     });
+    unawaited(_persistCatalogSnapshot());
   }
 
   void _toggleMaterialActive(_MayoreoMaterial row) {
@@ -961,6 +978,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
           )
           .toList(growable: false);
     });
+    unawaited(_persistCatalogSnapshot());
   }
 
   void _togglePriceActive(_MayoreoPrice row) {
@@ -972,6 +990,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
           )
           .toList(growable: false);
     });
+    unawaited(_persistCatalogSnapshot());
   }
 
   void _toggleSelectedActive() {
@@ -1007,6 +1026,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
               .toList(growable: false);
       }
     });
+    unawaited(_persistCatalogSnapshot());
   }
 
   void _deleteCompany(_MayoreoCompany row) {
@@ -1019,6 +1039,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
       _companies = _companies.where((item) => item.id != row.id).toList();
       _removeSelectionKey('co:${row.id}');
     });
+    unawaited(_persistCatalogSnapshot());
   }
 
   void _deleteMaterial(_MayoreoMaterial row) {
@@ -1031,6 +1052,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
       _materials = _materials.where((item) => item.id != row.id).toList();
       _removeSelectionKey('ma:${row.id}');
     });
+    unawaited(_persistCatalogSnapshot());
   }
 
   void _deletePrice(_MayoreoPrice row) {
@@ -1038,6 +1060,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
       _prices = _prices.where((item) => item.id != row.id).toList();
       _removeSelectionKey('pr:${row.id}');
     });
+    unawaited(_persistCatalogSnapshot());
   }
 
   List<String> _currentRowKeys() {
@@ -1324,6 +1347,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
       _editingRowKey = null;
       _setSingleSelection('co:${row.id}');
     });
+    unawaited(_persistCatalogSnapshot());
     _focusGridRows();
   }
 
@@ -1368,6 +1392,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
       _editingRowKey = null;
       _setSingleSelection('ma:${row.id}');
     });
+    unawaited(_persistCatalogSnapshot());
     _focusGridRows();
   }
 
@@ -1391,6 +1416,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
                     amount: amount,
                     notes: (payload['notes'] ?? '').toString().trim(),
                     active: (payload['is_active'] ?? item.active) == true,
+                    updatedAt: DateTime.now(),
                   )
                 : item,
           )
@@ -1398,6 +1424,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
       _editingRowKey = null;
       _setSingleSelection('pr:${row.id}');
     });
+    unawaited(_persistCatalogSnapshot());
     _focusGridRows();
   }
 
@@ -1445,6 +1472,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
       }
       _clearSelection();
     });
+    unawaited(_persistCatalogSnapshot());
   }
 
   InventoryGridTopBarData _buildTopBarData() {
@@ -5377,6 +5405,7 @@ class _MayoreoPrice {
   final double amount;
   final bool active;
   final String notes;
+  final DateTime? updatedAt;
 
   const _MayoreoPrice({
     required this.id,
@@ -5385,6 +5414,7 @@ class _MayoreoPrice {
     required this.amount,
     this.active = true,
     this.notes = '',
+    this.updatedAt,
   });
 
   _MayoreoPrice copyWith({
@@ -5393,6 +5423,7 @@ class _MayoreoPrice {
     double? amount,
     bool? active,
     String? notes,
+    DateTime? updatedAt,
   }) {
     return _MayoreoPrice(
       id: id,
@@ -5401,6 +5432,7 @@ class _MayoreoPrice {
       amount: amount ?? this.amount,
       active: active ?? this.active,
       notes: notes ?? this.notes,
+      updatedAt: updatedAt ?? this.updatedAt,
     );
   }
 }
