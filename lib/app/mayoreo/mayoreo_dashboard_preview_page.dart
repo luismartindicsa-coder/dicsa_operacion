@@ -41,6 +41,7 @@ class MayoreoDashboardPreviewPage extends StatefulWidget {
 class _MayoreoDashboardPreviewPageState
     extends State<MayoreoDashboardPreviewPage> {
   final SupabaseClient _supa = Supabase.instance.client;
+  Future<void> _persistPendingQueue = Future<void>.value();
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   List<_MayoreoPendingTask> _pendingTasks = const <_MayoreoPendingTask>[];
@@ -138,31 +139,70 @@ class _MayoreoDashboardPreviewPageState
   }
 
   Future<void> _persistPendingTasks() async {
-    if (_pendingTasks.isNotEmpty) {
-      await _supa
+    final snapshot = _pendingTasks
+        .map((task) => task.copyWith())
+        .toList(growable: false);
+    _persistPendingQueue = _persistPendingQueue
+        .catchError((_) {})
+        .then((_) => _persistPendingTasksToSupabase(snapshot));
+    await _persistPendingQueue;
+  }
+
+  Future<void> _persistPendingTasksToSupabase(
+    List<_MayoreoPendingTask> tasks,
+  ) async {
+    try {
+      final manualTasks = tasks
+          .where((task) => !task.isSystemGenerated)
+          .toList(growable: false);
+      if (manualTasks.isNotEmpty) {
+        await _supa
+            .from(_kMayoreoPendingItemsTable)
+            .upsert(
+              manualTasks
+                  .map((task) => task.toSupabase())
+                  .toList(growable: false),
+              onConflict: 'id',
+            );
+      }
+      final existing = await _supa
           .from(_kMayoreoPendingItemsTable)
-          .upsert(
-            _pendingTasks
-                .where((task) => !task.isSystemGenerated)
-                .map((task) => task.toSupabase())
-                .toList(growable: false),
-            onConflict: 'id',
-          );
-    }
-    final existing = await _supa.from(_kMayoreoPendingItemsTable).select('id');
-    final existingIds = (existing as List)
-        .map((row) => (row as Map)['id'].toString())
-        .toSet();
-    final nextIds = _pendingTasks
-        .where((task) => !task.isSystemGenerated)
-        .map((task) => task.id)
-        .toSet();
-    final deletedIds = existingIds.difference(nextIds).toList(growable: false);
-    if (deletedIds.isNotEmpty) {
-      await _supa
-          .from(_kMayoreoPendingItemsTable)
-          .delete()
-          .inFilter('id', deletedIds);
+          .select('id');
+      final existingIds = (existing as List)
+          .map((row) => (row as Map)['id'].toString())
+          .toSet();
+      final nextIds = manualTasks.map((task) => task.id).toSet();
+      final deletedIds = existingIds
+          .difference(nextIds)
+          .toList(growable: false);
+      if (deletedIds.isNotEmpty) {
+        await _supa
+            .from(_kMayoreoPendingItemsTable)
+            .delete()
+            .inFilter('id', deletedIds);
+      }
+    } on PostgrestException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('No se pudo guardar Pendientes: ${e.message}'),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      await _loadDashboardState();
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'No se pudo guardar Pendientes. Se restauró el estado remoto.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+      await _loadDashboardState();
     }
   }
 

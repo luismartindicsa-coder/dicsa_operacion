@@ -230,6 +230,8 @@ class MayoreoCatalogSnapshot {
 }
 
 class MayoreoDataStore {
+  static Future<void> _catalogSaveQueue = Future<void>.value();
+
   static Future<MayoreoCatalogSnapshot> loadCatalogSnapshot() async {
     try {
       final remote = await _loadRemoteCatalogSnapshot();
@@ -243,7 +245,10 @@ class MayoreoDataStore {
     MayoreoCatalogSnapshot snapshot,
   ) async {
     final normalized = _normalizeCatalogSnapshot(snapshot);
-    await _saveRemoteCatalogSnapshot(normalized);
+    _catalogSaveQueue = _catalogSaveQueue
+        .catchError((_) {})
+        .then((_) => _saveRemoteCatalogSnapshot(normalized));
+    await _catalogSaveQueue;
   }
 
   static Future<List<MayoreoPriceHistoryRecord>> loadPriceHistory() async {

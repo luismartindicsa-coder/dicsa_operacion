@@ -75,6 +75,7 @@ class MayoreoAccountsPage extends StatefulWidget {
 
 class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
   final SupabaseClient _supa = Supabase.instance.client;
+  Future<void> _persistRowsQueue = Future<void>.value();
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   bool _exportingCsv = false;
@@ -316,30 +317,45 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
   }
 
   Future<void> _persistRowsToSupabase() async {
-    if (_rows.isNotEmpty) {
-      await _supa
-          .from(_kMayoreoAccountsTable)
-          .upsert(
-            _rows.map((row) => row.toSupabase()).toList(growable: false),
-            onConflict: 'id',
-          );
-    }
-    final existing = await _supa.from(_kMayoreoAccountsTable).select('id');
-    final existingIds = (existing as List)
-        .map((row) => (row as Map)['id'].toString())
-        .toSet();
-    final nextIds = _rows.map((row) => row.id).toSet();
-    final deletedIds = existingIds.difference(nextIds).toList(growable: false);
-    if (deletedIds.isNotEmpty) {
-      await _supa
-          .from(_kMayoreoAccountsTable)
-          .delete()
-          .inFilter('id', deletedIds);
+    try {
+      if (_rows.isNotEmpty) {
+        await _supa
+            .from(_kMayoreoAccountsTable)
+            .upsert(
+              _rows.map((row) => row.toSupabase()).toList(growable: false),
+              onConflict: 'id',
+            );
+      }
+      final existing = await _supa.from(_kMayoreoAccountsTable).select('id');
+      final existingIds = (existing as List)
+          .map((row) => (row as Map)['id'].toString())
+          .toSet();
+      final nextIds = _rows.map((row) => row.id).toSet();
+      final deletedIds = existingIds
+          .difference(nextIds)
+          .toList(growable: false);
+      if (deletedIds.isNotEmpty) {
+        await _supa
+            .from(_kMayoreoAccountsTable)
+            .delete()
+            .inFilter('id', deletedIds);
+      }
+    } on PostgrestException catch (e) {
+      _toast('No se pudo guardar Cuentas Mayoreo: ${e.message}');
+      await _loadAccounts();
+    } catch (_) {
+      _toast(
+        'No se pudo guardar Cuentas Mayoreo. Se restauró el estado remoto.',
+      );
+      await _loadAccounts();
     }
   }
 
   void _persistState() {
-    unawaited(_persistRowsToSupabase());
+    _persistRowsQueue = _persistRowsQueue
+        .catchError((_) {})
+        .then((_) => _persistRowsToSupabase());
+    unawaited(_persistRowsQueue);
   }
 
   List<_MayoreoAccountRow> get _filteredRows {

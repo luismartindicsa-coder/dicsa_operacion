@@ -758,7 +758,7 @@ class _MayoreoPriceAdjustmentsPageState
             tokens: mayoreoAreaTokens,
             child: StatefulBuilder(
               builder: (context, setLocalState) {
-                void applySelection() {
+                Future<void> applySelection() async {
                   final raw = double.tryParse(adjustmentValueC.text.trim());
                   if (raw == null) {
                     _toast('Ingresa un valor de ajuste válido');
@@ -814,7 +814,15 @@ class _MayoreoPriceAdjustmentsPageState
                       ..._historyRows,
                     ];
                   });
-                  unawaited(_persistPricingData());
+                  try {
+                    await _persistPricingData();
+                  } catch (_) {
+                    _toast(
+                      'No se pudo guardar el ajuste de precios. Se restauró el estado remoto.',
+                    );
+                    return;
+                  }
+                  if (!mounted || !dialogContext.mounted) return;
                   Navigator.of(dialogContext).pop();
                   _toast(
                     'Ajuste aplicado a ${selectedPriceIds.length} precio(s)',
@@ -838,7 +846,7 @@ class _MayoreoPriceAdjustmentsPageState
                       if (raw == null || raw == 0) {
                         return KeyEventResult.handled;
                       }
-                      applySelection();
+                      unawaited(applySelection());
                       return KeyEventResult.handled;
                     }
                     if (visibleRows.isEmpty) return KeyEventResult.ignored;
@@ -952,7 +960,7 @@ class _MayoreoPriceAdjustmentsPageState
                           },
                           onApply: selectedPriceIds.isEmpty
                               ? null
-                              : applySelection,
+                              : () => unawaited(applySelection()),
                         ),
                       ),
                     ),

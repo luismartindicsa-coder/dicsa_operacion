@@ -330,7 +330,16 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
           )
           .toList(growable: false),
     );
-    await MayoreoDataStore.saveCatalogSnapshot(snapshot);
+    try {
+      await MayoreoDataStore.saveCatalogSnapshot(snapshot);
+    } catch (e) {
+      if (mounted) {
+        _toast(
+          'No se pudo guardar Catálogo Mayoreo. Se restauró el estado remoto.',
+        );
+        await _loadCatalogSnapshot();
+      }
+    }
   }
 
   Future<void> _resolveNavigationAccess() async {

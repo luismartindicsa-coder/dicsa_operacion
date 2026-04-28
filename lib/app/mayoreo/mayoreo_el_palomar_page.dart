@@ -51,6 +51,7 @@ class MayoreoElPalomarPage extends StatefulWidget {
 
 class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   final SupabaseClient _supa = Supabase.instance.client;
+  Future<void> _persistStateQueue = Future<void>.value();
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   final ScrollController _bodyScrollController = ScrollController();
@@ -129,29 +130,51 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   }
 
   Future<void> _persistState() async {
-    if (_movements.isNotEmpty) {
-      await _supa
+    final snapshot = _movements
+        .map((movement) => movement.copyWith())
+        .toList(growable: false);
+    _persistStateQueue = _persistStateQueue
+        .catchError((_) {})
+        .then((_) => _persistStateToSupabase(snapshot));
+    await _persistStateQueue;
+  }
+
+  Future<void> _persistStateToSupabase(List<_PalomarMovement> movements) async {
+    try {
+      if (movements.isNotEmpty) {
+        await _supa
+            .from(_kMayoreoPalomarMovementsTable)
+            .upsert(
+              movements
+                  .map((movement) => movement.toSupabase())
+                  .toList(growable: false),
+              onConflict: 'id',
+            );
+      }
+      final existing = await _supa
           .from(_kMayoreoPalomarMovementsTable)
-          .upsert(
-            _movements
-                .map((movement) => movement.toSupabase())
-                .toList(growable: false),
-            onConflict: 'id',
-          );
-    }
-    final existing = await _supa
-        .from(_kMayoreoPalomarMovementsTable)
-        .select('id');
-    final existingIds = (existing as List)
-        .map((row) => (row as Map)['id'].toString())
-        .toSet();
-    final nextIds = _movements.map((movement) => movement.id).toSet();
-    final deletedIds = existingIds.difference(nextIds).toList(growable: false);
-    if (deletedIds.isNotEmpty) {
-      await _supa
-          .from(_kMayoreoPalomarMovementsTable)
-          .delete()
-          .inFilter('id', deletedIds);
+          .select('id');
+      final existingIds = (existing as List)
+          .map((row) => (row as Map)['id'].toString())
+          .toSet();
+      final nextIds = movements.map((movement) => movement.id).toSet();
+      final deletedIds = existingIds
+          .difference(nextIds)
+          .toList(growable: false);
+      if (deletedIds.isNotEmpty) {
+        await _supa
+            .from(_kMayoreoPalomarMovementsTable)
+            .delete()
+            .inFilter('id', deletedIds);
+      }
+    } on PostgrestException catch (e) {
+      _toast('No se pudo guardar Cuenta El Palomar: ${e.message}');
+      await _loadState();
+    } catch (_) {
+      _toast(
+        'No se pudo guardar Cuenta El Palomar. Se restauró el estado remoto.',
+      );
+      await _loadState();
     }
   }
 

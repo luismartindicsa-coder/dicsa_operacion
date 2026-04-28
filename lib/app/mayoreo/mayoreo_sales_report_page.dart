@@ -67,6 +67,7 @@ class MayoreoSalesReportPage extends StatefulWidget {
 
 class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
   final SupabaseClient _supa = Supabase.instance.client;
+  Future<void> _persistRowsQueue = Future<void>.value();
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   bool _dragSelectingRows = false;
@@ -236,33 +237,48 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
   }
 
   Future<void> _persistRowsToSupabase(List<_MayoreoSalesReportRow> rows) async {
-    if (rows.isNotEmpty) {
-      await _supa
+    try {
+      if (rows.isNotEmpty) {
+        await _supa
+            .from(_kMayoreoSalesReportsTable)
+            .upsert(
+              rows.map((row) => row.toSupabase()).toList(growable: false),
+              onConflict: 'id',
+            );
+      }
+      final existingIdsResponse = await _supa
           .from(_kMayoreoSalesReportsTable)
-          .upsert(
-            rows.map((row) => row.toSupabase()).toList(growable: false),
-            onConflict: 'id',
-          );
-    }
-    final existingIdsResponse = await _supa
-        .from(_kMayoreoSalesReportsTable)
-        .select('id');
-    final existingIds = (existingIdsResponse as List)
-        .map((row) => (row as Map)['id'].toString())
-        .toSet();
-    final nextIds = rows.map((row) => row.id).toSet();
-    final deletedIds = existingIds.difference(nextIds).toList(growable: false);
-    if (deletedIds.isNotEmpty) {
-      await _supa
-          .from(_kMayoreoSalesReportsTable)
-          .delete()
-          .inFilter('id', deletedIds);
+          .select('id');
+      final existingIds = (existingIdsResponse as List)
+          .map((row) => (row as Map)['id'].toString())
+          .toSet();
+      final nextIds = rows.map((row) => row.id).toSet();
+      final deletedIds = existingIds
+          .difference(nextIds)
+          .toList(growable: false);
+      if (deletedIds.isNotEmpty) {
+        await _supa
+            .from(_kMayoreoSalesReportsTable)
+            .delete()
+            .inFilter('id', deletedIds);
+      }
+    } on PostgrestException catch (e) {
+      _toast('No se pudo guardar Ventas Mayoreo: ${e.message}');
+      await _loadRemoteRows();
+    } catch (_) {
+      _toast(
+        'No se pudo guardar Ventas Mayoreo. Se restauró el estado remoto.',
+      );
+      await _loadRemoteRows();
     }
   }
 
   void _persistRows() {
     final snapshot = _rows.map((row) => row.copyWith()).toList(growable: false);
-    unawaited(_persistRowsToSupabase(snapshot));
+    _persistRowsQueue = _persistRowsQueue
+        .catchError((_) {})
+        .then((_) => _persistRowsToSupabase(snapshot));
+    unawaited(_persistRowsQueue);
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -1193,6 +1209,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       _currentPage = 0;
     });
     _persistState();
+    _persistRows();
   }
 
   Future<void> _openEditDialog(_MayoreoSalesReportRow row) async {
@@ -1235,6 +1252,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       _selectionAnchorRowId = row.id;
     });
     _persistState();
+    _persistRows();
   }
 
   Future<void> _openRelateDialog(_MayoreoSalesReportRow row) async {
@@ -6396,9 +6414,9 @@ class _MayoreoSalesReportRow {
     String? materialName,
     double? exitWeight,
     double? priceSnapshot,
-    double? approvedWeight,
-    double? approvedPrice,
-    double? approvedAmount,
+    Object? approvedWeight = _mayoreoSalesReportNoChange,
+    Object? approvedPrice = _mayoreoSalesReportNoChange,
+    Object? approvedAmount = _mayoreoSalesReportNoChange,
     _MayoreoReportOperationType? operationType,
     String? observations,
   }) {
@@ -6413,14 +6431,22 @@ class _MayoreoSalesReportRow {
       materialName: materialName ?? this.materialName,
       exitWeight: exitWeight ?? this.exitWeight,
       priceSnapshot: priceSnapshot ?? this.priceSnapshot,
-      approvedWeight: approvedWeight,
-      approvedPrice: approvedPrice,
-      approvedAmount: approvedAmount ?? this.approvedAmount,
+      approvedWeight: identical(approvedWeight, _mayoreoSalesReportNoChange)
+          ? this.approvedWeight
+          : approvedWeight as double?,
+      approvedPrice: identical(approvedPrice, _mayoreoSalesReportNoChange)
+          ? this.approvedPrice
+          : approvedPrice as double?,
+      approvedAmount: identical(approvedAmount, _mayoreoSalesReportNoChange)
+          ? this.approvedAmount
+          : approvedAmount as double,
       operationType: operationType ?? this.operationType,
       observations: observations ?? this.observations,
     );
   }
 }
+
+const Object _mayoreoSalesReportNoChange = Object();
 
 String _operationTypeLabel(_MayoreoReportOperationType type) {
   switch (type) {
