@@ -17,11 +17,16 @@ import '../shared/utils/number_formatters.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
+import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_sales_report_page.dart';
 import 'mayoreo_theme.dart';
 
 const String _kMayoreoDashboardPendingPrefsKey =
     'mayoreo_dashboard_pending_items_v1';
+const String _kMayoreoSalesReportPrefsKey =
+    'mayoreo_sales_report_page_state_v1';
+const String _kMayoreoAccountsPrefsKey = 'mayoreo_accounts_page_state_v1';
+const String _kMayoreoElPalomarPrefsKey = 'mayoreo_el_palomar_page_state_v1';
 
 class MayoreoDashboardPreviewPage extends StatefulWidget {
   final bool instantOpen;
@@ -38,12 +43,13 @@ class _MayoreoDashboardPreviewPageState
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   List<_MayoreoPendingTask> _pendingTasks = const <_MayoreoPendingTask>[];
+  _MayoreoDashboardSummary _summary = const _MayoreoDashboardSummary();
 
   @override
   void initState() {
     super.initState();
     unawaited(_resolveNavigationAccess());
-    unawaited(_loadPendingTasks());
+    unawaited(_loadDashboardState());
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -54,23 +60,36 @@ class _MayoreoDashboardPreviewPageState
     });
   }
 
-  Future<void> _loadPendingTasks() async {
+  Future<void> _loadDashboardState() async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString(_kMayoreoDashboardPendingPrefsKey);
-    if (raw == null || raw.trim().isEmpty) return;
+    final salesRaw = prefs.getString(_kMayoreoSalesReportPrefsKey);
+    final accountsRaw = prefs.getString(_kMayoreoAccountsPrefsKey);
+    final palomarRaw = prefs.getString(_kMayoreoElPalomarPrefsKey);
+    List<_MayoreoPendingTask> tasks = const <_MayoreoPendingTask>[];
     try {
-      final decoded = jsonDecode(raw) as List<dynamic>;
-      final tasks = decoded
-          .whereType<Map>()
-          .map(
-            (item) => _MayoreoPendingTask.fromJson(
-              Map<String, dynamic>.from(item.cast<String, dynamic>()),
-            ),
-          )
-          .toList(growable: false);
-      if (!mounted) return;
-      setState(() => _pendingTasks = tasks);
+      if (raw != null && raw.trim().isNotEmpty) {
+        final decoded = jsonDecode(raw) as List<dynamic>;
+        tasks = decoded
+            .whereType<Map>()
+            .map(
+              (item) => _MayoreoPendingTask.fromJson(
+                Map<String, dynamic>.from(item.cast<String, dynamic>()),
+              ),
+            )
+            .toList(growable: false);
+      }
     } catch (_) {}
+    final summary = _buildDashboardSummary(
+      salesRaw: salesRaw,
+      accountsRaw: accountsRaw,
+      palomarRaw: palomarRaw,
+    );
+    if (!mounted) return;
+    setState(() {
+      _pendingTasks = tasks;
+      _summary = summary;
+    });
   }
 
   Future<void> _persistPendingTasks() async {
@@ -134,6 +153,17 @@ class _MayoreoDashboardPreviewPageState
     );
   }
 
+  Future<void> _openElPalomar() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const MayoreoElPalomarPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   void _showStub(String label) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -161,6 +191,7 @@ class _MayoreoDashboardPreviewPageState
     if (!mounted || nextTasks == null) return;
     setState(() => _pendingTasks = nextTasks);
     await _persistPendingTasks();
+    await _loadDashboardState();
   }
 
   void _handleNavigationAction(String label) {
@@ -178,6 +209,10 @@ class _MayoreoDashboardPreviewPageState
       case 'Cuentas':
         if (_menuOpen) setState(() => _menuOpen = false);
         unawaited(_openAccounts());
+        return;
+      case 'Cuenta El Palomar':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openElPalomar());
         return;
       case 'Catálogo':
         if (_menuOpen) setState(() => _menuOpen = false);
@@ -242,9 +277,13 @@ class _MayoreoDashboardPreviewPageState
             children: [
               _MayoreoPreviewBody(
                 onOpenAccounts: _openAccounts,
+                onOpenElPalomar: _openElPalomar,
+                onOpenSalesReports: _openSalesReports,
                 onOpenCatalog: _openCatalog,
                 onOpenPriceAdjustments: _openPriceAdjustments,
                 pendingTasks: _pendingTasks,
+                onOpenPendingTasks: _openPendingTasksDialog,
+                summary: _summary,
               ),
               Positioned.fill(
                 child: IgnorePointer(
@@ -433,15 +472,23 @@ class _MayoreoHeaderBrand extends StatelessWidget {
 
 class _MayoreoPreviewBody extends StatelessWidget {
   final Future<void> Function() onOpenAccounts;
+  final Future<void> Function() onOpenElPalomar;
+  final Future<void> Function() onOpenSalesReports;
   final Future<void> Function() onOpenCatalog;
   final Future<void> Function() onOpenPriceAdjustments;
   final List<_MayoreoPendingTask> pendingTasks;
+  final Future<void> Function() onOpenPendingTasks;
+  final _MayoreoDashboardSummary summary;
 
   const _MayoreoPreviewBody({
     required this.onOpenAccounts,
+    required this.onOpenElPalomar,
+    required this.onOpenSalesReports,
     required this.onOpenCatalog,
     required this.onOpenPriceAdjustments,
     required this.pendingTasks,
+    required this.onOpenPendingTasks,
+    required this.summary,
   });
 
   @override
@@ -455,11 +502,7 @@ class _MayoreoPreviewBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _MayoreoActionTopBar(
-                onOpenAccounts: onOpenAccounts,
-                onOpenCatalog: onOpenCatalog,
-                onOpenPriceAdjustments: onOpenPriceAdjustments,
-              ),
+              _MayoreoActionTopBar(summary: summary),
               const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
@@ -482,48 +525,55 @@ class _MayoreoPreviewBody extends StatelessWidget {
                         width: cardWidth,
                         icon: Icons.receipt_long_rounded,
                         title: 'Facturas pendientes',
-                        value: '14',
-                        detail: 'Pendientes por ser pagadas',
+                        value: '${summary.pendingInvoiceCount}',
+                        detail:
+                            '${_money(summary.pendingInvoiceAmount)} por cobrar',
                         accent: const Color(0xFFF39C12),
+                        onTap: onOpenAccounts,
                       ),
                       _MayoreoMetricCard(
                         width: cardWidth,
                         icon: Icons.request_page_rounded,
                         title: 'Cheques pendientes',
-                        value: '6',
-                        detail: 'Pendientes por ser cambiados',
+                        value: '${summary.pendingCheckCount}',
+                        detail:
+                            '${_money(summary.pendingCheckAmount)} por conciliar',
                         accent: const Color(0xFFE3B208),
+                        onTap: onOpenAccounts,
                       ),
                       _MayoreoMetricCard(
                         width: cardWidth,
                         icon: Icons.link_rounded,
                         title: 'Reportes pendientes',
-                        value: '9',
-                        detail: 'Pendientes por relacionar',
+                        value: '${summary.pendingReportsCount}',
+                        detail: '${summary.relatedReportsCount} relacionados',
                         accent: const Color(0xFFC78A00),
+                        onTap: onOpenSalesReports,
                       ),
                       _MayoreoMetricCard(
                         width: cardWidth,
-                        icon: Icons.arrow_downward_rounded,
-                        title: 'Entrada de efectivo',
-                        value: _money(184500),
-                        detail: 'Mock de ingresos del día',
-                        accent: const Color(0xFF5A8466),
-                      ),
-                      _MayoreoMetricCard(
-                        width: cardWidth,
-                        icon: Icons.arrow_upward_rounded,
-                        title: 'Salida de efectivo',
-                        value: _money(96200),
-                        detail: 'Mock de egresos del día',
+                        icon: Icons.currency_exchange_rounded,
+                        title: 'Saldo El Palomar',
+                        value: _money(summary.palomarBalance),
+                        detail: summary.palomarStatusLabel,
                         accent: const Color(0xFF8A5E12),
+                        onTap: onOpenElPalomar,
                       ),
                     ],
                   );
                 },
               ),
               const SizedBox(height: 16),
-              _MayoreoInsightGrid(tasks: pendingTasks),
+              _MayoreoInsightGrid(
+                tasks: pendingTasks,
+                summary: summary,
+                onOpenPendingTasks: onOpenPendingTasks,
+                onOpenCatalog: onOpenCatalog,
+                onOpenPriceAdjustments: onOpenPriceAdjustments,
+                onOpenAccounts: onOpenAccounts,
+                onOpenSalesReports: onOpenSalesReports,
+                onOpenElPalomar: onOpenElPalomar,
+              ),
             ],
           ),
         ),
@@ -533,15 +583,9 @@ class _MayoreoPreviewBody extends StatelessWidget {
 }
 
 class _MayoreoActionTopBar extends StatelessWidget {
-  final Future<void> Function() onOpenAccounts;
-  final Future<void> Function() onOpenCatalog;
-  final Future<void> Function() onOpenPriceAdjustments;
+  final _MayoreoDashboardSummary summary;
 
-  const _MayoreoActionTopBar({
-    required this.onOpenAccounts,
-    required this.onOpenCatalog,
-    required this.onOpenPriceAdjustments,
-  });
+  const _MayoreoActionTopBar({required this.summary});
 
   @override
   Widget build(BuildContext context) {
@@ -549,37 +593,6 @@ class _MayoreoActionTopBar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Align(
-          alignment: Alignment.centerRight,
-          child: Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            children: [
-              _MayoreoHeroActionIconButton(
-                tooltip: 'Cuentas por cobrar',
-                icon: Icons.account_balance_wallet_outlined,
-                onTap: () async => onOpenAccounts(),
-              ),
-              _MayoreoHeroActionIconButton(
-                tooltip: 'Abrir catálogo',
-                icon: Icons.inventory_2_outlined,
-                filled: true,
-                onTap: () async => onOpenCatalog(),
-              ),
-              _MayoreoHeroActionIconButton(
-                tooltip: 'Ajuste de precios',
-                icon: Icons.tune_rounded,
-                onTap: () async => onOpenPriceAdjustments(),
-              ),
-              _MayoreoHeroActionIconButton(
-                tooltip: 'Flujo de efectivo',
-                icon: Icons.account_balance_wallet_outlined,
-                onTap: () async {},
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
         Center(
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 560),
@@ -603,7 +616,7 @@ class _MayoreoActionTopBar extends StatelessWidget {
               child: Column(
                 children: [
                   Text(
-                    'Total de efectivo',
+                    'Resumen comercial y financiero',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                       fontSize: 16,
@@ -613,7 +626,11 @@ class _MayoreoActionTopBar extends StatelessWidget {
                   ),
                   const SizedBox(height: 10),
                   Text(
-                    _money(438900),
+                    _money(
+                      summary.pendingInvoiceAmount +
+                          summary.pendingCheckAmount +
+                          summary.palomarBalance,
+                    ),
                     textAlign: TextAlign.center,
                     style: const TextStyle(
                       fontSize: 46,
@@ -622,10 +639,10 @@ class _MayoreoActionTopBar extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 8),
-                  const Text(
-                    'Mock: efectivo actual + entradas - salidas + cuenta El Palomar',
+                  Text(
+                    '${summary.pendingReportsCount} reportes pendientes · ${summary.accountsOpenCount} cuentas abiertas · ${summary.palomarMovementCount} movimientos en El Palomar',
                     textAlign: TextAlign.center,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 13.5,
                       fontWeight: FontWeight.w700,
                       color: Color(0xFF6A6966),
@@ -641,83 +658,6 @@ class _MayoreoActionTopBar extends StatelessWidget {
   }
 }
 
-class _MayoreoHeroActionIconButton extends StatefulWidget {
-  final String tooltip;
-  final IconData icon;
-  final Future<void> Function() onTap;
-  final bool filled;
-
-  const _MayoreoHeroActionIconButton({
-    required this.tooltip,
-    required this.icon,
-    required this.onTap,
-    this.filled = false,
-  });
-
-  @override
-  State<_MayoreoHeroActionIconButton> createState() =>
-      _MayoreoHeroActionIconButtonState();
-}
-
-class _MayoreoHeroActionIconButtonState
-    extends State<_MayoreoHeroActionIconButton> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    final background = widget.filled
-        ? tokens.primaryStrong.withValues(alpha: 0.96)
-        : Colors.white.withValues(alpha: 0.58);
-    final iconColor = widget.filled ? Colors.white : tokens.primaryStrong;
-    final borderColor = widget.filled
-        ? tokens.primaryStrong.withValues(alpha: 0.18)
-        : tokens.primaryStrong.withValues(alpha: 0.16);
-
-    return Tooltip(
-      message: widget.tooltip,
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _hovered = true),
-        onExit: (_) => setState(() => _hovered = false),
-        child: AnimatedScale(
-          duration: const Duration(milliseconds: 160),
-          curve: Curves.easeOutCubic,
-          scale: _hovered ? 1.05 : 1,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            transform: Matrix4.identity()
-              ..translateByDouble(0, _hovered ? -2 : 0, 0, 1),
-            decoration: BoxDecoration(
-              color: background,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: borderColor),
-              boxShadow: [
-                BoxShadow(
-                  color: tokens.primaryStrong.withValues(
-                    alpha: _hovered ? 0.16 : 0.08,
-                  ),
-                  blurRadius: _hovered ? 20 : 12,
-                  offset: Offset(0, _hovered ? 10 : 6),
-                ),
-              ],
-            ),
-            child: InkWell(
-              borderRadius: BorderRadius.circular(18),
-              onTap: () async => widget.onTap(),
-              child: SizedBox(
-                width: 48,
-                height: 48,
-                child: Icon(widget.icon, color: iconColor, size: 22),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _MayoreoMetricCard extends StatefulWidget {
   final double width;
   final IconData icon;
@@ -725,6 +665,7 @@ class _MayoreoMetricCard extends StatefulWidget {
   final String value;
   final String detail;
   final Color accent;
+  final Future<void> Function()? onTap;
 
   const _MayoreoMetricCard({
     required this.width,
@@ -733,6 +674,7 @@ class _MayoreoMetricCard extends StatefulWidget {
     required this.value,
     required this.detail,
     required this.accent,
+    this.onTap,
   });
 
   @override
@@ -744,6 +686,7 @@ class _MayoreoMetricCardState extends State<_MayoreoMetricCard> {
 
   @override
   Widget build(BuildContext context) {
+    final enabled = widget.onTap != null;
     return SizedBox(
       width: widget.width,
       child: MouseRegion(
@@ -773,46 +716,50 @@ class _MayoreoMetricCardState extends State<_MayoreoMetricCard> {
               ),
               child: ContractGlassCard(
                 padding: const EdgeInsets.all(18),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 42,
-                      height: 42,
-                      decoration: BoxDecoration(
-                        color: widget.accent.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(14),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(24),
+                  onTap: enabled ? () async => widget.onTap!() : null,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 42,
+                        height: 42,
+                        decoration: BoxDecoration(
+                          color: widget.accent.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(14),
+                        ),
+                        child: Icon(widget.icon, color: widget.accent),
                       ),
-                      child: Icon(widget.icon, color: widget.accent),
-                    ),
-                    const SizedBox(height: 14),
-                    Text(
-                      widget.title,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF5A5552),
+                      const SizedBox(height: 14),
+                      Text(
+                        widget.title,
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF5A5552),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      widget.value,
-                      style: const TextStyle(
-                        fontSize: 26,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF1F262B),
+                      const SizedBox(height: 8),
+                      Text(
+                        widget.value,
+                        style: const TextStyle(
+                          fontSize: 26,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF1F262B),
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      widget.detail,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF6A6966),
+                      const SizedBox(height: 6),
+                      Text(
+                        widget.detail,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF6A6966),
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -825,8 +772,24 @@ class _MayoreoMetricCardState extends State<_MayoreoMetricCard> {
 
 class _MayoreoInsightGrid extends StatelessWidget {
   final List<_MayoreoPendingTask> tasks;
+  final _MayoreoDashboardSummary summary;
+  final Future<void> Function() onOpenPendingTasks;
+  final Future<void> Function() onOpenCatalog;
+  final Future<void> Function() onOpenPriceAdjustments;
+  final Future<void> Function() onOpenAccounts;
+  final Future<void> Function() onOpenSalesReports;
+  final Future<void> Function() onOpenElPalomar;
 
-  const _MayoreoInsightGrid({required this.tasks});
+  const _MayoreoInsightGrid({
+    required this.tasks,
+    required this.summary,
+    required this.onOpenPendingTasks,
+    required this.onOpenCatalog,
+    required this.onOpenPriceAdjustments,
+    required this.onOpenAccounts,
+    required this.onOpenSalesReports,
+    required this.onOpenElPalomar,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -840,21 +803,37 @@ class _MayoreoInsightGrid extends StatelessWidget {
             ? Column(
                 children: [
                   _MayoreoInsightCard(
+                    onTap: onOpenPendingTasks,
                     child: _MayoreoPendingPreviewBlock(tasks: openTasks),
                   ),
                   const SizedBox(height: 16),
-                  const _MayoreoInsightCard(
+                  _MayoreoInsightCard(
+                    onTap: onOpenCatalog,
                     child: _DashboardListBlock(
                       title: 'Precios principales de chatarra',
-                      subtitle: 'Mock inicial para definir lectura comercial',
+                      subtitle:
+                          'Referencia rápida de catálogo y ajustes comerciales.',
                       items: [
-                        _DashboardListItem(label: 'CH MIXTA', value: '\$4,350'),
+                        _DashboardListItem(
+                          label: 'CH MIXTA',
+                          value: '\$4,350',
+                          onTap: onOpenCatalog,
+                        ),
                         _DashboardListItem(
                           label: 'ALUMINIO',
                           value: '\$26,800',
+                          onTap: onOpenCatalog,
                         ),
-                        _DashboardListItem(label: 'COBRE', value: '\$118,000'),
-                        _DashboardListItem(label: 'FIERRO', value: '\$5,120'),
+                        _DashboardListItem(
+                          label: 'COBRE',
+                          value: '\$118,000',
+                          onTap: onOpenCatalog,
+                        ),
+                        _DashboardListItem(
+                          label: 'Ver ajustes vigentes',
+                          value: summary.priceAdjustmentsHint,
+                          onTap: onOpenPriceAdjustments,
+                        ),
                       ],
                     ),
                   ),
@@ -865,29 +844,39 @@ class _MayoreoInsightGrid extends StatelessWidget {
                 children: [
                   Expanded(
                     child: _MayoreoInsightCard(
+                      onTap: onOpenPendingTasks,
                       child: _MayoreoPendingPreviewBlock(tasks: openTasks),
                     ),
                   ),
                   const SizedBox(width: 16),
-                  const Expanded(
+                  Expanded(
                     child: _MayoreoInsightCard(
+                      onTap: onOpenCatalog,
                       child: _DashboardListBlock(
                         title: 'Precios principales de chatarra',
-                        subtitle: 'Mock inicial para definir lectura comercial',
+                        subtitle:
+                            'Referencia rápida de catálogo y ajustes comerciales.',
                         items: [
                           _DashboardListItem(
                             label: 'CH MIXTA',
                             value: '\$4,350',
+                            onTap: onOpenCatalog,
                           ),
                           _DashboardListItem(
                             label: 'ALUMINIO',
                             value: '\$26,800',
+                            onTap: onOpenCatalog,
                           ),
                           _DashboardListItem(
                             label: 'COBRE',
                             value: '\$118,000',
+                            onTap: onOpenCatalog,
                           ),
-                          _DashboardListItem(label: 'FIERRO', value: '\$5,120'),
+                          _DashboardListItem(
+                            label: 'Ver ajustes vigentes',
+                            value: summary.priceAdjustmentsHint,
+                            onTap: onOpenPriceAdjustments,
+                          ),
                         ],
                       ),
                     ),
@@ -898,26 +887,33 @@ class _MayoreoInsightGrid extends StatelessWidget {
           children: [
             topRow,
             const SizedBox(height: 16),
-            const _MayoreoInsightCard(
+            _MayoreoInsightCard(
               child: _DashboardListBlock(
-                title: 'Caja y cuentas',
-                subtitle: 'Bloque mock para flujo de efectivo y cuentas clave',
+                title: 'Resumen de origen',
+                subtitle:
+                    'Cada renglón te manda al módulo donde nace esa lectura.',
                 items: [
                   _DashboardListItem(
-                    label: 'Entrada de efectivo',
-                    value: '\$184,500',
+                    label: 'Reportes pendientes por relacionar',
+                    value: '${summary.pendingReportsCount}',
+                    onTap: onOpenSalesReports,
                   ),
                   _DashboardListItem(
-                    label: 'Salida de efectivo',
-                    value: '\$96,200',
+                    label: 'Cuentas abiertas por cobrar',
+                    value: _money(
+                      summary.pendingInvoiceAmount + summary.pendingCheckAmount,
+                    ),
+                    onTap: onOpenAccounts,
                   ),
                   _DashboardListItem(
-                    label: 'Cuenta El Palomar',
-                    value: 'Pendiente de definición',
+                    label: 'Saldo actual de El Palomar',
+                    value: _money(summary.palomarBalance),
+                    onTap: onOpenElPalomar,
                   ),
                   _DashboardListItem(
-                    label: 'Efectivo por relacionar',
-                    value: '\$42,300',
+                    label: 'Remisiones disponibles para Palomar',
+                    value: '${summary.availablePalomarRemissions}',
+                    onTap: onOpenElPalomar,
                   ),
                 ],
               ),
@@ -931,8 +927,9 @@ class _MayoreoInsightGrid extends StatelessWidget {
 
 class _MayoreoInsightCard extends StatefulWidget {
   final Widget child;
+  final Future<void> Function()? onTap;
 
-  const _MayoreoInsightCard({required this.child});
+  const _MayoreoInsightCard({required this.child, this.onTap});
 
   @override
   State<_MayoreoInsightCard> createState() => _MayoreoInsightCardState();
@@ -971,7 +968,13 @@ class _MayoreoInsightCardState extends State<_MayoreoInsightCard> {
             ),
             child: ContractGlassCard(
               padding: const EdgeInsets.all(18),
-              child: widget.child,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(24),
+                onTap: widget.onTap == null
+                    ? null
+                    : () async => widget.onTap!(),
+                child: widget.child,
+              ),
             ),
           ),
         ),
@@ -1029,8 +1032,13 @@ class _DashboardListBlock extends StatelessWidget {
 class _DashboardListItem {
   final String label;
   final String value;
+  final Future<void> Function()? onTap;
 
-  const _DashboardListItem({required this.label, required this.value});
+  const _DashboardListItem({
+    required this.label,
+    required this.value,
+    this.onTap,
+  });
 }
 
 class _DashboardListRow extends StatelessWidget {
@@ -1042,48 +1050,215 @@ class _DashboardListRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: 0.88),
-            tokens.badgeBackground.withValues(alpha: 0.70),
-          ],
-        ),
+      decoration: BoxDecoration(borderRadius: BorderRadius.circular(20)),
+      child: InkWell(
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: tokens.border.withValues(alpha: 0.84)),
-      ),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              item.label,
-              style: const TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w800,
-                color: kMayoreoInk,
+        onTap: item.onTap == null ? null : () async => item.onTap!(),
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withValues(alpha: 0.88),
+                tokens.badgeBackground.withValues(alpha: 0.70),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: tokens.border.withValues(alpha: 0.84)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  item.label,
+                  style: const TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: kMayoreoInk,
+                  ),
+                ),
               ),
-            ),
+              const SizedBox(width: 12),
+              Text(
+                item.value,
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w900,
+                  color: tokens.primaryStrong,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 12),
-          Text(
-            item.value,
-            textAlign: TextAlign.right,
-            style: TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w900,
-              color: tokens.primaryStrong,
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
 }
 
 String _money(num value) => formatMoney(value);
+
+class _MayoreoDashboardSummary {
+  final int pendingReportsCount;
+  final int relatedReportsCount;
+  final int pendingInvoiceCount;
+  final double pendingInvoiceAmount;
+  final int pendingCheckCount;
+  final double pendingCheckAmount;
+  final int accountsOpenCount;
+  final double palomarBalance;
+  final int palomarMovementCount;
+  final int availablePalomarRemissions;
+  final String palomarStatusLabel;
+
+  const _MayoreoDashboardSummary({
+    this.pendingReportsCount = 0,
+    this.relatedReportsCount = 0,
+    this.pendingInvoiceCount = 0,
+    this.pendingInvoiceAmount = 0,
+    this.pendingCheckCount = 0,
+    this.pendingCheckAmount = 0,
+    this.accountsOpenCount = 0,
+    this.palomarBalance = 0,
+    this.palomarMovementCount = 0,
+    this.availablePalomarRemissions = 0,
+    this.palomarStatusLabel = 'Sin movimientos',
+  });
+
+  String get priceAdjustmentsHint => 'CATALOGO';
+}
+
+_MayoreoDashboardSummary _buildDashboardSummary({
+  required String? salesRaw,
+  required String? accountsRaw,
+  required String? palomarRaw,
+}) {
+  var pendingReportsCount = 0;
+  var relatedReportsCount = 0;
+  var pendingInvoiceCount = 0;
+  var pendingInvoiceAmount = 0.0;
+  var pendingCheckCount = 0;
+  var pendingCheckAmount = 0.0;
+  var accountsOpenCount = 0;
+  var palomarBalance = 0.0;
+  var palomarMovementCount = 0;
+  var availablePalomarRemissions = 0;
+
+  try {
+    if (salesRaw != null && salesRaw.trim().isNotEmpty) {
+      final data = jsonDecode(salesRaw) as Map<String, dynamic>;
+      final rows = (data['rows'] as List<dynamic>? ?? const <dynamic>[])
+          .whereType<Map>()
+          .map(
+            (item) => Map<String, dynamic>.from(item.cast<String, dynamic>()),
+          )
+          .toList(growable: false);
+      for (final row in rows) {
+        final approvedWeight = (row['approvedWeight'] as num?)?.toDouble();
+        final approvedPrice = (row['approvedPrice'] as num?)?.toDouble();
+        final isRelated =
+            approvedWeight != null &&
+            approvedPrice != null &&
+            approvedWeight > 0;
+        if (isRelated) {
+          relatedReportsCount += 1;
+          availablePalomarRemissions += 1;
+        } else {
+          pendingReportsCount += 1;
+        }
+      }
+    }
+  } catch (_) {}
+
+  try {
+    if (accountsRaw != null && accountsRaw.trim().isNotEmpty) {
+      final data = jsonDecode(accountsRaw) as Map<String, dynamic>;
+      final rows = (data['rows'] as List<dynamic>? ?? const <dynamic>[])
+          .whereType<Map>()
+          .map(
+            (item) => Map<String, dynamic>.from(item.cast<String, dynamic>()),
+          )
+          .toList(growable: false);
+      for (final row in rows) {
+        final operationType = ((row['operationType'] as String?) ?? 'factura')
+            .toLowerCase();
+        final status = ((row['status'] as String?) ?? '').toLowerCase();
+        final approvedAmount = ((row['approvedAmount'] as num?) ?? 0)
+            .toDouble();
+        final isOpen =
+            status != 'pagada' &&
+            status != 'chequecanjeado' &&
+            status != 'cancelada';
+        if (!isOpen) continue;
+        accountsOpenCount += 1;
+        if (operationType == 'cheque') {
+          pendingCheckCount += 1;
+          pendingCheckAmount += approvedAmount;
+        } else {
+          pendingInvoiceCount += 1;
+          pendingInvoiceAmount += approvedAmount;
+        }
+      }
+    }
+  } catch (_) {}
+
+  try {
+    if (palomarRaw != null && palomarRaw.trim().isNotEmpty) {
+      final data = jsonDecode(palomarRaw) as Map<String, dynamic>;
+      final movements =
+          (data['movements'] as List<dynamic>? ?? const <dynamic>[])
+              .whereType<Map>()
+              .map(
+                (item) =>
+                    Map<String, dynamic>.from(item.cast<String, dynamic>()),
+              )
+              .toList(growable: false);
+      palomarMovementCount = movements.length;
+      for (final movement in movements) {
+        final type = ((movement['type'] as String?) ?? '').toLowerCase();
+        final amount = ((movement['amount'] as num?) ?? 0).toDouble();
+        switch (type) {
+          case 'chequeliberado':
+          case 'ajustecargo':
+            palomarBalance += amount;
+            break;
+          case 'remisionaplicada':
+          case 'ajusteabono':
+            palomarBalance -= amount;
+            final sourceId = (movement['sourceReportId'] as String?) ?? '';
+            if (sourceId.isNotEmpty && availablePalomarRemissions > 0) {
+              availablePalomarRemissions -= 1;
+            }
+            break;
+          default:
+            break;
+        }
+      }
+    }
+  } catch (_) {}
+
+  final palomarStatusLabel = palomarBalance <= 0
+      ? 'Cuenta cubierta'
+      : palomarBalance >= 500000
+      ? 'Saldo alto pendiente'
+      : 'Operativa';
+
+  return _MayoreoDashboardSummary(
+    pendingReportsCount: pendingReportsCount,
+    relatedReportsCount: relatedReportsCount,
+    pendingInvoiceCount: pendingInvoiceCount,
+    pendingInvoiceAmount: pendingInvoiceAmount,
+    pendingCheckCount: pendingCheckCount,
+    pendingCheckAmount: pendingCheckAmount,
+    accountsOpenCount: accountsOpenCount,
+    palomarBalance: palomarBalance,
+    palomarMovementCount: palomarMovementCount,
+    availablePalomarRemissions: availablePalomarRemissions,
+    palomarStatusLabel: palomarStatusLabel,
+  );
+}
 
 class _MayoreoPendingPreviewBlock extends StatelessWidget {
   final List<_MayoreoPendingTask> tasks;
@@ -1813,7 +1988,9 @@ class _MayoreoHeaderButtonState extends State<_MayoreoHeaderButton> {
                 highlighted ? -2.5 : 0,
                 0,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              width: 176,
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -1851,16 +2028,24 @@ class _MayoreoHeaderButtonState extends State<_MayoreoHeaderButton> {
                 clipBehavior: Clip.none,
                 children: [
                   Row(
-                    mainAxisSize: MainAxisSize.min,
+                    mainAxisSize: MainAxisSize.max,
                     children: [
-                      Icon(widget.icon, color: tokens.primaryStrong),
+                      Icon(widget.icon, size: 20, color: tokens.primaryStrong),
                       const SizedBox(width: 10),
-                      Text(
-                        widget.label,
-                        style: TextStyle(
-                          color: tokens.primaryStrong,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
+                      Expanded(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            widget.label,
+                            maxLines: 1,
+                            softWrap: false,
+                            style: TextStyle(
+                              color: tokens.primaryStrong,
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
                         ),
                       ),
                     ],
@@ -1981,6 +2166,13 @@ class _MayoreoSidePanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     _MayoreoNavItem(
+                      icon: Icons.currency_exchange_rounded,
+                      title: 'Cuenta El Palomar',
+                      subtitle: 'Cuenta corriente especial',
+                      onTapSync: () => onNavigate('Cuenta El Palomar'),
+                    ),
+                    const SizedBox(height: 8),
+                    _MayoreoNavItem(
                       icon: Icons.price_check_rounded,
                       title: 'Catálogo',
                       subtitle: 'Empresas, materiales y precios',
@@ -1992,20 +2184,6 @@ class _MayoreoSidePanel extends StatelessWidget {
                       title: 'Ajuste de precios',
                       subtitle: 'Listas, vigentes y ajustes',
                       onTapSync: () => onNavigate('Ajuste de precios'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MayoreoNavItem(
-                      icon: Icons.local_shipping_rounded,
-                      title: 'Rutas',
-                      subtitle: 'Planeación de embarques',
-                      onTapSync: () => onNavigate('Rutas'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MayoreoNavItem(
-                      icon: Icons.assessment_rounded,
-                      title: 'Reportes',
-                      subtitle: 'Indicadores, cortes y resumen',
-                      onTapSync: () => onNavigate('Reportes'),
                     ),
                   ],
                 ),

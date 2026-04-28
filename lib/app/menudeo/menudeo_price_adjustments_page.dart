@@ -60,6 +60,7 @@ class _MenudeoPriceAdjustmentsPageState
   String? _selectedGroup;
   String? _selectedCounterparty;
   String? _selectedMaterial;
+  String _adjustmentScope = 'selection';
   String _adjustmentMode = 'delta_amount';
   int _deltaDirection = 1;
   String? _activePriceId;
@@ -330,6 +331,44 @@ class _MenudeoPriceAdjustmentsPageState
               _selectedPriceIds.contains((row['price_id'] ?? '').toString()),
         )
         .toList(growable: false);
+  }
+
+  List<Map<String, dynamic>> get _targetRows {
+    switch (_adjustmentScope) {
+      case 'material':
+        final material = _selectedMaterial;
+        if (material == null || material.isEmpty) {
+          return const <Map<String, dynamic>>[];
+        }
+        return _filteredRows
+            .where(
+              (row) =>
+                  (row['material_label_snapshot'] ?? '')
+                      .toString()
+                      .toUpperCase() ==
+                  material,
+            )
+            .toList(growable: false);
+      case 'selection':
+      default:
+        return _selectedRows;
+    }
+  }
+
+  List<String> get _targetPriceIds => _targetRows
+      .map((row) => (row['price_id'] ?? '').toString())
+      .where((id) => id.isNotEmpty)
+      .toSet()
+      .toList(growable: false);
+
+  String _adjustmentScopeLabel(String value) {
+    switch (value) {
+      case 'material':
+        return 'Por material';
+      case 'selection':
+      default:
+        return 'Selección manual';
+    }
   }
 
   List<Map<String, dynamic>> get _filteredHistoryRows {
@@ -1005,8 +1044,19 @@ class _MenudeoPriceAdjustmentsPageState
 
   Future<void> _applyAdjustments() async {
     if (_applying) return;
-    if (_selectedPriceIds.isEmpty) {
-      _toast('Selecciona al menos un precio');
+    if (_adjustmentScope == 'material' &&
+        (_selectedMaterial == null || _selectedMaterial!.isEmpty)) {
+      _toast('Selecciona un material para aplicar el ajuste por material');
+      return;
+    }
+    final targetRows = _targetRows;
+    final targetPriceIds = _targetPriceIds;
+    if (targetPriceIds.isEmpty) {
+      _toast(
+        _adjustmentScope == 'material'
+            ? 'No hay precios visibles para ese material'
+            : 'Selecciona al menos un precio',
+      );
       return;
     }
     final value = _parseAdjustmentValue();
@@ -1018,7 +1068,7 @@ class _MenudeoPriceAdjustmentsPageState
       _toast('El ajuste no puede ser cero');
       return;
     }
-    final previewNegative = _selectedRows.any((row) {
+    final previewNegative = targetRows.any((row) {
       final current = ((row['final_price'] ?? 0) as num).toDouble();
       return _computeNewPrice(current) < 0;
     });
@@ -1031,7 +1081,7 @@ class _MenudeoPriceAdjustmentsPageState
       await _supa.rpc(
         'apply_men_price_adjustment',
         params: <String, dynamic>{
-          'p_price_ids': _selectedPriceIds.toList(growable: false),
+          'p_price_ids': targetPriceIds,
           'p_adjustment_mode': _adjustmentMode,
           'p_adjustment_value': value,
           'p_reason': _reasonC.text.trim().isEmpty
@@ -1039,7 +1089,9 @@ class _MenudeoPriceAdjustmentsPageState
               : _reasonC.text.trim(),
         },
       );
-      _toast('Ajuste aplicado a ${_selectedPriceIds.length} precios');
+      _toast(
+        'Ajuste aplicado a ${targetPriceIds.length} precio(s) · ${_adjustmentScopeLabel(_adjustmentScope)}',
+      );
       _reasonC.clear();
       _adjustmentValueC.clear();
       await _loadRows();
@@ -1570,6 +1622,7 @@ class _MenudeoPriceAdjustmentsPageState
     setState(() {
       _selectedCounterparty = null;
       _selectedMaterial = null;
+      _adjustmentScope = 'selection';
       _adjustmentMode = 'delta_amount';
       _deltaDirection = 1;
     });
@@ -1605,6 +1658,8 @@ class _MenudeoPriceAdjustmentsPageState
                       error: _error,
                       rows: _filteredRows,
                       selectedRows: _selectedRows,
+                      targetRows: _targetRows,
+                      adjustmentScope: _adjustmentScope,
                       selectedKind: _selectedKind,
                       selectedGroup: _selectedGroup,
                       selectedCounterparty: _selectedCounterparty,
@@ -1678,6 +1733,10 @@ class _MenudeoPriceAdjustmentsPageState
                       },
                       onMaterialChanged: (value) {
                         setState(() => _selectedMaterial = value);
+                        refresh();
+                      },
+                      onScopeChanged: (value) {
+                        setState(() => _adjustmentScope = value);
                         refresh();
                       },
                       onModeChanged: (value) {
@@ -2256,6 +2315,8 @@ class _MenudeoPriceAdjustmentsPageState
                 totalPages: _totalPagesFor(_filteredRows.length),
                 pageSize: _pageSize,
                 selectedRows: _selectedRows,
+                targetRows: _targetRows,
+                adjustmentScope: _adjustmentScope,
                 historyRows: _filteredHistoryRows,
                 selectedKind: _selectedKind,
                 selectedGroup: _selectedGroup,
@@ -2324,6 +2385,8 @@ class _MenudeoPriceAdjustmentsPageState
                   _selectedMaterial = value;
                   _currentPage = 0;
                 }),
+                onScopeChanged: (value) =>
+                    setState(() => _adjustmentScope = value),
                 onModeChanged: (value) =>
                     setState(() => _adjustmentMode = value),
                 deltaDirection: _deltaDirection,
@@ -2469,7 +2532,9 @@ class _PriceAdjustBody extends StatelessWidget {
   final int totalPages;
   final int pageSize;
   final List<Map<String, dynamic>> selectedRows;
+  final List<Map<String, dynamic>> targetRows;
   final List<Map<String, dynamic>> historyRows;
+  final String adjustmentScope;
   final String? selectedKind;
   final String? selectedGroup;
   final String? selectedCounterparty;
@@ -2496,6 +2561,7 @@ class _PriceAdjustBody extends StatelessWidget {
   final ValueChanged<String?> onGroupChanged;
   final ValueChanged<String?> onCounterpartyChanged;
   final ValueChanged<String?> onMaterialChanged;
+  final ValueChanged<String> onScopeChanged;
   final ValueChanged<String> onModeChanged;
   final int deltaDirection;
   final ValueChanged<int> onDeltaDirectionChanged;
@@ -2544,7 +2610,9 @@ class _PriceAdjustBody extends StatelessWidget {
     required this.totalPages,
     required this.pageSize,
     required this.selectedRows,
+    required this.targetRows,
     required this.historyRows,
+    required this.adjustmentScope,
     required this.selectedKind,
     required this.selectedGroup,
     required this.selectedCounterparty,
@@ -2571,6 +2639,7 @@ class _PriceAdjustBody extends StatelessWidget {
     required this.onGroupChanged,
     required this.onCounterpartyChanged,
     required this.onMaterialChanged,
+    required this.onScopeChanged,
     required this.onModeChanged,
     required this.deltaDirection,
     required this.onDeltaDirectionChanged,
@@ -2697,6 +2766,8 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
   final String? error;
   final List<Map<String, dynamic>> rows;
   final List<Map<String, dynamic>> selectedRows;
+  final List<Map<String, dynamic>> targetRows;
+  final String adjustmentScope;
   final String? selectedKind;
   final String? selectedGroup;
   final String? selectedCounterparty;
@@ -2718,6 +2789,7 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
   final ValueChanged<String?> onGroupChanged;
   final ValueChanged<String?> onCounterpartyChanged;
   final ValueChanged<String?> onMaterialChanged;
+  final ValueChanged<String> onScopeChanged;
   final ValueChanged<String> onModeChanged;
   final ValueChanged<String>? onAdjustmentValueChanged;
   final int deltaDirection;
@@ -2740,6 +2812,8 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
     required this.error,
     required this.rows,
     required this.selectedRows,
+    required this.targetRows,
+    required this.adjustmentScope,
     required this.selectedKind,
     required this.selectedGroup,
     required this.selectedCounterparty,
@@ -2761,6 +2835,7 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
     required this.onGroupChanged,
     required this.onCounterpartyChanged,
     required this.onMaterialChanged,
+    required this.onScopeChanged,
     required this.onModeChanged,
     this.onAdjustmentValueChanged,
     required this.deltaDirection,
@@ -2802,6 +2877,11 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
               spacing: 10,
               runSpacing: 10,
               children: [
+                _AdjustmentTag(
+                  label: 'TODOS',
+                  selected: selectedKind == null,
+                  onTap: () => onKindChanged(null),
+                ),
                 ...availableKinds.map(
                   (kind) => _AdjustmentTag(
                     label: kind,
@@ -2833,12 +2913,44 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 16),
+            Row(
+              children: [
+                Expanded(
+                  child: _AdjustmentFilterField(
+                    label: 'Contraparte',
+                    value: selectedCounterparty,
+                    items: availableCounterparties,
+                    onChanged: onCounterpartyChanged,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: _AdjustmentFilterField(
+                    label: 'Material',
+                    value: selectedMaterial,
+                    items: availableMaterials,
+                    onChanged: onMaterialChanged,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
             const _AdjustmentSectionTitle('3. Seleccion'),
             const SizedBox(height: 10),
             Wrap(
               spacing: 10,
               runSpacing: 10,
               children: [
+                _AdjustmentTag(
+                  label: 'SELECCION MANUAL',
+                  selected: adjustmentScope == 'selection',
+                  onTap: () => onScopeChanged('selection'),
+                ),
+                _AdjustmentTag(
+                  label: 'POR MATERIAL',
+                  selected: adjustmentScope == 'material',
+                  onTap: () => onScopeChanged('material'),
+                ),
                 OutlinedButton.icon(
                   style: contractSecondaryButtonStyle(context),
                   onPressed: rows.isEmpty ? null : onSelectAllVisible,
@@ -2856,8 +2968,25 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
                   label: '${selectedRows.length} seleccionados',
                   highlighted: selectedRows.isNotEmpty,
                 ),
+                _AdjustmentMiniPill(
+                  label: '${targetRows.length} afectados',
+                  highlighted: targetRows.isNotEmpty,
+                ),
               ],
             ),
+            if (adjustmentScope == 'material') ...[
+              const SizedBox(height: 8),
+              Text(
+                selectedMaterial == null
+                    ? 'Selecciona un material para aplicar el ajuste a todas sus filas visibles.'
+                    : 'Se ajustaran todas las filas visibles del material $selectedMaterial.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: tokens.badgeText.withValues(alpha: 0.82),
+                ),
+              ),
+            ],
             const SizedBox(height: 12),
             Container(
               constraints: const BoxConstraints(maxHeight: 300),
@@ -2987,13 +3116,17 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
               alignment: Alignment.centerRight,
               child: ElevatedButton.icon(
                 style: contractPrimaryButtonStyle(context),
-                onPressed: applying || selectedRows.isEmpty ? null : onApply,
+                onPressed: applying || targetRows.isEmpty ? null : onApply,
                 icon: Icon(
                   applying
                       ? Icons.hourglass_top_rounded
                       : Icons.done_all_rounded,
                 ),
-                label: Text(applying ? 'Aplicando...' : 'Aplicar'),
+                label: Text(
+                  applying
+                      ? 'Aplicando...'
+                      : 'Aplicar a ${targetRows.length} precio(s)',
+                ),
               ),
             ),
           ],
@@ -3101,6 +3234,36 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _AdjustmentTag(
+                label: 'SELECCION MANUAL',
+                selected: adjustmentScope == 'selection',
+                onTap: () => onScopeChanged('selection'),
+              ),
+              _AdjustmentTag(
+                label: 'POR MATERIAL',
+                selected: adjustmentScope == 'material',
+                onTap: () => onScopeChanged('material'),
+              ),
+            ],
+          ),
+          if (adjustmentScope == 'material') ...[
+            const SizedBox(height: 10),
+            Text(
+              selectedMaterial == null
+                  ? 'Selecciona un material para aplicar el ajuste a todas sus filas visibles.'
+                  : 'Se aplicara el cambio sobre todas las filas visibles del material $selectedMaterial.',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: tokens.badgeText.withValues(alpha: 0.82),
+              ),
+            ),
+          ],
           const SizedBox(height: 16),
           _AdjustmentSectionTitle(
             compactMode ? '2. Como cambiarlo' : '2. Tipo de cambio',
@@ -3197,7 +3360,7 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
             loading: loading,
             error: error,
             rows: rows,
-            selectedRows: selectedRows,
+            selectedRows: targetRows,
             adjustmentMode: adjustmentMode,
             adjustmentValueText: adjustmentValueC.text,
             formatMoney: formatMoney,
@@ -3231,9 +3394,13 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
               _AdjustmentMiniPill(
                 label: '${selectedRows.length} seleccionado(s)',
               ),
+              _AdjustmentMiniPill(
+                label: '${targetRows.length} afectado(s)',
+                highlighted: targetRows.isNotEmpty,
+              ),
               ElevatedButton.icon(
                 style: contractPrimaryButtonStyle(context),
-                onPressed: applying || selectedRows.isEmpty ? null : onApply,
+                onPressed: applying || targetRows.isEmpty ? null : onApply,
                 icon: Icon(
                   applying
                       ? Icons.hourglass_top_rounded
@@ -3244,7 +3411,7 @@ class _AdjustmentWorkspaceCard extends StatelessWidget {
                       ? 'Aplicando...'
                       : compactMode
                       ? 'Aplicar'
-                      : 'Aplicar a ${selectedRows.length} precio(s)',
+                      : 'Aplicar a ${targetRows.length} precio(s)',
                 ),
               ),
             ],

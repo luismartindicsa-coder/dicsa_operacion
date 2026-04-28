@@ -438,11 +438,16 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
           depositsTotal: _depositsToday,
           expensesTotal: _expensesToday,
         );
-    final capture = await showDialog<_CashCountCapture>(
-      context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.24),
-      builder: (context) => _CashCountDialog(initial: base),
-    );
+    final capture = base.status == 'EN_CONCILIACION'
+        ? _CashCountCapture(
+            countedCashTotal: base.countedCashTotal,
+            notes: base.notes,
+          )
+        : await showDialog<_CashCountCapture>(
+            context: context,
+            barrierColor: Colors.black.withValues(alpha: 0.24),
+            builder: (context) => _CashCountDialog(initial: base),
+          );
     if (capture == null || !mounted) return;
 
     final currentCutId = base.id;
@@ -459,6 +464,11 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     final currentCutIdValue = currentCutId!;
 
     try {
+      final existingCheckRows = await _supa
+          .from('men_cash_cut_checks')
+          .select('source_type,source_id,source_folio,is_verified,reason')
+          .eq('cash_cut_id', currentCutIdValue)
+          .order('created_at');
       final inheritedPendingBatches = await _buildInheritedPendingBatches(
         currentCutIdValue,
       );
@@ -590,6 +600,41 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
               .toList(growable: false),
         ),
       ];
+      final initialDecisions = (existingCheckRows as List)
+          .cast<Map<String, dynamic>>()
+          .map(
+            (row) => _CashCutCheckDecision(
+              sourceType: (row['source_type'] ?? '').toString(),
+              sourceId: (row['source_id'] ?? '').toString(),
+              sourceFolio: (row['source_folio'] ?? '').toString(),
+              isVerified: row['is_verified'] == true,
+              reason: (row['reason'] ?? '').toString(),
+            ),
+          )
+          .toList(growable: false);
+      var initialBatchIndex = base.reconciliationBatchIndex;
+      var initialItemIndex = base.reconciliationItemIndex;
+      if (base.reconciliationFocusSourceId.isNotEmpty) {
+        var foundBatch = -1;
+        var foundItem = -1;
+        for (var batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+          final batch = batches[batchIndex];
+          final itemIndex = batch.items.indexWhere(
+            (item) =>
+                item.sourceId == base.reconciliationFocusSourceId &&
+                item.sourceType == base.reconciliationFocusSourceType,
+          );
+          if (itemIndex >= 0) {
+            foundBatch = batchIndex;
+            foundItem = itemIndex;
+            break;
+          }
+        }
+        if (foundBatch >= 0 && foundItem >= 0) {
+          initialBatchIndex = foundBatch;
+          initialItemIndex = foundItem;
+        }
+      }
       if (!mounted) return;
       final review = await showDialog<_CashCutVirtualFlowResult>(
         context: context,
@@ -597,9 +642,9 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         barrierColor: Colors.black.withValues(alpha: 0.24),
         builder: (context) => _CashCutVirtualFlowDialog(
           batches: batches,
-          initialBatchIndex: 0,
-          initialItemIndex: 0,
-          initialDecisions: const <_CashCutCheckDecision>[],
+          initialBatchIndex: initialBatchIndex,
+          initialItemIndex: initialItemIndex,
+          initialDecisions: initialDecisions,
           countedCashTotal: capture.countedCashTotal,
           openingCash: base.openingCash,
           theoreticalCash:
@@ -616,21 +661,6 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         ),
       );
       if (review == null || !mounted) return;
-
-      final theoreticalCash =
-          base.openingCash +
-          _salesToday +
-          _depositsToday -
-          _purchasesToday -
-          _expensesToday;
-      final difference = capture.countedCashTotal - theoreticalCash;
-      final finalizeCut = await _askFinalizeCashCut(
-        pendingCount: review.pendingCount,
-        countedCashTotal: capture.countedCashTotal,
-        theoreticalCash: theoreticalCash,
-        difference: difference,
-      );
-      if (finalizeCut == null || !mounted) return;
 
       final cashCutId = await _ensureCurrentCutId(
         existingId: base.id,
@@ -665,10 +695,65 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
             );
       }
 
+      if (review.resumeOnly) {
+        await _supa
+            .from('men_cash_cuts')
+            .update({
+              'pending_checks_count': review.pendingCount,
+              'reconciliation_batch_index': review.batchIndex,
+              'reconciliation_item_index': review.itemIndex,
+              'reconciliation_focus_source_type': review.focusSourceType,
+              'reconciliation_focus_source_id': review.focusSourceId,
+              'reconciliation_focus_source_folio': review.focusSourceFolio,
+              'status': 'EN_CONCILIACION',
+              'closed_at': null,
+              'notes': capture.notes,
+            })
+            .eq('id', cashCutId);
+
+        await _loadDashboardData();
+        if (!mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Conciliacion guardada. Puedes volver después exactamente donde te quedaste.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        return;
+      }
+
+      final theoreticalCash =
+          base.openingCash +
+          _salesToday +
+          _depositsToday -
+          _purchasesToday -
+          _expensesToday;
+      final difference = capture.countedCashTotal - theoreticalCash;
+      final finalizeCut = await _askFinalizeCashCut(
+        pendingCount: review.pendingCount,
+        countedCashTotal: capture.countedCashTotal,
+        theoreticalCash: theoreticalCash,
+        difference: difference,
+      );
+      if (finalizeCut == null || !mounted) return;
+
       await _supa
           .from('men_cash_cuts')
           .update({
             'pending_checks_count': review.pendingCount,
+            'reconciliation_batch_index': finalizeCut ? 0 : review.batchIndex,
+            'reconciliation_item_index': finalizeCut ? 0 : review.itemIndex,
+            'reconciliation_focus_source_type': finalizeCut
+                ? null
+                : review.focusSourceType,
+            'reconciliation_focus_source_id': finalizeCut
+                ? null
+                : review.focusSourceId,
+            'reconciliation_focus_source_folio': finalizeCut
+                ? null
+                : review.focusSourceFolio,
             'status': finalizeCut
                 ? (review.pendingCount == 0 ? 'CERRADO' : 'CON_PENDIENTES')
                 : 'EN_CONCILIACION',
@@ -1917,6 +2002,11 @@ class _MenudeoCashCutDraft {
   final double purchasesTotal;
   final double countedCashTotal;
   final int pendingChecksCount;
+  final int reconciliationBatchIndex;
+  final int reconciliationItemIndex;
+  final String reconciliationFocusSourceType;
+  final String reconciliationFocusSourceId;
+  final String reconciliationFocusSourceFolio;
   final String status;
   final String notes;
 
@@ -1932,6 +2022,11 @@ class _MenudeoCashCutDraft {
     required this.purchasesTotal,
     required this.countedCashTotal,
     required this.pendingChecksCount,
+    required this.reconciliationBatchIndex,
+    required this.reconciliationItemIndex,
+    required this.reconciliationFocusSourceType,
+    required this.reconciliationFocusSourceId,
+    required this.reconciliationFocusSourceFolio,
     required this.status,
     required this.notes,
   });
@@ -1949,6 +2044,11 @@ class _MenudeoCashCutDraft {
       purchasesTotal: 0,
       countedCashTotal: 0,
       pendingChecksCount: 0,
+      reconciliationBatchIndex: 0,
+      reconciliationItemIndex: 0,
+      reconciliationFocusSourceType: '',
+      reconciliationFocusSourceId: '',
+      reconciliationFocusSourceFolio: '',
       status: 'ABIERTO',
       notes: '',
     );
@@ -1975,6 +2075,18 @@ class _MenudeoCashCutDraft {
       countedCashTotal: parseNum(row['counted_cash_total']),
       pendingChecksCount:
           int.tryParse((row['pending_checks_count'] ?? '').toString()) ?? 0,
+      reconciliationBatchIndex:
+          int.tryParse((row['reconciliation_batch_index'] ?? '').toString()) ??
+          0,
+      reconciliationItemIndex:
+          int.tryParse((row['reconciliation_item_index'] ?? '').toString()) ??
+          0,
+      reconciliationFocusSourceType:
+          (row['reconciliation_focus_source_type'] ?? '').toString(),
+      reconciliationFocusSourceId: (row['reconciliation_focus_source_id'] ?? '')
+          .toString(),
+      reconciliationFocusSourceFolio:
+          (row['reconciliation_focus_source_folio'] ?? '').toString(),
       status: (row['status'] ?? 'ABIERTO').toString(),
       notes: (row['notes'] ?? '').toString(),
     );
@@ -1992,6 +2104,11 @@ class _MenudeoCashCutDraft {
     double? purchasesTotal,
     double? countedCashTotal,
     int? pendingChecksCount,
+    int? reconciliationBatchIndex,
+    int? reconciliationItemIndex,
+    String? reconciliationFocusSourceType,
+    String? reconciliationFocusSourceId,
+    String? reconciliationFocusSourceFolio,
     String? status,
     String? notes,
   }) {
@@ -2007,6 +2124,16 @@ class _MenudeoCashCutDraft {
       purchasesTotal: purchasesTotal ?? this.purchasesTotal,
       countedCashTotal: countedCashTotal ?? this.countedCashTotal,
       pendingChecksCount: pendingChecksCount ?? this.pendingChecksCount,
+      reconciliationBatchIndex:
+          reconciliationBatchIndex ?? this.reconciliationBatchIndex,
+      reconciliationItemIndex:
+          reconciliationItemIndex ?? this.reconciliationItemIndex,
+      reconciliationFocusSourceType:
+          reconciliationFocusSourceType ?? this.reconciliationFocusSourceType,
+      reconciliationFocusSourceId:
+          reconciliationFocusSourceId ?? this.reconciliationFocusSourceId,
+      reconciliationFocusSourceFolio:
+          reconciliationFocusSourceFolio ?? this.reconciliationFocusSourceFolio,
       status: status ?? this.status,
       notes: notes ?? this.notes,
     );
@@ -3316,13 +3443,21 @@ class _CashCutVirtualFlowResult {
   final List<_CashCutCheckDecision> decisions;
   final int batchIndex;
   final int itemIndex;
+  final String focusSourceType;
+  final String focusSourceId;
+  final String focusSourceFolio;
   final bool finished;
+  final bool resumeOnly;
 
   const _CashCutVirtualFlowResult({
     required this.decisions,
     required this.batchIndex,
     required this.itemIndex,
+    required this.focusSourceType,
+    required this.focusSourceId,
+    required this.focusSourceFolio,
     required this.finished,
+    required this.resumeOnly,
   });
 
   int get pendingCount => decisions.where((item) => !item.isVerified).length;
@@ -3460,6 +3595,10 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
     )];
   }
 
+  String get _currentFocusSourceType => _currentBatch?.sourceType ?? '';
+  String get _currentFocusSourceId => _currentItem?.sourceId ?? '';
+  String get _currentFocusSourceFolio => _currentItem?.sourceFolio ?? '';
+
   int get _globalItemCount =>
       _nonEmptyBatches.fold<int>(0, (sum, batch) => sum + batch.items.length);
 
@@ -3571,7 +3710,11 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
           decisions: _decisions.values.toList(growable: false),
           batchIndex: _batchIndex,
           itemIndex: _itemIndex,
+          focusSourceType: _currentFocusSourceType,
+          focusSourceId: _currentFocusSourceId,
+          focusSourceFolio: _currentFocusSourceFolio,
           finished: true,
+          resumeOnly: false,
         ),
       );
       return;
@@ -3688,7 +3831,11 @@ class _CashCutVirtualFlowDialogState extends State<_CashCutVirtualFlowDialog> {
         decisions: _decisions.values.toList(growable: false),
         batchIndex: _batchIndex,
         itemIndex: _itemIndex,
+        focusSourceType: _currentFocusSourceType,
+        focusSourceId: _currentFocusSourceId,
+        focusSourceFolio: _currentFocusSourceFolio,
         finished: false,
+        resumeOnly: false,
       ),
     );
   }

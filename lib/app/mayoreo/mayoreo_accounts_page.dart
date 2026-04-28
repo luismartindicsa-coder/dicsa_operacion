@@ -24,6 +24,7 @@ import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/number_formatters.dart';
 import 'mayoreo_catalog_page.dart';
 import 'mayoreo_dashboard_preview_page.dart';
+import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
 import 'mayoreo_theme.dart';
@@ -167,6 +168,13 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
     ).push(appPageRoute(page: const MayoreoSalesReportPage(instantOpen: true)));
   }
 
+  Future<void> _openElPalomar() async {
+    if (!mounted) return;
+    await Navigator.of(
+      context,
+    ).push(appPageRoute(page: const MayoreoElPalomarPage(instantOpen: true)));
+  }
+
   Future<void> _openDirectionDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -204,6 +212,10 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
         return;
       case 'Cuentas':
         if (_menuOpen) setState(() => _menuOpen = false);
+        return;
+      case 'Cuenta El Palomar':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openElPalomar());
         return;
       case 'Catálogo':
         if (_menuOpen) setState(() => _menuOpen = false);
@@ -3486,8 +3498,8 @@ class _AccountsHeaderButton extends StatelessWidget {
             onTapSync ??
             (onTap == null ? null : () => unawaited(onTap!.call())),
         child: Ink(
-          width: compact ? 48 : 158,
-          height: 48,
+          width: compact ? 56 : 176,
+          height: 56,
           decoration: BoxDecoration(
             color: Colors.white.withValues(alpha: 0.30),
             borderRadius: BorderRadius.circular(16),
@@ -3506,13 +3518,13 @@ class _AccountsHeaderButton extends StatelessWidget {
               if (compact)
                 Expanded(
                   child: Center(
-                    child: Icon(icon, size: 18, color: tokens.primaryStrong),
+                    child: Icon(icon, size: 20, color: tokens.primaryStrong),
                   ),
                 )
               else ...[
+                const SizedBox(width: 12),
+                Icon(icon, size: 22, color: tokens.primaryStrong),
                 const SizedBox(width: 10),
-                Icon(icon, size: 18, color: tokens.primaryStrong),
-                const SizedBox(width: 6),
                 Expanded(
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
@@ -3522,7 +3534,7 @@ class _AccountsHeaderButton extends StatelessWidget {
                       maxLines: 1,
                       softWrap: false,
                       style: TextStyle(
-                        fontSize: 13,
+                        fontSize: 15,
                         fontWeight: FontWeight.w800,
                         color: tokens.primaryStrong,
                       ),
@@ -3600,6 +3612,13 @@ class _AccountsSidePanel extends StatelessWidget {
                       title: 'Cuentas',
                       subtitle: 'Seguimiento financiero',
                       accented: true,
+                    ),
+                    const SizedBox(height: 8),
+                    _AccountsNavItem(
+                      icon: Icons.currency_exchange_rounded,
+                      title: 'Cuenta El Palomar',
+                      subtitle: 'Cuenta corriente especial',
+                      onTapSync: () => onNavigate('Cuenta El Palomar'),
                     ),
                     const SizedBox(height: 8),
                     _AccountsNavItem(

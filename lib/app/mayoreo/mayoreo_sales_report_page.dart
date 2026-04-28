@@ -31,6 +31,7 @@ import '../shared/utils/number_formatters.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
 import 'mayoreo_dashboard_preview_page.dart';
+import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_theme.dart';
 
@@ -110,6 +111,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
     if (savedState != null) {
       _rows = savedState.rows
           .map((row) => row.copyWith())
+          .where((row) => !_isSeedReportRow(row))
           .toList(growable: false);
       _selectedRowId = savedState.selectedRowId;
       _clientFilterIds.addAll(savedState.clientFilterIds);
@@ -127,7 +129,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       _pageSize = savedState.pageSize;
       _selectionAnchorRowId = savedState.selectionAnchorRowId;
     } else {
-      _rows = _seedReportRows();
+      _rows = const <_MayoreoSalesReportRow>[];
       if (_rows.isNotEmpty) {
         _selectedRowId = _rows.first.id;
         _selectedRowIds.add(_rows.first.id);
@@ -200,10 +202,11 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
               Map<String, dynamic>.from(row.cast<String, dynamic>()),
             ),
           )
+          .where((row) => !_isSeedReportRow(row))
           .toList(growable: false);
       if (!mounted) return;
       setState(() {
-        _rows = loadedRows.isEmpty ? _seedReportRows() : loadedRows;
+        _rows = loadedRows;
         _selectedRowId = data['selectedRowId'] as String?;
         _clientFilterIds
           ..clear()
@@ -280,6 +283,11 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
         if (_selectedRowId != null && _selectedRowIds.isEmpty) {
           _selectedRowIds.add(_selectedRowId!);
         }
+        if (_rows.isEmpty) {
+          _selectedRowId = null;
+          _selectedRowIds.clear();
+          _selectionAnchorRowId = null;
+        }
       });
       _MayoreoSalesReportPageMemory.current = _MayoreoSalesReportPageMemory(
         rows: _rows.map((row) => row.copyWith()).toList(growable: false),
@@ -345,6 +353,13 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
     ).push(appPageRoute(page: const MayoreoAccountsPage(instantOpen: true)));
   }
 
+  Future<void> _openElPalomar() async {
+    if (!mounted) return;
+    await Navigator.of(
+      context,
+    ).push(appPageRoute(page: const MayoreoElPalomarPage(instantOpen: true)));
+  }
+
   Future<void> _openDirectionDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -381,6 +396,10 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       case 'Cuentas':
         if (_menuOpen) setState(() => _menuOpen = false);
         unawaited(_openAccounts());
+        return;
+      case 'Cuenta El Palomar':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openElPalomar());
         return;
       case 'Catálogo':
         if (_menuOpen) setState(() => _menuOpen = false);
@@ -3274,8 +3293,8 @@ class _SalesHeaderButtonState extends State<_SalesHeaderButton> {
                 horizontal: widget.compact ? 0 : 18,
                 vertical: widget.compact ? 0 : 14,
               ),
-              width: widget.compact ? 48 : 158,
-              height: 48,
+              width: widget.compact ? 56 : 176,
+              height: 56,
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
@@ -3311,12 +3330,13 @@ class _SalesHeaderButtonState extends State<_SalesHeaderButton> {
                       child: Center(
                         child: Icon(
                           widget.icon,
-                          size: 18,
+                          size: 20,
                           color: tokens.primaryStrong,
                         ),
                       ),
                     )
                   else ...[
+                    const SizedBox(width: 12),
                     Icon(widget.icon, size: 24, color: tokens.primaryStrong),
                     const SizedBox(width: 10),
                     Expanded(
@@ -3329,7 +3349,7 @@ class _SalesHeaderButtonState extends State<_SalesHeaderButton> {
                           softWrap: false,
                           style: TextStyle(
                             color: tokens.primaryStrong,
-                            fontSize: 14,
+                            fontSize: 15,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -3409,6 +3429,13 @@ class _SalesSidePanel extends StatelessWidget {
                       title: 'Cuentas',
                       subtitle: 'Factura, cheque y cobranza',
                       onTapSync: () => onNavigate('Cuentas'),
+                    ),
+                    const SizedBox(height: 8),
+                    _SalesNavItem(
+                      icon: Icons.currency_exchange_rounded,
+                      title: 'Cuenta El Palomar',
+                      subtitle: 'Cuenta corriente especial',
+                      onTapSync: () => onNavigate('Cuenta El Palomar'),
                     ),
                     const SizedBox(height: 8),
                     _SalesNavItem(
@@ -6443,106 +6470,19 @@ int _totalPagesForCount(int pageSize, int totalRows) {
 }
 
 List<_MayoreoSalesClient> _seedClients() {
-  return const [
-    _MayoreoSalesClient(id: 'co_1', name: 'ACEROS DEL BAJIO'),
-    _MayoreoSalesClient(id: 'co_2', name: 'CONSTRUCTORA NOVA'),
-    _MayoreoSalesClient(id: 'co_3', name: 'FERRETODO CENTRO'),
-  ];
+  return const <_MayoreoSalesClient>[];
 }
 
 List<_MayoreoSalesMaterial> _seedMaterials() {
-  return const [
-    _MayoreoSalesMaterial(id: 'ma_3', name: 'VARILLA 3/8 GRADO 42'),
-    _MayoreoSalesMaterial(id: 'ma_4', name: 'LAMINA LISA CAL 20'),
-    _MayoreoSalesMaterial(id: 'ma_5', name: 'CH MIXTA'),
-    _MayoreoSalesMaterial(id: 'ma_6', name: 'COBRE'),
-  ];
+  return const <_MayoreoSalesMaterial>[];
 }
 
 List<_MayoreoSalesCatalogPrice> _seedCatalogPrices() {
-  return const [
-    _MayoreoSalesCatalogPrice(
-      clientId: 'co_1',
-      materialId: 'ma_3',
-      finalPrice: 19850,
-    ),
-    _MayoreoSalesCatalogPrice(
-      clientId: 'co_2',
-      materialId: 'ma_4',
-      finalPrice: 842,
-    ),
-    _MayoreoSalesCatalogPrice(
-      clientId: 'co_3',
-      materialId: 'ma_4',
-      finalPrice: 624,
-    ),
-    _MayoreoSalesCatalogPrice(
-      clientId: 'co_1',
-      materialId: 'ma_5',
-      finalPrice: 4350,
-    ),
-    _MayoreoSalesCatalogPrice(
-      clientId: 'co_2',
-      materialId: 'ma_6',
-      finalPrice: 12600,
-    ),
-  ];
+  return const <_MayoreoSalesCatalogPrice>[];
 }
 
-List<_MayoreoSalesReportRow> _seedReportRows() {
-  return [
-    _MayoreoSalesReportRow(
-      id: 'rep_1',
-      ticket: 'SV-24001',
-      date: DateTime(2026, 4, 23),
-      clientId: 'co_1',
-      clientName: 'ACEROS DEL BAJIO',
-      remision: 'RM-9842',
-      materialId: 'ma_3',
-      materialName: 'VARILLA 3/8 GRADO 42',
-      exitWeight: 12.48,
-      priceSnapshot: 19850,
-      approvedWeight: 12.31,
-      approvedPrice: 19930,
-      approvedAmount: 245348.30,
-      operationType: _MayoreoReportOperationType.factura,
-      observations: 'Carga liberada para factura de cierre semanal.',
-    ),
-    _MayoreoSalesReportRow(
-      id: 'rep_2',
-      ticket: 'SV-24002',
-      date: DateTime(2026, 4, 23),
-      clientId: 'co_2',
-      clientName: 'CONSTRUCTORA NOVA',
-      remision: 'RM-9843',
-      materialId: 'ma_4',
-      materialName: 'LAMINA LISA CAL 20',
-      exitWeight: 8.20,
-      priceSnapshot: 842,
-      approvedWeight: null,
-      approvedPrice: null,
-      approvedAmount: 0,
-      operationType: _MayoreoReportOperationType.cheque,
-      observations: 'Pendiente de validar peso aprobado de destino.',
-    ),
-    _MayoreoSalesReportRow(
-      id: 'rep_3',
-      ticket: 'SV-24003',
-      date: DateTime(2026, 4, 22),
-      clientId: 'co_3',
-      clientName: 'FERRETODO CENTRO',
-      remision: 'RM-9838',
-      materialId: 'ma_4',
-      materialName: 'LAMINA LISA CAL 20',
-      exitWeight: 6.75,
-      priceSnapshot: 624,
-      approvedWeight: 6.75,
-      approvedPrice: 624,
-      approvedAmount: 4212,
-      operationType: _MayoreoReportOperationType.factura,
-      observations: 'Sin ajuste de aprobación.',
-    ),
-  ];
+bool _isSeedReportRow(_MayoreoSalesReportRow row) {
+  return row.id.startsWith('rep_');
 }
 
 class _MayoreoSalesReportPageMemory {

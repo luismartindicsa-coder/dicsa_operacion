@@ -19,6 +19,7 @@ import '../shared/utils/csv_file_save.dart';
 import '../services/inventory_movements_grid.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_dashboard_preview_page.dart';
+import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
 import 'mayoreo_theme.dart';
@@ -387,6 +388,13 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
     );
   }
 
+  Future<void> _openElPalomar() async {
+    if (!mounted) return;
+    await Navigator.of(
+      context,
+    ).push(appPageRoute(page: const MayoreoElPalomarPage(instantOpen: true)));
+  }
+
   Future<void> _openDirectionDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -413,6 +421,10 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
       case 'Cuentas':
         if (_menuOpen) setState(() => _menuOpen = false);
         unawaited(_openAccounts());
+        return;
+      case 'Cuenta El Palomar':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openElPalomar());
         return;
       case 'Catálogo':
         if (_menuOpen) setState(() => _menuOpen = false);
@@ -4392,10 +4404,11 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(right: 12),
       child: ContractGlassCard(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        borderRadius: BorderRadius.circular(28),
+        padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
         child: SingleChildScrollView(
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
                 'Mayoreo',
@@ -4442,16 +4455,24 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     _MayoreoCatalogNavItem(
+                      icon: Icons.currency_exchange_rounded,
+                      title: 'Cuenta El Palomar',
+                      subtitle: 'Cuenta corriente especial',
+                      onTap: () async => onNavigate('Cuenta El Palomar'),
+                    ),
+                    const SizedBox(height: 8),
+                    _MayoreoCatalogNavItem(
                       icon: Icons.price_check_rounded,
                       title: 'Catálogo',
-                      subtitle: 'Empresas, materiales y precios',
+                      subtitle: 'Clientes, materiales y precios',
+                      accented: true,
                       onTap: () async {},
                     ),
                     const SizedBox(height: 8),
                     _MayoreoCatalogNavItem(
                       icon: Icons.request_quote_rounded,
                       title: 'Ajuste de precios',
-                      subtitle: 'Solo precio de venta',
+                      subtitle: 'Vigentes e historial',
                       onTap: () async => onNavigate('Ajuste de precios'),
                     ),
                   ],
@@ -4475,14 +4496,6 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
                 subtitle: 'Vista general del área',
                 onTap: () async => onNavigate('Dashboard Mayoreo'),
               ),
-              const SizedBox(height: 8),
-              _MayoreoCatalogNavItem(
-                icon: Icons.price_check_rounded,
-                title: 'Catálogo',
-                subtitle: 'Vista activa del módulo',
-                accented: true,
-                onTap: _noopAsync,
-              ),
             ],
           ),
         ),
@@ -4490,8 +4503,6 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
     );
   }
 }
-
-Future<void> _noopAsync() async {}
 
 class _MayoreoCatalogSectionHeader extends StatelessWidget {
   final String label;
@@ -4501,25 +4512,14 @@ class _MayoreoCatalogSectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return Row(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
-            color: tokens.badgeText,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: tokens.primarySoft.withValues(alpha: 0.32),
-          ),
-        ),
-      ],
+    return Text(
+      label,
+      style: TextStyle(
+        fontSize: 11.5,
+        fontWeight: FontWeight.w900,
+        letterSpacing: 0.4,
+        color: tokens.badgeText,
+      ),
     );
   }
 }
@@ -4542,86 +4542,68 @@ class _MayoreoCatalogNavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          child: Ink(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              gradient: accented ? kMayoreoHeroGradient : kMayoreoPanelGradient,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: accented
-                    ? Colors.white.withValues(alpha: 0.72)
-                    : Colors.white.withValues(alpha: 0.58),
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: onTap,
+        child: Ink(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            gradient: accented ? kMayoreoPanelGradient : null,
+            color: accented ? null : Colors.white.withValues(alpha: 0.22),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: accented
+                  ? tokens.primaryStrong.withValues(alpha: 0.16)
+                  : Colors.white.withValues(alpha: 0.26),
+            ),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: accented
+                      ? tokens.primaryStrong.withValues(alpha: 0.12)
+                      : Colors.white.withValues(alpha: 0.42),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: accented
+                        ? tokens.primaryStrong.withValues(alpha: 0.22)
+                        : Colors.white.withValues(alpha: 0.42),
+                  ),
+                ),
+                child: Icon(icon, size: 18, color: tokens.primaryStrong),
               ),
-              boxShadow: accented
-                  ? [
-                      BoxShadow(
-                        color: mayoreoAreaTokens.glow.withValues(alpha: 0.20),
-                        blurRadius: 22,
-                        offset: const Offset(0, 12),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: tokens.primaryStrong,
                       ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  color: accented ? Colors.white : tokens.primaryStrong,
-                  size: 22,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 2),
                       Text(
-                        title,
+                        subtitle!,
                         style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: accented ? Colors.white : tokens.primaryStrong,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: tokens.badgeText,
                         ),
                       ),
-                      if (hasSubtitle) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: accented
-                                ? Colors.white.withValues(alpha: 0.92)
-                                : tokens.badgeText,
-                          ),
-                        ),
-                      ],
                     ],
-                  ),
+                  ],
                 ),
-                if (!accented) ...[
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: tokens.badgeText,
-                    size: 22,
-                  ),
-                ],
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
