@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -49,8 +50,11 @@ class MayoreoElPalomarPage extends StatefulWidget {
   State<MayoreoElPalomarPage> createState() => _MayoreoElPalomarPageState();
 }
 
-class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
+class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
+    with WidgetsBindingObserver {
   final SupabaseClient _supa = Supabase.instance.client;
+  static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
+  static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
   Future<void> _persistStateQueue = Future<void>.value();
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
@@ -68,6 +72,17 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   Offset? _dragPointerGlobal;
   double _dragAutoScrollVelocity = 0;
   Timer? _dragAutoScrollTimer;
+  Timer? _autoRefreshTimer;
+  Timer? _deferredRefreshTimer;
+  RealtimeChannel? _palomarRealtimeChannel;
+  bool _refreshingRemoteData = false;
+  bool _refreshQueued = false;
+  DateTime? _lastBackgroundRefreshAt;
+  int _activeRefreshPauses = 0;
+  bool _persistingState = false;
+  int _pendingPersistCount = 0;
+  String _lastPersistedMovementsSignature = '';
+  String _lastQueuedMovementsSignature = '';
   DateTime? _dateFilterFrom;
   DateTime? _dateFilterTo;
   final Set<String> _typeFilters = <String>{};
@@ -84,15 +99,28 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_resolveNavigationAccess());
     unawaited(_loadState());
+    _setupAutoRefresh();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefreshTimer?.cancel();
+    _deferredRefreshTimer?.cancel();
+    _palomarRealtimeChannel?.unsubscribe();
     _dragAutoScrollTimer?.cancel();
     _bodyScrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshRemoteDataIfIdle(force: true));
+    }
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -123,19 +151,128 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
     }
     final remissions = await _loadSourceRemissions();
     if (!mounted) return;
+    final signature = _movementsSignature(restoredMovements);
     setState(() {
       _movements = restoredMovements;
       _sourceRemissions = remissions;
     });
+    _lastPersistedMovementsSignature = signature;
+    _lastQueuedMovementsSignature = signature;
+  }
+
+  void _setupAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      unawaited(_refreshRemoteDataIfIdle());
+    });
+
+    _palomarRealtimeChannel?.unsubscribe();
+    _palomarRealtimeChannel = _supa
+        .channel('mayoreo-palomar-auto-refresh')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _kMayoreoPalomarMovementsTable,
+          callback: (_) => unawaited(_refreshRemoteDataIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _kMayoreoSalesReportsTable,
+          callback: (_) => unawaited(_refreshRemoteDataIfIdle()),
+        )
+        .subscribe();
+  }
+
+  bool get _shouldDeferBackgroundRefresh =>
+      _activeRefreshPauses > 0 ||
+      _menuOpen ||
+      _persistingState ||
+      _pendingPersistCount > 0;
+
+  String _movementsSignature(List<_PalomarMovement> movements) => jsonEncode(
+    movements.map((movement) => movement.toJson()).toList(growable: false),
+  );
+
+  void _queueDeferredBackgroundRefresh([Duration? delay]) {
+    if (!mounted) return;
+    _refreshQueued = true;
+    _deferredRefreshTimer?.cancel();
+    _deferredRefreshTimer = Timer(delay ?? _backgroundRefreshRetryDelay, () {
+      _deferredRefreshTimer = null;
+      unawaited(_refreshRemoteDataIfIdle());
+    });
+  }
+
+  Future<void> _refreshRemoteDataIfIdle({bool force = false}) async {
+    if (!mounted || _refreshingRemoteData) return;
+    if (!force && _shouldDeferBackgroundRefresh) {
+      _queueDeferredBackgroundRefresh();
+      return;
+    }
+    if (!force && _lastBackgroundRefreshAt != null) {
+      final elapsed = DateTime.now().difference(_lastBackgroundRefreshAt!);
+      if (elapsed < _backgroundRefreshMinGap) {
+        _queueDeferredBackgroundRefresh(_backgroundRefreshMinGap - elapsed);
+        return;
+      }
+    }
+    _refreshingRemoteData = true;
+    try {
+      await _loadState();
+      _lastBackgroundRefreshAt = DateTime.now();
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        _refreshQueued = false;
+      } else if (_refreshQueued) {
+        _queueDeferredBackgroundRefresh();
+      }
+    } finally {
+      _refreshingRemoteData = false;
+    }
+  }
+
+  Future<T?> _runWithRefreshPause<T>(Future<T?> Function() action) async {
+    _activeRefreshPauses += 1;
+    try {
+      return await action();
+    } finally {
+      _activeRefreshPauses = (_activeRefreshPauses - 1).clamp(0, 1 << 20);
+      if (_activeRefreshPauses == 0 && _refreshQueued) {
+        unawaited(_refreshRemoteDataIfIdle(force: true));
+      }
+    }
   }
 
   Future<void> _persistState() async {
     final snapshot = _movements
         .map((movement) => movement.copyWith())
         .toList(growable: false);
-    _persistStateQueue = _persistStateQueue
-        .catchError((_) {})
-        .then((_) => _persistStateToSupabase(snapshot));
+    final signature = _movementsSignature(snapshot);
+    if (signature == _lastQueuedMovementsSignature &&
+        (_pendingPersistCount > 0 || _persistingState)) {
+      return;
+    }
+    if (signature == _lastPersistedMovementsSignature &&
+        _pendingPersistCount == 0 &&
+        !_persistingState) {
+      _lastQueuedMovementsSignature = signature;
+      return;
+    }
+    _lastQueuedMovementsSignature = signature;
+    _pendingPersistCount += 1;
+    _persistStateQueue = _persistStateQueue.catchError((_) {}).then((_) async {
+      _pendingPersistCount = (_pendingPersistCount - 1).clamp(0, 1 << 20);
+      _persistingState = true;
+      try {
+        await _persistStateToSupabase(snapshot);
+        _lastPersistedMovementsSignature = signature;
+      } finally {
+        _persistingState = false;
+        if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+          unawaited(_refreshRemoteDataIfIdle(force: true));
+        }
+      }
+    });
     await _persistStateQueue;
   }
 
@@ -1015,11 +1152,13 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   }
 
   Future<void> _openRegisterCheckDialog() async {
-    final movement = await showDialog<_PalomarMovement>(
-      context: context,
-      builder: (_) => AreaThemeScope(
-        tokens: mayoreoAreaTokens,
-        child: _PalomarCheckDialog(onPickDate: _pickDate),
+    final movement = await _runWithRefreshPause(
+      () => showDialog<_PalomarMovement>(
+        context: context,
+        builder: (_) => AreaThemeScope(
+          tokens: mayoreoAreaTokens,
+          child: _PalomarCheckDialog(onPickDate: _pickDate),
+        ),
       ),
     );
     if (!mounted || movement == null) return;
@@ -1028,11 +1167,13 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   }
 
   Future<void> _openManualAdjustmentDialog() async {
-    final movement = await showDialog<_PalomarMovement>(
-      context: context,
-      builder: (_) => AreaThemeScope(
-        tokens: mayoreoAreaTokens,
-        child: _PalomarAdjustmentDialog(onPickDate: _pickDate),
+    final movement = await _runWithRefreshPause(
+      () => showDialog<_PalomarMovement>(
+        context: context,
+        builder: (_) => AreaThemeScope(
+          tokens: mayoreoAreaTokens,
+          child: _PalomarAdjustmentDialog(onPickDate: _pickDate),
+        ),
       ),
     );
     if (!mounted || movement == null) return;
@@ -1041,14 +1182,16 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   }
 
   Future<void> _openApplyRemissionsDialog() async {
-    final selected = await showDialog<List<_PalomarSourceRemission>>(
-      context: context,
-      builder: (_) => AreaThemeScope(
-        tokens: mayoreoAreaTokens,
-        child: _PalomarApplyRemissionsDialog(
-          remissions: _sourceRemissions,
-          appliedIds: _appliedRemissionIds,
-          onStateFor: _remissionStateFor,
+    final selected = await _runWithRefreshPause(
+      () => showDialog<List<_PalomarSourceRemission>>(
+        context: context,
+        builder: (_) => AreaThemeScope(
+          tokens: mayoreoAreaTokens,
+          child: _PalomarApplyRemissionsDialog(
+            remissions: _sourceRemissions,
+            appliedIds: _appliedRemissionIds,
+            onStateFor: _remissionStateFor,
+          ),
         ),
       ),
     );
@@ -1083,13 +1226,15 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   }
 
   Future<void> _openCreateCutDialog() async {
-    final movement = await showDialog<_PalomarMovement>(
-      context: context,
-      builder: (_) => AreaThemeScope(
-        tokens: mayoreoAreaTokens,
-        child: _PalomarCutDialog(
-          ledgerEntries: _ledgerEntries,
-          onPickDate: _pickDate,
+    final movement = await _runWithRefreshPause(
+      () => showDialog<_PalomarMovement>(
+        context: context,
+        builder: (_) => AreaThemeScope(
+          tokens: mayoreoAreaTokens,
+          child: _PalomarCutDialog(
+            ledgerEntries: _ledgerEntries,
+            onPickDate: _pickDate,
+          ),
         ),
       ),
     );
@@ -1099,11 +1244,13 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   }
 
   Future<void> _openHistoryDialog() async {
-    await showDialog<void>(
-      context: context,
-      builder: (_) => AreaThemeScope(
-        tokens: mayoreoAreaTokens,
-        child: _PalomarHistoryDialog(entries: _ledgerEntries),
+    await _runWithRefreshPause(
+      () => showDialog<void>(
+        context: context,
+        builder: (_) => AreaThemeScope(
+          tokens: mayoreoAreaTokens,
+          child: _PalomarHistoryDialog(entries: _ledgerEntries),
+        ),
       ),
     );
   }
@@ -1117,13 +1264,15 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
   }
 
   Future<void> _openEditMovement(_PalomarMovement movement) async {
-    final edited = await showDialog<_PalomarMovement>(
-      context: context,
-      builder: (_) => AreaThemeScope(
-        tokens: mayoreoAreaTokens,
-        child: _PalomarEditMovementDialog(
-          movement: movement,
-          onPickDate: _pickDate,
+    final edited = await _runWithRefreshPause(
+      () => showDialog<_PalomarMovement>(
+        context: context,
+        builder: (_) => AreaThemeScope(
+          tokens: mayoreoAreaTokens,
+          child: _PalomarEditMovementDialog(
+            movement: movement,
+            onPickDate: _pickDate,
+          ),
         ),
       ),
     );
@@ -1563,7 +1712,6 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
                                           _selectedMovementIds.clear();
                                           _selectionAnchorMovementId = null;
                                         });
-                                        _persistState();
                                       }
                                     : null,
                                 onNext: currentPage < totalPages - 1
@@ -1574,7 +1722,6 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
                                           _selectedMovementIds.clear();
                                           _selectionAnchorMovementId = null;
                                         });
-                                        _persistState();
                                       }
                                     : null,
                                 onPageSizeChanged: (value) {
@@ -1585,7 +1732,6 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage> {
                                     _selectedMovementIds.clear();
                                     _selectionAnchorMovementId = null;
                                   });
-                                  _persistState();
                                 },
                               ),
                             ),

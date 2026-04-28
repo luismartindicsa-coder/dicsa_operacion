@@ -39,19 +39,47 @@ class MayoreoDashboardPreviewPage extends StatefulWidget {
 }
 
 class _MayoreoDashboardPreviewPageState
-    extends State<MayoreoDashboardPreviewPage> {
+    extends State<MayoreoDashboardPreviewPage>
+    with WidgetsBindingObserver {
   final SupabaseClient _supa = Supabase.instance.client;
+  static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
+  static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
   Future<void> _persistPendingQueue = Future<void>.value();
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   List<_MayoreoPendingTask> _pendingTasks = const <_MayoreoPendingTask>[];
   _MayoreoDashboardSummary _summary = const _MayoreoDashboardSummary();
+  Timer? _autoRefreshTimer;
+  Timer? _deferredRefreshTimer;
+  RealtimeChannel? _dashboardRealtimeChannel;
+  bool _refreshingDashboard = false;
+  bool _refreshQueued = false;
+  DateTime? _lastBackgroundRefreshAt;
+  int _activeRefreshPauses = 0;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_resolveNavigationAccess());
     unawaited(_loadDashboardState());
+    _setupAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefreshTimer?.cancel();
+    _deferredRefreshTimer?.cancel();
+    _dashboardRealtimeChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshDashboardIfIdle(force: true));
+    }
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -136,6 +164,112 @@ class _MayoreoDashboardPreviewPageState
       _pendingTasks = tasks;
       _summary = summary;
     });
+  }
+
+  void _setupAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      unawaited(_refreshDashboardIfIdle());
+    });
+
+    _dashboardRealtimeChannel?.unsubscribe();
+    _dashboardRealtimeChannel = _supa
+        .channel('mayoreo-dashboard-auto-refresh')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _kMayoreoPendingItemsTable,
+          callback: (_) => unawaited(_refreshDashboardIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _kMayoreoSalesReportsTable,
+          callback: (_) => unawaited(_refreshDashboardIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _kMayoreoAccountsTable,
+          callback: (_) => unawaited(_refreshDashboardIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _kMayoreoPalomarMovementsTable,
+          callback: (_) => unawaited(_refreshDashboardIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_counterparties',
+          callback: (_) => unawaited(_refreshDashboardIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_material_catalog',
+          callback: (_) => unawaited(_refreshDashboardIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_counterparty_material_prices',
+          callback: (_) => unawaited(_refreshDashboardIfIdle()),
+        )
+        .subscribe();
+  }
+
+  bool get _shouldDeferBackgroundRefresh =>
+      _activeRefreshPauses > 0 || _menuOpen;
+
+  void _queueDeferredBackgroundRefresh([Duration? delay]) {
+    if (!mounted) return;
+    _refreshQueued = true;
+    _deferredRefreshTimer?.cancel();
+    _deferredRefreshTimer = Timer(delay ?? _backgroundRefreshRetryDelay, () {
+      _deferredRefreshTimer = null;
+      unawaited(_refreshDashboardIfIdle());
+    });
+  }
+
+  Future<void> _refreshDashboardIfIdle({bool force = false}) async {
+    if (!mounted || _refreshingDashboard) return;
+    if (!force && _shouldDeferBackgroundRefresh) {
+      _queueDeferredBackgroundRefresh();
+      return;
+    }
+    if (!force && _lastBackgroundRefreshAt != null) {
+      final elapsed = DateTime.now().difference(_lastBackgroundRefreshAt!);
+      if (elapsed < _backgroundRefreshMinGap) {
+        _queueDeferredBackgroundRefresh(_backgroundRefreshMinGap - elapsed);
+        return;
+      }
+    }
+    _refreshingDashboard = true;
+    try {
+      await _loadDashboardState();
+      _lastBackgroundRefreshAt = DateTime.now();
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        _refreshQueued = false;
+      } else if (_refreshQueued) {
+        _queueDeferredBackgroundRefresh();
+      }
+    } finally {
+      _refreshingDashboard = false;
+    }
+  }
+
+  Future<T?> _runWithRefreshPause<T>(Future<T?> Function() action) async {
+    _activeRefreshPauses += 1;
+    try {
+      return await action();
+    } finally {
+      _activeRefreshPauses = (_activeRefreshPauses - 1).clamp(0, 1 << 20);
+      if (_activeRefreshPauses == 0 && _refreshQueued) {
+        unawaited(_refreshDashboardIfIdle(force: true));
+      }
+    }
   }
 
   Future<void> _persistPendingTasks() async {
@@ -296,15 +430,17 @@ class _MayoreoDashboardPreviewPageState
   }
 
   Future<void> _openPendingTasksDialog() async {
-    final nextTasks = await showDialog<List<_MayoreoPendingTask>>(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogContext) => AreaThemeScope(
-        tokens: mayoreoAreaTokens,
-        child: _MayoreoPendingTasksDialog(
-          initialTasks: _pendingTasks,
-          automaticTasks: _summary.automaticPendingTasks,
-          defaultSource: _canReturnToDirection ? 'DIRECCION' : 'VENTAS',
+    final nextTasks = await _runWithRefreshPause(
+      () => showDialog<List<_MayoreoPendingTask>>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => AreaThemeScope(
+          tokens: mayoreoAreaTokens,
+          child: _MayoreoPendingTasksDialog(
+            initialTasks: _pendingTasks,
+            automaticTasks: _summary.automaticPendingTasks,
+            defaultSource: _canReturnToDirection ? 'DIRECCION' : 'VENTAS',
+          ),
         ),
       ),
     );

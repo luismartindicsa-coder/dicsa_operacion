@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/gestures.dart';
@@ -65,8 +66,11 @@ class MayoreoSalesReportPage extends StatefulWidget {
   State<MayoreoSalesReportPage> createState() => _MayoreoSalesReportPageState();
 }
 
-class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
+class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
+    with WidgetsBindingObserver {
   final SupabaseClient _supa = Supabase.instance.client;
+  static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
+  static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
   Future<void> _persistRowsQueue = Future<void>.value();
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
@@ -95,6 +99,17 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
   Offset? _dragPointerGlobal;
   double _dragAutoScrollVelocity = 0;
   Timer? _dragAutoScrollTimer;
+  Timer? _autoRefreshTimer;
+  Timer? _deferredRefreshTimer;
+  RealtimeChannel? _salesRealtimeChannel;
+  bool _refreshingRemoteData = false;
+  bool _refreshQueued = false;
+  DateTime? _lastBackgroundRefreshAt;
+  int _activeRefreshPauses = 0;
+  bool _persistingRows = false;
+  int _pendingPersistCount = 0;
+  String _lastPersistedRowsSignature = '';
+  String _lastQueuedRowsSignature = '';
 
   List<_MayoreoSalesClient> _clients = const <_MayoreoSalesClient>[];
   List<_MayoreoSalesMaterial> _materials = const <_MayoreoSalesMaterial>[];
@@ -104,6 +119,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_resolveNavigationAccess());
     final savedState = _MayoreoSalesReportPageMemory.current;
     if (savedState != null) {
@@ -137,14 +153,26 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
     }
     unawaited(_loadCatalogData());
     unawaited(_loadRemoteRows());
+    _setupAutoRefresh();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefreshTimer?.cancel();
+    _deferredRefreshTimer?.cancel();
+    _salesRealtimeChannel?.unsubscribe();
     _dragAutoScrollTimer?.cancel();
     _bodyScrollController.dispose();
     _persistState();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshRemoteDataIfIdle(force: true));
+    }
   }
 
   Future<void> _loadCatalogData() async {
@@ -214,6 +242,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
           )
           .toList(growable: false);
       if (!mounted) return;
+      final signature = _rowsSignature(remoteRows);
       setState(() {
         _rows = remoteRows;
         if (_rows.isNotEmpty &&
@@ -230,11 +259,16 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
           _selectionAnchorRowId = null;
         }
       });
+      _lastPersistedRowsSignature = signature;
+      _lastQueuedRowsSignature = signature;
       _persistState();
     } on PostgrestException catch (e) {
       _toast('No se pudo cargar ventas Mayoreo desde Supabase: ${e.message}');
     } catch (_) {}
   }
+
+  String _rowsSignature(List<_MayoreoSalesReportRow> rows) =>
+      jsonEncode(rows.map((row) => row.toJson()).toList(growable: false));
 
   Future<void> _persistRowsToSupabase(List<_MayoreoSalesReportRow> rows) async {
     try {
@@ -262,6 +296,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
             .delete()
             .inFilter('id', deletedIds);
       }
+      _lastPersistedRowsSignature = _rowsSignature(rows);
     } on PostgrestException catch (e) {
       _toast('No se pudo guardar Ventas Mayoreo: ${e.message}');
       await _loadRemoteRows();
@@ -275,9 +310,31 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
 
   void _persistRows() {
     final snapshot = _rows.map((row) => row.copyWith()).toList(growable: false);
-    _persistRowsQueue = _persistRowsQueue
-        .catchError((_) {})
-        .then((_) => _persistRowsToSupabase(snapshot));
+    final signature = _rowsSignature(snapshot);
+    if (signature == _lastQueuedRowsSignature &&
+        (_pendingPersistCount > 0 || _persistingRows)) {
+      return;
+    }
+    if (signature == _lastPersistedRowsSignature &&
+        _pendingPersistCount == 0 &&
+        !_persistingRows) {
+      _lastQueuedRowsSignature = signature;
+      return;
+    }
+    _lastQueuedRowsSignature = signature;
+    _pendingPersistCount += 1;
+    _persistRowsQueue = _persistRowsQueue.catchError((_) {}).then((_) async {
+      _pendingPersistCount = (_pendingPersistCount - 1).clamp(0, 1 << 20);
+      _persistingRows = true;
+      try {
+        await _persistRowsToSupabase(snapshot);
+      } finally {
+        _persistingRows = false;
+        if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+          unawaited(_refreshRemoteDataIfIdle(force: true));
+        }
+      }
+    });
     unawaited(_persistRowsQueue);
   }
 
@@ -351,6 +408,107 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
         behavior: SnackBarBehavior.floating,
       ),
     );
+  }
+
+  void _setupAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      unawaited(_refreshRemoteDataIfIdle());
+    });
+
+    _salesRealtimeChannel?.unsubscribe();
+    _salesRealtimeChannel = _supa
+        .channel('mayoreo-sales-auto-refresh')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _kMayoreoSalesReportsTable,
+          callback: (_) {
+            unawaited(_refreshRemoteDataIfIdle());
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_counterparties',
+          callback: (_) {
+            unawaited(_refreshRemoteDataIfIdle());
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_material_catalog',
+          callback: (_) {
+            unawaited(_refreshRemoteDataIfIdle());
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_counterparty_material_prices',
+          callback: (_) {
+            unawaited(_refreshRemoteDataIfIdle());
+          },
+        )
+        .subscribe();
+  }
+
+  bool get _shouldDeferBackgroundRefresh =>
+      _activeRefreshPauses > 0 ||
+      _menuOpen ||
+      _exportingCsv ||
+      _persistingRows ||
+      _pendingPersistCount > 0;
+
+  void _queueDeferredBackgroundRefresh([Duration? delay]) {
+    if (!mounted) return;
+    _refreshQueued = true;
+    _deferredRefreshTimer?.cancel();
+    _deferredRefreshTimer = Timer(delay ?? _backgroundRefreshRetryDelay, () {
+      _deferredRefreshTimer = null;
+      unawaited(_refreshRemoteDataIfIdle());
+    });
+  }
+
+  Future<void> _refreshRemoteDataIfIdle({bool force = false}) async {
+    if (!mounted || _refreshingRemoteData) return;
+    if (!force && _shouldDeferBackgroundRefresh) {
+      _queueDeferredBackgroundRefresh();
+      return;
+    }
+    if (!force && _lastBackgroundRefreshAt != null) {
+      final elapsed = DateTime.now().difference(_lastBackgroundRefreshAt!);
+      if (elapsed < _backgroundRefreshMinGap) {
+        _queueDeferredBackgroundRefresh(_backgroundRefreshMinGap - elapsed);
+        return;
+      }
+    }
+    _refreshingRemoteData = true;
+    try {
+      await _loadCatalogData();
+      await _loadRemoteRows();
+      _lastBackgroundRefreshAt = DateTime.now();
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        _refreshQueued = false;
+      } else if (_refreshQueued) {
+        _queueDeferredBackgroundRefresh();
+      }
+    } finally {
+      _refreshingRemoteData = false;
+    }
+  }
+
+  Future<T?> _runWithRefreshPause<T>(Future<T?> Function() action) async {
+    _activeRefreshPauses += 1;
+    try {
+      return await action();
+    } finally {
+      _activeRefreshPauses = (_activeRefreshPauses - 1).clamp(0, 1 << 20);
+      if (_activeRefreshPauses == 0 && _refreshQueued) {
+        unawaited(_refreshRemoteDataIfIdle(force: true));
+      }
+    }
   }
 
   void _handleNavigationAction(String label) {
@@ -485,7 +643,6 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       }
     });
     _persistState();
-    _persistRows();
   }
 
   void _selectSingleRow(_MayoreoSalesReportRow row) {
@@ -656,7 +813,6 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
       _dragAutoScrollTimer = null;
     });
     _persistState();
-    _persistRows();
   }
 
   Future<void> _showContextMenuForRow(
@@ -1171,14 +1327,16 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
   }
 
   Future<void> _openNewReportDialog() async {
-    final draft = await showDialog<_MayoreoSalesReportDraft>(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => _SalesReportDialog(
-        clients: _clients,
-        materials: _materials,
-        prices: _prices,
-        priceLookup: _currentCatalogPrice,
+    final draft = await _runWithRefreshPause(
+      () => showDialog<_MayoreoSalesReportDraft>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => _SalesReportDialog(
+          clients: _clients,
+          materials: _materials,
+          prices: _prices,
+          priceLookup: _currentCatalogPrice,
+        ),
       ),
     );
     if (draft == null) return;
@@ -1213,15 +1371,17 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
   }
 
   Future<void> _openEditDialog(_MayoreoSalesReportRow row) async {
-    final draft = await showDialog<_MayoreoSalesReportDraft>(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => _SalesReportDialog(
-        initial: row,
-        clients: _clients,
-        materials: _materials,
-        prices: _prices,
-        priceLookup: _currentCatalogPrice,
+    final draft = await _runWithRefreshPause(
+      () => showDialog<_MayoreoSalesReportDraft>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => _SalesReportDialog(
+          initial: row,
+          clients: _clients,
+          materials: _materials,
+          prices: _prices,
+          priceLookup: _currentCatalogPrice,
+        ),
       ),
     );
     if (draft == null) return;
@@ -1256,33 +1416,35 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage> {
   }
 
   Future<void> _openRelateDialog(_MayoreoSalesReportRow row) async {
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      builder: (_) => _RelationVoucherDialog(
-        row: row,
-        onPersist: (result) async {
-          setState(() {
-            _rows = _rows
-                .map(
-                  (item) => item.id == row.id
-                      ? item.copyWith(
-                          approvedWeight: result.approvedWeight,
-                          approvedPrice: result.approvedPrice,
-                          approvedAmount: result.approvedAmount,
-                        )
-                      : item,
-                )
-                .toList(growable: false);
-            _selectedRowId = row.id;
-            _selectedRowIds
-              ..clear()
-              ..add(row.id);
-            _selectionAnchorRowId = row.id;
-          });
-          _persistState();
-          _persistRows();
-        },
+    await _runWithRefreshPause(
+      () => showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => _RelationVoucherDialog(
+          row: row,
+          onPersist: (result) async {
+            setState(() {
+              _rows = _rows
+                  .map(
+                    (item) => item.id == row.id
+                        ? item.copyWith(
+                            approvedWeight: result.approvedWeight,
+                            approvedPrice: result.approvedPrice,
+                            approvedAmount: result.approvedAmount,
+                          )
+                        : item,
+                  )
+                  .toList(growable: false);
+              _selectedRowId = row.id;
+              _selectedRowIds
+                ..clear()
+                ..add(row.id);
+              _selectionAnchorRowId = row.id;
+            });
+            _persistState();
+            _persistRows();
+          },
+        ),
       ),
     );
   }

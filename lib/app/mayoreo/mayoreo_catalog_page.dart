@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
 import '../dashboard/general_dashboard_page.dart';
@@ -162,7 +163,10 @@ class MayoreoCatalogPage extends StatefulWidget {
   State<MayoreoCatalogPage> createState() => _MayoreoCatalogPageState();
 }
 
-class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
+class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
+    with WidgetsBindingObserver {
+  static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
+  static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
   bool _canReturnToDirection = false;
   bool _menuOpen = false;
   int _activeTabIndex = 0;
@@ -227,15 +231,24 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
   late List<_MayoreoCompany> _companies;
   late List<_MayoreoMaterial> _materials;
   late List<_MayoreoPrice> _prices;
+  Timer? _autoRefreshTimer;
+  Timer? _deferredRefreshTimer;
+  RealtimeChannel? _catalogRealtimeChannel;
+  bool _refreshingRemoteData = false;
+  bool _refreshQueued = false;
+  DateTime? _lastBackgroundRefreshAt;
+  bool _persistingCatalogSnapshot = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_resolveNavigationAccess());
     _companies = <_MayoreoCompany>[];
     _materials = <_MayoreoMaterial>[];
     _prices = <_MayoreoPrice>[];
     unawaited(_loadCatalogSnapshot());
+    _setupAutoRefresh();
   }
 
   Future<void> _loadCatalogSnapshot() async {
@@ -331,6 +344,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
           .toList(growable: false),
     );
     try {
+      _persistingCatalogSnapshot = true;
       await MayoreoDataStore.saveCatalogSnapshot(snapshot);
     } catch (e) {
       if (mounted) {
@@ -338,6 +352,11 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
           'No se pudo guardar Catálogo Mayoreo. Se restauró el estado remoto.',
         );
         await _loadCatalogSnapshot();
+      }
+    } finally {
+      _persistingCatalogSnapshot = false;
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        unawaited(_refreshCatalogIfIdle(force: true));
       }
     }
   }
@@ -352,6 +371,10 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefreshTimer?.cancel();
+    _deferredRefreshTimer?.cancel();
+    _catalogRealtimeChannel?.unsubscribe();
     _gridRowsFocusNode.dispose();
     _companyNameC.dispose();
     _companyContactC.dispose();
@@ -373,6 +396,98 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage> {
     _priceAmountFocus.dispose();
     _priceNotesFocus.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshCatalogIfIdle(force: true));
+    }
+  }
+
+  void _setupAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      unawaited(_refreshCatalogIfIdle());
+    });
+
+    _catalogRealtimeChannel?.unsubscribe();
+    _catalogRealtimeChannel = Supabase.instance.client
+        .channel('mayoreo-catalog-auto-refresh')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_counterparties',
+          callback: (_) => unawaited(_refreshCatalogIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_material_catalog',
+          callback: (_) => unawaited(_refreshCatalogIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_counterparty_material_prices',
+          callback: (_) => unawaited(_refreshCatalogIfIdle()),
+        )
+        .subscribe();
+  }
+
+  bool get _hasDraftChanges =>
+      _companyNameC.text.trim().isNotEmpty ||
+      _companyContactC.text.trim().isNotEmpty ||
+      _companyNotesC.text.trim().isNotEmpty ||
+      _materialNameC.text.trim().isNotEmpty ||
+      _materialNotesC.text.trim().isNotEmpty ||
+      _priceCompanyId != null ||
+      _priceMaterialId != null ||
+      _priceAmountC.text.trim().isNotEmpty ||
+      _priceNotesC.text.trim().isNotEmpty;
+
+  bool get _shouldDeferBackgroundRefresh =>
+      _menuOpen ||
+      _editingRowKey != null ||
+      _multiEditMode ||
+      _hasDraftChanges ||
+      _persistingCatalogSnapshot;
+
+  void _queueDeferredBackgroundRefresh([Duration? delay]) {
+    if (!mounted) return;
+    _refreshQueued = true;
+    _deferredRefreshTimer?.cancel();
+    _deferredRefreshTimer = Timer(delay ?? _backgroundRefreshRetryDelay, () {
+      _deferredRefreshTimer = null;
+      unawaited(_refreshCatalogIfIdle());
+    });
+  }
+
+  Future<void> _refreshCatalogIfIdle({bool force = false}) async {
+    if (!mounted || _refreshingRemoteData) return;
+    if (!force && _shouldDeferBackgroundRefresh) {
+      _queueDeferredBackgroundRefresh();
+      return;
+    }
+    if (!force && _lastBackgroundRefreshAt != null) {
+      final elapsed = DateTime.now().difference(_lastBackgroundRefreshAt!);
+      if (elapsed < _backgroundRefreshMinGap) {
+        _queueDeferredBackgroundRefresh(_backgroundRefreshMinGap - elapsed);
+        return;
+      }
+    }
+    _refreshingRemoteData = true;
+    try {
+      await _loadCatalogSnapshot();
+      _lastBackgroundRefreshAt = DateTime.now();
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        _refreshQueued = false;
+      } else if (_refreshQueued) {
+        _queueDeferredBackgroundRefresh();
+      }
+    } finally {
+      _refreshingRemoteData = false;
+    }
   }
 
   void _toast(String message) {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -73,8 +74,11 @@ class MayoreoAccountsPage extends StatefulWidget {
   State<MayoreoAccountsPage> createState() => _MayoreoAccountsPageState();
 }
 
-class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
+class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
+    with WidgetsBindingObserver {
   final SupabaseClient _supa = Supabase.instance.client;
+  static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
+  static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
   Future<void> _persistRowsQueue = Future<void>.value();
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
@@ -108,22 +112,46 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
   Offset? _dragPointerGlobal;
   double _dragAutoScrollVelocity = 0;
   Timer? _dragAutoScrollTimer;
+  Timer? _autoRefreshTimer;
+  Timer? _deferredRefreshTimer;
+  RealtimeChannel? _accountsRealtimeChannel;
+  bool _refreshingRemoteData = false;
+  bool _refreshQueued = false;
+  DateTime? _lastBackgroundRefreshAt;
+  int _activeRefreshPauses = 0;
+  bool _persistingRows = false;
+  int _pendingPersistCount = 0;
+  String _lastPersistedRowsSignature = '';
+  String _lastQueuedRowsSignature = '';
 
   late List<_MayoreoAccountRow> _rows;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _rows = const <_MayoreoAccountRow>[];
     unawaited(_resolveNavigationAccess());
     unawaited(_loadAccounts());
+    _setupAutoRefresh();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefreshTimer?.cancel();
+    _deferredRefreshTimer?.cancel();
+    _accountsRealtimeChannel?.unsubscribe();
     _dragAutoScrollTimer?.cancel();
     _rowsScrollController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshRemoteDataIfIdle(force: true));
+    }
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -250,6 +278,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
         .toList(growable: false);
 
     if (!mounted) return;
+    final signature = _rowsSignature(rows);
     setState(() {
       _rows = rows;
       if (_selectedRowId == null && rows.isNotEmpty) {
@@ -274,7 +303,95 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
       }
       _currentPage = _effectiveCurrentPageFor(rows.length);
     });
-    _persistState();
+    _lastPersistedRowsSignature = signature;
+    _lastQueuedRowsSignature = signature;
+  }
+
+  void _setupAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      unawaited(_refreshRemoteDataIfIdle());
+    });
+
+    _accountsRealtimeChannel?.unsubscribe();
+    _accountsRealtimeChannel = _supa
+        .channel('mayoreo-accounts-auto-refresh')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _kMayoreoAccountsTable,
+          callback: (_) {
+            unawaited(_refreshRemoteDataIfIdle());
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: _kMayoreoSalesReportsTable,
+          callback: (_) {
+            unawaited(_refreshRemoteDataIfIdle());
+          },
+        )
+        .subscribe();
+  }
+
+  bool get _shouldDeferBackgroundRefresh =>
+      _activeRefreshPauses > 0 ||
+      _menuOpen ||
+      _exportingCsv ||
+      _persistingRows ||
+      _pendingPersistCount > 0;
+
+  String _rowsSignature(List<_MayoreoAccountRow> rows) =>
+      jsonEncode(rows.map((row) => row.toJson()).toList(growable: false));
+
+  void _queueDeferredBackgroundRefresh([Duration? delay]) {
+    if (!mounted) return;
+    _refreshQueued = true;
+    _deferredRefreshTimer?.cancel();
+    _deferredRefreshTimer = Timer(delay ?? _backgroundRefreshRetryDelay, () {
+      _deferredRefreshTimer = null;
+      unawaited(_refreshRemoteDataIfIdle());
+    });
+  }
+
+  Future<void> _refreshRemoteDataIfIdle({bool force = false}) async {
+    if (!mounted || _refreshingRemoteData) return;
+    if (!force && _shouldDeferBackgroundRefresh) {
+      _queueDeferredBackgroundRefresh();
+      return;
+    }
+    if (!force && _lastBackgroundRefreshAt != null) {
+      final elapsed = DateTime.now().difference(_lastBackgroundRefreshAt!);
+      if (elapsed < _backgroundRefreshMinGap) {
+        _queueDeferredBackgroundRefresh(_backgroundRefreshMinGap - elapsed);
+        return;
+      }
+    }
+    _refreshingRemoteData = true;
+    try {
+      await _loadAccounts();
+      _lastBackgroundRefreshAt = DateTime.now();
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        _refreshQueued = false;
+      } else if (_refreshQueued) {
+        _queueDeferredBackgroundRefresh();
+      }
+    } finally {
+      _refreshingRemoteData = false;
+    }
+  }
+
+  Future<T?> _runWithRefreshPause<T>(Future<T?> Function() action) async {
+    _activeRefreshPauses += 1;
+    try {
+      return await action();
+    } finally {
+      _activeRefreshPauses = (_activeRefreshPauses - 1).clamp(0, 1 << 20);
+      if (_activeRefreshPauses == 0 && _refreshQueued) {
+        unawaited(_refreshRemoteDataIfIdle(force: true));
+      }
+    }
   }
 
   Future<List<_MayoreoSourceReportRow>> _loadSourceReports() async {
@@ -316,13 +433,16 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
     return <String, _MayoreoAccountRow>{for (final row in rows) row.id: row};
   }
 
-  Future<void> _persistRowsToSupabase() async {
+  Future<void> _persistRowsToSupabase(
+    List<_MayoreoAccountRow> rows,
+    String signature,
+  ) async {
     try {
-      if (_rows.isNotEmpty) {
+      if (rows.isNotEmpty) {
         await _supa
             .from(_kMayoreoAccountsTable)
             .upsert(
-              _rows.map((row) => row.toSupabase()).toList(growable: false),
+              rows.map((row) => row.toSupabase()).toList(growable: false),
               onConflict: 'id',
             );
       }
@@ -330,7 +450,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
       final existingIds = (existing as List)
           .map((row) => (row as Map)['id'].toString())
           .toSet();
-      final nextIds = _rows.map((row) => row.id).toSet();
+      final nextIds = rows.map((row) => row.id).toSet();
       final deletedIds = existingIds
           .difference(nextIds)
           .toList(growable: false);
@@ -340,6 +460,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
             .delete()
             .inFilter('id', deletedIds);
       }
+      _lastPersistedRowsSignature = signature;
     } on PostgrestException catch (e) {
       _toast('No se pudo guardar Cuentas Mayoreo: ${e.message}');
       await _loadAccounts();
@@ -352,9 +473,32 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
   }
 
   void _persistState() {
-    _persistRowsQueue = _persistRowsQueue
-        .catchError((_) {})
-        .then((_) => _persistRowsToSupabase());
+    final snapshot = _rows.map((row) => row.copyWith()).toList(growable: false);
+    final signature = _rowsSignature(snapshot);
+    if (signature == _lastQueuedRowsSignature &&
+        (_pendingPersistCount > 0 || _persistingRows)) {
+      return;
+    }
+    if (signature == _lastPersistedRowsSignature &&
+        _pendingPersistCount == 0 &&
+        !_persistingRows) {
+      _lastQueuedRowsSignature = signature;
+      return;
+    }
+    _lastQueuedRowsSignature = signature;
+    _pendingPersistCount += 1;
+    _persistRowsQueue = _persistRowsQueue.catchError((_) {}).then((_) async {
+      _pendingPersistCount = (_pendingPersistCount - 1).clamp(0, 1 << 20);
+      _persistingRows = true;
+      try {
+        await _persistRowsToSupabase(snapshot, signature);
+      } finally {
+        _persistingRows = false;
+        if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+          unawaited(_refreshRemoteDataIfIdle(force: true));
+        }
+      }
+    });
     unawaited(_persistRowsQueue);
   }
 
@@ -797,12 +941,14 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage> {
   }
 
   Future<void> _openDetailDialog(_MayoreoAccountRow row) async {
-    final result = await showDialog<_MayoreoAccountRow>(
-      context: context,
-      barrierDismissible: true,
-      builder: (dialogContext) => Theme(
-        data: _mayoreoMaterialTheme(dialogContext),
-        child: _AccountDetailDialog(row: row),
+    final result = await _runWithRefreshPause(
+      () => showDialog<_MayoreoAccountRow>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) => Theme(
+          data: _mayoreoMaterialTheme(dialogContext),
+          child: _AccountDetailDialog(row: row),
+        ),
       ),
     );
     if (result == null) return;

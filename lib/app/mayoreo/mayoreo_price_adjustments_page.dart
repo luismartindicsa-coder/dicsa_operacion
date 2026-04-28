@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
 import '../dashboard/general_dashboard_page.dart';
@@ -38,7 +39,10 @@ class MayoreoPriceAdjustmentsPage extends StatefulWidget {
 }
 
 class _MayoreoPriceAdjustmentsPageState
-    extends State<MayoreoPriceAdjustmentsPage> {
+    extends State<MayoreoPriceAdjustmentsPage>
+    with WidgetsBindingObserver {
+  static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
+  static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   String _historyMovementFilter = 'todos';
@@ -46,14 +50,40 @@ class _MayoreoPriceAdjustmentsPageState
   String? _historyMaterialFilter;
   late List<_MayoreoSalePriceRow> _rows;
   late List<_MayoreoPriceHistoryRow> _historyRows;
+  Timer? _autoRefreshTimer;
+  Timer? _deferredRefreshTimer;
+  RealtimeChannel? _pricingRealtimeChannel;
+  bool _refreshingRemoteData = false;
+  bool _refreshQueued = false;
+  DateTime? _lastBackgroundRefreshAt;
+  int _activeRefreshPauses = 0;
+  bool _persistingPricingData = false;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     unawaited(_resolveNavigationAccess());
     _rows = <_MayoreoSalePriceRow>[];
     _historyRows = <_MayoreoPriceHistoryRow>[];
     unawaited(_loadPricingData());
+    _setupAutoRefresh();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _autoRefreshTimer?.cancel();
+    _deferredRefreshTimer?.cancel();
+    _pricingRealtimeChannel?.unsubscribe();
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_refreshPricingIfIdle(force: true));
+    }
   }
 
   Future<void> _loadPricingData() async {
@@ -107,31 +137,39 @@ class _MayoreoPriceAdjustmentsPageState
   }
 
   Future<void> _persistPricingData() async {
-    final snapshot = await MayoreoDataStore.loadCatalogSnapshot();
-    final rowById = <String, _MayoreoSalePriceRow>{
-      for (final row in _rows) row.id: row,
-    };
-    final updatedSnapshot = MayoreoCatalogSnapshot(
-      companies: snapshot.companies,
-      materials: snapshot.materials,
-      prices: snapshot.prices
-          .map((row) {
-            final updated = rowById[row.id];
-            if (updated == null) return row;
-            return MayoreoCatalogPriceRecord(
-              id: row.id,
-              companyId: updated.companyId,
-              materialId: updated.materialId,
-              amount: updated.currentPrice,
-              active: updated.active,
-              notes: updated.notes,
-              updatedAt: updated.updatedAt,
-            );
-          })
-          .toList(growable: false),
-    );
-    await MayoreoDataStore.saveCatalogSnapshot(updatedSnapshot);
-    await _loadPricingData();
+    _persistingPricingData = true;
+    try {
+      final snapshot = await MayoreoDataStore.loadCatalogSnapshot();
+      final rowById = <String, _MayoreoSalePriceRow>{
+        for (final row in _rows) row.id: row,
+      };
+      final updatedSnapshot = MayoreoCatalogSnapshot(
+        companies: snapshot.companies,
+        materials: snapshot.materials,
+        prices: snapshot.prices
+            .map((row) {
+              final updated = rowById[row.id];
+              if (updated == null) return row;
+              return MayoreoCatalogPriceRecord(
+                id: row.id,
+                companyId: updated.companyId,
+                materialId: updated.materialId,
+                amount: updated.currentPrice,
+                active: updated.active,
+                notes: updated.notes,
+                updatedAt: updated.updatedAt,
+              );
+            })
+            .toList(growable: false),
+      );
+      await MayoreoDataStore.saveCatalogSnapshot(updatedSnapshot);
+      await _loadPricingData();
+    } finally {
+      _persistingPricingData = false;
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        unawaited(_refreshPricingIfIdle(force: true));
+      }
+    }
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -191,6 +229,94 @@ class _MayoreoPriceAdjustmentsPageState
     await Navigator.of(
       context,
     ).push(appPageRoute(page: const MayoreoElPalomarPage(instantOpen: true)));
+  }
+
+  void _setupAutoRefresh() {
+    _autoRefreshTimer?.cancel();
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 60), (_) {
+      unawaited(_refreshPricingIfIdle());
+    });
+
+    _pricingRealtimeChannel?.unsubscribe();
+    _pricingRealtimeChannel = Supabase.instance.client
+        .channel('mayoreo-pricing-auto-refresh')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_counterparties',
+          callback: (_) => unawaited(_refreshPricingIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_material_catalog',
+          callback: (_) => unawaited(_refreshPricingIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_counterparty_material_prices',
+          callback: (_) => unawaited(_refreshPricingIfIdle()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'mayoreo_price_adjustment_history',
+          callback: (_) => unawaited(_refreshPricingIfIdle()),
+        )
+        .subscribe();
+  }
+
+  bool get _shouldDeferBackgroundRefresh =>
+      _activeRefreshPauses > 0 || _menuOpen || _persistingPricingData;
+
+  void _queueDeferredBackgroundRefresh([Duration? delay]) {
+    if (!mounted) return;
+    _refreshQueued = true;
+    _deferredRefreshTimer?.cancel();
+    _deferredRefreshTimer = Timer(delay ?? _backgroundRefreshRetryDelay, () {
+      _deferredRefreshTimer = null;
+      unawaited(_refreshPricingIfIdle());
+    });
+  }
+
+  Future<void> _refreshPricingIfIdle({bool force = false}) async {
+    if (!mounted || _refreshingRemoteData) return;
+    if (!force && _shouldDeferBackgroundRefresh) {
+      _queueDeferredBackgroundRefresh();
+      return;
+    }
+    if (!force && _lastBackgroundRefreshAt != null) {
+      final elapsed = DateTime.now().difference(_lastBackgroundRefreshAt!);
+      if (elapsed < _backgroundRefreshMinGap) {
+        _queueDeferredBackgroundRefresh(_backgroundRefreshMinGap - elapsed);
+        return;
+      }
+    }
+    _refreshingRemoteData = true;
+    try {
+      await _loadPricingData();
+      _lastBackgroundRefreshAt = DateTime.now();
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        _refreshQueued = false;
+      } else if (_refreshQueued) {
+        _queueDeferredBackgroundRefresh();
+      }
+    } finally {
+      _refreshingRemoteData = false;
+    }
+  }
+
+  Future<T?> _runWithRefreshPause<T>(Future<T?> Function() action) async {
+    _activeRefreshPauses += 1;
+    try {
+      return await action();
+    } finally {
+      _activeRefreshPauses = (_activeRefreshPauses - 1).clamp(0, 1 << 20);
+      if (_activeRefreshPauses == 0 && _refreshQueued) {
+        unawaited(_refreshPricingIfIdle(force: true));
+      }
+    }
   }
 
   Future<void> _exportClientPdfReport() async {
@@ -750,226 +876,240 @@ class _MayoreoPriceAdjustmentsPageState
     }
 
     try {
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: true,
-        builder: (dialogContext) {
-          return AreaThemeScope(
-            tokens: mayoreoAreaTokens,
-            child: StatefulBuilder(
-              builder: (context, setLocalState) {
-                Future<void> applySelection() async {
-                  final raw = double.tryParse(adjustmentValueC.text.trim());
-                  if (raw == null) {
-                    _toast('Ingresa un valor de ajuste válido');
-                    return;
-                  }
-                  if (raw == 0) {
-                    _toast('El ajuste no puede ser cero');
-                    return;
-                  }
-                  final selectedRows = _rows
-                      .where((row) => selectedPriceIds.contains(row.id))
-                      .toList(growable: false);
-                  if (selectedRows.any(
-                    (row) => computeNewPrice(row.currentPrice) < 0,
-                  )) {
-                    _toast('El ajuste genera al menos un precio negativo');
-                    return;
-                  }
-                  final reason = reasonC.text.trim();
-                  if (reason.isEmpty) {
-                    _toast('Ingresa el motivo del ajuste');
-                    return;
-                  }
-                  final now = DateTime.now();
-                  setState(() {
-                    _rows = _rows
-                        .map((row) {
-                          if (!selectedPriceIds.contains(row.id)) {
-                            return row;
-                          }
-                          final nextPrice = computeNewPrice(row.currentPrice);
-                          return row.copyWith(
-                            currentPrice: nextPrice,
-                            updatedAt: now,
-                            notes: reason,
-                          );
-                        })
-                        .toList(growable: false);
-                    _historyRows = [
-                      ...selectedRows.map(
-                        (row) => _MayoreoPriceHistoryRow(
-                          id: '${row.id}-${now.microsecondsSinceEpoch}',
-                          companyId: row.companyId,
-                          companyName: row.companyName,
-                          materialId: row.materialId,
-                          materialName: row.materialName,
-                          previousPrice: row.currentPrice,
-                          newPrice: computeNewPrice(row.currentPrice),
-                          reason: reason,
-                          createdAt: now,
-                        ),
-                      ),
-                      ..._historyRows,
-                    ];
-                  });
-                  try {
-                    await _persistPricingData();
-                  } catch (_) {
-                    _toast(
-                      'No se pudo guardar el ajuste de precios. Se restauró el estado remoto.',
-                    );
-                    return;
-                  }
-                  if (!mounted || !dialogContext.mounted) return;
-                  Navigator.of(dialogContext).pop();
-                  _toast(
-                    'Ajuste aplicado a ${selectedPriceIds.length} precio(s)',
-                  );
-                }
-
-                final visibleRows = filteredRows();
-                return Focus(
-                  autofocus: true,
-                  onKeyEvent: (_, event) {
-                    if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                    if (event.logicalKey == LogicalKeyboardKey.escape) {
-                      Navigator.of(dialogContext).pop();
-                      return KeyEventResult.handled;
+      await _runWithRefreshPause(
+        () => showDialog<void>(
+          context: context,
+          barrierDismissible: true,
+          builder: (dialogContext) {
+            return AreaThemeScope(
+              tokens: mayoreoAreaTokens,
+              child: StatefulBuilder(
+                builder: (context, setLocalState) {
+                  Future<void> applySelection() async {
+                    final raw = double.tryParse(adjustmentValueC.text.trim());
+                    if (raw == null) {
+                      _toast('Ingresa un valor de ajuste válido');
+                      return;
                     }
-                    if (event.logicalKey == LogicalKeyboardKey.enter &&
-                        selectedPriceIds.isNotEmpty &&
-                        reasonC.text.trim().isNotEmpty &&
-                        adjustmentValueC.text.trim().isNotEmpty) {
-                      final raw = double.tryParse(adjustmentValueC.text.trim());
-                      if (raw == null || raw == 0) {
+                    if (raw == 0) {
+                      _toast('El ajuste no puede ser cero');
+                      return;
+                    }
+                    final selectedRows = _rows
+                        .where((row) => selectedPriceIds.contains(row.id))
+                        .toList(growable: false);
+                    if (selectedRows.any(
+                      (row) => computeNewPrice(row.currentPrice) < 0,
+                    )) {
+                      _toast('El ajuste genera al menos un precio negativo');
+                      return;
+                    }
+                    final reason = reasonC.text.trim();
+                    if (reason.isEmpty) {
+                      _toast('Ingresa el motivo del ajuste');
+                      return;
+                    }
+                    final now = DateTime.now();
+                    setState(() {
+                      _rows = _rows
+                          .map((row) {
+                            if (!selectedPriceIds.contains(row.id)) {
+                              return row;
+                            }
+                            final nextPrice = computeNewPrice(row.currentPrice);
+                            return row.copyWith(
+                              currentPrice: nextPrice,
+                              updatedAt: now,
+                              notes: reason,
+                            );
+                          })
+                          .toList(growable: false);
+                      _historyRows = [
+                        ...selectedRows.map(
+                          (row) => _MayoreoPriceHistoryRow(
+                            id: '${row.id}-${now.microsecondsSinceEpoch}',
+                            companyId: row.companyId,
+                            companyName: row.companyName,
+                            materialId: row.materialId,
+                            materialName: row.materialName,
+                            previousPrice: row.currentPrice,
+                            newPrice: computeNewPrice(row.currentPrice),
+                            reason: reason,
+                            createdAt: now,
+                          ),
+                        ),
+                        ..._historyRows,
+                      ];
+                    });
+                    try {
+                      await _persistPricingData();
+                    } catch (_) {
+                      _toast(
+                        'No se pudo guardar el ajuste de precios. Se restauró el estado remoto.',
+                      );
+                      return;
+                    }
+                    if (!mounted || !dialogContext.mounted) return;
+                    Navigator.of(dialogContext).pop();
+                    _toast(
+                      'Ajuste aplicado a ${selectedPriceIds.length} precio(s)',
+                    );
+                  }
+
+                  final visibleRows = filteredRows();
+                  return Focus(
+                    autofocus: true,
+                    onKeyEvent: (_, event) {
+                      if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                      if (event.logicalKey == LogicalKeyboardKey.escape) {
+                        Navigator.of(dialogContext).pop();
                         return KeyEventResult.handled;
                       }
-                      unawaited(applySelection());
-                      return KeyEventResult.handled;
-                    }
-                    if (visibleRows.isEmpty) return KeyEventResult.ignored;
-                    if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-                      final currentIndex = visibleRows.indexWhere(
-                        (row) => row.id == activePriceId,
-                      );
-                      final nextIndex = currentIndex < 0
-                          ? 0
-                          : (currentIndex + 1).clamp(0, visibleRows.length - 1);
-                      activateRow(
-                        setLocalState,
-                        visibleRows[nextIndex].id,
-                        extend: HardwareKeyboard.instance.isShiftPressed,
-                      );
-                      return KeyEventResult.handled;
-                    }
-                    if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                      final currentIndex = visibleRows.indexWhere(
-                        (row) => row.id == activePriceId,
-                      );
-                      final nextIndex = currentIndex < 0
-                          ? 0
-                          : (currentIndex - 1).clamp(0, visibleRows.length - 1);
-                      activateRow(
-                        setLocalState,
-                        visibleRows[nextIndex].id,
-                        extend: HardwareKeyboard.instance.isShiftPressed,
-                      );
-                      return KeyEventResult.handled;
-                    }
-                    return KeyEventResult.ignored;
-                  },
-                  child: Dialog(
-                    backgroundColor: Colors.transparent,
-                    insetPadding: const EdgeInsets.symmetric(
-                      horizontal: 20,
-                      vertical: 24,
-                    ),
-                    child: ContractPopupSurface(
-                      constraints: const BoxConstraints(
-                        maxWidth: 980,
-                        maxHeight: 860,
+                      if (event.logicalKey == LogicalKeyboardKey.enter &&
+                          selectedPriceIds.isNotEmpty &&
+                          reasonC.text.trim().isNotEmpty &&
+                          adjustmentValueC.text.trim().isNotEmpty) {
+                        final raw = double.tryParse(
+                          adjustmentValueC.text.trim(),
+                        );
+                        if (raw == null || raw == 0) {
+                          return KeyEventResult.handled;
+                        }
+                        unawaited(applySelection());
+                        return KeyEventResult.handled;
+                      }
+                      if (visibleRows.isEmpty) return KeyEventResult.ignored;
+                      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+                        final currentIndex = visibleRows.indexWhere(
+                          (row) => row.id == activePriceId,
+                        );
+                        final nextIndex = currentIndex < 0
+                            ? 0
+                            : (currentIndex + 1).clamp(
+                                0,
+                                visibleRows.length - 1,
+                              );
+                        activateRow(
+                          setLocalState,
+                          visibleRows[nextIndex].id,
+                          extend: HardwareKeyboard.instance.isShiftPressed,
+                        );
+                        return KeyEventResult.handled;
+                      }
+                      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+                        final currentIndex = visibleRows.indexWhere(
+                          (row) => row.id == activePriceId,
+                        );
+                        final nextIndex = currentIndex < 0
+                            ? 0
+                            : (currentIndex - 1).clamp(
+                                0,
+                                visibleRows.length - 1,
+                              );
+                        activateRow(
+                          setLocalState,
+                          visibleRows[nextIndex].id,
+                          extend: HardwareKeyboard.instance.isShiftPressed,
+                        );
+                        return KeyEventResult.handled;
+                      }
+                      return KeyEventResult.ignored;
+                    },
+                    child: Dialog(
+                      backgroundColor: Colors.transparent,
+                      insetPadding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 24,
                       ),
-                      padding: const EdgeInsets.all(18),
-                      child: SingleChildScrollView(
-                        child: _MayoreoAdjustmentWorkspaceCard(
-                          rows: visibleRows,
-                          selectedRows: _rows
-                              .where((row) => selectedPriceIds.contains(row.id))
-                              .toList(growable: false),
-                          selectedCompany: selectedCompany,
-                          selectedMaterial: selectedMaterial,
-                          availableCompanies: _availableCompanies,
-                          availableMaterials: availableMaterials(),
-                          activePriceId: activePriceId,
-                          adjustmentValueC: adjustmentValueC,
-                          reasonC: reasonC,
-                          deltaDirection: deltaDirection,
-                          computeNewPrice: computeNewPrice,
-                          rowsScrollController: dialogRowsScrollController,
-                          onClose: () => Navigator.of(dialogContext).pop(),
-                          onCompanyChanged: (value) {
-                            setLocalState(() {
-                              selectedCompany = value;
-                              if (selectedMaterial != null &&
-                                  !availableMaterials().contains(
-                                    selectedMaterial,
-                                  )) {
-                                selectedMaterial = null;
-                              }
-                            });
-                          },
-                          onMaterialChanged: (value) {
-                            setLocalState(() => selectedMaterial = value);
-                          },
-                          onDirectionChanged: (value) {
-                            setLocalState(() => deltaDirection = value);
-                          },
-                          onRefreshPreview: () => setLocalState(() {}),
-                          onSelectAllVisible: visibleRows.isEmpty
-                              ? null
-                              : () => setLocalState(() {
-                                  final firstId = visibleRows.first.id;
-                                  activePriceId = firstId;
-                                  anchorPriceId = firstId;
-                                  selectedPriceIds
-                                    ..clear()
-                                    ..addAll(visibleRows.map((row) => row.id));
-                                }),
-                          onClearSelection: selectedPriceIds.isEmpty
-                              ? null
-                              : () => setLocalState(() {
-                                  selectedPriceIds.clear();
-                                  activePriceId = null;
-                                  anchorPriceId = null;
-                                }),
-                          onToggleRow: (rowId) {
-                            activateRow(setLocalState, rowId, toggle: true);
-                          },
-                          onActivateRow: (rowId) {
-                            final keyboard = HardwareKeyboard.instance;
-                            activateRow(
-                              setLocalState,
-                              rowId,
-                              extend: keyboard.isShiftPressed,
-                              toggle:
-                                  keyboard.isControlPressed ||
-                                  keyboard.isMetaPressed,
-                            );
-                          },
-                          onApply: selectedPriceIds.isEmpty
-                              ? null
-                              : () => unawaited(applySelection()),
+                      child: ContractPopupSurface(
+                        constraints: const BoxConstraints(
+                          maxWidth: 980,
+                          maxHeight: 860,
+                        ),
+                        padding: const EdgeInsets.all(18),
+                        child: SingleChildScrollView(
+                          child: _MayoreoAdjustmentWorkspaceCard(
+                            rows: visibleRows,
+                            selectedRows: _rows
+                                .where(
+                                  (row) => selectedPriceIds.contains(row.id),
+                                )
+                                .toList(growable: false),
+                            selectedCompany: selectedCompany,
+                            selectedMaterial: selectedMaterial,
+                            availableCompanies: _availableCompanies,
+                            availableMaterials: availableMaterials(),
+                            activePriceId: activePriceId,
+                            adjustmentValueC: adjustmentValueC,
+                            reasonC: reasonC,
+                            deltaDirection: deltaDirection,
+                            computeNewPrice: computeNewPrice,
+                            rowsScrollController: dialogRowsScrollController,
+                            onClose: () => Navigator.of(dialogContext).pop(),
+                            onCompanyChanged: (value) {
+                              setLocalState(() {
+                                selectedCompany = value;
+                                if (selectedMaterial != null &&
+                                    !availableMaterials().contains(
+                                      selectedMaterial,
+                                    )) {
+                                  selectedMaterial = null;
+                                }
+                              });
+                            },
+                            onMaterialChanged: (value) {
+                              setLocalState(() => selectedMaterial = value);
+                            },
+                            onDirectionChanged: (value) {
+                              setLocalState(() => deltaDirection = value);
+                            },
+                            onRefreshPreview: () => setLocalState(() {}),
+                            onSelectAllVisible: visibleRows.isEmpty
+                                ? null
+                                : () => setLocalState(() {
+                                    final firstId = visibleRows.first.id;
+                                    activePriceId = firstId;
+                                    anchorPriceId = firstId;
+                                    selectedPriceIds
+                                      ..clear()
+                                      ..addAll(
+                                        visibleRows.map((row) => row.id),
+                                      );
+                                  }),
+                            onClearSelection: selectedPriceIds.isEmpty
+                                ? null
+                                : () => setLocalState(() {
+                                    selectedPriceIds.clear();
+                                    activePriceId = null;
+                                    anchorPriceId = null;
+                                  }),
+                            onToggleRow: (rowId) {
+                              activateRow(setLocalState, rowId, toggle: true);
+                            },
+                            onActivateRow: (rowId) {
+                              final keyboard = HardwareKeyboard.instance;
+                              activateRow(
+                                setLocalState,
+                                rowId,
+                                extend: keyboard.isShiftPressed,
+                                toggle:
+                                    keyboard.isControlPressed ||
+                                    keyboard.isMetaPressed,
+                              );
+                            },
+                            onApply: selectedPriceIds.isEmpty
+                                ? null
+                                : () => unawaited(applySelection()),
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                );
-              },
-            ),
-          );
-        },
+                  );
+                },
+              ),
+            );
+          },
+        ),
       );
     } finally {
       dialogRowsScrollController.dispose();
