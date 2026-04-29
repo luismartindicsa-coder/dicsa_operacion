@@ -676,12 +676,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
   void _toggleRowSelection(String rowId) {
     _selectedRowId = rowId;
     _selectionAnchorId = rowId;
-    if (_selectedRowIds.contains(rowId)) {
-      _selectedRowIds.remove(rowId);
-      if (_selectedRowIds.isEmpty) {
-        _selectedRowIds.add(rowId);
-      }
-    } else {
+    if (!_selectedRowIds.contains(rowId)) {
       _selectedRowIds.add(rowId);
     }
     _dragSelectingRows = false;

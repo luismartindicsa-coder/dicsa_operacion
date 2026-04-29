@@ -104,6 +104,53 @@ class _CashCutRow {
   }
 }
 
+class _PendingCashCheckRow {
+  final String id;
+  final String sourceType;
+  final String sourceFolio;
+  final String reason;
+  final DateTime cutDate;
+
+  const _PendingCashCheckRow({
+    required this.id,
+    required this.sourceType,
+    required this.sourceFolio,
+    required this.reason,
+    required this.cutDate,
+  });
+
+  factory _PendingCashCheckRow.fromMap(Map<String, dynamic> row) {
+    final cashCut = row['men_cash_cuts'];
+    final cashCutMap = cashCut is Map<String, dynamic>
+        ? cashCut
+        : <String, dynamic>{};
+    return _PendingCashCheckRow(
+      id: (row['id'] ?? '').toString(),
+      sourceType: (row['source_type'] ?? '').toString(),
+      sourceFolio: (row['source_folio'] ?? '').toString(),
+      reason: (row['reason'] ?? '').toString(),
+      cutDate:
+          DateTime.tryParse((cashCutMap['cut_date'] ?? '').toString()) ??
+          DateTime.now(),
+    );
+  }
+
+  String get sourceTypeLabel {
+    switch (sourceType) {
+      case 'expense_voucher':
+        return 'Gasto';
+      case 'deposit_voucher':
+        return 'Deposito';
+      case 'sale_ticket':
+        return 'Venta';
+      case 'purchase_ticket':
+        return 'Compra';
+      default:
+        return sourceType;
+    }
+  }
+}
+
 class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
   final SupabaseClient _supa = Supabase.instance.client;
   bool _menuOpen = false;
@@ -333,6 +380,75 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
     }
   }
 
+  Future<void> _openPendingChecksForRow(_CashCutRow row) async {
+    final cashCutId = row.id;
+    if ((cashCutId ?? '').isEmpty) return;
+
+    try {
+      final response = await _supa
+          .from('men_cash_cut_checks')
+          .select(
+            'id,source_type,source_folio,reason,men_cash_cuts!inner(cut_date)',
+          )
+          .eq('cash_cut_id', cashCutId!)
+          .eq('is_verified', false)
+          .order('created_at');
+      if (!mounted) return;
+      final checks = (response as List)
+          .cast<Map<String, dynamic>>()
+          .map(_PendingCashCheckRow.fromMap)
+          .toList(growable: false);
+      await showDialog<void>(
+        context: context,
+        barrierColor: Colors.black.withValues(alpha: 0.24),
+        builder: (context) => _PendingChecksManualDialog(
+          checks: checks,
+          onMarkAsVerified: _markPendingChecksAsVerified,
+        ),
+      );
+      await _loadCuts();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudieron cargar los pendientes: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _markPendingChecksAsVerified(List<String> checkIds) async {
+    if (checkIds.isEmpty) return;
+    try {
+      await _supa
+          .from('men_cash_cut_checks')
+          .update({
+            'is_verified': true,
+            'verified_at': DateTime.now().toIso8601String(),
+          })
+          .inFilter('id', checkIds)
+          .eq('is_verified', false);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Se marcaron ${checkIds.length} pendiente(s) como comprobado(s).',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudieron guardar los comprobados: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final visibleRows = _pageRows(_rows);
@@ -400,6 +516,8 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
                                     money: _money,
                                     fmtDate: _fmtDate,
                                     onOpen: (row) => _openEditor(initial: row),
+                                    onOpenPendingChecks:
+                                        _openPendingChecksForRow,
                                   ),
                           ),
                         ),
@@ -479,12 +597,14 @@ class _CashCutsGrid extends StatelessWidget {
   final String Function(num value) money;
   final String Function(DateTime value) fmtDate;
   final ValueChanged<_CashCutRow> onOpen;
+  final ValueChanged<_CashCutRow> onOpenPendingChecks;
 
   const _CashCutsGrid({
     required this.rows,
     required this.money,
     required this.fmtDate,
     required this.onOpen,
+    required this.onOpenPendingChecks,
   });
 
   @override
@@ -592,6 +712,7 @@ class _CashCutsGrid extends StatelessWidget {
                   money: money,
                   fmtDate: fmtDate,
                   onOpen: () => onOpen(row),
+                  onOpenPendingChecks: () => onOpenPendingChecks(row),
                 );
               },
             ),
@@ -681,12 +802,14 @@ class _CashCutGridRow extends StatefulWidget {
   final String Function(num value) money;
   final String Function(DateTime value) fmtDate;
   final VoidCallback onOpen;
+  final VoidCallback onOpenPendingChecks;
 
   const _CashCutGridRow({
     required this.row,
     required this.money,
     required this.fmtDate,
     required this.onOpen,
+    required this.onOpenPendingChecks,
   });
 
   @override
@@ -851,7 +974,29 @@ class _CashCutGridRowState extends State<_CashCutGridRow> {
                             ),
                             cell(
                               width: 110,
-                              child: Text('${widget.row.pendingChecksCount}'),
+                              child: widget.row.pendingChecksCount <= 0
+                                  ? const Text('0')
+                                  : TextButton.icon(
+                                      onPressed: widget.onOpenPendingChecks,
+                                      style: TextButton.styleFrom(
+                                        foregroundColor: tokens.primaryStrong,
+                                        padding: EdgeInsets.zero,
+                                        alignment: Alignment.centerLeft,
+                                        minimumSize: Size.zero,
+                                        tapTargetSize:
+                                            MaterialTapTargetSize.shrinkWrap,
+                                      ),
+                                      icon: const Icon(
+                                        Icons.checklist_rounded,
+                                        size: 16,
+                                      ),
+                                      label: Text(
+                                        '${widget.row.pendingChecksCount}',
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                    ),
                             ),
                             cell(
                               width: 150,
@@ -1436,6 +1581,253 @@ class _CashCutEditorDialogState extends State<_CashCutEditorDialog> {
       decoration: InputDecoration.collapsed(
         hintText: '0.00',
         hintStyle: _cutHintTextStyle(tokens),
+      ),
+    );
+  }
+}
+
+class _PendingChecksManualDialog extends StatefulWidget {
+  final List<_PendingCashCheckRow> checks;
+  final Future<void> Function(List<String> checkIds) onMarkAsVerified;
+
+  const _PendingChecksManualDialog({
+    required this.checks,
+    required this.onMarkAsVerified,
+  });
+
+  @override
+  State<_PendingChecksManualDialog> createState() =>
+      _PendingChecksManualDialogState();
+}
+
+class _PendingChecksManualDialogState
+    extends State<_PendingChecksManualDialog> {
+  late final List<_PendingCashCheckRow> _remainingChecks;
+  final Set<String> _checkedIds = <String>{};
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _remainingChecks = List<_PendingCashCheckRow>.from(widget.checks);
+  }
+
+  String _fmtDate(DateTime value) {
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final year = value.year.toString();
+    return '$day/$month/$year';
+  }
+
+  Future<void> _saveSelectedChecks() async {
+    if (_checkedIds.isEmpty || _isSaving) return;
+    setState(() => _isSaving = true);
+    try {
+      final selectedIds = _checkedIds.toList(growable: false);
+      await widget.onMarkAsVerified(selectedIds);
+      if (!mounted) return;
+      setState(() {
+        _remainingChecks.removeWhere((item) => selectedIds.contains(item.id));
+        _checkedIds.clear();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = menudeoAreaTokens;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+      child: AreaThemeScope(
+        tokens: menudeoAreaTokens,
+        child: ContractPopupSurface(
+          constraints: const BoxConstraints(
+            minWidth: 680,
+            maxWidth: 960,
+            maxHeight: 760,
+          ),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Pendientes por comprobar',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              const Text(
+                'Selecciona manualmente los folios o tickets que ya quedaron checados para descontarlos del corte.',
+                style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: _remainingChecks.isEmpty
+                    ? Container(
+                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: const Color(
+                              0xFFCC8A67,
+                            ).withValues(alpha: 0.16),
+                          ),
+                        ),
+                        child: const Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.verified_rounded,
+                              size: 34,
+                              color: Color(0xFF4D7C59),
+                            ),
+                            SizedBox(height: 10),
+                            Text(
+                              'No hay pendientes por comprobar',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: _remainingChecks.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final item = _remainingChecks[index];
+                          final checked = _checkedIds.contains(item.id);
+                          return Container(
+                            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.72),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: const Color(
+                                  0xFFCC8A67,
+                                ).withValues(alpha: 0.24),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Container(
+                                  width: 42,
+                                  height: 42,
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFFC47A18,
+                                    ).withValues(alpha: 0.12),
+                                    borderRadius: BorderRadius.circular(14),
+                                  ),
+                                  child: const Icon(
+                                    Icons.notification_important_rounded,
+                                    color: Color(0xFFC47A18),
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '${item.sourceTypeLabel} · ${item.sourceFolio}',
+                                        style: TextStyle(
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w900,
+                                          color: checked
+                                              ? const Color(0xFF7A6C63)
+                                              : null,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Pendiente desde ${_fmtDate(item.cutDate)}',
+                                        style: const TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF7A6C63),
+                                        ),
+                                      ),
+                                      const SizedBox(height: 6),
+                                      Text(
+                                        item.reason.isEmpty
+                                            ? 'Sin comentario de observacion.'
+                                            : item.reason,
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w700,
+                                          decoration: checked
+                                              ? TextDecoration.lineThrough
+                                              : null,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Checkbox(
+                                  value: checked,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      if (value == true) {
+                                        _checkedIds.add(item.id);
+                                      } else {
+                                        _checkedIds.remove(item.id);
+                                      }
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    style: _cutSecondaryButtonStyle(tokens),
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Cerrar'),
+                  ),
+                  const SizedBox(width: 10),
+                  FilledButton.icon(
+                    style: _cutPrimaryButtonStyle(tokens),
+                    onPressed: _checkedIds.isEmpty || _isSaving
+                        ? null
+                        : _saveSelectedChecks,
+                    icon: const Icon(Icons.check_circle_rounded),
+                    label: const Text('Guardar checados'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

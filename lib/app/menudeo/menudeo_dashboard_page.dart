@@ -1102,6 +1102,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       builder: (context) => _PendingChecksDialog(
         checks: _pendingChecks,
         allowContinueToOpening: false,
+        onMarkAsVerified: _markPendingChecksAsVerified,
       ),
     );
   }
@@ -1113,8 +1114,53 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       builder: (context) => _PendingChecksDialog(
         checks: _pendingChecks,
         allowContinueToOpening: true,
+        onMarkAsVerified: _markPendingChecksAsVerified,
       ),
     );
+  }
+
+  Future<void> _markPendingChecksAsVerified(List<String> checkIds) async {
+    final ids = checkIds
+        .map((id) => id.trim())
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    if (ids.isEmpty) return;
+
+    try {
+      await _supa
+          .from('men_cash_cut_checks')
+          .update({
+            'is_verified': true,
+            'verified_at': DateTime.now().toIso8601String(),
+          })
+          .inFilter('id', ids)
+          .eq('is_verified', false);
+
+      if (!mounted) return;
+      setState(() {
+        _pendingChecks = _pendingChecks
+            .where((item) => !ids.contains(item.checkId))
+            .toList(growable: false);
+      });
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Se marcaron ${ids.length} pendiente(s) como comprobado(s).',
+          ),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo actualizar los pendientes: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _openMailHostinger() async {
@@ -2662,6 +2708,7 @@ ButtonStyle _dashboardCutSegmentedStyle(ContractAreaTokens tokens) {
 }
 
 class _PendingCashCheck {
+  final String checkId;
   final String sourceId;
   final String sourceType;
   final String sourceFolio;
@@ -2670,6 +2717,7 @@ class _PendingCashCheck {
   final String cashCutId;
 
   const _PendingCashCheck({
+    required this.checkId,
     required this.sourceId,
     required this.sourceType,
     required this.sourceFolio,
@@ -2690,6 +2738,7 @@ class _PendingCashCheck {
       }
     }
     return _PendingCashCheck(
+      checkId: (row['id'] ?? '').toString(),
       sourceId: (row['source_id'] ?? '').toString(),
       sourceType: (row['source_type'] ?? '').toString(),
       sourceFolio: (row['source_folio'] ?? '').toString(),
@@ -2717,20 +2766,55 @@ class _PendingCashCheck {
   }
 }
 
-class _PendingChecksDialog extends StatelessWidget {
+class _PendingChecksDialog extends StatefulWidget {
   final List<_PendingCashCheck> checks;
   final bool allowContinueToOpening;
+  final Future<void> Function(List<String> checkIds) onMarkAsVerified;
 
   const _PendingChecksDialog({
     required this.checks,
     required this.allowContinueToOpening,
+    required this.onMarkAsVerified,
   });
+
+  @override
+  State<_PendingChecksDialog> createState() => _PendingChecksDialogState();
+}
+
+class _PendingChecksDialogState extends State<_PendingChecksDialog> {
+  late final List<_PendingCashCheck> _remainingChecks;
+  final Set<String> _checkedIds = <String>{};
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _remainingChecks = List<_PendingCashCheck>.from(widget.checks);
+  }
 
   String _fmtDate(DateTime value) {
     final day = value.day.toString().padLeft(2, '0');
     final month = value.month.toString().padLeft(2, '0');
     final year = value.year.toString();
     return '$day/$month/$year';
+  }
+
+  Future<void> _saveSelectedChecks() async {
+    if (_checkedIds.isEmpty || _isSaving) return;
+    setState(() => _isSaving = true);
+    try {
+      await widget.onMarkAsVerified(_checkedIds.toList(growable: false));
+      setState(() {
+        _remainingChecks.removeWhere(
+          (item) => _checkedIds.contains(item.checkId),
+        );
+        _checkedIds.clear();
+      });
+    } finally {
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
+    }
   }
 
   @override
@@ -2769,12 +2853,12 @@ class _PendingChecksDialog extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               const Text(
-                'Estos folios o tickets quedaron abiertos en cortes anteriores. Seguirán apareciendo en los próximos cortes hasta que queden comprobados.',
+                'Estos folios o tickets quedaron abiertos en cortes anteriores. Selecciona los ya comprobados y guarda los cambios.',
                 style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700),
               ),
               const SizedBox(height: 14),
               Expanded(
-                child: checks.isEmpty
+                child: _remainingChecks.isEmpty
                     ? Container(
                         padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
                         decoration: BoxDecoration(
@@ -2817,10 +2901,11 @@ class _PendingChecksDialog extends StatelessWidget {
                         ),
                       )
                     : ListView.separated(
-                        itemCount: checks.length,
+                        itemCount: _remainingChecks.length,
                         separatorBuilder: (_, _) => const SizedBox(height: 10),
                         itemBuilder: (context, index) {
-                          final item = checks[index];
+                          final item = _remainingChecks[index];
+                          final checked = _checkedIds.contains(item.checkId);
                           return Container(
                             padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
                             decoration: BoxDecoration(
@@ -2857,18 +2942,23 @@ class _PendingChecksDialog extends StatelessWidget {
                                     children: [
                                       Text(
                                         '${item.sourceTypeLabel} · ${item.sourceFolio}',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 14,
                                           fontWeight: FontWeight.w900,
+                                          color: checked
+                                              ? const Color(0xFF7A6C63)
+                                              : null,
                                         ),
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
                                         'Pendiente desde ${_fmtDate(item.cutDate)}',
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 12.5,
                                           fontWeight: FontWeight.w700,
-                                          color: Color(0xFF7A6C63),
+                                          color: checked
+                                              ? const Color(0xFF7A6C63)
+                                              : const Color(0xFF7A6C63),
                                         ),
                                       ),
                                       const SizedBox(height: 6),
@@ -2876,13 +2966,29 @@ class _PendingChecksDialog extends StatelessWidget {
                                         item.reason.isEmpty
                                             ? 'Sin comentario de observación.'
                                             : item.reason,
-                                        style: const TextStyle(
+                                        style: TextStyle(
                                           fontSize: 13,
                                           fontWeight: FontWeight.w700,
+                                          decoration: checked
+                                              ? TextDecoration.lineThrough
+                                              : null,
                                         ),
                                       ),
                                     ],
                                   ),
+                                ),
+                                const SizedBox(width: 10),
+                                Checkbox(
+                                  value: checked,
+                                  onChanged: (value) {
+                                    setState(() {
+                                      if (value == true) {
+                                        _checkedIds.add(item.checkId);
+                                      } else {
+                                        _checkedIds.remove(item.checkId);
+                                      }
+                                    });
+                                  },
                                 ),
                               ],
                             ),
@@ -2899,11 +3005,26 @@ class _PendingChecksDialog extends StatelessWidget {
                     onPressed: () => Navigator.of(context).pop(false),
                     child: const Text('Cerrar'),
                   ),
-                  if (allowContinueToOpening) ...[
+                  const SizedBox(width: 10),
+                  FilledButton.icon(
+                    style: contractPrimaryButtonStyle(context),
+                    onPressed: _checkedIds.isEmpty || _isSaving
+                        ? null
+                        : _saveSelectedChecks,
+                    icon: const Icon(Icons.check_circle_rounded),
+                    label: const Text('Guardar comprobados'),
+                  ),
+                  if (widget.allowContinueToOpening) ...[
                     const SizedBox(width: 10),
                     FilledButton.icon(
                       style: contractPrimaryButtonStyle(context),
-                      onPressed: () => Navigator.of(context).pop(true),
+                      onPressed: () async {
+                        if (_checkedIds.isNotEmpty) {
+                          await _saveSelectedChecks();
+                        }
+                        if (!mounted) return;
+                        Navigator.of(context).pop(true);
+                      },
                       icon: const Icon(Icons.play_arrow_rounded),
                       label: const Text('Continuar a apertura'),
                     ),

@@ -1,9 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
@@ -17,6 +22,7 @@ import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/number_formatters.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
@@ -95,6 +101,8 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
   List<_PalomarMovement> _movements = const <_PalomarMovement>[];
   List<_PalomarSourceRemission> _sourceRemissions =
       const <_PalomarSourceRemission>[];
+  bool _exportingCsv = false;
+  bool _exportingPdf = false;
 
   @override
   void initState() {
@@ -411,6 +419,426 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
     );
   }
 
+  Future<void> _exportCsv() async {
+    if (_exportingCsv) return;
+    setState(() => _exportingCsv = true);
+    try {
+      final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+      final entries = _filteredEntries;
+      final csv = StringBuffer()
+        ..writeln(
+          [
+            'FECHA',
+            'MOVIMIENTO',
+            'FOLIO',
+            'MATERIAL',
+            'SALIDA_KG',
+            'APROBADO_KG',
+            'PRECIO_APROBADO',
+            'CARGO_ABONO',
+            'SALDO',
+            'CHEQUE',
+            'REMISION',
+            'TICKET',
+            'REFERENCIA',
+            'OBSERVACIONES',
+          ].join(','),
+        );
+      for (final entry in entries) {
+        final movement = entry.movement;
+        final folio = _exportLedgerFolio(movement);
+        csv.writeln(
+          [
+            _formatPalomarDate(movement.date),
+            _movementTypeLabel(movement.type),
+            folio,
+            movement.material,
+            movement.exitWeight == null
+                ? ''
+                : formatDecimal(movement.exitWeight!),
+            movement.approvedWeight == null
+                ? ''
+                : formatDecimal(movement.approvedWeight!),
+            movement.approvedPrice == null
+                ? ''
+                : movement.approvedPrice!.toStringAsFixed(2),
+            movement.signedAmount.toStringAsFixed(2),
+            entry.balanceAfter.toStringAsFixed(2),
+            movement.checkNumber,
+            movement.remision,
+            movement.ticket,
+            movement.reference,
+            movement.notes,
+          ].map(_csvCell).join(','),
+        );
+      }
+      final path = await saveCsvFile(
+        fileName: 'mayoreo_el_palomar_$stamp.csv',
+        content: csv.toString(),
+        dialogTitle: 'Guardar CSV de Cuenta El Palomar',
+      );
+      _toast(
+        path == null ? 'Exportación cancelada' : 'CSV exportado en: $path',
+      );
+    } catch (e) {
+      _toast('No se pudo exportar CSV: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _exportingCsv = false);
+      }
+    }
+  }
+
+  Future<void> _exportPdf() async {
+    if (_exportingPdf) return;
+    setState(() => _exportingPdf = true);
+    try {
+      final bounds = _ledgerEntries.isEmpty
+          ? null
+          : DateTimeRange(
+              start: _ledgerEntries.first.movement.date,
+              end: _ledgerEntries.last.movement.date,
+            );
+      if (bounds == null) {
+        _toast('No hay movimientos para exportar');
+        return;
+      }
+      final initialRange = _dateFilterFrom != null && _dateFilterTo != null
+          ? DateTimeRange(start: _dateFilterFrom!, end: _dateFilterTo!)
+          : null;
+      final pickedRange = await _runWithRefreshPause(
+        () => _showPalomarDateRangeFilterDialog(
+          context,
+          label: 'Rango del reporte',
+          bounds: bounds,
+          initialRange: initialRange,
+        ),
+      );
+      if (pickedRange == null) {
+        _toast('Exportación cancelada');
+        return;
+      }
+      final exportEntries = pickedRange.clear
+          ? _buildFilteredEntries(ignoreDateFilter: true)
+          : _buildFilteredEntries(
+              dateFilterFrom: pickedRange.from,
+              dateFilterTo: pickedRange.to,
+              ignoreDateFilter: true,
+            );
+      if (exportEntries.isEmpty) {
+        _toast('No hay movimientos en ese rango para exportar');
+        return;
+      }
+      final bytes = await _buildStatementPdfBytes(
+        exportEntries,
+        dateRange: pickedRange.clear
+            ? null
+            : DateTimeRange(
+                start: pickedRange.from ?? bounds.start,
+                end: pickedRange.to ?? pickedRange.from ?? bounds.end,
+              ),
+      );
+      final now = DateTime.now();
+      final suggestedName =
+          'cuenta_el_palomar_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.pdf';
+      String? outputPath;
+      if (!kIsWeb) {
+        outputPath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Guardar reporte de Cuenta El Palomar como PDF',
+          fileName: suggestedName,
+          allowedExtensions: const ['pdf'],
+          type: FileType.custom,
+          lockParentWindow: true,
+        );
+      }
+      if (outputPath == null || outputPath.trim().isEmpty) {
+        _toast('Guardado cancelado');
+        return;
+      }
+      final normalized = outputPath.toLowerCase().endsWith('.pdf')
+          ? outputPath
+          : '$outputPath.pdf';
+      await File(normalized).writeAsBytes(bytes, flush: true);
+      _toast('PDF guardado: $normalized');
+    } catch (e) {
+      _toast('No se pudo exportar PDF: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _exportingPdf = false);
+      }
+    }
+  }
+
+  Future<Uint8List> _buildStatementPdfBytes(
+    List<_PalomarLedgerEntry> entries, {
+    DateTimeRange? dateRange,
+  }) async {
+    final doc = pw.Document();
+    pw.MemoryImage? logoImage;
+    try {
+      final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+      logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+    } catch (_) {}
+
+    final now = DateTime.now();
+    final printedAt =
+        '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final balance = entries.isEmpty ? 0.0 : entries.first.balanceAfter;
+
+    pw.Widget summaryCard(String label, String value) {
+      return pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: pw.BoxDecoration(
+            color: PdfColor.fromHex('#FFF0AE'),
+            borderRadius: pw.BorderRadius.circular(14),
+            border: pw.Border.all(color: PdfColor.fromHex('#E1C863')),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                label,
+                style: pw.TextStyle(
+                  fontSize: 9.2,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColor.fromHex('#7B6515'),
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Text(
+                value,
+                style: pw.TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColor.fromHex('#3E3311'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    PdfColor movementBackground(_PalomarMovementType type) {
+      switch (type) {
+        case _PalomarMovementType.chequeLiberado:
+          return PdfColor.fromHex('#FFF0AE');
+        case _PalomarMovementType.remisionAplicada:
+          return PdfColor.fromHex('#DFF6E5');
+        case _PalomarMovementType.ajusteCargo:
+        case _PalomarMovementType.ajusteAbono:
+          return PdfColor.fromHex('#ECECEC');
+        case _PalomarMovementType.corteInterno:
+          return PdfColor.fromHex('#E8E8F8');
+      }
+    }
+
+    PdfColor movementText(_PalomarMovementType type) {
+      switch (type) {
+        case _PalomarMovementType.chequeLiberado:
+          return PdfColor.fromHex('#705A13');
+        case _PalomarMovementType.remisionAplicada:
+          return PdfColor.fromHex('#2A6A3E');
+        case _PalomarMovementType.ajusteCargo:
+        case _PalomarMovementType.ajusteAbono:
+          return PdfColor.fromHex('#4A4A4A');
+        case _PalomarMovementType.corteInterno:
+          return PdfColor.fromHex('#4D4B7E');
+      }
+    }
+
+    pw.Widget movementBadge(_PalomarMovement movement) {
+      return pw.Container(
+        padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+        decoration: pw.BoxDecoration(
+          color: movementBackground(movement.type),
+          borderRadius: pw.BorderRadius.circular(8),
+        ),
+        child: pw.Text(
+          _movementTypeLabel(movement.type),
+          style: pw.TextStyle(
+            fontSize: 8.4,
+            fontWeight: pw.FontWeight.bold,
+            color: movementText(movement.type),
+          ),
+        ),
+      );
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 28),
+        build: (_) => [
+          pw.Row(
+            children: [
+              if (logoImage != null)
+                pw.SizedBox(
+                  width: 42,
+                  height: 28,
+                  child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                ),
+              if (logoImage != null) pw.SizedBox(width: 10),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'CUENTA EL PALOMAR',
+                      style: pw.TextStyle(
+                        fontSize: 17,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColor.fromHex('#352A10'),
+                      ),
+                    ),
+                    pw.SizedBox(height: 3),
+                    pw.Text(
+                      'Reporte de conciliación contra estado de cuenta de El Palomar',
+                      style: pw.TextStyle(
+                        fontSize: 9.6,
+                        color: PdfColor.fromHex('#6E613B'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.Text(printedAt, style: const pw.TextStyle(fontSize: 9.5)),
+            ],
+          ),
+          pw.SizedBox(height: 16),
+          pw.Row(
+            children: [summaryCard('SALDO', formatMoney(balance, decimals: 0))],
+          ),
+          if (dateRange != null) ...[
+            pw.SizedBox(height: 10),
+            pw.Text(
+              'Rango: ${_palomarFmtDate(dateRange.start)} - ${_palomarFmtDate(dateRange.end)}',
+              style: pw.TextStyle(
+                fontSize: 9.6,
+                fontWeight: pw.FontWeight.bold,
+                color: PdfColor.fromHex('#6E613B'),
+              ),
+            ),
+          ],
+          pw.SizedBox(height: 16),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColor.fromHex('#D9C98A')),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(0.72),
+              1: const pw.FlexColumnWidth(1.25),
+              2: const pw.FlexColumnWidth(1.05),
+              3: const pw.FlexColumnWidth(1.55),
+              4: const pw.FlexColumnWidth(0.9),
+              5: const pw.FlexColumnWidth(0.9),
+              6: const pw.FlexColumnWidth(0.85),
+              7: const pw.FlexColumnWidth(1.0),
+              8: const pw.FlexColumnWidth(1.0),
+              9: const pw.FlexColumnWidth(1.2),
+              10: const pw.FlexColumnWidth(1.7),
+            },
+            children: [
+              pw.TableRow(
+                decoration: pw.BoxDecoration(
+                  color: PdfColor.fromHex('#FFF0AE'),
+                ),
+                children:
+                    [
+                          'FECHA',
+                          'MOVIMIENTO',
+                          'FOLIO',
+                          'MATERIAL',
+                          'SALIDA KG',
+                          'APROB. KG',
+                          'PRECIO',
+                          'CARGO/ABONO',
+                          'SALDO',
+                          'BANCO',
+                          'OBSERVACIONES',
+                        ]
+                        .map(
+                          (label) => pw.Padding(
+                            padding: const pw.EdgeInsets.all(7),
+                            child: pw.Text(
+                              label,
+                              style: pw.TextStyle(
+                                fontSize: 9.2,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+              ),
+              for (var index = 0; index < entries.length; index++)
+                pw.TableRow(
+                  decoration: pw.BoxDecoration(
+                    color: index.isEven
+                        ? PdfColor.fromHex('#FFFCED')
+                        : PdfColor.fromHex('#FFF8D8'),
+                  ),
+                  children:
+                      [
+                            pw.Text(
+                              _palomarFmtDate(entries[index].movement.date),
+                              style: const pw.TextStyle(fontSize: 9.0),
+                            ),
+                            movementBadge(entries[index].movement),
+                            _exportLedgerFolio(entries[index].movement),
+                            entries[index].movement.material,
+                            entries[index].movement.exitWeight == null
+                                ? ''
+                                : formatDecimal(
+                                    entries[index].movement.exitWeight!,
+                                  ),
+                            entries[index].movement.approvedWeight == null
+                                ? ''
+                                : formatDecimal(
+                                    entries[index].movement.approvedWeight!,
+                                  ),
+                            entries[index].movement.approvedPrice == null
+                                ? ''
+                                : formatMoney(
+                                    entries[index].movement.approvedPrice!,
+                                    decimals: 2,
+                                  ),
+                            _palomarSignedMoney(
+                              entries[index].movement.signedAmount,
+                            ),
+                            formatMoney(
+                              entries[index].balanceAfter,
+                              decimals: 0,
+                            ),
+                            entries[index].movement.bankReference,
+                            entries[index].movement.notes,
+                          ]
+                          .map((value) {
+                            if (value is pw.Widget) {
+                              return pw.Padding(
+                                padding: const pw.EdgeInsets.all(7),
+                                child: value,
+                              );
+                            }
+                            return pw.Padding(
+                              padding: const pw.EdgeInsets.all(7),
+                              child: pw.Text(
+                                value.toString(),
+                                style: const pw.TextStyle(fontSize: 9.0),
+                              ),
+                            );
+                          })
+                          .toList(growable: false),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    return doc.save();
+  }
+
   void _handleNavigationAction(String label) {
     switch (label) {
       case 'Dashboard Dirección':
@@ -481,17 +909,27 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
         .toList(growable: false);
   }
 
-  List<_PalomarLedgerEntry> get _filteredEntries {
+  List<_PalomarLedgerEntry> _buildFilteredEntries({
+    DateTime? dateFilterFrom,
+    DateTime? dateFilterTo,
+    bool ignoreDateFilter = false,
+  }) {
     final filtered =
         _ledgerEntries
             .where((entry) {
               final dateOnly = DateUtils.dateOnly(entry.movement.date);
-              if (_dateFilterFrom != null &&
-                  dateOnly.isBefore(DateUtils.dateOnly(_dateFilterFrom!))) {
+              final effectiveFrom = ignoreDateFilter
+                  ? dateFilterFrom
+                  : (dateFilterFrom ?? _dateFilterFrom);
+              final effectiveTo = ignoreDateFilter
+                  ? dateFilterTo
+                  : (dateFilterTo ?? _dateFilterTo);
+              if (effectiveFrom != null &&
+                  dateOnly.isBefore(DateUtils.dateOnly(effectiveFrom))) {
                 return false;
               }
-              if (_dateFilterTo != null &&
-                  dateOnly.isAfter(DateUtils.dateOnly(_dateFilterTo!))) {
+              if (effectiveTo != null &&
+                  dateOnly.isAfter(DateUtils.dateOnly(effectiveTo))) {
                 return false;
               }
               if (_typeFilters.isNotEmpty &&
@@ -543,6 +981,8 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
           ..sort((a, b) => b.movement.date.compareTo(a.movement.date));
     return filtered;
   }
+
+  List<_PalomarLedgerEntry> get _filteredEntries => _buildFilteredEntries();
 
   double get _currentBalance =>
       _ledgerEntries.isEmpty ? 0 : _ledgerEntries.last.balanceAfter;
@@ -1541,11 +1981,15 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
                               remissionsLast30Days: remissionsLast30Days,
                               totalMovementsCount: _movements.length,
                               visibleMovementsCount: filteredEntries.length,
+                              exportingCsv: _exportingCsv,
+                              exportingPdf: _exportingPdf,
                               onRegisterCheck: _openRegisterCheckDialog,
                               onApplyRemissions: _openApplyRemissionsDialog,
                               onAdjustment: _openManualAdjustmentDialog,
                               onCreateCut: _openCreateCutDialog,
                               onOpenHistory: _openHistoryDialog,
+                              onExportCsv: _exportCsv,
+                              onExportPdf: _exportPdf,
                             ),
                             const SizedBox(height: 14),
                             _PalomarLedgerCard(
@@ -1799,11 +2243,15 @@ class _PalomarTopBar extends StatelessWidget {
   final int remissionsLast30Days;
   final int totalMovementsCount;
   final int visibleMovementsCount;
+  final bool exportingCsv;
+  final bool exportingPdf;
   final Future<void> Function() onRegisterCheck;
   final Future<void> Function() onApplyRemissions;
   final Future<void> Function() onAdjustment;
   final Future<void> Function() onCreateCut;
   final Future<void> Function() onOpenHistory;
+  final Future<void> Function() onExportCsv;
+  final Future<void> Function() onExportPdf;
 
   const _PalomarTopBar({
     required this.currentBalance,
@@ -1823,11 +2271,15 @@ class _PalomarTopBar extends StatelessWidget {
     required this.remissionsLast30Days,
     required this.totalMovementsCount,
     required this.visibleMovementsCount,
+    required this.exportingCsv,
+    required this.exportingPdf,
     required this.onRegisterCheck,
     required this.onApplyRemissions,
     required this.onAdjustment,
     required this.onCreateCut,
     required this.onOpenHistory,
+    required this.onExportCsv,
+    required this.onExportPdf,
   });
 
   @override
@@ -1854,6 +2306,34 @@ class _PalomarTopBar extends StatelessWidget {
                   runSpacing: 8,
                   alignment: WrapAlignment.end,
                   children: [
+                    OutlinedButton.icon(
+                      style: _palomarSecondaryButtonStyle(),
+                      onPressed: exportingPdf
+                          ? null
+                          : () => unawaited(onExportPdf()),
+                      icon: Icon(
+                        exportingPdf
+                            ? Icons.hourglass_top_rounded
+                            : Icons.picture_as_pdf_rounded,
+                      ),
+                      label: Text(
+                        exportingPdf ? 'Generando PDF...' : 'Descargar PDF',
+                      ),
+                    ),
+                    OutlinedButton.icon(
+                      style: _palomarSecondaryButtonStyle(),
+                      onPressed: exportingCsv
+                          ? null
+                          : () => unawaited(onExportCsv()),
+                      icon: Icon(
+                        exportingCsv
+                            ? Icons.hourglass_top_rounded
+                            : Icons.table_view_rounded,
+                      ),
+                      label: Text(
+                        exportingCsv ? 'Generando CSV...' : 'Descargar CSV',
+                      ),
+                    ),
                     FilledButton.icon(
                       style: _palomarPrimaryButtonStyle(),
                       onPressed: () => unawaited(onRegisterCheck()),
@@ -6686,6 +7166,14 @@ String _ledgerPrimaryReference(_PalomarMovement movement) {
   }
 }
 
+String _exportLedgerFolio(_PalomarMovement movement) {
+  if (movement.remision.isNotEmpty) return movement.remision;
+  if (movement.checkNumber.isNotEmpty) return movement.checkNumber;
+  if (movement.ticket.isNotEmpty) return movement.ticket;
+  if (movement.reference.isNotEmpty) return movement.reference;
+  return '';
+}
+
 String? _buildLedgerDetail(_PalomarMovement movement) {
   final parts = <String>[];
   if (movement.type == _PalomarMovementType.remisionAplicada) {
@@ -6725,6 +7213,14 @@ String _palomarSignedMoney(double amount) {
   if (amount > 0) return '+${formatMoney(amount, decimals: 0)}';
   if (amount < 0) return '-${formatMoney(amount.abs(), decimals: 0)}';
   return formatMoney(0, decimals: 0);
+}
+
+String _csvCell(Object? value) {
+  final text = (value ?? '').toString();
+  if (text.contains(',') || text.contains('"') || text.contains('\n')) {
+    return '"${text.replaceAll('"', '""')}"';
+  }
+  return text;
 }
 
 Color _palomarSignedAmountColor(_PalomarMovementType type) {
