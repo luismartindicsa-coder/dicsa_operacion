@@ -1,17 +1,12 @@
-import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
-import '../hr/human_resources_mock_page.dart';
-import '../maintenance/maintenance_page.dart';
 import '../mayoreo/mayoreo_cash_entries_exits_page.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
-import '../services/inventory_page.dart';
-import '../services/services_catalog_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
@@ -29,24 +24,9 @@ class GeneralDashboardPage extends StatefulWidget {
 }
 
 class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
-  bool _canOpenCatalogs = false;
-  bool _dashboardsExpanded = true;
-  bool _catalogsExpanded = false;
+  bool _directionExpanded = true;
+  bool _areasExpanded = true;
   bool _menuOverlayOpen = false;
-
-  @override
-  void initState() {
-    super.initState();
-    unawaited(_resolveAccess());
-  }
-
-  Future<void> _resolveAccess() async {
-    final profile = await AuthAccess.resolveCurrentProfile();
-    if (!mounted) return;
-    setState(() {
-      _canOpenCatalogs = AuthAccess.canOpenCatalogs(profile);
-    });
-  }
 
   Future<void> _logout() async {
     final ok = await showDialog<bool>(
@@ -110,81 +90,6 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     );
   }
 
-  Future<void> _openHumanResourcesMock() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const HumanResourcesMockPage(),
-        duration: const Duration(milliseconds: 320),
-        reverseDuration: const Duration(milliseconds: 240),
-      ),
-    );
-  }
-
-  Future<void> _openOperationalEntriesAndOutputs() async {
-    if (!mounted) return;
-    await Navigator.of(
-      context,
-    ).push(appPageRoute(page: const InventoryPage(), fade: false));
-  }
-
-  Future<void> _openOperationalInventory() async {
-    if (!mounted) return;
-    await Navigator.of(
-      context,
-    ).push(appPageRoute(page: const InventoryStockPage(), fade: false));
-  }
-
-  Future<void> _openOperationalMaintenance() async {
-    if (!mounted) return;
-    await Navigator.of(
-      context,
-    ).push(appPageRoute(page: const MaintenancePage(), fade: false));
-  }
-
-  Future<void> _openCatalogsFleet() async {
-    if (!mounted || !_canOpenCatalogs) return;
-    await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.26),
-      builder: (_) =>
-          const ServicesCatalogPage(module: OperationsCatalogModule.flotilla),
-    );
-  }
-
-  Future<void> _openCatalogsCompanies() async {
-    if (!mounted || !_canOpenCatalogs) return;
-    await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.26),
-      builder: (_) =>
-          const ServicesCatalogPage(module: OperationsCatalogModule.empresas),
-    );
-  }
-
-  Future<void> _openCatalogsMaterials() async {
-    if (!mounted || !_canOpenCatalogs) return;
-    await showDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      barrierColor: Colors.black.withValues(alpha: 0.26),
-      builder: (_) =>
-          const ServicesCatalogPage(module: OperationsCatalogModule.materiales),
-    );
-  }
-
-  Future<void> _showUpcomingArea(String area) async {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$area estará disponible en el siguiente dashboard.'),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Focus(
@@ -233,26 +138,17 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
 
   Widget _buildBody() {
     final menu = _GeneralDashboardSideMenu(
-      dashboardsExpanded: _dashboardsExpanded,
-      catalogsExpanded: _catalogsExpanded,
-      canOpenCatalogs: _canOpenCatalogs,
+      directionExpanded: _directionExpanded,
+      areasExpanded: _areasExpanded,
       onOpenGeneralDashboard: () async {},
+      onOpenMayoreoCashWorkspace: _openMayoreoCashWorkspace,
       onOpenOperationalDashboard: _openOperationalDashboard,
       onOpenMenudeo: _openRetailDashboard,
       onOpenMayoreo: _openMayoreoPreviewDashboard,
-      onOpenMayoreoCashWorkspace: _openMayoreoCashWorkspace,
-      onOpenHumanResources: _openHumanResourcesMock,
-      onOpenAdministration: () => _showUpcomingArea('Administración'),
-      onOpenFinance: () => _showUpcomingArea('Finanzas'),
-      onOpenAccounting: () => _showUpcomingArea('Contabilidad'),
-      onOpenCatalogsFleet: _canOpenCatalogs ? _openCatalogsFleet : null,
-      onOpenCatalogsCompanies: _canOpenCatalogs ? _openCatalogsCompanies : null,
-      onOpenCatalogsMaterials: _canOpenCatalogs ? _openCatalogsMaterials : null,
-      onToggleDashboardsExpanded: () =>
-          setState(() => _dashboardsExpanded = !_dashboardsExpanded),
-      onToggleCatalogsExpanded: _canOpenCatalogs
-          ? () => setState(() => _catalogsExpanded = !_catalogsExpanded)
-          : null,
+      onToggleDirectionExpanded: () =>
+          setState(() => _directionExpanded = !_directionExpanded),
+      onToggleAreasExpanded: () =>
+          setState(() => _areasExpanded = !_areasExpanded),
     );
 
     final content = Align(
@@ -261,170 +157,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
         constraints: const BoxConstraints(maxWidth: 1440),
         child: SingleChildScrollView(
           padding: const EdgeInsets.only(left: 56, right: 2, bottom: 8),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const _ExecutiveOverviewHero(),
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final wide = constraints.maxWidth >= 1180;
-                  final medium = constraints.maxWidth >= 860;
-                  final summaryWidth = wide
-                      ? (constraints.maxWidth - 32) / 3
-                      : (medium
-                            ? (constraints.maxWidth - 16) / 2
-                            : constraints.maxWidth);
-                  return Wrap(
-                    spacing: 16,
-                    runSpacing: 16,
-                    children: [
-                      _AreaSummaryCard(
-                        width: summaryWidth,
-                        accent: const Color(0xFF0B2B2B),
-                        icon: Icons.precision_manufacturing_rounded,
-                        title: 'Operación',
-                        status: 'Activo',
-                        statusColor: const Color(0xFF1E8E63),
-                        description:
-                            'Resumen operativo del patio, inventario, servicios, mantenimiento y almacén.',
-                        highlights: const [
-                          'Inventario, entradas y producción',
-                          'Servicios, pesadas y mantenimiento',
-                          'Listo para abrir el dashboard operativo',
-                        ],
-                        primaryLabel: 'Abrir dashboard',
-                        onPrimaryTap: _openOperationalDashboard,
-                        secondaryLabel: 'Ver inventario',
-                        onSecondaryTap: _openOperationalInventory,
-                      ),
-                      _AreaSummaryCard(
-                        width: summaryWidth,
-                        accent: const Color(0xFF8E3F2A),
-                        icon: Icons.storefront_rounded,
-                        title: 'Menudeo',
-                        status: 'Activo',
-                        statusColor: const Color(0xFFB85637),
-                        description:
-                            'Operación comercial de compras, ventas, caja, conciliación y catálogo de precios.',
-                        highlights: const [
-                          'Compras, ventas y vouchers de caja',
-                          'Ajustes de precios y catálogo operativo',
-                          'Listo para abrir el dashboard de Menudeo',
-                        ],
-                        primaryLabel: 'Abrir dashboard',
-                        onPrimaryTap: _openRetailDashboard,
-                      ),
-                      _AreaSummaryCard(
-                        width: summaryWidth,
-                        accent: const Color(0xFF8C6700),
-                        icon: Icons.inventory_2_rounded,
-                        title: 'Mayoreo',
-                        status: 'Preview',
-                        statusColor: const Color(0xFFC59517),
-                        description:
-                            'Sandbox inicial para validar la paleta amarilla y el ritmo visual del futuro dashboard comercial mayorista.',
-                        highlights: const [
-                          'Paleta amarilla institucional del área',
-                          'Prueba de contraste, glow, badges y widgets',
-                          'Listo para abrir el preview de dashboard',
-                        ],
-                        primaryLabel: 'Abrir preview',
-                        onPrimaryTap: _openMayoreoPreviewDashboard,
-                      ),
-                      _AreaSummaryCard(
-                        width: summaryWidth,
-                        accent: const Color(0xFF6A3B10),
-                        icon: Icons.groups_2_rounded,
-                        title: 'Recursos humanos',
-                        status: 'Mock listo',
-                        statusColor: const Color(0xFF7A4AF0),
-                        description:
-                            'Asistencia, plantilla, incidencias y seguimiento del personal.',
-                        highlights: const [
-                          'Indicadores de headcount',
-                          'Ausentismo y rotación',
-                          'Mock visual navegable disponible',
-                        ],
-                        primaryLabel: 'Abrir mock',
-                        onPrimaryTap: _openHumanResourcesMock,
-                      ),
-                      _AreaSummaryCard(
-                        width: summaryWidth,
-                        accent: const Color(0xFF244F74),
-                        icon: Icons.apartment_rounded,
-                        title: 'Administración',
-                        status: 'Próximamente',
-                        statusColor: const Color(0xFF3B7DB4),
-                        description:
-                            'Contratos, control documental, compras y seguimiento administrativo.',
-                        highlights: const [
-                          'Control documental central',
-                          'Compras y aprobaciones',
-                          'Pendiente de construcción',
-                        ],
-                        primaryLabel: 'Preparar área',
-                        onPrimaryTap: () => _showUpcomingArea('Administración'),
-                      ),
-                      _AreaSummaryCard(
-                        width: summaryWidth,
-                        accent: const Color(0xFF195A47),
-                        icon: Icons.payments_rounded,
-                        title: 'Finanzas',
-                        status: 'Próximamente',
-                        statusColor: const Color(0xFF1E8E63),
-                        description:
-                            'Flujo, tesorería, proyecciones y visibilidad ejecutiva de resultados.',
-                        highlights: const [
-                          'Caja y tesorería',
-                          'KPIs de liquidez',
-                          'Pendiente de construcción',
-                        ],
-                        primaryLabel: 'Preparar área',
-                        onPrimaryTap: () => _showUpcomingArea('Finanzas'),
-                      ),
-                      _AreaSummaryCard(
-                        width: summaryWidth,
-                        accent: const Color(0xFF5C1E3B),
-                        icon: Icons.receipt_long_rounded,
-                        title: 'Contabilidad',
-                        status: 'Próximamente',
-                        statusColor: const Color(0xFFC25A7C),
-                        description:
-                            'Pólizas, cierres, conciliaciones y trazabilidad contable por periodo.',
-                        highlights: const [
-                          'Cierres contables',
-                          'Conciliaciones y pólizas',
-                          'Pendiente de construcción',
-                        ],
-                        primaryLabel: 'Preparar área',
-                        onPrimaryTap: () => _showUpcomingArea('Contabilidad'),
-                      ),
-                      _AreaSummaryCard(
-                        width: summaryWidth,
-                        accent: const Color(0xFF3A3A3A),
-                        icon: Icons.hub_rounded,
-                        title: 'Accesos rápidos',
-                        status: 'Disponible',
-                        statusColor: const Color(0xFF2459A6),
-                        description:
-                            'Puente inicial entre Dirección, dashboard operativo y catálogos base.',
-                        highlights: const [
-                          'Entradas y salidas',
-                          'Mantenimiento operativo',
-                          'Catálogos maestros',
-                        ],
-                        primaryLabel: 'Entradas y salidas',
-                        onPrimaryTap: _openOperationalEntriesAndOutputs,
-                        secondaryLabel: 'Mantenimiento',
-                        onSecondaryTap: _openOperationalMaintenance,
-                      ),
-                    ],
-                  );
-                },
-              ),
-            ],
-          ),
+          child: const _DirectionDashboardCanvas(),
         ),
       ),
     );
@@ -447,7 +180,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
                   if (!mounted) return;
                   setState(() => _menuOverlayOpen = false);
                 },
-                child: Container(color: Colors.black.withValues(alpha: 0.16)),
+                child: Container(color: Colors.transparent),
               ),
             ),
           ),
@@ -469,358 +202,65 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
   }
 }
 
-class _ExecutiveOverviewHero extends StatelessWidget {
-  const _ExecutiveOverviewHero();
+class _DirectionDashboardCanvas extends StatelessWidget {
+  const _DirectionDashboardCanvas();
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(30),
-        gradient: const LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [Color(0xFFF7FCFF), Color(0xFFE7FFF5), Color(0xFFFFF7E8)],
-        ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.82)),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 32,
-            offset: const Offset(0, 18),
-            color: Colors.black.withValues(alpha: 0.10),
-          ),
-        ],
-      ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final stacked = constraints.maxWidth < 1024;
-          final metricWidth = stacked
-              ? constraints.maxWidth
-              : (constraints.maxWidth - 32) / 3;
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  Container(
-                    width: 68,
-                    height: 68,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0B2B2B),
-                      borderRadius: BorderRadius.circular(20),
-                    ),
-                    child: const Center(
-                      child: DicsaLogoD(size: 46, progress: 1.0),
-                    ),
-                  ),
-                  ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 780),
-                    child: const Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Vista general de Dirección',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF0B2B2B),
-                            height: 1.0,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Este dashboard centraliza el resumen de todas las áreas de la empresa y funciona como puerta de entrada para navegar entre dashboards ejecutivos y catálogos maestros.',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                            color: Color(0xFF355454),
-                            height: 1.5,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  SizedBox(
-                    width: metricWidth,
-                    child: const _HeroMetricChip(
-                      label: 'Áreas resumidas',
-                      value: '5',
-                      subtitle:
-                          'Operación, RH, Administración, Finanzas y Contabilidad',
-                    ),
-                  ),
-                  SizedBox(
-                    width: metricWidth,
-                    child: const _HeroMetricChip(
-                      label: 'Dashboard activo',
-                      value: 'Dirección',
-                      subtitle:
-                          'Operación disponible hoy; otras áreas entran después',
-                    ),
-                  ),
-                  SizedBox(
-                    width: metricWidth,
-                    child: const _HeroMetricChip(
-                      label: 'Navegación',
-                      value: 'Dashboards + catálogos',
-                      subtitle:
-                          'Menú lateral orientado a exploración ejecutiva',
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _HeroMetricChip extends StatelessWidget {
-  final String label;
-  final String value;
-  final String subtitle;
-
-  const _HeroMetricChip({
-    required this.label,
-    required this.value,
-    required this.subtitle,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.82),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.84)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 12, 24, 24),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            label,
+            'DIRECCION',
             style: const TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              letterSpacing: 0.3,
-              color: Color(0xFF557575),
+              letterSpacing: 2.2,
+              color: Color(0xFF7FD7FF),
             ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 14),
           Text(
-            value,
+            'Dashboard ejecutivo en limpieza',
             style: const TextStyle(
-              fontSize: 21,
+              fontSize: 34,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF0B2B2B),
-              height: 1.05,
+              color: Colors.white,
+              height: 0.98,
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 14),
           Text(
-            subtitle,
+            'Este espacio queda libre para construir el dashboard real de Dirección con gráficas, resúmenes y widgets alimentados desde Operación, Menudeo y Ventas Mayoreo.',
             style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w600,
+              color: Color(0xFFDCE8FF),
+              height: 1.55,
+            ),
+          ),
+          const SizedBox(height: 22),
+          Container(
+            width: 92,
+            height: 1.6,
+            decoration: BoxDecoration(
+              color: const Color(0xFF7FD7FF).withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(999),
+            ),
+          ),
+          const SizedBox(height: 22),
+          const Text(
+            'Por ahora quitamos los bloques informativos para dejar la superficie lista para la siguiente etapa de composición ejecutiva.',
+            style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w600,
-              color: Color(0xFF486666),
-              height: 1.4,
+              color: Color(0xFFBACAE8),
+              height: 1.55,
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _AreaSummaryCard extends StatelessWidget {
-  final double width;
-  final Color accent;
-  final IconData icon;
-  final String title;
-  final String status;
-  final Color statusColor;
-  final String description;
-  final List<String> highlights;
-  final String primaryLabel;
-  final Future<void> Function() onPrimaryTap;
-  final String? secondaryLabel;
-  final Future<void> Function()? onSecondaryTap;
-
-  const _AreaSummaryCard({
-    required this.width,
-    required this.accent,
-    required this.icon,
-    required this.title,
-    required this.status,
-    required this.statusColor,
-    required this.description,
-    required this.highlights,
-    required this.primaryLabel,
-    required this.onPrimaryTap,
-    this.secondaryLabel,
-    this.onSecondaryTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: width,
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.88),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.88)),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 22,
-            offset: const Offset(0, 16),
-            color: accent.withValues(alpha: 0.10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.10),
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Icon(icon, color: accent, size: 24),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 18,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF0B2B2B),
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 5,
-                      ),
-                      decoration: BoxDecoration(
-                        color: statusColor.withValues(alpha: 0.10),
-                        borderRadius: BorderRadius.circular(999),
-                      ),
-                      child: Text(
-                        status,
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 0.3,
-                          color: statusColor,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          Text(
-            description,
-            style: const TextStyle(
-              fontSize: 13.5,
-              fontWeight: FontWeight.w600,
-              height: 1.5,
-              color: Color(0xFF4C6666),
-            ),
-          ),
-          const SizedBox(height: 16),
-          ...highlights.map(
-            (item) => Padding(
-              padding: const EdgeInsets.only(bottom: 9),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Container(
-                    width: 7,
-                    height: 7,
-                    margin: const EdgeInsets.only(top: 6),
-                    decoration: BoxDecoration(
-                      color: accent,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      item,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
-                        color: Color(0xFF203434),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: onPrimaryTap,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: accent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(vertical: 14),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: Text(primaryLabel),
-                ),
-              ),
-              if (secondaryLabel != null && onSecondaryTap != null) ...[
-                const SizedBox(width: 10),
-                Expanded(
-                  child: OutlinedButton(
-                    onPressed: onSecondaryTap,
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: accent,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      side: BorderSide(color: accent.withValues(alpha: 0.38)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: Text(secondaryLabel!),
-                  ),
-                ),
-              ],
-            ],
-          ),
+          const SizedBox(height: 420),
         ],
       ),
     );
@@ -844,18 +284,20 @@ class _GeneralDashboardBrand extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Container(
-                  width: 72,
-                  height: 72,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.24),
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.44),
-                    ),
-                  ),
-                  child: const Center(
-                    child: DicsaLogoD(size: 52, progress: 1.0),
+                _DirectionGlassPanel(
+                  padding: const EdgeInsets.all(0),
+                  borderRadius: BorderRadius.circular(22),
+                  blurSigma: 24,
+                  fillColor: const Color(0xFF8FD3FF).withValues(alpha: 0.08),
+                  borderColor: Colors.white.withValues(alpha: 0.34),
+                  shadowColor: const Color(0xFF5EC8FF).withValues(alpha: 0.08),
+                  edgeHighlightColor: Colors.white.withValues(alpha: 0.72),
+                  bevelShadowColor: Colors.black.withValues(alpha: 0.10),
+                  glowColor: const Color(0xFF6BD5FF).withValues(alpha: 0.10),
+                  child: const SizedBox(
+                    width: 72,
+                    height: 72,
+                    child: Center(child: DicsaLogoD(size: 52, progress: 1.0)),
                   ),
                 ),
                 if (showTitle) ...[
@@ -864,7 +306,7 @@ class _GeneralDashboardBrand extends StatelessWidget {
                     width: 1.5,
                     margin: const EdgeInsets.symmetric(vertical: 8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0B2B2B).withValues(alpha: 0.28),
+                      color: Colors.white.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
@@ -879,7 +321,7 @@ class _GeneralDashboardBrand extends StatelessWidget {
                         fontWeight: FontWeight.w800,
                         letterSpacing: 0.25,
                         height: 1.0,
-                        color: Color(0xFF0B2B2B),
+                        color: Colors.white,
                       ),
                     ),
                   ),
@@ -922,63 +364,63 @@ class _GeneralHeaderButtonState extends State<_GeneralHeaderButton> {
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
         scale: highlighted ? 1.03 : 1.0,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          overlayColor: WidgetStateProperty.all(Colors.transparent),
-          splashColor: Colors.transparent,
-          hoverColor: Colors.transparent,
-          highlightColor: Colors.transparent,
-          splashFactory: NoSplash.splashFactory,
-          onTap: enabled ? () => widget.onTap!() : null,
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            width: 158,
-            height: 48,
-            transform: Matrix4.translationValues(0, highlighted ? -2 : 0, 0),
-            decoration: BoxDecoration(
-              color: enabled
-                  ? Colors.white.withValues(alpha: 0.24)
-                  : Colors.white.withValues(alpha: 0.14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.translationValues(0, highlighted ? -2 : 0, 0),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(16),
+            overlayColor: WidgetStateProperty.all(Colors.transparent),
+            splashColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            splashFactory: NoSplash.splashFactory,
+            onTap: enabled ? () => widget.onTap!() : null,
+            child: _DirectionGlassPanel(
+              width: 178,
+              height: 50,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(
-                color: enabled
-                    ? Colors.white.withValues(alpha: 0.64)
-                    : Colors.white.withValues(alpha: 0.32),
-              ),
-              boxShadow: [
-                BoxShadow(
-                  blurRadius: highlighted ? 30 : 18,
-                  color: Colors.black.withValues(
-                    alpha: enabled ? (highlighted ? 0.24 : 0.11) : 0.05,
-                  ),
-                  offset: Offset(0, highlighted ? 16 : 10),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                const SizedBox(width: 10),
-                Icon(widget.icon, size: 18, color: const Color(0xFF0B2B2B)),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      widget.label,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: const TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF0B2B2B),
+              blurSigma: 26,
+              fillColor: enabled
+                  ? const Color(
+                      0xFF8BCFFF,
+                    ).withValues(alpha: highlighted ? 0.16 : 0.11)
+                  : Colors.white.withValues(alpha: 0.05),
+              borderColor: enabled
+                  ? Colors.white.withValues(alpha: highlighted ? 0.54 : 0.34)
+                  : Colors.white.withValues(alpha: 0.16),
+              shadowColor: highlighted
+                  ? const Color(0xFF5FE3FF).withValues(alpha: 0.14)
+                  : Colors.black.withValues(alpha: 0.06),
+              edgeHighlightColor: Colors.white.withValues(alpha: 0.78),
+              bevelShadowColor: Colors.black.withValues(alpha: 0.12),
+              glowColor: highlighted
+                  ? const Color(0xFF5FE3FF).withValues(alpha: 0.18)
+                  : const Color(0xFF6BA8FF).withValues(alpha: 0.08),
+              child: Row(
+                children: [
+                  Icon(widget.icon, size: 19, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        widget.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 10),
-              ],
+                  const SizedBox(width: 6),
+                ],
+              ),
             ),
           ),
         ),
@@ -994,57 +436,58 @@ class _GeneralDashboardBackground extends StatelessWidget {
   Widget build(BuildContext context) {
     return Stack(
       children: [
-        Container(
-          decoration: const BoxDecoration(
+        const DecoratedBox(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFFFFF3D7), Color(0xFFF1F7FF), Color(0xFFE4FFF2)],
+              colors: [Color(0xFF04142E), Color(0xFF0C2147), Color(0xFF133963)],
             ),
           ),
+          child: SizedBox.expand(),
         ),
         Positioned(
-          left: -260,
+          left: -250,
           top: -120,
-          child: _blurCircle(
-            760,
+          child: _bubbleCircle(
+            700,
             const LinearGradient(
-              colors: [Color(0xFFFFD597), Color(0xFFFFF8DD)],
+              colors: [Color(0xFFF3F8FF), Color(0xFF7AAFFF)],
             ),
           ),
         ),
         Positioned(
           right: -200,
-          top: -60,
-          child: _blurCircle(
-            620,
+          top: -80,
+          child: _bubbleCircle(
+            600,
             const LinearGradient(
-              colors: [Color(0xFF9ED4FF), Color(0xFFEAF6FF)],
+              colors: [Color(0xFF4BFFE0), Color(0xFF00B7FF)],
             ),
           ),
         ),
         Positioned(
-          left: 80,
-          bottom: -240,
-          child: _blurCircle(
-            580,
+          left: -150,
+          bottom: -250,
+          child: _bubbleCircle(
+            600,
             const LinearGradient(
-              colors: [Color(0xFFB8F0D0), Color(0xFFEFFFF7)],
+              colors: [Color(0xFF224CFF), Color(0xFF7D63FF)],
             ),
           ),
         ),
         Positioned(
-          right: -80,
-          bottom: -130,
-          child: Container(
-            width: 320,
-            height: 460,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(220),
+          right: -120,
+          bottom: -120,
+          child: IgnorePointer(
+            child: _bubblePill(
+              width: 300,
+              height: 500,
+              radius: 200,
               gradient: const LinearGradient(
                 begin: Alignment.topCenter,
                 end: Alignment.bottomCenter,
-                colors: [Color(0xFF0B2B2B), Color(0xFFD99532)],
+                colors: [Color(0xFF39F0E1), Color(0xFF0C8CFF)],
               ),
             ),
           ),
@@ -1053,69 +496,249 @@ class _GeneralDashboardBackground extends StatelessWidget {
     );
   }
 
-  Widget _blurCircle(double size, Gradient gradient) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(shape: BoxShape.circle, gradient: gradient),
+  Widget _bubbleCircle(double size, Gradient gradient) {
+    final lead = _gradientLead(gradient);
+    final trail = _gradientTrail(gradient);
+    return IgnorePointer(
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 130,
+              spreadRadius: 14,
+              color: lead.withValues(alpha: 0.16),
+            ),
+            BoxShadow(
+              blurRadius: 72,
+              spreadRadius: 0,
+              color: trail.withValues(alpha: 0.10),
+            ),
+          ],
+        ),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  center: const Alignment(0.20, 0.12),
+                  radius: 0.98,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.035),
+                    lead.withValues(alpha: 0.09),
+                    trail.withValues(alpha: 0.18),
+                    trail.withValues(alpha: 0.05),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.16, 0.42, 0.74, 1.0],
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.11),
+                  width: 1.2,
+                ),
+                gradient: SweepGradient(
+                  startAngle: -0.85,
+                  endAngle: 5.30,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.0),
+                    Colors.white.withValues(alpha: 0.16),
+                    Colors.white.withValues(alpha: 0.05),
+                    Colors.white.withValues(alpha: 0.0),
+                  ],
+                  stops: const [0.0, 0.18, 0.34, 1.0],
+                ),
+              ),
+            ),
+            Align(
+              alignment: const Alignment(0, -0.58),
+              child: Container(
+                width: size * 0.42,
+                height: size * 0.14,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.20),
+                      Colors.white.withValues(alpha: 0.05),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            Align(
+              alignment: const Alignment(0.34, -0.10),
+              child: Container(
+                width: size * 0.18,
+                height: size * 0.18,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    colors: [
+                      Colors.white.withValues(alpha: 0.06),
+                      Colors.transparent,
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
     );
+  }
+
+  Widget _bubblePill({
+    required double width,
+    required double height,
+    required double radius,
+    required Gradient gradient,
+  }) {
+    final lead = _gradientLead(gradient);
+    final trail = _gradientTrail(gradient);
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 120,
+            spreadRadius: 8,
+            color: lead.withValues(alpha: 0.16),
+          ),
+          BoxShadow(
+            blurRadius: 72,
+            spreadRadius: 0,
+            color: trail.withValues(alpha: 0.10),
+          ),
+        ],
+      ),
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radius),
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [
+                  Colors.white.withValues(alpha: 0.025),
+                  lead.withValues(alpha: 0.08),
+                  trail.withValues(alpha: 0.18),
+                  trail.withValues(alpha: 0.05),
+                ],
+                stops: const [0.0, 0.16, 0.62, 1.0],
+              ),
+            ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(radius),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.11)),
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  Colors.white.withValues(alpha: 0.12),
+                  Colors.white.withValues(alpha: 0.03),
+                  Colors.transparent,
+                ],
+                stops: const [0.0, 0.18, 0.44],
+              ),
+            ),
+          ),
+          Align(
+            alignment: const Alignment(0, -0.86),
+            child: Container(
+              width: width * 0.54,
+              height: height * 0.08,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(999),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.18),
+                    Colors.white.withValues(alpha: 0.05),
+                    Colors.transparent,
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Color _gradientLead(Gradient gradient) {
+    if (gradient is LinearGradient && gradient.colors.isNotEmpty) {
+      return gradient.colors.first;
+    }
+    if (gradient is RadialGradient && gradient.colors.isNotEmpty) {
+      return gradient.colors.first;
+    }
+    return Colors.white;
+  }
+
+  Color _gradientTrail(Gradient gradient) {
+    if (gradient is LinearGradient && gradient.colors.isNotEmpty) {
+      return gradient.colors.last;
+    }
+    if (gradient is RadialGradient && gradient.colors.isNotEmpty) {
+      return gradient.colors.last;
+    }
+    return Colors.white;
   }
 }
 
 class _GeneralDashboardSideMenu extends StatelessWidget {
-  final bool dashboardsExpanded;
-  final bool catalogsExpanded;
-  final bool canOpenCatalogs;
-  final VoidCallback? onToggleDashboardsExpanded;
-  final VoidCallback? onToggleCatalogsExpanded;
+  final bool directionExpanded;
+  final bool areasExpanded;
+  final VoidCallback? onToggleDirectionExpanded;
+  final VoidCallback? onToggleAreasExpanded;
   final Future<void> Function()? onOpenGeneralDashboard;
+  final Future<void> Function()? onOpenMayoreoCashWorkspace;
   final Future<void> Function()? onOpenOperationalDashboard;
   final Future<void> Function()? onOpenMenudeo;
   final Future<void> Function()? onOpenMayoreo;
-  final Future<void> Function()? onOpenMayoreoCashWorkspace;
-  final Future<void> Function()? onOpenHumanResources;
-  final Future<void> Function()? onOpenAdministration;
-  final Future<void> Function()? onOpenFinance;
-  final Future<void> Function()? onOpenAccounting;
-  final Future<void> Function()? onOpenCatalogsFleet;
-  final Future<void> Function()? onOpenCatalogsCompanies;
-  final Future<void> Function()? onOpenCatalogsMaterials;
 
   const _GeneralDashboardSideMenu({
-    required this.dashboardsExpanded,
-    required this.catalogsExpanded,
-    required this.canOpenCatalogs,
-    this.onToggleDashboardsExpanded,
-    this.onToggleCatalogsExpanded,
+    required this.directionExpanded,
+    required this.areasExpanded,
+    this.onToggleDirectionExpanded,
+    this.onToggleAreasExpanded,
     this.onOpenGeneralDashboard,
+    this.onOpenMayoreoCashWorkspace,
     this.onOpenOperationalDashboard,
     this.onOpenMenudeo,
     this.onOpenMayoreo,
-    this.onOpenMayoreoCashWorkspace,
-    this.onOpenHumanResources,
-    this.onOpenAdministration,
-    this.onOpenFinance,
-    this.onOpenAccounting,
-    this.onOpenCatalogsFleet,
-    this.onOpenCatalogsCompanies,
-    this.onOpenCatalogsMaterials,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: const Color(0xE40B2B2B),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
-        boxShadow: [
-          BoxShadow(
-            blurRadius: 24,
-            color: Colors.black.withValues(alpha: 0.20),
-            offset: const Offset(0, 14),
-          ),
-        ],
-      ),
+    return _DirectionGlassPanel(
+      borderRadius: BorderRadius.circular(24),
+      blurSigma: 30,
+      fillColor: const Color(0xFF173A78).withValues(alpha: 0.28),
+      borderColor: Colors.white.withValues(alpha: 0.34),
+      shadowColor: const Color(0xFF4DC7FF).withValues(alpha: 0.08),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.72),
+      bevelShadowColor: Colors.black.withValues(alpha: 0.16),
+      glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.12),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1125,7 +748,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Mapa ejecutivo',
+                'Navegación Dirección',
                 style: TextStyle(
                   color: Colors.white,
                   fontSize: 16,
@@ -1134,9 +757,9 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
               ),
               SizedBox(height: 4),
               Text(
-                'Dashboards y catálogos',
+                'Páginas de Dirección y áreas habilitadas',
                 style: TextStyle(
-                  color: Color(0xCCFFFFFF),
+                  color: Color(0xB8D5E5FF),
                   fontSize: 12,
                   fontWeight: FontWeight.w600,
                 ),
@@ -1152,19 +775,34 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
               children: [
                 const SizedBox(height: 14),
                 _MenuBlock(
-                  icon: Icons.space_dashboard_rounded,
-                  title: 'Dashboards',
-                  expanded: dashboardsExpanded,
-                  onToggle: onToggleDashboardsExpanded,
+                  icon: Icons.layers_rounded,
+                  title: 'Dirección',
+                  expanded: directionExpanded,
+                  onToggle: onToggleDirectionExpanded,
                   children: [
                     _MenuActionItem(
                       icon: Icons.home_work_rounded,
-                      title: 'Dirección general',
-                      subtitle: 'Resumen ejecutivo multiarea',
+                      title: 'Dashboard Dirección',
+                      subtitle: 'Superficie ejecutiva principal',
                       current: true,
                       onTap: onOpenGeneralDashboard,
                     ),
                     const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.account_balance_wallet_rounded,
+                      title: 'Mayoreo efectivo',
+                      subtitle: 'Página operativa bajo Dirección',
+                      onTap: onOpenMayoreoCashWorkspace,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
+                _MenuBlock(
+                  icon: Icons.space_dashboard_rounded,
+                  title: 'Áreas habilitadas',
+                  expanded: areasExpanded,
+                  onToggle: onToggleAreasExpanded,
+                  children: [
                     _MenuActionItem(
                       icon: Icons.precision_manufacturing_rounded,
                       title: 'Operación',
@@ -1181,77 +819,12 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                     const SizedBox(height: 8),
                     _MenuActionItem(
                       icon: Icons.inventory_2_rounded,
-                      title: 'Mayoreo',
-                      subtitle: 'Preview de paleta y tokens',
+                      title: 'Ventas Mayoreo',
+                      subtitle: 'Preview activo del área',
                       onTap: onOpenMayoreo,
-                    ),
-                    const SizedBox(height: 8),
-                    _MenuActionItem(
-                      icon: Icons.account_balance_wallet_rounded,
-                      title: 'Mayoreo efectivo',
-                      subtitle: 'Subpágina resguardada de Dirección',
-                      onTap: onOpenMayoreoCashWorkspace,
-                    ),
-                    const SizedBox(height: 8),
-                    _MenuActionItem(
-                      icon: Icons.groups_2_rounded,
-                      title: 'Recursos humanos',
-                      subtitle: 'Próximo dashboard',
-                      onTap: onOpenHumanResources,
-                    ),
-                    const SizedBox(height: 8),
-                    _MenuActionItem(
-                      icon: Icons.apartment_rounded,
-                      title: 'Administración',
-                      subtitle: 'Próximo dashboard',
-                      onTap: onOpenAdministration,
-                    ),
-                    const SizedBox(height: 8),
-                    _MenuActionItem(
-                      icon: Icons.payments_rounded,
-                      title: 'Finanzas',
-                      subtitle: 'Próximo dashboard',
-                      onTap: onOpenFinance,
-                    ),
-                    const SizedBox(height: 8),
-                    _MenuActionItem(
-                      icon: Icons.receipt_long_rounded,
-                      title: 'Contabilidad',
-                      subtitle: 'Próximo dashboard',
-                      onTap: onOpenAccounting,
                     ),
                   ],
                 ),
-                const SizedBox(height: 12),
-                if (canOpenCatalogs)
-                  _MenuBlock(
-                    icon: Icons.library_books_rounded,
-                    title: 'Catálogos',
-                    expanded: catalogsExpanded,
-                    onToggle: onToggleCatalogsExpanded,
-                    children: [
-                      _MenuActionItem(
-                        icon: Icons.badge_outlined,
-                        title: 'Flotilla',
-                        subtitle: 'Choferes y unidades',
-                        onTap: onOpenCatalogsFleet,
-                      ),
-                      const SizedBox(height: 8),
-                      _MenuActionItem(
-                        icon: Icons.business_outlined,
-                        title: 'Empresas',
-                        subtitle: 'Empresas y razones sociales',
-                        onTap: onOpenCatalogsCompanies,
-                      ),
-                      const SizedBox(height: 8),
-                      _MenuActionItem(
-                        icon: Icons.category_outlined,
-                        title: 'Materiales',
-                        subtitle: 'General, comercial y operativo',
-                        onTap: onOpenCatalogsMaterials,
-                      ),
-                    ],
-                  ),
               ],
             ),
           ),
@@ -1278,12 +851,16 @@ class _MenuBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-      ),
+    return _DirectionGlassPanel(
+      borderRadius: BorderRadius.circular(18),
+      blurSigma: 22,
+      fillColor: const Color(0xFF1D468A).withValues(alpha: 0.22),
+      borderColor: Colors.white.withValues(alpha: 0.28),
+      shadowColor: const Color(0xFF58C9FF).withValues(alpha: 0.05),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.66),
+      bevelShadowColor: Colors.black.withValues(alpha: 0.14),
+      glowColor: const Color(0xFF6DD7FF).withValues(alpha: 0.08),
+      padding: EdgeInsets.zero,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1312,7 +889,7 @@ class _MenuBlock extends StatelessWidget {
                     child: const Icon(
                       Icons.chevron_right_rounded,
                       size: 20,
-                      color: Colors.white,
+                      color: Color(0xFFE6F2FF),
                     ),
                   ),
                 ],
@@ -1377,14 +954,40 @@ class _MenuActionItemState extends State<_MenuActionItem> {
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
           decoration: BoxDecoration(
             color: highlighted
-                ? Colors.white.withValues(alpha: 0.16)
-                : Colors.white.withValues(alpha: 0.08),
+                ? const Color(0xFF83D3FF).withValues(alpha: 0.16)
+                : Colors.white.withValues(alpha: 0.05),
             borderRadius: BorderRadius.circular(12),
             border: Border.all(
               color: widget.current
-                  ? const Color(0xFFFFD27A)
+                  ? const Color(0xFFFFC979).withValues(alpha: 0.30)
                   : Colors.white.withValues(alpha: 0.18),
             ),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withValues(alpha: highlighted ? 0.16 : 0.08),
+                const Color(
+                  0xFF66CCFF,
+                ).withValues(alpha: highlighted ? 0.10 : 0.04),
+                const Color(0xFF1A3E7C).withValues(alpha: 0.14),
+              ],
+              stops: const [0.0, 0.5, 1.0],
+            ),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: highlighted ? 18 : 8,
+                offset: const Offset(0, 5),
+                color: highlighted
+                    ? const Color(0xFF68D9FF).withValues(alpha: 0.12)
+                    : Colors.black.withValues(alpha: 0.05),
+              ),
+              BoxShadow(
+                blurRadius: 8,
+                offset: const Offset(-2, -2),
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ],
           ),
           child: Row(
             children: [
@@ -1407,7 +1010,7 @@ class _MenuActionItemState extends State<_MenuActionItem> {
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w600,
-                        color: Color(0xCCFFFFFF),
+                        color: Color(0xB9D9E9FF),
                       ),
                     ),
                   ],
@@ -1417,8 +1020,163 @@ class _MenuActionItemState extends State<_MenuActionItem> {
                 const Icon(
                   Icons.check_circle_rounded,
                   size: 18,
-                  color: Color(0xFFFFD27A),
+                  color: Color(0xFFFFD28B),
                 ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DirectionGlassPanel extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final BorderRadius borderRadius;
+  final double blurSigma;
+  final Color fillColor;
+  final Color borderColor;
+  final Color shadowColor;
+  final Color edgeHighlightColor;
+  final Color bevelShadowColor;
+  final Color glowColor;
+  final double? width;
+  final double? height;
+
+  const _DirectionGlassPanel({
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+    this.borderRadius = const BorderRadius.all(Radius.circular(20)),
+    this.blurSigma = 22,
+    this.fillColor = const Color(0x141D4A88),
+    this.borderColor = const Color(0x52FFFFFF),
+    this.shadowColor = const Color(0x12000000),
+    this.edgeHighlightColor = const Color(0xCCFFFFFF),
+    this.bevelShadowColor = const Color(0x18000000),
+    this.glowColor = const Color(0x105BD6FF),
+    this.width,
+    this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+        child: Container(
+          width: width,
+          height: height,
+          decoration: BoxDecoration(
+            color: fillColor,
+            borderRadius: borderRadius,
+            border: Border.all(color: borderColor),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withValues(alpha: 0.10),
+                const Color(0xFF7AD9FF).withValues(alpha: 0.04),
+                const Color(0xFF102D61).withValues(alpha: 0.16),
+              ],
+              stops: const [0.0, 0.38, 1.0],
+            ),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: 18,
+                offset: const Offset(0, 8),
+                color: shadowColor,
+              ),
+              BoxShadow(
+                blurRadius: 16,
+                offset: const Offset(-3, -3),
+                color: glowColor,
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: borderRadius,
+                      gradient: LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          edgeHighlightColor,
+                          const Color(0xFF95EAFF).withValues(alpha: 0.08),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.22, 0.56],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 10,
+                right: 10,
+                top: 8,
+                height: ((height ?? 56) * 0.34).clamp(16.0, 40.0),
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.18),
+                          Colors.white.withValues(alpha: 0.06),
+                          Colors.transparent,
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: borderRadius,
+                      gradient: LinearGradient(
+                        begin: Alignment.topCenter,
+                        end: Alignment.bottomCenter,
+                        colors: [
+                          Colors.transparent,
+                          Colors.transparent,
+                          bevelShadowColor.withValues(alpha: 0.16),
+                        ],
+                        stops: const [0.0, 0.72, 1.0],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: borderRadius,
+                      gradient: RadialGradient(
+                        center: const Alignment(-0.75, -0.85),
+                        radius: 1.0,
+                        colors: [
+                          Colors.white.withValues(alpha: 0.12),
+                          const Color(0xFF76D9FF).withValues(alpha: 0.03),
+                          Colors.transparent,
+                        ],
+                        stops: const [0.0, 0.18, 0.58],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(padding: padding, child: child),
             ],
           ),
         ),

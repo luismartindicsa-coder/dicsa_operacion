@@ -2831,14 +2831,22 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
     final normalizedStatus = _normalizeFinancialStatus(
       baseStatus: _status,
       operationType: widget.row.operationType,
+      isPalomarAccount: widget.row.isPalomarAccount,
       documentNumber: documentNumber,
       documentDate: _documentDate,
       settlementDate: _settlementDate,
       paidAmount: paidAmount,
       approvedAmount: widget.row.approvedAmount,
     );
+    final effectivePaidAmount =
+        widget.row.isPalomarAccount &&
+            normalizedStatus == _MayoreoAccountsStatus.chequeCanjeado &&
+            paidAmount <= 0
+        ? widget.row.approvedAmount
+        : paidAmount;
     final requiresException =
         _isFinalFinancialStatus(normalizedStatus) &&
+        !widget.row.isPalomarAccount &&
         (documentNumber.isEmpty || _documentDate == null);
     if (requiresException) {
       final confirm = await _showFinancialExceptionConfirmDialog(context);
@@ -2852,7 +2860,7 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
         estimatedPaymentDate: _estimatedPaymentDate,
         settlementDate: _settlementDate,
         status: normalizedStatus,
-        paidAmount: paidAmount,
+        paidAmount: effectivePaidAmount,
         financialNotes: _notesC.text.trim(),
       ),
     );
@@ -2865,6 +2873,7 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
     final nextStatus = _normalizeFinancialStatus(
       baseStatus: _status,
       operationType: row.operationType,
+      isPalomarAccount: row.isPalomarAccount,
       documentNumber: _documentNumberC.text.trim(),
       documentDate: _documentDate,
       settlementDate: _settlementDate,
@@ -3006,7 +3015,9 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
                                   Text(
-                                    'Completa documento, fechas y conciliación sin tocar la información operativa de la venta.',
+                                    row.isPalomarAccount
+                                        ? 'Cuenta El Palomar: puedes dejar documento y fechas vacíos y marcar directo como cheque canjeado.'
+                                        : 'Completa documento, fechas y conciliación sin tocar la información operativa de la venta.',
                                     style: TextStyle(
                                       fontSize: 12.5,
                                       fontWeight: FontWeight.w600,
@@ -3023,8 +3034,10 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                                             controller: _documentNumberC,
                                             textCapitalization:
                                                 TextCapitalization.characters,
-                                            decoration: const InputDecoration(
-                                              hintText: 'Captura documento',
+                                            decoration: InputDecoration(
+                                              hintText: row.isPalomarAccount
+                                                  ? 'Opcional para Palomar'
+                                                  : 'Captura documento',
                                             ),
                                           ),
                                         ),
@@ -4211,6 +4224,8 @@ class _MayoreoAccountRow {
 
   double get pendingBalance => approvedAmount - paidAmount;
 
+  bool get isPalomarAccount => _isPalomarClientName(clientName);
+
   bool get isFinanciallyOpen =>
       status != _MayoreoAccountsStatus.pagada &&
       status != _MayoreoAccountsStatus.chequeCanjeado &&
@@ -5023,6 +5038,18 @@ String _monthNameEs(int month) {
   return names[month];
 }
 
+bool _isPalomarClientName(String value) {
+  final normalized = value
+      .toUpperCase()
+      .trim()
+      .replaceAll('Á', 'A')
+      .replaceAll('É', 'E')
+      .replaceAll('Í', 'I')
+      .replaceAll('Ó', 'O')
+      .replaceAll('Ú', 'U');
+  return normalized.contains('PALOMAR');
+}
+
 Future<bool> _showFinancialExceptionConfirmDialog(BuildContext context) async {
   final result = await showDialog<bool>(
     context: context,
@@ -5053,6 +5080,7 @@ Future<bool> _showFinancialExceptionConfirmDialog(BuildContext context) async {
 _MayoreoAccountsStatus _normalizeFinancialStatus({
   required _MayoreoAccountsStatus baseStatus,
   required _MayoreoAccountsOperationType operationType,
+  required bool isPalomarAccount,
   required String documentNumber,
   required DateTime? documentDate,
   required DateTime? settlementDate,
@@ -5070,6 +5098,9 @@ _MayoreoAccountsStatus _normalizeFinancialStatus({
     if (paidAmount <= 0) return _MayoreoAccountsStatus.facturadaPendientePago;
     if (paidAmount < approvedAmount) return _MayoreoAccountsStatus.pagoParcial;
     return _MayoreoAccountsStatus.pagada;
+  }
+  if (isPalomarAccount && baseStatus == _MayoreoAccountsStatus.chequeCanjeado) {
+    return _MayoreoAccountsStatus.chequeCanjeado;
   }
   if (documentNumber.isEmpty || documentDate == null) {
     return _MayoreoAccountsStatus.pendienteCheque;
