@@ -25,6 +25,7 @@ import 'menudeo_filter_widgets.dart';
 import 'menudeo_header_brand.dart';
 import 'menudeo_price_adjustments_page.dart';
 import 'menudeo_session_confirm_dialog.dart';
+import 'menudeo_sorting.dart';
 import 'menudeo_sales_page.dart';
 import 'menudeo_tickets_page.dart';
 import 'menudeo_theme.dart';
@@ -4951,12 +4952,19 @@ Future<T?> _showMenudeoSearchablePickerDialog<T>(
   T? initialValue,
   bool allowClear = false,
 }) {
+  final normalizedOptions = options.toList(growable: false)
+    ..sort((a, b) => compareMenudeoAlpha(a.label, b.label));
   return showDialog<T>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       final searchC = TextEditingController();
       final searchFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
       final itemFocusNodes = <FocusNode>[];
       String q = '';
       int? focusedIndex;
@@ -4972,7 +4980,7 @@ Future<T?> _showMenudeoSearchablePickerDialog<T>(
 
       return StatefulBuilder(
         builder: (context, setLocalState) {
-          final filtered = options
+          final filtered = normalizedOptions
               .where((o) => o.label.toLowerCase().contains(q.toLowerCase()))
               .toList(growable: false);
           syncNodes(filtered.length);
@@ -5185,12 +5193,19 @@ Future<Set<T>?> _showMenudeoMultiSelectDialog<T>(
   required List<_MenudeoPickerOption<T>> options,
   Set<T> initialValues = const {},
 }) {
+  final normalizedOptions = options.toList(growable: false)
+    ..sort((a, b) => compareMenudeoAlpha(a.label, b.label));
   return showDialog<Set<T>>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       final searchC = TextEditingController();
       final searchFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
       final itemFocusNodes = <FocusNode>[];
       final selected = <T>{...initialValues};
       String q = '';
@@ -5207,7 +5222,7 @@ Future<Set<T>?> _showMenudeoMultiSelectDialog<T>(
 
       return StatefulBuilder(
         builder: (context, setLocalState) {
-          final filtered = options
+          final filtered = normalizedOptions
               .where((o) => o.label.toLowerCase().contains(q.toLowerCase()))
               .toList(growable: false);
           syncNodes(filtered.length);

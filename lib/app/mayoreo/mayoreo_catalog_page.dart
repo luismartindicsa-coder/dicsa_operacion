@@ -24,6 +24,7 @@ import 'mayoreo_data_store.dart';
 import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
+import 'mayoreo_sorting.dart';
 import 'mayoreo_theme.dart';
 
 const double _kCatalogActionsW = 86;
@@ -3933,12 +3934,19 @@ Future<T?> _showMayoreoSingleSelectDialog<T>(
   T? initialValue,
   bool allowClear = false,
 }) {
+  final normalizedOptions = options.toList(growable: false)
+    ..sort((a, b) => compareMayoreoAlpha(a.label, b.label));
   return showDialog<T>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       final searchC = TextEditingController();
       final searchFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
       final itemFocusNodes = <FocusNode>[];
       String query = '';
       int? focusedIndex;
@@ -3954,7 +3962,7 @@ Future<T?> _showMayoreoSingleSelectDialog<T>(
 
       return StatefulBuilder(
         builder: (context, setLocalState) {
-          final filtered = options
+          final filtered = normalizedOptions
               .where(
                 (option) =>
                     option.label.toLowerCase().contains(query.toLowerCase()),
@@ -4133,12 +4141,19 @@ Future<Set<T>?> _showMayoreoMultiSelectDialog<T>(
   required List<_MayoreoPickerOption<T>> options,
   Set<T> initialValues = const {},
 }) {
+  final normalizedOptions = options.toList(growable: false)
+    ..sort((a, b) => compareMayoreoAlpha(a.label, b.label));
   return showDialog<Set<T>>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       final searchC = TextEditingController();
       final searchFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
       final itemFocusNodes = <FocusNode>[];
       final selected = <T>{...initialValues};
       String query = '';
@@ -4155,7 +4170,7 @@ Future<Set<T>?> _showMayoreoMultiSelectDialog<T>(
 
       return StatefulBuilder(
         builder: (context, setLocalState) {
-          final filtered = options
+          final filtered = normalizedOptions
               .where(
                 (option) =>
                     option.label.toLowerCase().contains(query.toLowerCase()),

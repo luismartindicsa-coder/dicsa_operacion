@@ -2,17 +2,23 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_navigation.dart';
-import '../mayoreo/mayoreo_cash_entries_exits_page.dart';
+import '../direction/direction_cash_entries_exits_page.dart';
+import '../direction/direction_cash_taxonomy_page.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/utils/number_formatters.dart';
 import 'dashboard_page.dart';
 
 const double _kGeneralDashboardTitleMinWidth = 440;
+const double _kDirectionVaultDeposits = 40350;
+const double _kDirectionVaultExpenses = 8850;
+const String _kDirectionVaultArea = 'direccion_boveda_vouchers';
 
 class GeneralDashboardPage extends StatefulWidget {
   final bool instantOpen;
@@ -79,11 +85,22 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     );
   }
 
-  Future<void> _openMayoreoCashWorkspace() async {
+  Future<void> _openDirectionCashWorkspace() async {
     if (!mounted) return;
     await Navigator.of(context).push(
       appPageRoute(
-        page: const MayoreoCashEntriesExitsPage(instantOpen: true),
+        page: const DirectionCashEntriesExitsPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openDirectionCashCatalog() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const DirectionCashTaxonomyPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -141,7 +158,8 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       directionExpanded: _directionExpanded,
       areasExpanded: _areasExpanded,
       onOpenGeneralDashboard: () async {},
-      onOpenMayoreoCashWorkspace: _openMayoreoCashWorkspace,
+      onOpenDirectionCashWorkspace: _openDirectionCashWorkspace,
+      onOpenDirectionCashCatalog: _openDirectionCashCatalog,
       onOpenOperationalDashboard: _openOperationalDashboard,
       onOpenMenudeo: _openRetailDashboard,
       onOpenMayoreo: _openMayoreoPreviewDashboard,
@@ -157,7 +175,9 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
         constraints: const BoxConstraints(maxWidth: 1440),
         child: SingleChildScrollView(
           padding: const EdgeInsets.only(left: 56, right: 2, bottom: 8),
-          child: const _DirectionDashboardCanvas(),
+          child: _DirectionDashboardCanvas(
+            onOpenVault: _openDirectionCashWorkspace,
+          ),
         ),
       ),
     );
@@ -203,7 +223,9 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
 }
 
 class _DirectionDashboardCanvas extends StatelessWidget {
-  const _DirectionDashboardCanvas();
+  final Future<void> Function() onOpenVault;
+
+  const _DirectionDashboardCanvas({required this.onOpenVault});
 
   @override
   Widget build(BuildContext context) {
@@ -222,47 +244,186 @@ class _DirectionDashboardCanvas extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          Text(
-            'Dashboard ejecutivo en limpieza',
-            style: const TextStyle(
-              fontSize: 34,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-              height: 0.98,
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 820),
+              child: _DirectionVaultHeroCard(onTap: onOpenVault),
             ),
           ),
-          const SizedBox(height: 14),
-          Text(
-            'Este espacio queda libre para construir el dashboard real de Dirección con gráficas, resúmenes y widgets alimentados desde Operación, Menudeo y Ventas Mayoreo.',
-            style: const TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFFDCE8FF),
-              height: 1.55,
-            ),
-          ),
-          const SizedBox(height: 22),
-          Container(
-            width: 92,
-            height: 1.6,
-            decoration: BoxDecoration(
-              color: const Color(0xFF7FD7FF).withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(999),
-            ),
-          ),
-          const SizedBox(height: 22),
-          const Text(
-            'Por ahora quitamos los bloques informativos para dejar la superficie lista para la siguiente etapa de composición ejecutiva.',
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFFBACAE8),
-              height: 1.55,
-            ),
-          ),
-          const SizedBox(height: 420),
+          const SizedBox(height: 540),
         ],
       ),
+    );
+  }
+}
+
+class _DirectionVaultHeroCard extends StatefulWidget {
+  final Future<void> Function() onTap;
+
+  const _DirectionVaultHeroCard({required this.onTap});
+
+  @override
+  State<_DirectionVaultHeroCard> createState() =>
+      _DirectionVaultHeroCardState();
+}
+
+class _DirectionVaultHeroCardState extends State<_DirectionVaultHeroCard> {
+  bool _hovering = false;
+
+  Future<({double deposits, double expenses})> _loadTotals() async {
+    try {
+      final row = await Supabase.instance.client
+          .from('cash_taxonomy_configs')
+          .select('payload')
+          .eq('area', _kDirectionVaultArea)
+          .maybeSingle();
+      final payload = row?['payload'];
+      if (payload is Map && payload['rows'] is List) {
+        var deposits = 0.0;
+        var expenses = 0.0;
+        for (final item in (payload['rows'] as List).whereType<Map>()) {
+          final mapped = Map<String, dynamic>.from(item);
+          final type = (mapped['type'] ?? '').toString();
+          final lines = mapped['lines'];
+          var total = 0.0;
+          if (lines is List) {
+            for (final rawLine in lines.whereType<Map>()) {
+              total +=
+                  double.tryParse(
+                    (Map<String, dynamic>.from(rawLine)['amount'] ?? '0')
+                        .toString(),
+                  ) ??
+                  0;
+            }
+          }
+          if (type == 'deposit') {
+            deposits += total;
+          } else {
+            expenses += total;
+          }
+        }
+        return (deposits: deposits, expenses: expenses);
+      }
+    } catch (_) {}
+    return (
+      deposits: _kDirectionVaultDeposits,
+      expenses: _kDirectionVaultExpenses,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<({double deposits, double expenses})>(
+      future: _loadTotals(),
+      builder: (context, snapshot) {
+        final deposits = snapshot.data?.deposits ?? _kDirectionVaultDeposits;
+        final expenses = snapshot.data?.expenses ?? _kDirectionVaultExpenses;
+        final total = deposits - expenses;
+        return MouseRegion(
+          onEnter: (_) => setState(() => _hovering = true),
+          onExit: (_) => setState(() => _hovering = false),
+          child: AnimatedSlide(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            offset: _hovering ? const Offset(0, -0.018) : Offset.zero,
+            child: AnimatedScale(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              scale: _hovering ? 1.012 : 1,
+              child: _DirectionGlassPanel(
+                padding: const EdgeInsets.fromLTRB(28, 26, 28, 26),
+                borderRadius: BorderRadius.circular(34),
+                blurSigma: 34,
+                fillColor: const Color(0xFF173A78).withValues(alpha: 0.20),
+                borderColor: Colors.white.withValues(alpha: 0.32),
+                shadowColor: Colors.black.withValues(
+                  alpha: _hovering ? 0.24 : 0.18,
+                ),
+                edgeHighlightColor: Colors.white.withValues(
+                  alpha: _hovering ? 0.86 : 0.78,
+                ),
+                bevelShadowColor: Colors.black.withValues(alpha: 0.14),
+                glowColor: const Color(
+                  0xFF66D5FF,
+                ).withValues(alpha: _hovering ? 0.22 : 0.14),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(28),
+                    onTap: () async => widget.onTap(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.16),
+                            ),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.white.withValues(alpha: 0.14),
+                                const Color(0xFF163463).withValues(alpha: 0.74),
+                              ],
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.account_balance_wallet_rounded,
+                                size: 16,
+                                color: Color(0xFF94E7FF),
+                              ),
+                              SizedBox(width: 8),
+                              Text(
+                                'TOTAL DE BÓVEDA',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w900,
+                                  letterSpacing: 1.3,
+                                  color: Color(0xFFB9DFFF),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Text(
+                          formatMoney(total),
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 48,
+                            fontWeight: FontWeight.w900,
+                            height: 0.94,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Entradas ${formatMoney(deposits)}  ·  Salidas ${formatMoney(expenses)}',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFFD3E7FF),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -518,82 +679,63 @@ class _GeneralDashboardBackground extends StatelessWidget {
             ),
           ],
         ),
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: RadialGradient(
-                  center: const Alignment(0.20, 0.12),
-                  radius: 0.98,
-                  colors: [
-                    Colors.white.withValues(alpha: 0.035),
-                    lead.withValues(alpha: 0.09),
-                    trail.withValues(alpha: 0.18),
-                    trail.withValues(alpha: 0.05),
-                    Colors.transparent,
-                  ],
-                  stops: const [0.0, 0.16, 0.42, 0.74, 1.0],
-                ),
-              ),
-            ),
-            DecoratedBox(
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.11),
-                  width: 1.2,
-                ),
-                gradient: SweepGradient(
-                  startAngle: -0.85,
-                  endAngle: 5.30,
-                  colors: [
-                    Colors.white.withValues(alpha: 0.0),
-                    Colors.white.withValues(alpha: 0.16),
-                    Colors.white.withValues(alpha: 0.05),
-                    Colors.white.withValues(alpha: 0.0),
-                  ],
-                  stops: const [0.0, 0.18, 0.34, 1.0],
-                ),
-              ),
-            ),
-            Align(
-              alignment: const Alignment(0, -0.58),
-              child: Container(
-                width: size * 0.42,
-                height: size * 0.14,
+        child: ClipOval(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              DecoratedBox(
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
-                  gradient: LinearGradient(
-                    begin: Alignment.topCenter,
-                    end: Alignment.bottomCenter,
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    width: 1.1,
+                  ),
+                  gradient: RadialGradient(
+                    center: const Alignment(0.18, 0.10),
+                    radius: 0.98,
                     colors: [
-                      Colors.white.withValues(alpha: 0.20),
-                      Colors.white.withValues(alpha: 0.05),
+                      Colors.white.withValues(alpha: 0.02),
+                      lead.withValues(alpha: 0.08),
+                      trail.withValues(alpha: 0.17),
+                      trail.withValues(alpha: 0.05),
                       Colors.transparent,
                     ],
+                    stops: const [0.0, 0.14, 0.42, 0.78, 1.0],
                   ),
                 ),
               ),
-            ),
-            Align(
-              alignment: const Alignment(0.34, -0.10),
-              child: Container(
-                width: size * 0.18,
-                height: size * 0.18,
+              DecoratedBox(
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
                   gradient: RadialGradient(
+                    center: const Alignment(-0.22, -0.28),
+                    radius: 0.52,
                     colors: [
-                      Colors.white.withValues(alpha: 0.06),
+                      Colors.white.withValues(alpha: 0.12),
+                      Colors.white.withValues(alpha: 0.035),
                       Colors.transparent,
                     ],
+                    stops: const [0.0, 0.36, 1.0],
                   ),
                 ),
               ),
-            ),
-          ],
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    center: const Alignment(0.34, 0.42),
+                    radius: 0.88,
+                    colors: [
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.10),
+                    ],
+                    stops: const [0.0, 0.58, 1.0],
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -625,61 +767,60 @@ class _GeneralDashboardBackground extends StatelessWidget {
           ),
         ],
       ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radius),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  Colors.white.withValues(alpha: 0.025),
-                  lead.withValues(alpha: 0.08),
-                  trail.withValues(alpha: 0.18),
-                  trail.withValues(alpha: 0.05),
-                ],
-                stops: const [0.0, 0.16, 0.62, 1.0],
-              ),
-            ),
-          ),
-          DecoratedBox(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radius),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.11)),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withValues(alpha: 0.12),
-                  Colors.white.withValues(alpha: 0.03),
-                  Colors.transparent,
-                ],
-                stops: const [0.0, 0.18, 0.44],
-              ),
-            ),
-          ),
-          Align(
-            alignment: const Alignment(0, -0.86),
-            child: Container(
-              width: width * 0.54,
-              height: height * 0.08,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            DecoratedBox(
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
+                borderRadius: BorderRadius.circular(radius),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+                gradient: RadialGradient(
+                  center: const Alignment(0.0, -0.04),
+                  radius: 1.04,
                   colors: [
-                    Colors.white.withValues(alpha: 0.18),
-                    Colors.white.withValues(alpha: 0.05),
-                    Colors.transparent,
+                    Colors.white.withValues(alpha: 0.015),
+                    lead.withValues(alpha: 0.05),
+                    trail.withValues(alpha: 0.16),
+                    trail.withValues(alpha: 0.04),
                   ],
+                  stops: const [0.0, 0.22, 0.72, 1.0],
                 ),
               ),
             ),
-          ),
-        ],
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radius),
+                gradient: RadialGradient(
+                  center: const Alignment(-0.10, -0.92),
+                  radius: 0.44,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.10),
+                    Colors.white.withValues(alpha: 0.025),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.34, 1.0],
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radius),
+                gradient: RadialGradient(
+                  center: const Alignment(0.28, 0.90),
+                  radius: 1.05,
+                  colors: [
+                    Colors.transparent,
+                    Colors.transparent,
+                    Colors.black.withValues(alpha: 0.08),
+                  ],
+                  stops: const [0.0, 0.62, 1.0],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -711,7 +852,8 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final VoidCallback? onToggleDirectionExpanded;
   final VoidCallback? onToggleAreasExpanded;
   final Future<void> Function()? onOpenGeneralDashboard;
-  final Future<void> Function()? onOpenMayoreoCashWorkspace;
+  final Future<void> Function()? onOpenDirectionCashWorkspace;
+  final Future<void> Function()? onOpenDirectionCashCatalog;
   final Future<void> Function()? onOpenOperationalDashboard;
   final Future<void> Function()? onOpenMenudeo;
   final Future<void> Function()? onOpenMayoreo;
@@ -722,7 +864,8 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onToggleDirectionExpanded,
     this.onToggleAreasExpanded,
     this.onOpenGeneralDashboard,
-    this.onOpenMayoreoCashWorkspace,
+    this.onOpenDirectionCashWorkspace,
+    this.onOpenDirectionCashCatalog,
     this.onOpenOperationalDashboard,
     this.onOpenMenudeo,
     this.onOpenMayoreo,
@@ -790,9 +933,16 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                     const SizedBox(height: 8),
                     _MenuActionItem(
                       icon: Icons.account_balance_wallet_rounded,
-                      title: 'Mayoreo efectivo',
-                      subtitle: 'Página operativa bajo Dirección',
-                      onTap: onOpenMayoreoCashWorkspace,
+                      title: 'Bóveda',
+                      subtitle: 'Captura operativa de efectivo',
+                      onTap: onOpenDirectionCashWorkspace,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.tune_rounded,
+                      title: 'Catálogo Bóveda',
+                      subtitle: 'Conceptos, personas y parámetros',
+                      onTap: onOpenDirectionCashCatalog,
                     ),
                   ],
                 ),

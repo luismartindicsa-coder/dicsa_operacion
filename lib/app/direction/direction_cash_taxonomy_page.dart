@@ -3,30 +3,27 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../menudeo/menudeo_header_brand.dart';
-import '../menudeo/menudeo_metric_card.dart';
+import '../dashboard/general_dashboard_page.dart';
+import 'direction_cash_entries_exits_page.dart';
+import 'direction_theme.dart';
 import '../shared/app_shell.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
-import '../shared/ui_contract_core/theme/contract_buttons.dart';
-import '../shared/ui_contract_core/theme/glass_styles.dart';
-import 'mayoreo_cash_taxonomy_store.dart';
-import 'mayoreo_dashboard_preview_page.dart';
-import 'mayoreo_theme.dart';
+import 'direction_cash_taxonomy_store.dart';
 
-class MayoreoCashTaxonomyPage extends StatefulWidget {
+class DirectionCashTaxonomyPage extends StatefulWidget {
   final bool instantOpen;
 
-  const MayoreoCashTaxonomyPage({super.key, this.instantOpen = false});
+  const DirectionCashTaxonomyPage({super.key, this.instantOpen = false});
 
   @override
-  State<MayoreoCashTaxonomyPage> createState() =>
-      _MayoreoCashTaxonomyPageState();
+  State<DirectionCashTaxonomyPage> createState() =>
+      _DirectionCashTaxonomyPageState();
 }
 
-class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
+class _DirectionCashTaxonomyPageState extends State<DirectionCashTaxonomyPage> {
   bool _menuOpen = false;
-  MayoreoCashMovementType _movementType = MayoreoCashMovementType.entry;
+  DirectionCashMovementType _movementType = DirectionCashMovementType.entry;
   String? _selectedRubric;
   String? _selectedConceptId;
   late final TextEditingController _entryPersonC;
@@ -37,7 +34,7 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
     super.initState();
     _entryPersonC = TextEditingController();
     _exitPersonC = TextEditingController();
-    MayoreoCashTaxonomyStore.instance.addListener(_handleStoreChange);
+    DirectionCashTaxonomyStore.instance.addListener(_handleStoreChange);
     _syncInitialSelection();
   }
 
@@ -45,7 +42,7 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
   void dispose() {
     _entryPersonC.dispose();
     _exitPersonC.dispose();
-    MayoreoCashTaxonomyStore.instance.removeListener(_handleStoreChange);
+    DirectionCashTaxonomyStore.instance.removeListener(_handleStoreChange);
     super.dispose();
   }
 
@@ -74,18 +71,18 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
     }
   }
 
-  List<MayoreoCashRubricDefinition> get _rubricsForCurrentType =>
-      MayoreoCashTaxonomyStore.instance.rubricsFor(_movementType);
+  List<DirectionCashRubricDefinition> get _rubricsForCurrentType =>
+      DirectionCashTaxonomyStore.instance.rubricsFor(_movementType);
 
-  List<MayoreoCashConceptDefinition> get _conceptsForCurrentRubric {
+  List<DirectionCashConceptDefinition> get _conceptsForCurrentRubric {
     final rubric = _rubricsForCurrentType.where(
       (item) => item.label == _selectedRubric,
     );
-    if (rubric.isEmpty) return const <MayoreoCashConceptDefinition>[];
+    if (rubric.isEmpty) return const <DirectionCashConceptDefinition>[];
     return rubric.first.concepts;
   }
 
-  MayoreoCashConceptDefinition? get _selectedConcept {
+  DirectionCashConceptDefinition? get _selectedConcept {
     final concepts = _conceptsForCurrentRubric;
     for (final concept in concepts) {
       if (concept.id == _selectedConceptId) return concept;
@@ -97,7 +94,7 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       appPageRoute(
-        page: const MayoreoDashboardPreviewPage(instantOpen: true),
+        page: const GeneralDashboardPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -106,16 +103,30 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
 
   void _handleNavigationAction(String label) {
     switch (label) {
-      case 'Dashboard Mayoreo':
+      case 'Dashboard Dirección':
         unawaited(_openDashboard());
         return;
-      case 'Catálogo efectivo':
+      case 'Catálogo Bóveda':
         if (_menuOpen) setState(() => _menuOpen = false);
+        return;
+      case 'Bóveda':
+        unawaited(_openEntriesExitsPage());
         return;
       default:
         if (_menuOpen) setState(() => _menuOpen = false);
         return;
     }
+  }
+
+  Future<void> _openEntriesExitsPage() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const DirectionCashEntriesExitsPage(instantOpen: true),
+        duration: const Duration(milliseconds: 300),
+        reverseDuration: const Duration(milliseconds: 220),
+      ),
+    );
   }
 
   Future<void> _addConcept() async {
@@ -126,11 +137,11 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
     );
     final label = (created ?? '').trim();
     if (label.isEmpty || _selectedRubric == null) return;
-    final concept = MayoreoCashConceptDefinition(
-      id: MayoreoCashTaxonomyStore.instance.nextConceptId(),
+    final concept = DirectionCashConceptDefinition(
+      id: DirectionCashTaxonomyStore.instance.nextConceptId(),
       label: label,
     );
-    MayoreoCashTaxonomyStore.instance.upsertConcept(
+    DirectionCashTaxonomyStore.instance.upsertConcept(
       movementType: _movementType,
       rubricLabel: _selectedRubric!,
       concept: concept,
@@ -142,17 +153,17 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
     final concept = _selectedConcept;
     final rubric = _selectedRubric;
     if (concept == null || rubric == null) return;
-    MayoreoCashTaxonomyStore.instance.deleteConcept(
+    DirectionCashTaxonomyStore.instance.deleteConcept(
       movementType: _movementType,
       rubricLabel: rubric,
       conceptId: concept.id,
     );
   }
 
-  void _saveConcept(MayoreoCashConceptDefinition concept) {
+  void _saveConcept(DirectionCashConceptDefinition concept) {
     final rubric = _selectedRubric;
     if (rubric == null) return;
-    MayoreoCashTaxonomyStore.instance.upsertConcept(
+    DirectionCashTaxonomyStore.instance.upsertConcept(
       movementType: _movementType,
       rubricLabel: rubric,
       concept: concept,
@@ -161,9 +172,9 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = mayoreoAreaTokens;
+    final tokens = directionAreaTokens;
     return AreaThemeScope(
-      tokens: mayoreoAreaTokens,
+      tokens: directionAreaTokens,
       child: Focus(
         autofocus: true,
         onKeyEvent: (_, event) {
@@ -175,22 +186,22 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
           return KeyEventResult.ignored;
         },
         child: AppShell(
-          background: const _TaxonomyBackground(),
+          background: const DirectionExecutiveBackground(),
           wrapBodyInGlass: false,
           animateHeaderSlots: false,
           animateBody: !widget.instantOpen,
           headerBodySpacing: 8,
           padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
-          leadingBuilder: (_, _) => _TaxonomyHeaderButton(
+          leadingBuilder: (_, _) => DirectionHeaderButton(
             label: _menuOpen ? 'Cerrar panel' : 'Navegación',
             icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
             onTapSync: () => setState(() => _menuOpen = !_menuOpen),
           ),
-          centerBuilder: (_, contentAnim) => MenudeoHeaderBrand(
+          centerBuilder: (_, contentAnim) => DirectionHeaderBrand(
             contentAnim: contentAnim,
-            title: 'Catálogo Efectivo',
+            title: 'Catálogo Bóveda',
           ),
-          trailingBuilder: (_, _) => _TaxonomyHeaderButton(
+          trailingBuilder: (_, _) => DirectionHeaderButton(
             label: 'Dashboard',
             icon: Icons.space_dashboard_rounded,
             onTap: _openDashboard,
@@ -207,43 +218,57 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
                         spacing: 10,
                         runSpacing: 10,
                         children: [
-                          MenudeoMetricCard(
+                          DirectionMetricCard(
                             icon: Icons.schema_rounded,
                             title: 'RUBROS',
                             value: '${_rubricsForCurrentType.length}',
                             detail:
-                                _movementType == MayoreoCashMovementType.entry
+                                _movementType == DirectionCashMovementType.entry
                                 ? 'Configuración de entradas'
                                 : 'Configuración de salidas',
-                            accent: tokens.primaryStrong,
+                            accent: tokens.primary,
                           ),
-                          MenudeoMetricCard(
+                          DirectionMetricCard(
                             icon: Icons.account_tree_rounded,
                             title: 'CONCEPTOS',
                             value: '${_conceptsForCurrentRubric.length}',
                             detail: _selectedRubric ?? 'Sin rubro activo',
-                            accent: tokens.primary,
+                            accent: tokens.accent,
                           ),
                         ],
                       ),
                       const SizedBox(height: 14),
-                      ContractGlassCard(
+                      DirectionGlassPanel(
                         padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                        borderRadius: BorderRadius.circular(24),
+                        blurSigma: 28,
+                        fillColor: const Color(
+                          0xFF173A78,
+                        ).withValues(alpha: 0.24),
+                        borderColor: Colors.white.withValues(alpha: 0.24),
+                        shadowColor: Colors.black.withValues(alpha: 0.10),
+                        edgeHighlightColor: Colors.white.withValues(
+                          alpha: 0.62,
+                        ),
+                        bevelShadowColor: Colors.black.withValues(alpha: 0.18),
+                        glowColor: const Color(
+                          0xFF66D5FF,
+                        ).withValues(alpha: 0.08),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            SegmentedButton<MayoreoCashMovementType>(
+                            SegmentedButton<DirectionCashMovementType>(
                               segments: const [
                                 ButtonSegment(
-                                  value: MayoreoCashMovementType.entry,
+                                  value: DirectionCashMovementType.entry,
                                   label: Text('Entradas'),
                                 ),
                                 ButtonSegment(
-                                  value: MayoreoCashMovementType.exit,
+                                  value: DirectionCashMovementType.exit,
                                   label: Text('Salidas'),
                                 ),
                               ],
-                              selected: <MayoreoCashMovementType>{
+                              selected: <DirectionCashMovementType>{
                                 _movementType,
                               },
                               onSelectionChanged: (selection) {
@@ -262,6 +287,28 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
                                   ChoiceChip(
                                     label: Text(rubric.label),
                                     selected: _selectedRubric == rubric.label,
+                                    selectedColor: const Color(
+                                      0xFF22477F,
+                                    ).withValues(alpha: 0.92),
+                                    backgroundColor: const Color(
+                                      0xFF14305E,
+                                    ).withValues(alpha: 0.52),
+                                    checkmarkColor: kDirectionSurfaceText,
+                                    labelStyle: TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: _selectedRubric == rubric.label
+                                          ? kDirectionSurfaceText
+                                          : kDirectionMutedText,
+                                    ),
+                                    side: BorderSide(
+                                      color: _selectedRubric == rubric.label
+                                          ? const Color(
+                                              0xFF7ED7FF,
+                                            ).withValues(alpha: 0.40)
+                                          : Colors.white.withValues(
+                                              alpha: 0.16,
+                                            ),
+                                    ),
                                     onSelected: (_) {
                                       setState(() {
                                         _selectedRubric = rubric.label;
@@ -275,29 +322,43 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
                         ),
                       ),
                       const SizedBox(height: 14),
-                      ContractGlassCard(
+                      DirectionGlassPanel(
                         padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                        borderRadius: BorderRadius.circular(24),
+                        blurSigma: 28,
+                        fillColor: const Color(
+                          0xFF173A78,
+                        ).withValues(alpha: 0.24),
+                        borderColor: Colors.white.withValues(alpha: 0.24),
+                        shadowColor: Colors.black.withValues(alpha: 0.10),
+                        edgeHighlightColor: Colors.white.withValues(
+                          alpha: 0.62,
+                        ),
+                        bevelShadowColor: Colors.black.withValues(alpha: 0.18),
+                        glowColor: const Color(
+                          0xFF66D5FF,
+                        ).withValues(alpha: 0.08),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Expanded(
                               child: _PeopleCatalogCard(
                                 title: 'Recibido de',
-                                people: MayoreoCashTaxonomyStore.instance
-                                    .peopleFor(MayoreoCashMovementType.entry),
+                                people: DirectionCashTaxonomyStore.instance
+                                    .peopleFor(DirectionCashMovementType.entry),
                                 controller: _entryPersonC,
-                                onAdd: (value) => MayoreoCashTaxonomyStore
+                                onAdd: (value) => DirectionCashTaxonomyStore
                                     .instance
                                     .addPersonOption(
                                       movementType:
-                                          MayoreoCashMovementType.entry,
+                                          DirectionCashMovementType.entry,
                                       label: value,
                                     ),
-                                onDelete: (value) => MayoreoCashTaxonomyStore
+                                onDelete: (value) => DirectionCashTaxonomyStore
                                     .instance
                                     .deletePersonOption(
                                       movementType:
-                                          MayoreoCashMovementType.entry,
+                                          DirectionCashMovementType.entry,
                                       label: value,
                                     ),
                               ),
@@ -306,21 +367,21 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
                             Expanded(
                               child: _PeopleCatalogCard(
                                 title: 'Entregado a',
-                                people: MayoreoCashTaxonomyStore.instance
-                                    .peopleFor(MayoreoCashMovementType.exit),
+                                people: DirectionCashTaxonomyStore.instance
+                                    .peopleFor(DirectionCashMovementType.exit),
                                 controller: _exitPersonC,
-                                onAdd: (value) => MayoreoCashTaxonomyStore
+                                onAdd: (value) => DirectionCashTaxonomyStore
                                     .instance
                                     .addPersonOption(
                                       movementType:
-                                          MayoreoCashMovementType.exit,
+                                          DirectionCashMovementType.exit,
                                       label: value,
                                     ),
-                                onDelete: (value) => MayoreoCashTaxonomyStore
+                                onDelete: (value) => DirectionCashTaxonomyStore
                                     .instance
                                     .deletePersonOption(
                                       movementType:
-                                          MayoreoCashMovementType.exit,
+                                          DirectionCashMovementType.exit,
                                       label: value,
                                     ),
                               ),
@@ -335,13 +396,33 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
                           children: [
                             SizedBox(
                               width: 320,
-                              child: ContractGlassCard(
+                              child: DirectionGlassPanel(
                                 padding: const EdgeInsets.fromLTRB(
                                   14,
                                   14,
                                   14,
                                   14,
                                 ),
+                                borderRadius: BorderRadius.circular(24),
+                                blurSigma: 28,
+                                fillColor: const Color(
+                                  0xFF173A78,
+                                ).withValues(alpha: 0.24),
+                                borderColor: Colors.white.withValues(
+                                  alpha: 0.22,
+                                ),
+                                shadowColor: Colors.black.withValues(
+                                  alpha: 0.10,
+                                ),
+                                edgeHighlightColor: Colors.white.withValues(
+                                  alpha: 0.60,
+                                ),
+                                bevelShadowColor: Colors.black.withValues(
+                                  alpha: 0.18,
+                                ),
+                                glowColor: const Color(
+                                  0xFF66D5FF,
+                                ).withValues(alpha: 0.08),
                                 child: Column(
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
@@ -358,8 +439,32 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
                                           ),
                                         ),
                                         FilledButton(
-                                          style: contractPrimaryButtonStyle(
-                                            context,
+                                          style: FilledButton.styleFrom(
+                                            backgroundColor: const Color(
+                                              0xFF1E4C8F,
+                                            ).withValues(alpha: 0.94),
+                                            foregroundColor: Colors.white,
+                                            disabledBackgroundColor:
+                                                const Color(
+                                                  0xFF26456F,
+                                                ).withValues(alpha: 0.54),
+                                            disabledForegroundColor: Colors
+                                                .white
+                                                .withValues(alpha: 0.45),
+                                            padding: const EdgeInsets.symmetric(
+                                              horizontal: 14,
+                                              vertical: 10,
+                                            ),
+                                            shape: RoundedRectangleBorder(
+                                              borderRadius:
+                                                  BorderRadius.circular(16),
+                                            ),
+                                            side: BorderSide(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.16,
+                                              ),
+                                            ),
+                                            elevation: 0,
                                           ),
                                           onPressed: _selectedRubric == null
                                               ? null
@@ -392,24 +497,23 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
                                               padding: const EdgeInsets.all(12),
                                               decoration: BoxDecoration(
                                                 gradient: selected
-                                                    ? kMayoreoPanelGradient
+                                                    ? kDirectionSelectionGradient
                                                     : null,
                                                 color: selected
                                                     ? null
-                                                    : Colors.white.withValues(
-                                                        alpha: 0.72,
-                                                      ),
+                                                    : const Color(
+                                                        0xFF16376C,
+                                                      ).withValues(alpha: 0.30),
                                                 borderRadius:
                                                     BorderRadius.circular(18),
                                                 border: Border.all(
                                                   color: selected
-                                                      ? tokens.primaryStrong
-                                                            .withValues(
-                                                              alpha: 0.24,
-                                                            )
+                                                      ? Colors.white.withValues(
+                                                          alpha: 0.34,
+                                                        )
                                                       : tokens.border
                                                             .withValues(
-                                                              alpha: 0.48,
+                                                              alpha: 0.34,
                                                             ),
                                                 ),
                                               ),
@@ -440,7 +544,8 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
                                                       fontSize: 12.5,
                                                       fontWeight:
                                                           FontWeight.w700,
-                                                      color: kMayoreoMutedInk,
+                                                      color:
+                                                          kDirectionMutedText,
                                                     ),
                                                   ),
                                                 ],
@@ -479,9 +584,7 @@ class _MayoreoCashTaxonomyPageState extends State<MayoreoCashTaxonomyPage> {
                     opacity: _menuOpen ? 1 : 0,
                     child: GestureDetector(
                       onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
-                      ),
+                      child: Container(color: Colors.transparent),
                     ),
                   ),
                 ),
@@ -524,22 +627,62 @@ class _NewConceptDialogState extends State<_NewConceptDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Nuevo concepto'),
-      content: TextFormField(
-        autofocus: true,
-        initialValue: _value,
-        onChanged: (value) => _value = value,
-        onFieldSubmitted: (_) => _submit(),
-        decoration: const InputDecoration(labelText: 'Nombre del concepto'),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancelar'),
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: DirectionGlassPanel(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+        borderRadius: BorderRadius.circular(28),
+        blurSigma: 30,
+        fillColor: const Color(0xFF10254B).withValues(alpha: 0.72),
+        borderColor: Colors.white.withValues(alpha: 0.24),
+        shadowColor: Colors.black.withValues(alpha: 0.24),
+        edgeHighlightColor: Colors.white.withValues(alpha: 0.68),
+        bevelShadowColor: Colors.black.withValues(alpha: 0.18),
+        glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.08),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Nuevo concepto',
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w900,
+                color: kDirectionSurfaceText,
+              ),
+            ),
+            const SizedBox(height: 14),
+            TextFormField(
+              autofocus: true,
+              initialValue: _value,
+              onChanged: (value) => _value = value,
+              onFieldSubmitted: (_) => _submit(),
+              style: const TextStyle(
+                color: kDirectionSurfaceText,
+                fontWeight: FontWeight.w700,
+              ),
+              decoration: _directionInputDecoration('Nombre del concepto'),
+            ),
+            const SizedBox(height: 14),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton(
+                  style: _directionSecondaryButtonStyle(),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                const SizedBox(width: 10),
+                FilledButton(
+                  style: _directionPrimaryButtonStyle(),
+                  onPressed: _submit,
+                  child: const Text('Crear'),
+                ),
+              ],
+            ),
+          ],
         ),
-        FilledButton(onPressed: _submit, child: const Text('Crear')),
-      ],
+      ),
     );
   }
 }
@@ -574,7 +717,7 @@ class _PeopleCatalogCard extends StatelessWidget {
           runSpacing: 8,
           children: [
             for (final item in people)
-              Chip(label: Text(item), onDeleted: () => onDelete(item)),
+              _DirectionValueChip(label: item, onDeleted: () => onDelete(item)),
           ],
         ),
         const SizedBox(height: 8),
@@ -588,7 +731,7 @@ class _PeopleCatalogCard extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             FilledButton(
-              style: contractPrimaryButtonStyle(context),
+              style: _directionPrimaryButtonStyle(),
               onPressed: () {
                 final value = controller.text.trim();
                 if (value.isEmpty) return;
@@ -605,8 +748,8 @@ class _PeopleCatalogCard extends StatelessWidget {
 }
 
 class _ConceptEditorCard extends StatefulWidget {
-  final MayoreoCashConceptDefinition concept;
-  final ValueChanged<MayoreoCashConceptDefinition> onSave;
+  final DirectionCashConceptDefinition concept;
+  final ValueChanged<DirectionCashConceptDefinition> onSave;
   final VoidCallback onDelete;
 
   const _ConceptEditorCard({
@@ -628,7 +771,7 @@ class _ConceptEditorCardState extends State<_ConceptEditorCard> {
   late TextEditingController _subconceptLabelC;
   late TextEditingController _commentLabelC;
   late TextEditingController _newSubconceptC;
-  late MayoreoCashConceptDefinition _draft;
+  late DirectionCashConceptDefinition _draft;
 
   @override
   void initState() {
@@ -645,7 +788,7 @@ class _ConceptEditorCardState extends State<_ConceptEditorCard> {
     }
   }
 
-  void _bootstrap(MayoreoCashConceptDefinition concept) {
+  void _bootstrap(DirectionCashConceptDefinition concept) {
     _draft = concept;
     _labelC = TextEditingController(text: concept.label);
     _quantityLabelC = TextEditingController(text: concept.quantityLabel);
@@ -703,8 +846,16 @@ class _ConceptEditorCardState extends State<_ConceptEditorCard> {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return ContractGlassCard(
+    return DirectionGlassPanel(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      borderRadius: BorderRadius.circular(24),
+      blurSigma: 28,
+      fillColor: const Color(0xFF173A78).withValues(alpha: 0.24),
+      borderColor: Colors.white.withValues(alpha: 0.22),
+      shadowColor: Colors.black.withValues(alpha: 0.10),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.60),
+      bevelShadowColor: Colors.black.withValues(alpha: 0.18),
+      glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.08),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -718,13 +869,13 @@ class _ConceptEditorCardState extends State<_ConceptEditorCard> {
                   ),
                 ),
                 OutlinedButton(
-                  style: contractSecondaryButtonStyle(context),
+                  style: _directionSecondaryButtonStyle(),
                   onPressed: widget.onDelete,
                   child: const Text('Eliminar'),
                 ),
                 const SizedBox(width: 8),
                 FilledButton(
-                  style: contractPrimaryButtonStyle(context),
+                  style: _directionPrimaryButtonStyle(),
                   onPressed: _applySave,
                   child: const Text('Guardar'),
                 ),
@@ -845,8 +996,8 @@ class _ConceptEditorCardState extends State<_ConceptEditorCard> {
               runSpacing: 8,
               children: [
                 for (final item in _draft.subconcepts)
-                  Chip(
-                    label: Text(item),
+                  _DirectionValueChip(
+                    label: item,
                     onDeleted: () => setState(
                       () => _draft = _draft.copyWith(
                         subconcepts: _draft.subconcepts
@@ -868,7 +1019,7 @@ class _ConceptEditorCardState extends State<_ConceptEditorCard> {
                 ),
                 const SizedBox(width: 8),
                 FilledButton(
-                  style: contractPrimaryButtonStyle(context),
+                  style: _directionPrimaryButtonStyle(),
                   onPressed: () {
                     final value = _newSubconceptC.text.trim();
                     if (value.isEmpty) return;
@@ -893,7 +1044,7 @@ class _ConceptEditorCardState extends State<_ConceptEditorCard> {
 }
 
 class _ConceptCapturePreview extends StatelessWidget {
-  final MayoreoCashConceptDefinition concept;
+  final DirectionCashConceptDefinition concept;
 
   const _ConceptCapturePreview({required this.concept});
 
@@ -919,14 +1070,12 @@ class _ConceptCapturePreview extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            Colors.white.withValues(alpha: 0.82),
-            mayoreoAreaTokens.surfaceTint.withValues(alpha: 0.78),
+            Colors.white.withValues(alpha: 0.08),
+            const Color(0xFF183766).withValues(alpha: 0.86),
           ],
         ),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(
-          color: mayoreoAreaTokens.border.withValues(alpha: 0.62),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -945,7 +1094,7 @@ class _ConceptCapturePreview extends StatelessWidget {
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
-              color: kMayoreoMutedInk,
+              color: kDirectionMutedText,
             ),
           ),
           const SizedBox(height: 12),
@@ -960,17 +1109,25 @@ class _ConceptCapturePreview extends StatelessWidget {
                     vertical: 10,
                   ),
                   decoration: BoxDecoration(
-                    gradient: kMayoreoPanelGradient,
+                    gradient: const LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Color(0x1FFFFFFF),
+                        Color(0x332A4F89),
+                        Color(0x55112952),
+                      ],
+                    ),
                     borderRadius: BorderRadius.circular(16),
                     border: Border.all(
-                      color: mayoreoAreaTokens.border.withValues(alpha: 0.72),
+                      color: Colors.white.withValues(alpha: 0.24),
                     ),
                   ),
                   child: Text(
                     field,
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
-                      color: tokens.primaryStrong,
+                      color: kDirectionSurfaceText,
                     ),
                   ),
                 ),
@@ -994,9 +1151,11 @@ class _ConceptCapturePreview extends StatelessWidget {
               runSpacing: 8,
               children: [
                 for (final item in concept.subconcepts.take(6))
-                  Chip(label: Text(item)),
+                  _DirectionValueChip(label: item),
                 if (concept.subconcepts.length > 6)
-                  Chip(label: Text('+${concept.subconcepts.length - 6} mas')),
+                  _DirectionValueChip(
+                    label: '+${concept.subconcepts.length - 6} mas',
+                  ),
               ],
             ),
           ],
@@ -1017,6 +1176,81 @@ class _ConceptCapturePreview extends StatelessWidget {
   }
 }
 
+ButtonStyle _directionPrimaryButtonStyle() {
+  return FilledButton.styleFrom(
+    backgroundColor: const Color(0xFF1F4D8F).withValues(alpha: 0.96),
+    foregroundColor: Colors.white,
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
+    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+    elevation: 0,
+  );
+}
+
+ButtonStyle _directionSecondaryButtonStyle() {
+  return OutlinedButton.styleFrom(
+    foregroundColor: kDirectionSurfaceText,
+    backgroundColor: const Color(0xFF15305D).withValues(alpha: 0.48),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+  );
+}
+
+InputDecoration _directionInputDecoration(String label) {
+  return InputDecoration(
+    labelText: label,
+    labelStyle: const TextStyle(
+      color: kDirectionSubtleText,
+      fontWeight: FontWeight.w700,
+    ),
+    filled: true,
+    fillColor: const Color(0xFF153262).withValues(alpha: 0.42),
+    border: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(18),
+      borderSide: BorderSide(color: directionAreaTokens.border),
+    ),
+    enabledBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(18),
+      borderSide: BorderSide(
+        color: directionAreaTokens.border.withValues(alpha: 0.48),
+      ),
+    ),
+    focusedBorder: OutlineInputBorder(
+      borderRadius: BorderRadius.circular(18),
+      borderSide: BorderSide(
+        color: directionAreaTokens.primary.withValues(alpha: 0.72),
+      ),
+    ),
+  );
+}
+
+class _DirectionValueChip extends StatelessWidget {
+  final String label;
+  final VoidCallback? onDeleted;
+
+  const _DirectionValueChip({required this.label, this.onDeleted});
+
+  @override
+  Widget build(BuildContext context) {
+    return Chip(
+      label: Text(
+        label,
+        style: const TextStyle(
+          color: kDirectionSurfaceText,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      backgroundColor: const Color(0xFF16376C).withValues(alpha: 0.56),
+      deleteIconColor: kDirectionMutedText,
+      side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+      onDeleted: onDeleted,
+    );
+  }
+}
+
 class _EditorTextField extends StatelessWidget {
   final String label;
   final TextEditingController controller;
@@ -1027,21 +1261,11 @@ class _EditorTextField extends StatelessWidget {
   Widget build(BuildContext context) {
     return TextField(
       controller: controller,
-      decoration: InputDecoration(
-        labelText: label,
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.74),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(color: mayoreoAreaTokens.border),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(
-            color: mayoreoAreaTokens.border.withValues(alpha: 0.72),
-          ),
-        ),
+      style: const TextStyle(
+        color: kDirectionSurfaceText,
+        fontWeight: FontWeight.w700,
       ),
+      decoration: _directionInputDecoration(label),
     );
   }
 }
@@ -1060,8 +1284,22 @@ class _EditorToggleChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return FilterChip(
-      label: Text(label),
+      label: Text(
+        label,
+        style: TextStyle(
+          color: value ? kDirectionSurfaceText : kDirectionMutedText,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
       selected: value,
+      selectedColor: const Color(0xFF22477F).withValues(alpha: 0.92),
+      backgroundColor: const Color(0xFF14305E).withValues(alpha: 0.52),
+      checkmarkColor: kDirectionSurfaceText,
+      side: BorderSide(
+        color: value
+            ? const Color(0xFF7ED7FF).withValues(alpha: 0.40)
+            : Colors.white.withValues(alpha: 0.16),
+      ),
       onSelected: onChanged,
     );
   }
@@ -1072,107 +1310,26 @@ class _EmptyEditorState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ContractGlassCard(
+    return DirectionGlassPanel(
       padding: const EdgeInsets.all(24),
+      borderRadius: BorderRadius.circular(24),
+      blurSigma: 28,
+      fillColor: const Color(0xFF173A78).withValues(alpha: 0.24),
+      borderColor: Colors.white.withValues(alpha: 0.22),
+      shadowColor: Colors.black.withValues(alpha: 0.10),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.60),
+      bevelShadowColor: Colors.black.withValues(alpha: 0.18),
+      glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.08),
       child: const Center(
         child: Text(
           'Selecciona un concepto para editar sus parámetros.',
-          style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
-        ),
-      ),
-    );
-  }
-}
-
-class _TaxonomyHeaderButton extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
-
-  const _TaxonomyHeaderButton({
-    required this.label,
-    required this.icon,
-    this.onTap,
-    this.onTapSync,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: () async {
-          if (onTap != null) {
-            await onTap!();
-          } else {
-            onTapSync?.call();
-          }
-        },
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            gradient: kMayoreoPanelGradient,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.62)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: tokens.primaryStrong),
-              const SizedBox(width: 10),
-              Text(
-                label,
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
-                  color: tokens.primaryStrong,
-                ),
-              ),
-            ],
+          style: TextStyle(
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+            color: kDirectionMutedText,
           ),
         ),
       ),
-    );
-  }
-}
-
-class _TaxonomyBackground extends StatelessWidget {
-  const _TaxonomyBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Stack(
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                tokens.surfaceTint,
-                const Color(0xFFFFF1B8),
-                tokens.accent.withValues(alpha: 0.34),
-              ],
-            ),
-          ),
-          child: const SizedBox.expand(),
-        ),
-        Positioned(
-          left: -200,
-          top: -120,
-          child: Container(
-            width: 620,
-            height: 620,
-            decoration: const BoxDecoration(
-              shape: BoxShape.circle,
-              gradient: kMayoreoPanelGradient,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -1184,39 +1341,71 @@ class _TaxonomySidePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return ContractGlassCard(
-      borderRadius: BorderRadius.circular(28),
-      padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
+    return DirectionGlassPanel(
+      borderRadius: BorderRadius.circular(24),
+      blurSigma: 30,
+      fillColor: const Color(0xFF173A78).withValues(alpha: 0.28),
+      borderColor: Colors.white.withValues(alpha: 0.34),
+      shadowColor: const Color(0xFF4DC7FF).withValues(alpha: 0.08),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.72),
+      bevelShadowColor: Colors.black.withValues(alpha: 0.16),
+      glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.12),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Mayoreo',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
-              color: tokens.primaryStrong,
-            ),
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Navegación Dirección',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              SizedBox(height: 4),
+              Text(
+                'Páginas activas del módulo ejecutivo',
+                style: TextStyle(
+                  color: Color(0xB8D5E5FF),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           const Text(
-            'MENU',
-            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900),
+            'MODULO DIRECCION',
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.5,
+              color: kDirectionSubtleText,
+            ),
           ),
           const SizedBox(height: 8),
           _TaxonomyNavItem(
             icon: Icons.tune_rounded,
-            title: 'Catálogo efectivo',
+            title: 'Catálogo Bóveda',
             subtitle: 'Conceptos y subconceptos',
             highlighted: true,
           ),
           const SizedBox(height: 8),
           _TaxonomyNavItem(
+            icon: Icons.account_balance_wallet_rounded,
+            title: 'Bóveda',
+            subtitle: 'Captura operativa de efectivo',
+            onTapSync: () => onNavigate('Bóveda'),
+          ),
+          const SizedBox(height: 8),
+          _TaxonomyNavItem(
             icon: Icons.space_dashboard_rounded,
-            title: 'Dashboard Mayoreo',
-            subtitle: 'Vista general del área',
-            onTapSync: () => onNavigate('Dashboard Mayoreo'),
+            title: 'Dashboard Dirección',
+            subtitle: 'Vista global del negocio',
+            onTapSync: () => onNavigate('Dashboard Dirección'),
           ),
         ],
       ),
@@ -1242,6 +1431,7 @@ class _TaxonomyNavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final darkText = highlighted;
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1250,14 +1440,25 @@ class _TaxonomyNavItem extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.all(14),
           decoration: BoxDecoration(
-            gradient: highlighted ? kMayoreoPanelGradient : null,
-            color: highlighted ? null : Colors.white.withValues(alpha: 0.72),
+            gradient: highlighted ? kDirectionSelectionGradient : null,
+            color: highlighted
+                ? null
+                : const Color(0xFF16376C).withValues(alpha: 0.26),
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: tokens.border.withValues(alpha: 0.48)),
+            border: Border.all(
+              color: highlighted
+                  ? const Color(0xFF7ED7FF).withValues(alpha: 0.34)
+                  : tokens.border.withValues(alpha: 0.30),
+            ),
           ),
           child: Row(
             children: [
-              Icon(icon, color: tokens.primaryStrong),
+              Icon(
+                icon,
+                color: darkText
+                    ? const Color(0xFF0A1834)
+                    : kDirectionSurfaceText,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -1267,15 +1468,20 @@ class _TaxonomyNavItem extends StatelessWidget {
                       title,
                       style: TextStyle(
                         fontWeight: FontWeight.w800,
-                        color: tokens.primaryStrong,
+                        color: darkText
+                            ? const Color(0xFF0A1834)
+                            : kDirectionSurfaceText,
                       ),
                     ),
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
+                        color: darkText
+                            ? const Color(0xAA0A1834)
+                            : kDirectionMutedText,
                       ),
                     ),
                   ],

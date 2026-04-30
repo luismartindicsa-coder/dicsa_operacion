@@ -4,9 +4,12 @@ import 'package:flutter/foundation.dart';
 
 import '../shared/cash_taxonomy/cash_taxonomy_repository.dart';
 
-enum MayoreoCashMovementType { entry, exit }
+const String _kDirectionCashArea = 'direccion';
+const String _kLegacyMayoreoCashArea = 'mayoreo';
 
-class MayoreoCashConceptDefinition {
+enum DirectionCashMovementType { entry, exit }
+
+class DirectionCashConceptDefinition {
   final String id;
   final String label;
   final bool requiresUnit;
@@ -31,7 +34,7 @@ class MayoreoCashConceptDefinition {
   final String subconceptLabel;
   final String commentLabel;
 
-  const MayoreoCashConceptDefinition({
+  const DirectionCashConceptDefinition({
     required this.id,
     required this.label,
     this.requiresUnit = false,
@@ -57,7 +60,7 @@ class MayoreoCashConceptDefinition {
     this.commentLabel = 'Comentario corto',
   });
 
-  MayoreoCashConceptDefinition copyWith({
+  DirectionCashConceptDefinition copyWith({
     String? id,
     String? label,
     bool? requiresUnit,
@@ -82,7 +85,7 @@ class MayoreoCashConceptDefinition {
     String? subconceptLabel,
     String? commentLabel,
   }) {
-    return MayoreoCashConceptDefinition(
+    return DirectionCashConceptDefinition(
       id: id ?? this.id,
       label: label ?? this.label,
       requiresUnit: requiresUnit ?? this.requiresUnit,
@@ -110,23 +113,23 @@ class MayoreoCashConceptDefinition {
   }
 }
 
-class MayoreoCashRubricDefinition {
-  final MayoreoCashMovementType movementType;
+class DirectionCashRubricDefinition {
+  final DirectionCashMovementType movementType;
   final String label;
-  final List<MayoreoCashConceptDefinition> concepts;
+  final List<DirectionCashConceptDefinition> concepts;
 
-  const MayoreoCashRubricDefinition({
+  const DirectionCashRubricDefinition({
     required this.movementType,
     required this.label,
     required this.concepts,
   });
 
-  MayoreoCashRubricDefinition copyWith({
-    MayoreoCashMovementType? movementType,
+  DirectionCashRubricDefinition copyWith({
+    DirectionCashMovementType? movementType,
     String? label,
-    List<MayoreoCashConceptDefinition>? concepts,
+    List<DirectionCashConceptDefinition>? concepts,
   }) {
-    return MayoreoCashRubricDefinition(
+    return DirectionCashRubricDefinition(
       movementType: movementType ?? this.movementType,
       label: label ?? this.label,
       concepts: concepts ?? this.concepts,
@@ -134,13 +137,14 @@ class MayoreoCashRubricDefinition {
   }
 }
 
-class MayoreoCashTaxonomyStore
-    extends ValueNotifier<List<MayoreoCashRubricDefinition>> {
-  MayoreoCashTaxonomyStore._() : super(_seedRubrics()) {
+class DirectionCashTaxonomyStore
+    extends ValueNotifier<List<DirectionCashRubricDefinition>> {
+  DirectionCashTaxonomyStore._() : super(_seedRubrics()) {
     unawaited(ensureLoaded());
   }
 
-  static final MayoreoCashTaxonomyStore instance = MayoreoCashTaxonomyStore._();
+  static final DirectionCashTaxonomyStore instance =
+      DirectionCashTaxonomyStore._();
 
   Future<void>? _loadFuture;
   Future<void> _saveQueue = Future<void>.value();
@@ -172,7 +176,9 @@ class MayoreoCashTaxonomyStore
         'OTRO',
       ]);
 
-  List<MayoreoCashRubricDefinition> rubricsFor(MayoreoCashMovementType type) {
+  List<DirectionCashRubricDefinition> rubricsFor(
+    DirectionCashMovementType type,
+  ) {
     return value
         .where((rubric) => rubric.movementType == type)
         .toList(growable: false);
@@ -183,7 +189,9 @@ class MayoreoCashTaxonomyStore
   }
 
   Future<void> _loadFromRemote() async {
-    final payload = await CashTaxonomyRepository.instance.loadArea('mayoreo');
+    final payload =
+        await CashTaxonomyRepository.instance.loadArea(_kDirectionCashArea) ??
+        await CashTaxonomyRepository.instance.loadArea(_kLegacyMayoreoCashArea);
     if (payload == null) return;
     _hydrateFromPayload(payload);
   }
@@ -213,14 +221,17 @@ class MayoreoCashTaxonomyStore
   void _schedulePersist() {
     final snapshot = _toJson();
     _saveQueue = _saveQueue.then(
-      (_) => CashTaxonomyRepository.instance.saveArea('mayoreo', snapshot),
+      (_) => CashTaxonomyRepository.instance.saveArea(
+        _kDirectionCashArea,
+        snapshot,
+      ),
     );
   }
 
   void upsertConcept({
-    required MayoreoCashMovementType movementType,
+    required DirectionCashMovementType movementType,
     required String rubricLabel,
-    required MayoreoCashConceptDefinition concept,
+    required DirectionCashConceptDefinition concept,
   }) {
     value = [
       for (final rubric in value)
@@ -240,7 +251,7 @@ class MayoreoCashTaxonomyStore
   }
 
   void deleteConcept({
-    required MayoreoCashMovementType movementType,
+    required DirectionCashMovementType movementType,
     required String rubricLabel,
     required String conceptId,
   }) {
@@ -262,21 +273,21 @@ class MayoreoCashTaxonomyStore
     return 'cash-concept-${DateTime.now().microsecondsSinceEpoch}';
   }
 
-  List<String> peopleFor(MayoreoCashMovementType type) {
+  List<String> peopleFor(DirectionCashMovementType type) {
     return List<String>.from(
-      type == MayoreoCashMovementType.entry
+      type == DirectionCashMovementType.entry
           ? entryPeople.value
           : exitPeople.value,
     )..sort();
   }
 
   void addPersonOption({
-    required MayoreoCashMovementType movementType,
+    required DirectionCashMovementType movementType,
     required String label,
   }) {
     final normalized = label.trim().toUpperCase();
     if (normalized.isEmpty) return;
-    final target = movementType == MayoreoCashMovementType.entry
+    final target = movementType == DirectionCashMovementType.entry
         ? entryPeople
         : exitPeople;
     if (target.value.contains(normalized)) return;
@@ -286,10 +297,10 @@ class MayoreoCashTaxonomyStore
   }
 
   void deletePersonOption({
-    required MayoreoCashMovementType movementType,
+    required DirectionCashMovementType movementType,
     required String label,
   }) {
-    final target = movementType == MayoreoCashMovementType.entry
+    final target = movementType == DirectionCashMovementType.entry
         ? entryPeople
         : exitPeople;
     target.value = target.value
@@ -307,7 +318,7 @@ class MayoreoCashTaxonomyStore
     };
   }
 
-  Map<String, dynamic> _rubricToJson(MayoreoCashRubricDefinition rubric) {
+  Map<String, dynamic> _rubricToJson(DirectionCashRubricDefinition rubric) {
     return <String, dynamic>{
       'movement_type': _movementTypeToJson(rubric.movementType),
       'label': rubric.label,
@@ -315,7 +326,7 @@ class MayoreoCashTaxonomyStore
     };
   }
 
-  Map<String, dynamic> _conceptToJson(MayoreoCashConceptDefinition concept) {
+  Map<String, dynamic> _conceptToJson(DirectionCashConceptDefinition concept) {
     return <String, dynamic>{
       'id': concept.id,
       'label': concept.label,
@@ -344,8 +355,8 @@ class MayoreoCashTaxonomyStore
   }
 }
 
-MayoreoCashRubricDefinition _rubricFromJson(Map<String, dynamic> json) {
-  return MayoreoCashRubricDefinition(
+DirectionCashRubricDefinition _rubricFromJson(Map<String, dynamic> json) {
+  return DirectionCashRubricDefinition(
     movementType: _movementTypeFromJson(
       json['movement_type']?.toString() ?? 'entry',
     ),
@@ -357,8 +368,8 @@ MayoreoCashRubricDefinition _rubricFromJson(Map<String, dynamic> json) {
   );
 }
 
-MayoreoCashConceptDefinition _conceptFromJson(Map<String, dynamic> json) {
-  return MayoreoCashConceptDefinition(
+DirectionCashConceptDefinition _conceptFromJson(Map<String, dynamic> json) {
+  return DirectionCashConceptDefinition(
     id: json['id']?.toString() ?? '',
     label: json['label']?.toString() ?? '',
     requiresUnit: json['requires_unit'] == true,
@@ -385,22 +396,22 @@ MayoreoCashConceptDefinition _conceptFromJson(Map<String, dynamic> json) {
   );
 }
 
-String _movementTypeToJson(MayoreoCashMovementType type) {
+String _movementTypeToJson(DirectionCashMovementType type) {
   switch (type) {
-    case MayoreoCashMovementType.entry:
+    case DirectionCashMovementType.entry:
       return 'entry';
-    case MayoreoCashMovementType.exit:
+    case DirectionCashMovementType.exit:
       return 'exit';
   }
 }
 
-MayoreoCashMovementType _movementTypeFromJson(String raw) {
+DirectionCashMovementType _movementTypeFromJson(String raw) {
   switch (raw) {
     case 'exit':
-      return MayoreoCashMovementType.exit;
+      return DirectionCashMovementType.exit;
     case 'entry':
     default:
-      return MayoreoCashMovementType.entry;
+      return DirectionCashMovementType.entry;
   }
 }
 
@@ -411,7 +422,7 @@ List<String> _stringListFromJson(Object? raw) {
       .toList(growable: false);
 }
 
-List<MayoreoCashRubricDefinition> _seedRubrics() {
+List<DirectionCashRubricDefinition> _seedRubrics() {
   const drivers = <String>['Luis', 'Sra Mary', 'Diana'];
   const destinations = <String>[
     'El Palomar',
@@ -422,12 +433,12 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
   ];
   const clients = <String>['Apaseo', 'Norma', 'Juan Solis', 'Asuncion'];
 
-  return <MayoreoCashRubricDefinition>[
-    const MayoreoCashRubricDefinition(
-      movementType: MayoreoCashMovementType.entry,
+  return <DirectionCashRubricDefinition>[
+    const DirectionCashRubricDefinition(
+      movementType: DirectionCashMovementType.entry,
       label: 'Venta de material',
-      concepts: <MayoreoCashConceptDefinition>[
-        MayoreoCashConceptDefinition(
+      concepts: <DirectionCashConceptDefinition>[
+        DirectionCashConceptDefinition(
           id: 'entry-sale-apaseo',
           label: 'Apaseo',
           requiresSubconcept: true,
@@ -449,7 +460,7 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
           amountLabel: 'Importe',
           commentLabel: 'Detalle',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'entry-sale-norma',
           label: 'Norma',
           requiresSubconcept: true,
@@ -462,7 +473,7 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
           amountLabel: 'Importe',
           commentLabel: 'Detalle',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'entry-sale-juan-solis',
           label: 'Juan Solis',
           requiresSubconcept: true,
@@ -475,7 +486,7 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
           amountLabel: 'Importe',
           commentLabel: 'Detalle',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'entry-sale-asuncion',
           label: 'Asuncion',
           requiresSubconcept: true,
@@ -488,7 +499,7 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
           amountLabel: 'Importe',
           commentLabel: 'Detalle',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'entry-sale-other',
           label: 'Otro',
           requiresCompany: true,
@@ -506,11 +517,11 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
         ),
       ],
     ),
-    const MayoreoCashRubricDefinition(
-      movementType: MayoreoCashMovementType.entry,
+    const DirectionCashRubricDefinition(
+      movementType: DirectionCashMovementType.entry,
       label: 'Reposición de fondo',
-      concepts: <MayoreoCashConceptDefinition>[
-        MayoreoCashConceptDefinition(
+      concepts: <DirectionCashConceptDefinition>[
+        DirectionCashConceptDefinition(
           id: 'entry-reposition-vault',
           label: 'Bóveda',
           requiresSubconcept: true,
@@ -521,35 +532,35 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
         ),
       ],
     ),
-    const MayoreoCashRubricDefinition(
-      movementType: MayoreoCashMovementType.entry,
+    const DirectionCashRubricDefinition(
+      movementType: DirectionCashMovementType.entry,
       label: 'Cheque',
-      concepts: <MayoreoCashConceptDefinition>[
-        MayoreoCashConceptDefinition(
+      concepts: <DirectionCashConceptDefinition>[
+        DirectionCashConceptDefinition(
           id: 'entry-check-palomar',
           label: 'El Palomar',
           amountLabel: 'Importe',
           commentLabel: 'No. de cheque',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'entry-check-servin',
           label: 'Servin',
           amountLabel: 'Importe',
           commentLabel: 'No. de cheque',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'entry-check-san-pablo',
           label: 'Desperdicios Queretana San Pablo',
           amountLabel: 'Importe',
           commentLabel: 'No. de cheque',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'entry-check-cristo',
           label: 'Desperdicios Queretana Cristo',
           amountLabel: 'Importe',
           commentLabel: 'No. de cheque',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'entry-check-nomina',
           label: 'Nómina',
           amountLabel: 'Importe',
@@ -557,11 +568,11 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
         ),
       ],
     ),
-    const MayoreoCashRubricDefinition(
-      movementType: MayoreoCashMovementType.entry,
+    const DirectionCashRubricDefinition(
+      movementType: DirectionCashMovementType.entry,
       label: 'Otro',
-      concepts: <MayoreoCashConceptDefinition>[
-        MayoreoCashConceptDefinition(
+      concepts: <DirectionCashConceptDefinition>[
+        DirectionCashConceptDefinition(
           id: 'entry-other',
           label: 'Otro',
           requiresSubconcept: true,
@@ -572,11 +583,11 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
         ),
       ],
     ),
-    const MayoreoCashRubricDefinition(
-      movementType: MayoreoCashMovementType.exit,
+    const DirectionCashRubricDefinition(
+      movementType: DirectionCashMovementType.exit,
       label: 'Compra de material',
-      concepts: <MayoreoCashConceptDefinition>[
-        MayoreoCashConceptDefinition(
+      concepts: <DirectionCashConceptDefinition>[
+        DirectionCashConceptDefinition(
           id: 'exit-buy-direct',
           label: 'Compra directa',
           requiresCompany: true,
@@ -594,55 +605,55 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
         ),
       ],
     ),
-    const MayoreoCashRubricDefinition(
-      movementType: MayoreoCashMovementType.exit,
+    const DirectionCashRubricDefinition(
+      movementType: DirectionCashMovementType.exit,
       label: 'Gastos administrativos',
-      concepts: <MayoreoCashConceptDefinition>[
-        MayoreoCashConceptDefinition(
+      concepts: <DirectionCashConceptDefinition>[
+        DirectionCashConceptDefinition(
           id: 'exit-admin-stationery',
           label: 'Papelería',
           commentLabel: 'Detalle',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'exit-admin-maintenance',
           label: 'Mantenimiento',
           commentLabel: 'Detalle',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'exit-admin-remodel',
           label: 'Remodelación',
           commentLabel: 'Detalle',
         ),
       ],
     ),
-    const MayoreoCashRubricDefinition(
-      movementType: MayoreoCashMovementType.exit,
+    const DirectionCashRubricDefinition(
+      movementType: DirectionCashMovementType.exit,
       label: 'Gastos financieros',
-      concepts: <MayoreoCashConceptDefinition>[
-        MayoreoCashConceptDefinition(
+      concepts: <DirectionCashConceptDefinition>[
+        DirectionCashConceptDefinition(
           id: 'exit-fin-loan',
           label: 'Préstamo',
           commentLabel: 'Detalle',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'exit-fin-interest',
           label: 'Intereses',
           commentLabel: 'Detalle',
         ),
       ],
     ),
-    MayoreoCashRubricDefinition(
-      movementType: MayoreoCashMovementType.exit,
+    DirectionCashRubricDefinition(
+      movementType: DirectionCashMovementType.exit,
       label: 'Gastos operativos',
-      concepts: <MayoreoCashConceptDefinition>[
-        const MayoreoCashConceptDefinition(
+      concepts: <DirectionCashConceptDefinition>[
+        const DirectionCashConceptDefinition(
           id: 'exit-op-fuel',
           label: 'Combustible',
           requiresUnit: true,
           requiresQuantity: true,
           quantityLabel: 'Cantidad',
         ),
-        const MayoreoCashConceptDefinition(
+        const DirectionCashConceptDefinition(
           id: 'exit-op-maintenance',
           label: 'Mantenimiento',
           requiresSubconcept: true,
@@ -657,11 +668,11 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
           ],
           commentLabel: 'Detalle',
         ),
-        const MayoreoCashConceptDefinition(
+        const DirectionCashConceptDefinition(
           id: 'exit-op-commissions',
           label: 'Comisiones',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'exit-op-scale',
           label: 'Báscula',
           requiresCompany: true,
@@ -669,7 +680,7 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
           requiresDriver: true,
           driverOptions: drivers,
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'exit-op-gratification',
           label: 'Gratificación',
           requiresDriver: true,
@@ -677,7 +688,7 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
           requiresDestination: true,
           destinationOptions: destinations,
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'exit-op-dinner',
           label: 'Cena',
           requiresDriver: true,
@@ -685,7 +696,7 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
           requiresDestination: true,
           destinationOptions: destinations,
         ),
-        const MayoreoCashConceptDefinition(
+        const DirectionCashConceptDefinition(
           id: 'exit-op-equipment',
           label: 'Equipo',
           requiresSubconcept: true,
@@ -704,7 +715,7 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
             'Agujas',
           ],
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'exit-op-freight',
           label: 'Flete',
           requiresDestination: true,
@@ -712,7 +723,7 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
           requiresMode: true,
           modes: const <String>['Full', 'Sencillo'],
         ),
-        const MayoreoCashConceptDefinition(
+        const DirectionCashConceptDefinition(
           id: 'exit-op-trips',
           label: 'Viajes',
           requiresSubconcept: true,
@@ -724,50 +735,50 @@ List<MayoreoCashRubricDefinition> _seedRubrics() {
             'Tránsito',
           ],
         ),
-        const MayoreoCashConceptDefinition(
+        const DirectionCashConceptDefinition(
           id: 'exit-op-oxygen',
           label: 'Oxígeno',
           requiresQuantity: true,
         ),
       ],
     ),
-    const MayoreoCashRubricDefinition(
-      movementType: MayoreoCashMovementType.exit,
+    const DirectionCashRubricDefinition(
+      movementType: DirectionCashMovementType.exit,
       label: 'Gastos personales',
-      concepts: <MayoreoCashConceptDefinition>[
-        MayoreoCashConceptDefinition(
+      concepts: <DirectionCashConceptDefinition>[
+        DirectionCashConceptDefinition(
           id: 'exit-personal-luis',
           label: 'Luis',
           commentLabel: 'Concepto',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'exit-personal-mary',
           label: 'Sra Mary',
           commentLabel: 'Concepto',
         ),
-        MayoreoCashConceptDefinition(
+        DirectionCashConceptDefinition(
           id: 'exit-personal-diana',
           label: 'Diana',
           commentLabel: 'Concepto',
         ),
       ],
     ),
-    const MayoreoCashRubricDefinition(
-      movementType: MayoreoCashMovementType.exit,
+    const DirectionCashRubricDefinition(
+      movementType: DirectionCashMovementType.exit,
       label: 'Movimientos internos',
-      concepts: <MayoreoCashConceptDefinition>[
-        MayoreoCashConceptDefinition(
+      concepts: <DirectionCashConceptDefinition>[
+        DirectionCashConceptDefinition(
           id: 'exit-internal-cash',
           label: 'Caja',
           commentLabel: 'Detalle',
         ),
       ],
     ),
-    const MayoreoCashRubricDefinition(
-      movementType: MayoreoCashMovementType.exit,
+    const DirectionCashRubricDefinition(
+      movementType: DirectionCashMovementType.exit,
       label: 'Nómina',
-      concepts: <MayoreoCashConceptDefinition>[
-        MayoreoCashConceptDefinition(
+      concepts: <DirectionCashConceptDefinition>[
+        DirectionCashConceptDefinition(
           id: 'exit-payroll',
           label: 'Nómina',
           commentLabel: 'Detalle',

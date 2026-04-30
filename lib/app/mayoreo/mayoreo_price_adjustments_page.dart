@@ -26,6 +26,7 @@ import 'mayoreo_data_store.dart';
 import 'mayoreo_dashboard_preview_page.dart';
 import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_sales_report_page.dart';
+import 'mayoreo_sorting.dart';
 import 'mayoreo_theme.dart';
 
 class MayoreoPriceAdjustmentsPage extends StatefulWidget {
@@ -136,33 +137,26 @@ class _MayoreoPriceAdjustmentsPageState
     });
   }
 
-  Future<void> _persistPricingData() async {
+  Future<void> _persistPricingData(
+    List<_MayoreoSalePriceRow> rowsToPersist,
+  ) async {
     _persistingPricingData = true;
     try {
-      final snapshot = await MayoreoDataStore.loadCatalogSnapshot();
-      final rowById = <String, _MayoreoSalePriceRow>{
-        for (final row in _rows) row.id: row,
-      };
-      final updatedSnapshot = MayoreoCatalogSnapshot(
-        companies: snapshot.companies,
-        materials: snapshot.materials,
-        prices: snapshot.prices
-            .map((row) {
-              final updated = rowById[row.id];
-              if (updated == null) return row;
-              return MayoreoCatalogPriceRecord(
+      await MayoreoDataStore.savePriceRecords(
+        rowsToPersist
+            .map(
+              (row) => MayoreoCatalogPriceRecord(
                 id: row.id,
-                companyId: updated.companyId,
-                materialId: updated.materialId,
-                amount: updated.currentPrice,
-                active: updated.active,
-                notes: updated.notes,
-                updatedAt: updated.updatedAt,
-              );
-            })
+                companyId: row.companyId,
+                materialId: row.materialId,
+                amount: row.currentPrice,
+                active: row.active,
+                notes: row.notes,
+                updatedAt: row.updatedAt,
+              ),
+            )
             .toList(growable: false),
       );
-      await MayoreoDataStore.saveCatalogSnapshot(updatedSnapshot);
       await _loadPricingData();
     } finally {
       _persistingPricingData = false;
@@ -910,6 +904,7 @@ class _MayoreoPriceAdjustmentsPageState
                       return;
                     }
                     final now = DateTime.now();
+                    late final List<_MayoreoSalePriceRow> updatedRows;
                     setState(() {
                       _rows = _rows
                           .map((row) {
@@ -923,6 +918,9 @@ class _MayoreoPriceAdjustmentsPageState
                               notes: reason,
                             );
                           })
+                          .toList(growable: false);
+                      updatedRows = _rows
+                          .where((row) => selectedPriceIds.contains(row.id))
                           .toList(growable: false);
                       _historyRows = [
                         ...selectedRows.map(
@@ -942,7 +940,7 @@ class _MayoreoPriceAdjustmentsPageState
                       ];
                     });
                     try {
-                      await _persistPricingData();
+                      await _persistPricingData(updatedRows);
                     } catch (_) {
                       _toast(
                         'No se pudo guardar el ajuste de precios. Se restauró el estado remoto.',
@@ -2682,10 +2680,16 @@ class _AdjustmentFilterField extends StatefulWidget {
 class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
   Future<void> _openPicker() async {
     final searchC = TextEditingController();
+    final searchFocus = FocusNode();
     String query = '';
     final selected = await showDialog<String?>(
       context: context,
       builder: (dialogContext) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (searchFocus.canRequestFocus) {
+            searchFocus.requestFocus();
+          }
+        });
         return AreaThemeScope(
           tokens: mayoreoAreaTokens,
           child: StatefulBuilder(
@@ -2693,6 +2697,7 @@ class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
               final filtered = widget.items
                   .where((item) => item.contains(query.toUpperCase()))
                   .toList(growable: false);
+              filtered.sort(compareMayoreoAlpha);
               return Dialog(
                 backgroundColor: Colors.transparent,
                 insetPadding: const EdgeInsets.symmetric(
@@ -2720,6 +2725,8 @@ class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
                       const SizedBox(height: 10),
                       TextField(
                         controller: searchC,
+                        focusNode: searchFocus,
+                        autofocus: true,
                         decoration: _adjustmentFieldDecoration(
                           context,
                           hintText: 'Buscar',
@@ -2790,6 +2797,7 @@ class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
       },
     );
     searchC.dispose();
+    searchFocus.dispose();
     if (!mounted) return;
     if (selected != widget.value) widget.onChanged(selected);
   }

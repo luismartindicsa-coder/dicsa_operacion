@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'mayoreo_seed_catalog_data.dart';
+import 'mayoreo_sorting.dart';
 
 const String _kMayoreoCounterpartiesTable = 'mayoreo_counterparties';
 const String _kMayoreoMaterialsTable = 'mayoreo_material_catalog';
@@ -251,6 +252,29 @@ class MayoreoDataStore {
     await _catalogSaveQueue;
   }
 
+  static Future<void> savePriceRecords(
+    List<MayoreoCatalogPriceRecord> rows,
+  ) async {
+    if (rows.isEmpty) return;
+    await Supabase.instance.client
+        .from(_kMayoreoPricesTable)
+        .upsert(
+          rows
+              .map(
+                (row) => <String, dynamic>{
+                  'id': row.id,
+                  'company_id': row.companyId,
+                  'material_id': row.materialId,
+                  'final_price': row.amount,
+                  'is_active': row.active,
+                  'notes': row.notes.isEmpty ? null : row.notes,
+                },
+              )
+              .toList(growable: false),
+          onConflict: 'id',
+        );
+  }
+
   static Future<List<MayoreoPriceHistoryRecord>> loadPriceHistory() async {
     try {
       final rows = await Supabase.instance.client
@@ -337,13 +361,30 @@ MayoreoCatalogSnapshot _normalizeCatalogSnapshot(MayoreoCatalogSnapshot input) {
       })
       .toList(growable: false);
 
+  final companies = input.companies.toList(growable: false)
+    ..sort((a, b) => compareMayoreoAlpha(a.name, b.name));
+  final materials =
+      <MayoreoCatalogMaterialRecord>[
+        ...canonicalGeneralRows,
+        ...normalizedCommercialRows,
+      ]..sort((a, b) {
+        final levelCompare = compareMayoreoAlpha(a.level, b.level);
+        if (levelCompare != 0) return levelCompare;
+        return compareMayoreoAlpha(a.name, b.name);
+      });
+  final prices = input.prices.toList(growable: false)
+    ..sort((a, b) {
+      final companyCompare = compareMayoreoAlpha(a.companyId, b.companyId);
+      if (companyCompare != 0) return companyCompare;
+      final materialCompare = compareMayoreoAlpha(a.materialId, b.materialId);
+      if (materialCompare != 0) return materialCompare;
+      return compareMayoreoAlpha(a.id, b.id);
+    });
+
   return MayoreoCatalogSnapshot(
-    companies: input.companies,
-    materials: <MayoreoCatalogMaterialRecord>[
-      ...canonicalGeneralRows,
-      ...normalizedCommercialRows,
-    ],
-    prices: input.prices,
+    companies: companies,
+    materials: materials,
+    prices: prices,
   );
 }
 

@@ -48,16 +48,57 @@ Estas areas ya quedan oficiales con base en la UI actual y no deben reinterpreta
 - caracter: ejecutiva, premium, sobria, transversal
 - base oficial: `GeneralDashboard`
 - anclas actuales:
-  - `#0B2B2B`
-  - `#355454`
-  - `#F7FCFF`
-  - `#E7FFF5`
-  - `#FFF7E8`
-  - `#FFF3D7`
-  - `#F1F7FF`
-  - `#E4FFF2`
-  - `#D99532`
-  - `#FFD27A`
+  - `#04142E`
+  - `#0C2147`
+  - `#133963`
+  - `#7AAFFF`
+  - `#00B7FF`
+  - `#4BFFE0`
+  - `#224CFF`
+  - `#7D63FF`
+  - `#39F0E1`
+  - `#0C8CFF`
+  - `#FFD28B`
+  - `#7FD7FF`
+
+#### Direccion: contrato visual congelado
+
+- `Direccion` usa fondo nocturno ejecutivo en familia azul profunda.
+- El fondo no es plano: siempre lleva gradiente base y masas grandes homologadas.
+- Las masas del fondo respetan la geometria oficial del sistema:
+  - esfera superior izquierda
+  - esfera superior derecha
+  - esfera inferior izquierda
+  - masa vertical inferior derecha
+- En `Direccion` esas masas se renderizan con lectura `neon glass bubble`:
+  - cuerpo translucido
+  - glow exterior suave
+  - borde tenue luminoso
+  - modelado interno sutil sin lineas, barras ni geometria ajena al blob
+- El centro del dashboard debe quedar mas limpio que las esquinas para contenido ejecutivo.
+- El acento calido en `Direccion` es minimo; no domina el fondo.
+
+#### Direccion: glass congelado
+
+- El glass de `Direccion` es oscuro-translucido, no lechoso.
+- Los paneles usan:
+  - blur visible
+  - relleno azul profundo con baja opacidad
+  - borde claro luminoso
+  - glow frio sutil
+- Los bordes pueden ser mas luminosos que en otras areas, pero sin caer en neon agresivo de videojuego.
+- La jerarquia del glass se apoya en:
+  - borde
+  - blur
+  - contraste del fondo
+  - leve glow
+- No introducir highlights internos rectangulares, capsulas, barras o cortes que no sigan la silueta del blob o del panel.
+
+#### Direccion: contraste y texto
+
+- Titulares y acciones principales sobre fondo oscuro van en blanco o azul hielo claro.
+- El texto secundario usa azul grisaceo claro; no gris oscuro.
+- Los estados activos pueden tomar acento dorado suave o cyan frio, pero solo como detalle.
 
 ## Areas congeladas adicionales
 

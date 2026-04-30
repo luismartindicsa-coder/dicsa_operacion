@@ -32,6 +32,7 @@ import 'menudeo_header_brand.dart';
 import 'menudeo_metric_card.dart';
 import 'menudeo_price_adjustments_page.dart';
 import 'menudeo_session_confirm_dialog.dart';
+import 'menudeo_sorting.dart';
 import 'menudeo_theme.dart';
 
 class MenudeoTicketsPage extends StatefulWidget {
@@ -332,6 +333,30 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       }
       entries.add(_TicketGridEntry(index: index, row: row));
     }
+    entries.sort((a, b) {
+      final leftDate =
+          _tryParseDisplayDate((a.row['date'] ?? '').toString()) ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      final rightDate =
+          _tryParseDisplayDate((b.row['date'] ?? '').toString()) ??
+          DateTime.fromMillisecondsSinceEpoch(0);
+      return compareMenudeoDateDescThenIdAsc(
+        leftDate: leftDate,
+        rightDate: rightDate,
+        leftKeys: <String?>[
+          (a.row['ticket'] ?? '').toString(),
+          (a.row['provider'] ?? '').toString(),
+          (a.row['material'] ?? '').toString(),
+        ],
+        rightKeys: <String?>[
+          (b.row['ticket'] ?? '').toString(),
+          (b.row['provider'] ?? '').toString(),
+          (b.row['material'] ?? '').toString(),
+        ],
+        leftFallbackId: a.index.toString(),
+        rightFallbackId: b.index.toString(),
+      );
+    });
     return entries;
   }
 
@@ -5394,8 +5419,14 @@ Widget _showTicketSingleSelectDialog(
   required List<String> options,
   required String? initialValue,
 }) {
+  final normalizedOptions = sortedMenudeoOptions(options);
   final searchC = TextEditingController();
   final searchFocus = FocusNode();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (searchFocus.canRequestFocus) {
+      searchFocus.requestFocus();
+    }
+  });
   final itemFocusNodes = <FocusNode>[];
   String q = '';
   int? focusedIndex;
@@ -5411,7 +5442,7 @@ Widget _showTicketSingleSelectDialog(
 
   return StatefulBuilder(
     builder: (context, setLocalState) {
-      final filtered = options
+      final filtered = normalizedOptions
           .where((o) => o.toLowerCase().contains(q.toLowerCase()))
           .toList(growable: false);
       syncNodes(filtered.length);
@@ -5480,6 +5511,7 @@ Widget _showTicketSingleSelectDialog(
                           child: TextField(
                             controller: searchC,
                             focusNode: searchFocus,
+                            autofocus: true,
                             decoration: _ticketsFieldDecoration(
                               context,
                               hintText: 'Buscar',
@@ -5593,8 +5625,14 @@ Widget _showTicketMultiSelectDialog(
   required List<String> options,
   required Set<String> initialValues,
 }) {
+  final normalizedOptions = sortedMenudeoOptions(options);
   final searchC = TextEditingController();
   final searchFocus = FocusNode();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (searchFocus.canRequestFocus) {
+      searchFocus.requestFocus();
+    }
+  });
   final itemFocusNodes = <FocusNode>[];
   final selected = <String>{...initialValues};
   String q = '';
@@ -5611,7 +5649,7 @@ Widget _showTicketMultiSelectDialog(
 
   return StatefulBuilder(
     builder: (context, setLocalState) {
-      final filtered = options
+      final filtered = normalizedOptions
           .where((o) => o.toLowerCase().contains(q.toLowerCase()))
           .toList(growable: false);
       syncNodes(filtered.length);
@@ -5677,6 +5715,7 @@ Widget _showTicketMultiSelectDialog(
                           child: TextField(
                             controller: searchC,
                             focusNode: searchFocus,
+                            autofocus: true,
                             decoration: _ticketsFieldDecoration(
                               context,
                               hintText: 'Buscar',

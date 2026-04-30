@@ -4,44 +4,39 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
-import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/archetypes/auxiliary_surfaces/date_picker_surface.dart';
+import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
-import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
-import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
-import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/number_formatters.dart';
 import '../menudeo/menudeo_delete_confirm_dialog.dart';
 import '../menudeo/menudeo_filter_widgets.dart';
-import '../menudeo/menudeo_header_brand.dart';
-import '../menudeo/menudeo_metric_card.dart';
 import '../menudeo/menudeo_session_confirm_dialog.dart';
-import 'mayoreo_catalog_page.dart';
-import 'mayoreo_cash_taxonomy_page.dart';
-import 'mayoreo_cash_taxonomy_store.dart';
-import 'mayoreo_dashboard_preview_page.dart';
-import 'mayoreo_price_adjustments_page.dart';
-import 'mayoreo_theme.dart';
+import 'direction_cash_taxonomy_page.dart';
+import 'direction_cash_taxonomy_store.dart';
+import 'direction_theme.dart';
 
-class MayoreoCashEntriesExitsPage extends StatefulWidget {
+const String _kDirectionCashVouchersArea = 'direccion_boveda_vouchers';
+
+class DirectionCashEntriesExitsPage extends StatefulWidget {
   final bool instantOpen;
 
-  const MayoreoCashEntriesExitsPage({super.key, this.instantOpen = false});
+  const DirectionCashEntriesExitsPage({super.key, this.instantOpen = false});
 
   @override
-  State<MayoreoCashEntriesExitsPage> createState() =>
-      _MayoreoCashEntriesExitsPageState();
+  State<DirectionCashEntriesExitsPage> createState() =>
+      _DirectionCashEntriesExitsPageState();
 }
 
 enum _VoucherType { deposit, expense }
@@ -71,7 +66,7 @@ Widget _voucherPopupMenuItemChild({
 }) {
   return Row(
     children: [
-      Icon(icon, size: 18, color: mayoreoAreaTokens.primaryStrong),
+      Icon(icon, size: 18, color: directionAreaTokens.primaryStrong),
       const SizedBox(width: 10),
       Expanded(
         child: Text(
@@ -182,6 +177,38 @@ class _LineItemRecord {
     required this.amount,
     required this.comment,
   });
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'concept': concept,
+      'unit': unit,
+      'quantity': quantity,
+      'price': price,
+      'company': company,
+      'driver': driver,
+      'destination': destination,
+      'subconcept': subconcept,
+      'mode': mode,
+      'amount': amount,
+      'comment': comment,
+    };
+  }
+
+  factory _LineItemRecord.fromJson(Map<String, dynamic> json) {
+    return _LineItemRecord(
+      concept: (json['concept'] ?? '').toString(),
+      unit: (json['unit'] ?? '').toString(),
+      quantity: (json['quantity'] ?? '').toString(),
+      price: (json['price'] ?? '').toString(),
+      company: (json['company'] ?? '').toString(),
+      driver: (json['driver'] ?? '').toString(),
+      destination: (json['destination'] ?? '').toString(),
+      subconcept: (json['subconcept'] ?? '').toString(),
+      mode: (json['mode'] ?? '').toString(),
+      amount: (json['amount'] ?? '').toString(),
+      comment: (json['comment'] ?? '').toString(),
+    );
+  }
 }
 
 class _VoucherRecord {
@@ -217,6 +244,45 @@ class _VoucherRecord {
   }
 
   String get selectionKey => id ?? '$folio|$date|${type.name}';
+
+  Map<String, dynamic> toJson() {
+    return <String, dynamic>{
+      'id': id,
+      'folio': folio,
+      'date': date,
+      'type': type.name,
+      'person': person,
+      'rubric': rubric,
+      'comment': comment,
+      'lines': lines.map((line) => line.toJson()).toList(growable: false),
+    };
+  }
+
+  factory _VoucherRecord.fromJson(Map<String, dynamic> json) {
+    final rawLines = json['lines'];
+    return _VoucherRecord(
+      id: (json['id'] ?? '').toString().trim().isEmpty
+          ? null
+          : (json['id'] ?? '').toString(),
+      folio: (json['folio'] ?? '').toString(),
+      date: (json['date'] ?? '').toString(),
+      type: (json['type'] ?? '').toString() == _VoucherType.deposit.name
+          ? _VoucherType.deposit
+          : _VoucherType.expense,
+      person: (json['person'] ?? '').toString(),
+      rubric: (json['rubric'] ?? '').toString(),
+      comment: (json['comment'] ?? '').toString(),
+      lines: rawLines is List
+          ? rawLines
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      _LineItemRecord.fromJson(Map<String, dynamic>.from(item)),
+                )
+                .toList(growable: false)
+          : const <_LineItemRecord>[],
+    );
+  }
 }
 
 class _LineItemDraft {
@@ -271,7 +337,7 @@ class _LineItemDraft {
   }
 }
 
-const List<String> _mayoreoEntryClients = <String>[
+const List<String> _directionEntryClients = <String>[
   'Apaseo',
   'Norma',
   'Juan Solis',
@@ -286,13 +352,17 @@ const List<String> _voucherDestinations = <String>[
   'Caja',
 ];
 
-_VoucherType _movementTypeToVoucherType(MayoreoCashMovementType movementType) {
-  return movementType == MayoreoCashMovementType.entry
+_VoucherType _movementTypeToVoucherType(
+  DirectionCashMovementType movementType,
+) {
+  return movementType == DirectionCashMovementType.entry
       ? _VoucherType.deposit
       : _VoucherType.expense;
 }
 
-_ConceptConfig _conceptConfigFromCatalog(MayoreoCashConceptDefinition concept) {
+_ConceptConfig _conceptConfigFromCatalog(
+  DirectionCashConceptDefinition concept,
+) {
   return _ConceptConfig(
     label: concept.label,
     requiresUnit: concept.requiresUnit,
@@ -322,7 +392,7 @@ _ConceptConfig _conceptConfigFromCatalog(MayoreoCashConceptDefinition concept) {
 Map<_VoucherType, Map<String, List<_ConceptConfig>>>
 _voucherConfigFromCatalog() {
   final result = <_VoucherType, Map<String, List<_ConceptConfig>>>{};
-  for (final rubric in MayoreoCashTaxonomyStore.instance.value) {
+  for (final rubric in DirectionCashTaxonomyStore.instance.value) {
     final type = _movementTypeToVoucherType(rubric.movementType);
     result.putIfAbsent(type, () => <String, List<_ConceptConfig>>{});
     result[type]![rubric.label] = rubric.concepts
@@ -332,8 +402,8 @@ _voucherConfigFromCatalog() {
   return result;
 }
 
-List<String> _seedMayoreoCashCompanies() => <String>[
-  ..._mayoreoEntryClients,
+List<String> _seedDirectionCashCompanies() => <String>[
+  ..._directionEntryClients,
   'El Palomar',
   'Servin',
   'Desperdicios Queretana San Pablo',
@@ -341,7 +411,7 @@ List<String> _seedMayoreoCashCompanies() => <String>[
   'Nómina',
 ];
 
-List<_VoucherRecord> _seedMayoreoCashVouchers() {
+List<_VoucherRecord> _seedDirectionCashVouchers() {
   return <_VoucherRecord>[
     _VoucherRecord(
       id: 'may-cash-1',
@@ -466,8 +536,9 @@ List<_VoucherRecord> _seedMayoreoCashVouchers() {
   ];
 }
 
-class _MayoreoCashEntriesExitsPageState
-    extends State<MayoreoCashEntriesExitsPage> {
+class _DirectionCashEntriesExitsPageState
+    extends State<DirectionCashEntriesExitsPage> {
+  final SupabaseClient _supa = Supabase.instance.client;
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
   final ScrollController _voucherRowsScrollC = ScrollController();
   final GlobalKey _voucherRowsViewportKey = GlobalKey();
@@ -531,7 +602,7 @@ class _MayoreoCashEntriesExitsPageState
   }
 
   void _loadCatalogOptions() {
-    final companies = _seedMayoreoCashCompanies().toSet().toList()..sort();
+    final companies = _seedDirectionCashCompanies().toSet().toList()..sort();
     if (!mounted) return;
     setState(() {
       _companyOptions = companies;
@@ -540,10 +611,30 @@ class _MayoreoCashEntriesExitsPageState
     });
   }
 
-  void _loadVouchers() {
-    final seededRows = _seedMayoreoCashVouchers();
-    int nextSequence = _folioSequence;
-    for (final row in seededRows) {
+  Future<Map<String, dynamic>?> _loadVoucherPayload() async {
+    final row = await _supa
+        .from('cash_taxonomy_configs')
+        .select('payload')
+        .eq('area', _kDirectionCashVouchersArea)
+        .maybeSingle();
+    if (row == null) return null;
+    final payload = row['payload'];
+    if (payload is Map) return Map<String, dynamic>.from(payload);
+    return null;
+  }
+
+  Future<void> _saveVoucherRows(List<_VoucherRecord> rows) async {
+    await _supa.from('cash_taxonomy_configs').upsert({
+      'area': _kDirectionCashVouchersArea,
+      'payload': <String, dynamic>{
+        'rows': rows.map((row) => row.toJson()).toList(growable: false),
+      },
+    }, onConflict: 'area');
+  }
+
+  int _nextSequenceForRows(List<_VoucherRecord> rows) {
+    var nextSequence = _folioSequence;
+    for (final row in rows) {
       final numericFolio = int.tryParse(
         row.folio.replaceAll(RegExp(r'[^0-9]'), ''),
       );
@@ -551,54 +642,59 @@ class _MayoreoCashEntriesExitsPageState
         nextSequence = numericFolio;
       }
     }
-    if (!mounted) return;
-    setState(() {
-      _rows
-        ..clear()
-        ..addAll(seededRows);
-      _folioSequence = nextSequence;
-      _loadingRows = false;
-    });
+    return nextSequence;
+  }
+
+  Future<void> _loadVouchers() async {
+    if (mounted) setState(() => _loadingRows = true);
+    try {
+      final payload = await _loadVoucherPayload();
+      final rawRows = payload?['rows'];
+      final loadedRows = rawRows is List
+          ? rawRows
+                .whereType<Map>()
+                .map(
+                  (item) =>
+                      _VoucherRecord.fromJson(Map<String, dynamic>.from(item)),
+                )
+                .toList(growable: false)
+          : _seedDirectionCashVouchers();
+      final nextSequence = _nextSequenceForRows(loadedRows);
+      if (!mounted) return;
+      setState(() {
+        _rows
+          ..clear()
+          ..addAll(loadedRows);
+        _folioSequence = nextSequence;
+        _loadingRows = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _rows
+          ..clear()
+          ..addAll(_seedDirectionCashVouchers());
+        _folioSequence = _nextSequenceForRows(_rows);
+        _loadingRows = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo cargar Bóveda desde Supabase: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
   }
 
   Future<void> _goBack() async {
-    if (!mounted) return;
-    await Navigator.of(context).pushReplacement(
-      appPageRoute(
-        page: const MayoreoDashboardPreviewPage(instantOpen: true),
-        duration: const Duration(milliseconds: 320),
-        reverseDuration: const Duration(milliseconds: 240),
-      ),
-    );
-  }
-
-  Future<void> _openCatalogPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MayoreoCatalogPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
-  }
-
-  Future<void> _openPriceAdjustmentsPage() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const MayoreoPriceAdjustmentsPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
-      ),
-    );
+    await _openDirectionDashboard();
   }
 
   Future<void> _openCashTaxonomyPage() async {
     if (!mounted) return;
     await Navigator.of(context).push(
       appPageRoute(
-        page: const MayoreoCashTaxonomyPage(instantOpen: true),
+        page: const DirectionCashTaxonomyPage(instantOpen: true),
         duration: const Duration(milliseconds: 300),
         reverseDuration: const Duration(milliseconds: 220),
       ),
@@ -610,19 +706,10 @@ class _MayoreoCashEntriesExitsPageState
       case 'Dashboard Dirección':
         unawaited(_openDirectionDashboard());
         return;
-      case 'Dashboard Mayoreo':
-        unawaited(_goBack());
-        return;
-      case 'Catálogo':
-        unawaited(_openCatalogPage());
-        return;
-      case 'Catálogo efectivo':
+      case 'Catálogo Bóveda':
         unawaited(_openCashTaxonomyPage());
         return;
-      case 'Ajuste de precios':
-        unawaited(_openPriceAdjustmentsPage());
-        return;
-      case 'Entradas y salidas de efectivo':
+      case 'Bóveda':
         if (_menuOpen) setState(() => _menuOpen = false);
         return;
       default:
@@ -1041,12 +1128,28 @@ class _MayoreoCashEntriesExitsPageState
           : 'Confirma la baja de la selección activa.',
     );
     if (confirmed != true || !mounted) return;
-    setState(() {
-      _rows.removeWhere(
-        (row) => _selectedVoucherKeys.contains(row.selectionKey),
+    final nextRows = _rows
+        .where((row) => !_selectedVoucherKeys.contains(row.selectionKey))
+        .toList(growable: false);
+    try {
+      await _saveVoucherRows(nextRows);
+      if (!mounted) return;
+      setState(() {
+        _rows
+          ..clear()
+          ..addAll(nextRows);
+        _folioSequence = _nextSequenceForRows(_rows);
+        _clearVoucherSelection();
+      });
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudieron eliminar los movimientos: $error'),
+          behavior: SnackBarBehavior.floating,
+        ),
       );
-      _clearVoucherSelection();
-    });
+    }
   }
 
   Future<void> _openVoucherContextMenu({
@@ -1064,7 +1167,7 @@ class _MayoreoCashEntriesExitsPageState
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final result = await showMenu<_VoucherGridMenuAction>(
       context: context,
-      color: mayoreoAreaTokens.surfaceTint.withValues(alpha: 0.98),
+      color: const Color(0xFF102448).withValues(alpha: 0.98),
       elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.12),
       shape: RoundedRectangleBorder(
@@ -1162,15 +1265,22 @@ class _MayoreoCashEntriesExitsPageState
       comment: record.comment,
       lines: record.lines,
     );
-    final existingIndex = _rows.indexWhere(
+    final nextRows = List<_VoucherRecord>.from(_rows);
+    final existingIndex = nextRows.indexWhere(
       (row) => row.selectionKey == (record.id ?? record.selectionKey),
     );
+    if (existingIndex >= 0) {
+      nextRows[existingIndex] = normalized;
+    } else {
+      nextRows.insert(0, normalized);
+    }
+    await _saveVoucherRows(nextRows);
+    if (!mounted) return;
     setState(() {
-      if (existingIndex >= 0) {
-        _rows[existingIndex] = normalized;
-      } else {
-        _rows.insert(0, normalized);
-      }
+      _rows
+        ..clear()
+        ..addAll(nextRows);
+      _folioSequence = _nextSequenceForRows(_rows);
     });
   }
 
@@ -1212,11 +1322,11 @@ class _MayoreoCashEntriesExitsPageState
             unitOptions: _unitOptions,
             companyOptions: _companyOptions,
             driverOptions: _driverOptions,
-            entryPeopleOptions: MayoreoCashTaxonomyStore.instance.peopleFor(
-              MayoreoCashMovementType.entry,
+            entryPeopleOptions: DirectionCashTaxonomyStore.instance.peopleFor(
+              DirectionCashMovementType.entry,
             ),
-            exitPeopleOptions: MayoreoCashTaxonomyStore.instance.peopleFor(
-              MayoreoCashMovementType.exit,
+            exitPeopleOptions: DirectionCashTaxonomyStore.instance.peopleFor(
+              DirectionCashMovementType.exit,
             ),
             canGoPrevious: index != null && currentPosition > 0,
             canGoNext:
@@ -1282,7 +1392,7 @@ class _MayoreoCashEntriesExitsPageState
       }
       final stamp = DateTime.now().millisecondsSinceEpoch;
       await saveCsvFile(
-        fileName: 'mayoreo_entradas_salidas_$stamp.csv',
+        fileName: 'direccion_entradas_salidas_$stamp.csv',
         dialogTitle: 'Guardar CSV de movimientos',
         content: buffer.toString(),
       );
@@ -1329,7 +1439,7 @@ class _MayoreoCashEntriesExitsPageState
         (_voucherRubricFilter.isNotEmpty ? 1 : 0) +
         (_voucherConceptFilter.isNotEmpty ? 1 : 0);
     return AreaThemeScope(
-      tokens: mayoreoAreaTokens,
+      tokens: directionAreaTokens,
       child: Focus(
         autofocus: true,
         onKeyEvent: (_, event) {
@@ -1402,22 +1512,20 @@ class _MayoreoCashEntriesExitsPageState
           return KeyEventResult.ignored;
         },
         child: AppShell(
-          background: const _DepositsExpensesBackground(),
+          background: const DirectionExecutiveBackground(),
           wrapBodyInGlass: false,
           animateHeaderSlots: false,
           animateBody: !widget.instantOpen,
           headerBodySpacing: 6,
           padding: const EdgeInsets.fromLTRB(28, 14, 18, 18),
-          leadingBuilder: (_, anim) => _DepositsHeaderButton(
+          leadingBuilder: (_, anim) => DirectionHeaderButton(
             label: _menuOpen ? 'Cerrar panel' : 'Navegación',
             icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
             onTapSync: () => setState(() => _menuOpen = !_menuOpen),
           ),
-          centerBuilder: (_, contentAnim) => MenudeoHeaderBrand(
-            contentAnim: contentAnim,
-            title: 'Entradas y Salidas de Efectivo',
-          ),
-          trailingBuilder: (_, anim) => _DepositsHeaderButton(
+          centerBuilder: (_, contentAnim) =>
+              DirectionHeaderBrand(contentAnim: contentAnim, title: 'Bóveda'),
+          trailingBuilder: (_, anim) => DirectionHeaderButton(
             label: 'Cerrar sesión',
             icon: Icons.logout_rounded,
             onTap: _logout,
@@ -1465,13 +1573,29 @@ class _MayoreoCashEntriesExitsPageState
                                 setState(_clearVoucherSelection);
                               }
                             },
-                            child: ContractGlassCard(
+                            child: DirectionGlassPanel(
                               padding: const EdgeInsets.fromLTRB(
                                 14,
                                 14,
                                 14,
                                 14,
                               ),
+                              borderRadius: BorderRadius.circular(28),
+                              blurSigma: 30,
+                              fillColor: const Color(
+                                0xFF173A78,
+                              ).withValues(alpha: 0.24),
+                              borderColor: Colors.white.withValues(alpha: 0.26),
+                              shadowColor: Colors.black.withValues(alpha: 0.10),
+                              edgeHighlightColor: Colors.white.withValues(
+                                alpha: 0.66,
+                              ),
+                              bevelShadowColor: Colors.black.withValues(
+                                alpha: 0.18,
+                              ),
+                              glowColor: const Color(
+                                0xFF66D5FF,
+                              ).withValues(alpha: 0.08),
                               child: _loadingRows
                                   ? const Center(
                                       child: CircularProgressIndicator(),
@@ -1616,7 +1740,7 @@ class _MayoreoCashEntriesExitsPageState
                         const SizedBox(height: 12),
                         Align(
                           alignment: Alignment.centerRight,
-                          child: MenudeoGridPager(
+                          child: DirectionGridPager(
                             currentPage: currentPage,
                             totalPages: totalPages,
                             pageSize: _pageSize,
@@ -1653,9 +1777,7 @@ class _MayoreoCashEntriesExitsPageState
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
-                      ),
+                      child: Container(color: Colors.transparent),
                     ),
                   ),
                 ),
@@ -1684,110 +1806,6 @@ class _MayoreoCashEntriesExitsPageState
   }
 }
 
-class _DepositsHeaderButton extends StatefulWidget {
-  final String label;
-  final IconData icon;
-  final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
-
-  const _DepositsHeaderButton({
-    required this.label,
-    required this.icon,
-    this.onTap,
-    this.onTapSync,
-  });
-
-  @override
-  State<_DepositsHeaderButton> createState() => _DepositsHeaderButtonState();
-}
-
-class _DepositsHeaderButtonState extends State<_DepositsHeaderButton> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    final enabled = widget.onTap != null || widget.onTapSync != null;
-    final highlighted = enabled && _hovered;
-    return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 180),
-        scale: highlighted ? 1.026 : 1,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-            onTap: !enabled
-                ? null
-                : () async {
-                    if (widget.onTap != null) {
-                      await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
-                    }
-                  },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              transform: Matrix4.translationValues(
-                0,
-                highlighted ? -2.5 : 0,
-                0,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withValues(alpha: highlighted ? 0.30 : 0.22),
-                    tokens.surfaceTint.withValues(
-                      alpha: highlighted ? 0.34 : 0.24,
-                    ),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: highlighted
-                      ? Colors.white.withValues(alpha: 0.70)
-                      : Colors.white.withValues(alpha: 0.46),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: highlighted ? 28 : 16,
-                    color: Colors.black.withValues(
-                      alpha: highlighted ? 0.16 : 0.08,
-                    ),
-                    offset: Offset(0, highlighted ? 14 : 8),
-                  ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(widget.icon, color: tokens.primaryStrong),
-                  const SizedBox(width: 10),
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      color: tokens.primaryStrong,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _DepositsSidePanel extends StatelessWidget {
   final bool canReturnToDirection;
   final Future<void> Function() onBack;
@@ -1801,24 +1819,45 @@ class _DepositsSidePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
     return Padding(
       padding: const EdgeInsets.only(right: 12),
-      child: ContractGlassCard(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+      child: DirectionGlassPanel(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        borderRadius: BorderRadius.circular(24),
+        blurSigma: 30,
+        fillColor: const Color(0xFF173A78).withValues(alpha: 0.28),
+        borderColor: Colors.white.withValues(alpha: 0.34),
+        shadowColor: const Color(0xFF4DC7FF).withValues(alpha: 0.08),
+        edgeHighlightColor: Colors.white.withValues(alpha: 0.72),
+        bevelShadowColor: Colors.black.withValues(alpha: 0.16),
+        glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.12),
         child: SingleChildScrollView(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                'Mayoreo',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: tokens.primaryStrong,
-                ),
+              const Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Navegación Dirección',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                    ),
+                  ),
+                  SizedBox(height: 4),
+                  Text(
+                    'Páginas activas del módulo ejecutivo',
+                    style: TextStyle(
+                      color: Color(0xB8D5E5FF),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 14),
               if (canReturnToDirection) ...[
                 _DepositsSidePanelItem(
                   icon: Icons.arrow_back_rounded,
@@ -1829,39 +1868,11 @@ class _DepositsSidePanel extends StatelessWidget {
               ],
               const _DepositsSectionHeader(label: 'MENU'),
               const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: tokens.primarySoft.withValues(alpha: 0.34),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: tokens.primaryStrong.withValues(alpha: 0.14),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    _DepositsSidePanelItem(
-                      icon: Icons.account_balance_wallet_rounded,
-                      title: 'Entradas y salidas',
-                      subtitle: 'Caja, cheques y egresos',
-                      highlighted: true,
-                    ),
-                    const SizedBox(height: 8),
-                    _DepositsSidePanelItem(
-                      icon: Icons.request_quote_rounded,
-                      title: 'Ajuste de precios',
-                      subtitle: 'Cambios e historial',
-                      onTapSync: () => onNavigate('Ajuste de precios'),
-                    ),
-                    const SizedBox(height: 8),
-                    _DepositsSidePanelItem(
-                      icon: Icons.price_check_rounded,
-                      title: 'Catálogo',
-                      subtitle: 'Materiales, grupos y precios',
-                      onTapSync: () => onNavigate('Catálogo'),
-                    ),
-                  ],
-                ),
+              _DepositsSidePanelItem(
+                icon: Icons.account_balance_wallet_rounded,
+                title: 'Bóveda',
+                subtitle: 'Entradas, salidas y movimientos',
+                highlighted: true,
               ),
               const SizedBox(height: 14),
               const _DepositsSectionHeader(label: 'ACCESOS'),
@@ -1869,9 +1880,9 @@ class _DepositsSidePanel extends StatelessWidget {
               if (canReturnToDirection) ...[
                 _DepositsSidePanelItem(
                   icon: Icons.tune_rounded,
-                  title: 'Catálogo efectivo',
-                  subtitle: 'Conceptos y parametros',
-                  onTapSync: () => onNavigate('Catálogo efectivo'),
+                  title: 'Catálogo Bóveda',
+                  subtitle: 'Conceptos y parámetros',
+                  onTapSync: () => onNavigate('Catálogo Bóveda'),
                 ),
                 const SizedBox(height: 8),
                 _DepositsSidePanelItem(
@@ -1884,9 +1895,8 @@ class _DepositsSidePanel extends StatelessWidget {
               ],
               _DepositsSidePanelItem(
                 icon: Icons.space_dashboard_rounded,
-                title: 'Dashboard Mayoreo',
-                subtitle: 'Vista general del área',
-                accented: true,
+                title: 'Dashboard Dirección',
+                subtitle: 'Vista ejecutiva principal',
                 onTap: onBack,
               ),
             ],
@@ -1935,7 +1945,6 @@ class _DepositsSidePanelItem extends StatelessWidget {
   final Future<void> Function()? onTap;
   final VoidCallback? onTapSync;
   final bool highlighted;
-  final bool accented;
 
   const _DepositsSidePanelItem({
     required this.icon,
@@ -1944,14 +1953,13 @@ class _DepositsSidePanelItem extends StatelessWidget {
     this.onTap,
     this.onTapSync,
     this.highlighted = false,
-    this.accented = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
     final enabled = onTap != null || onTapSync != null;
     final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
+    final selectedState = highlighted;
     return ClipRRect(
       borderRadius: BorderRadius.circular(24),
       child: Material(
@@ -1970,47 +1978,29 @@ class _DepositsSidePanelItem extends StatelessWidget {
           child: Ink(
             padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
             decoration: BoxDecoration(
-              gradient: accented
+              gradient: selectedState
                   ? const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFFFFF0A4), Color(0xFFFBC20F)],
-                    )
-                  : highlighted
-                  ? const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFFFFF8DF), Color(0xFFFFE97C)],
-                    )
-                  : LinearGradient(
                       begin: Alignment.topLeft,
                       end: Alignment.bottomRight,
                       colors: [
-                        Colors.white.withValues(alpha: 0.82),
-                        tokens.surfaceTint.withValues(alpha: 0.92),
+                        Color(0x26FFFFFF),
+                        Color(0x287FD7FF),
+                        Color(0x301C407F),
                       ],
-                    ),
+                      stops: [0.0, 0.46, 1.0],
+                    )
+                  : kDirectionSelectionGradient,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
-                color: accented
-                    ? tokens.primaryStrong.withValues(alpha: 0.18)
-                    : highlighted
-                    ? tokens.primaryStrong.withValues(alpha: 0.18)
-                    : Colors.white.withValues(alpha: 0.58),
+                color: selectedState
+                    ? const Color(0xFF7ED7FF).withValues(alpha: 0.34)
+                    : Colors.white.withValues(alpha: 0.18),
               ),
-              boxShadow: accented
+              boxShadow: selectedState
                   ? [
                       BoxShadow(
-                        color: tokens.primaryStrong.withValues(alpha: 0.16),
+                        color: const Color(0xFF68D9FF).withValues(alpha: 0.14),
                         blurRadius: 22,
-                        offset: const Offset(0, 12),
-                      ),
-                    ]
-                  : highlighted
-                  ? [
-                      BoxShadow(
-                        color: tokens.primaryStrong.withValues(alpha: 0.12),
-                        blurRadius: 18,
                         offset: const Offset(0, 10),
                       ),
                     ]
@@ -2024,7 +2014,7 @@ class _DepositsSidePanelItem extends StatelessWidget {
             ),
             child: Row(
               children: [
-                Icon(icon, color: tokens.primaryStrong),
+                Icon(icon, color: Colors.white),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
@@ -2037,7 +2027,7 @@ class _DepositsSidePanelItem extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 15,
                           fontWeight: FontWeight.w800,
-                          color: tokens.primaryStrong,
+                          color: kDirectionSurfaceText,
                         ),
                       ),
                       if (hasSubtitle) ...[
@@ -2049,25 +2039,25 @@ class _DepositsSidePanelItem extends StatelessWidget {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w700,
-                            color: tokens.badgeText,
+                            color: kDirectionMutedText,
                           ),
                         ),
                       ],
                     ],
                   ),
                 ),
-                if (highlighted && !accented) ...[
+                if (highlighted) ...[
                   const SizedBox(width: 8),
                   Icon(
                     Icons.check_circle_rounded,
-                    color: tokens.primarySoft,
+                    color: const Color(0xFF7ED7FF),
                     size: 22,
                   ),
                 ] else ...[
                   const SizedBox(width: 8),
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: tokens.primaryStrong,
+                    color: kDirectionSurfaceText,
                     size: 22,
                   ),
                 ],
@@ -2076,109 +2066,6 @@ class _DepositsSidePanelItem extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-class _DepositsExpensesBackground extends StatelessWidget {
-  const _DepositsExpensesBackground();
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-
-    Widget blurCircle(double size, Gradient gradient) {
-      return DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: gradient,
-          boxShadow: [
-            BoxShadow(
-              blurRadius: size * 0.12,
-              spreadRadius: size * 0.02,
-              color: Colors.white.withValues(alpha: 0.18),
-            ),
-          ],
-        ),
-        child: SizedBox(width: size, height: size),
-      );
-    }
-
-    return Stack(
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                tokens.surfaceTint,
-                tokens.primarySoft.withValues(alpha: 0.9),
-                tokens.accent.withValues(alpha: 0.38),
-              ],
-            ),
-          ),
-          child: const SizedBox.expand(),
-        ),
-        Positioned(
-          left: -260,
-          top: -110,
-          child: blurCircle(
-            760,
-            LinearGradient(
-              colors: [
-                Colors.white.withValues(alpha: 0.92),
-                tokens.primarySoft.withValues(alpha: 0.94),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          right: -210,
-          top: -70,
-          child: blurCircle(
-            620,
-            LinearGradient(
-              colors: [
-                tokens.accent.withValues(alpha: 0.82),
-                tokens.glow.withValues(alpha: 0.44),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          left: 20,
-          bottom: -250,
-          child: blurCircle(
-            620,
-            LinearGradient(
-              colors: [
-                tokens.primary.withValues(alpha: 0.32),
-                tokens.primarySoft.withValues(alpha: 0.92),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          right: -110,
-          bottom: -120,
-          child: Container(
-            width: 320,
-            height: 500,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(220),
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [
-                  tokens.accent.withValues(alpha: 0.95),
-                  tokens.primaryStrong.withValues(alpha: 0.92),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
@@ -2252,7 +2139,11 @@ class _VoucherGrid extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    const headerStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w800);
+    const headerStyle = TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w800,
+      color: kDirectionSurfaceText,
+    );
     const totalWidth = 110 + 110 + 110 + 250 + 180 + 180 + 196;
     final selectedRows = rows
         .where((row) => selectedRowKeys.contains(row.selectionKey))
@@ -2265,7 +2156,7 @@ class _VoucherGrid extends StatelessWidget {
             children: [
               if (selectedRows.isNotEmpty)
                 FilledButton.icon(
-                  style: contractPrimaryButtonStyle(context),
+                  style: _vouchersPrimaryToolbarActionStyle(),
                   onPressed: onDeleteSelection,
                   icon: const Icon(Icons.delete_outline_rounded, size: 16),
                   label: Text('Eliminar (${selectedRowKeys.length})'),
@@ -2273,7 +2164,7 @@ class _VoucherGrid extends StatelessWidget {
               if (selectedRows.isNotEmpty) const SizedBox(width: 8),
               const Spacer(),
               OutlinedButton(
-                style: contractSecondaryButtonStyle(context),
+                style: _vouchersGlassToolbarActionStyle(),
                 onPressed: onClearFilters,
                 child: const Text('Limpiar filtros'),
               ),
@@ -2281,88 +2172,89 @@ class _VoucherGrid extends StatelessWidget {
           ),
           const SizedBox(height: 10),
         ],
-        Card(
-          elevation: 0,
-          color: Colors.black.withValues(alpha: 0.03),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return SizedBox(
-                  width: constraints.maxWidth,
-                  child: ContractGridScaledRow(
-                    child: SizedBox(
-                      width: totalWidth.toDouble(),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 110,
-                            child: MenudeoGridHeaderFilterCell(
-                              label: 'Fecha',
-                              style: headerStyle,
-                              active: hasDateFilter,
-                              onTap: onOpenDateFilter,
-                            ),
+        DirectionGlassPanel(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          borderRadius: BorderRadius.circular(20),
+          blurSigma: 22,
+          fillColor: const Color(0xFF16376C).withValues(alpha: 0.32),
+          borderColor: Colors.white.withValues(alpha: 0.18),
+          shadowColor: Colors.black.withValues(alpha: 0.08),
+          edgeHighlightColor: Colors.white.withValues(alpha: 0.54),
+          bevelShadowColor: Colors.black.withValues(alpha: 0.16),
+          glowColor: const Color(0xFF6BD5FF).withValues(alpha: 0.06),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SizedBox(
+                width: constraints.maxWidth,
+                child: ContractGridScaledRow(
+                  child: SizedBox(
+                    width: totalWidth.toDouble(),
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: 110,
+                          child: DirectionGridHeaderFilterCell(
+                            label: 'Fecha',
+                            style: headerStyle,
+                            active: hasDateFilter,
+                            onTap: onOpenDateFilter,
                           ),
-                          SizedBox(
-                            width: 110,
-                            child: MenudeoGridHeaderFilterCell(
-                              label: 'Folio',
-                              style: headerStyle,
-                              active: hasFolioFilter,
-                              onTap: onOpenFolioFilter,
-                            ),
+                        ),
+                        SizedBox(
+                          width: 110,
+                          child: DirectionGridHeaderFilterCell(
+                            label: 'Folio',
+                            style: headerStyle,
+                            active: hasFolioFilter,
+                            onTap: onOpenFolioFilter,
                           ),
-                          SizedBox(
-                            width: 110,
-                            child: MenudeoGridHeaderFilterCell(
-                              label: 'Tipo',
-                              style: headerStyle,
-                              active: hasTypeFilter,
-                              onTap: onOpenTypeFilter,
-                            ),
+                        ),
+                        SizedBox(
+                          width: 110,
+                          child: DirectionGridHeaderFilterCell(
+                            label: 'Tipo',
+                            style: headerStyle,
+                            active: hasTypeFilter,
+                            onTap: onOpenTypeFilter,
                           ),
-                          SizedBox(
-                            width: 250,
-                            child: MenudeoGridHeaderFilterCell(
-                              label: 'Persona',
-                              style: headerStyle,
-                              active: hasPersonFilter,
-                              onTap: onOpenPersonFilter,
-                            ),
+                        ),
+                        SizedBox(
+                          width: 250,
+                          child: DirectionGridHeaderFilterCell(
+                            label: 'Persona',
+                            style: headerStyle,
+                            active: hasPersonFilter,
+                            onTap: onOpenPersonFilter,
                           ),
-                          SizedBox(
-                            width: 180,
-                            child: MenudeoGridHeaderFilterCell(
-                              label: 'Rubro',
-                              style: headerStyle,
-                              active: hasRubricFilter,
-                              onTap: onOpenRubricFilter,
-                            ),
+                        ),
+                        SizedBox(
+                          width: 180,
+                          child: DirectionGridHeaderFilterCell(
+                            label: 'Rubro',
+                            style: headerStyle,
+                            active: hasRubricFilter,
+                            onTap: onOpenRubricFilter,
                           ),
-                          SizedBox(
-                            width: 180,
-                            child: MenudeoGridHeaderFilterCell(
-                              label: 'Conceptos',
-                              style: headerStyle,
-                              active: hasConceptFilter,
-                              onTap: onOpenConceptFilter,
-                            ),
+                        ),
+                        SizedBox(
+                          width: 180,
+                          child: DirectionGridHeaderFilterCell(
+                            label: 'Conceptos',
+                            style: headerStyle,
+                            active: hasConceptFilter,
+                            onTap: onOpenConceptFilter,
                           ),
-                          const SizedBox(
-                            width: 196,
-                            child: Text('Total', style: headerStyle),
-                          ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(
+                          width: 196,
+                          child: Text('Total', style: headerStyle),
+                        ),
+                      ],
                     ),
                   ),
-                );
-              },
-            ),
+                ),
+              );
+            },
           ),
         ),
         const SizedBox(height: 10),
@@ -2508,31 +2400,31 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                 end: Alignment.bottomRight,
                 colors: selectedContext
                     ? [
-                        tokens.badgeBackground.withValues(alpha: 0.96),
-                        tokens.primarySoft.withValues(alpha: 0.92),
+                        const Color(0xFF2A5799).withValues(alpha: 0.74),
+                        const Color(0xFF17376C).withValues(alpha: 0.92),
                       ]
                     : _hovering
                     ? [
-                        Colors.white.withValues(alpha: 0.90),
-                        tokens.surfaceTint.withValues(alpha: 0.84),
+                        Colors.white.withValues(alpha: 0.12),
+                        const Color(0xFF17376C).withValues(alpha: 0.84),
                       ]
                     : [
-                        Colors.white.withValues(alpha: 0.74),
-                        tokens.surfaceTint.withValues(alpha: 0.72),
+                        Colors.white.withValues(alpha: 0.08),
+                        const Color(0xFF132D59).withValues(alpha: 0.78),
                       ],
               ),
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
                 color: selectedContext
-                    ? tokens.primaryStrong.withValues(alpha: 0.48)
+                    ? const Color(0xFF73D8FF).withValues(alpha: 0.50)
                     : _hovering
-                    ? tokens.primarySoft.withValues(alpha: 0.30)
-                    : tokens.border.withValues(alpha: 0.64),
+                    ? Colors.white.withValues(alpha: 0.20)
+                    : Colors.white.withValues(alpha: 0.14),
               ),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.white.withValues(alpha: 0.42),
-                  blurRadius: 18,
+                  color: Colors.white.withValues(alpha: 0.08),
+                  blurRadius: 12,
                   offset: const Offset(-2, -2),
                 ),
                 BoxShadow(
@@ -2588,17 +2480,16 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         fontWeight: FontWeight.w900,
-                                        color: tokens.primaryStrong,
+                                        color: kDirectionSurfaceText,
                                       ),
                                     ),
                                   ),
                                 ),
                                 cell(
                                   width: 110,
-                                  child: Text(
-                                    widget.row.type == _VoucherType.deposit
-                                        ? 'ENTRADA'
-                                        : 'SALIDA',
+                                  child: _VoucherTypeBadge(
+                                    type: widget.row.type,
+                                    compact: true,
                                   ),
                                 ),
                                 cell(
@@ -2631,12 +2522,12 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                                       PopupMenuButton<_VoucherGridMenuAction>(
                                         tooltip: 'Acciones',
                                         padding: EdgeInsets.zero,
-                                        color: tokens.surfaceTint.withValues(
-                                          alpha: 0.98,
-                                        ),
+                                        color: const Color(
+                                          0xFF102448,
+                                        ).withValues(alpha: 0.98),
                                         elevation: 8,
                                         shadowColor: Colors.black.withValues(
-                                          alpha: 0.12,
+                                          alpha: 0.28,
                                         ),
                                         shape: RoundedRectangleBorder(
                                           borderRadius: BorderRadius.circular(
@@ -2664,15 +2555,16 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                                           width: 36,
                                           height: 36,
                                           decoration: BoxDecoration(
-                                            color: Colors.white.withValues(
-                                              alpha: 0.82,
-                                            ),
+                                            color: const Color(
+                                              0xFF183A73,
+                                            ).withValues(alpha: 0.82),
                                             borderRadius: BorderRadius.circular(
                                               12,
                                             ),
                                             border: Border.all(
-                                              color: tokens.primarySoft
-                                                  .withValues(alpha: 0.24),
+                                              color: Colors.white.withValues(
+                                                alpha: 0.18,
+                                              ),
                                             ),
                                           ),
                                           child: Icon(
@@ -2693,6 +2585,61 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                 );
               },
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VoucherTypeBadge extends StatelessWidget {
+  final _VoucherType type;
+  final bool compact;
+
+  const _VoucherTypeBadge({required this.type, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDeposit = type == _VoucherType.deposit;
+    final start = isDeposit
+        ? const Color(0xFF1F7E93).withValues(alpha: 0.92)
+        : const Color(0xFF2A4C88).withValues(alpha: 0.92);
+    final end = isDeposit
+        ? const Color(0xFF12465E).withValues(alpha: 0.94)
+        : const Color(0xFF18315E).withValues(alpha: 0.94);
+    final border = isDeposit
+        ? const Color(0xFF7EF2E9).withValues(alpha: 0.42)
+        : const Color(0xFF8CB6FF).withValues(alpha: 0.38);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 10 : 12,
+          vertical: compact ? 6 : 7,
+        ),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [start, end],
+          ),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: border),
+          boxShadow: [
+            BoxShadow(
+              color: start.withValues(alpha: 0.18),
+              blurRadius: 16,
+              offset: const Offset(0, 8),
+            ),
+          ],
+        ),
+        child: Text(
+          isDeposit ? 'ENTRADA' : 'SALIDA',
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+            letterSpacing: 0.6,
           ),
         ),
       ),
@@ -2743,11 +2690,15 @@ class _VouchersModuleTopBar extends StatelessWidget {
         const Padding(
           padding: EdgeInsets.only(left: 2, bottom: 10),
           child: Text(
-            'Entradas / Salidas',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
+            'Bóveda',
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: Colors.white,
+            ),
           ),
         ),
-        AppGlassToolbarPanel(
+        DirectionToolbarPanel(
           child: LayoutBuilder(
             builder: (context, constraints) {
               final info = _VouchersSelectionInfo(
@@ -2782,7 +2733,7 @@ class _VouchersModuleTopBar extends StatelessWidget {
                     ),
                   ),
                   FilledButton.icon(
-                    style: contractPrimaryButtonStyle(context),
+                    style: _vouchersPrimaryToolbarActionStyle(),
                     onPressed: () => unawaited(onShowNewVoucher()),
                     icon: const Icon(Icons.add_circle_outline_rounded),
                     label: const Text('Nuevo movimiento'),
@@ -2817,28 +2768,35 @@ class _VouchersModuleTopBar extends StatelessWidget {
             runSpacing: 10,
             alignment: WrapAlignment.end,
             children: [
-              MenudeoMetricCard(
+              DirectionMetricCard(
+                icon: Icons.account_balance_wallet_rounded,
+                title: 'TOTAL EN BÓVEDA',
+                value: _money(visibleDepositTotal - visibleExpenseTotal),
+                detail: 'Entradas - salidas visibles',
+                accent: const Color(0xFF7ED7FF),
+              ),
+              DirectionMetricCard(
                 icon: Icons.receipt_long_rounded,
                 title: 'MOVIMIENTOS',
                 value: '$filteredCount',
                 detail: '$depositCount entradas · $expenseCount salidas',
-                accent: mayoreoAreaTokens.primaryStrong,
+                accent: directionAreaTokens.primary,
               ),
-              MenudeoMetricCard(
+              DirectionMetricCard(
                 icon: Icons.arrow_downward_rounded,
                 title: 'TOTAL ENTRADAS',
                 value: _money(visibleDepositTotal),
                 detail: '$depositCount visibles',
-                accent: mayoreoAreaTokens.primary,
+                accent: directionAreaTokens.accent,
               ),
-              MenudeoMetricCard(
+              DirectionMetricCard(
                 icon: Icons.arrow_upward_rounded,
                 title: 'TOTAL SALIDAS',
                 value: _money(visibleExpenseTotal),
                 detail: activeFilterCount > 0
                     ? '$expenseCount visibles · $activeFilterCount filtros'
                     : '$expenseCount visibles',
-                accent: mayoreoAreaTokens.accent,
+                accent: const Color(0xFF84A7FF),
               ),
             ],
           ),
@@ -2878,7 +2836,7 @@ class _VouchersSelectionInfo extends StatelessWidget {
           style: const TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w700,
-            color: kMayoreoMutedInk,
+            color: kDirectionMutedText,
           ),
           textAlign: TextAlign.right,
         ),
@@ -2888,7 +2846,7 @@ class _VouchersSelectionInfo extends StatelessWidget {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: kMayoreoMutedInk,
+              color: kDirectionMutedText,
             ),
             textAlign: TextAlign.right,
           ),
@@ -2898,7 +2856,7 @@ class _VouchersSelectionInfo extends StatelessWidget {
             style: const TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
-              color: kMayoreoMutedInk,
+              color: kDirectionMutedText,
             ),
             textAlign: TextAlign.right,
           ),
@@ -2909,15 +2867,29 @@ class _VouchersSelectionInfo extends StatelessWidget {
 
 ButtonStyle _vouchersGlassToolbarActionStyle() {
   return OutlinedButton.styleFrom(
-    foregroundColor: mayoreoAreaTokens.primaryStrong,
-    backgroundColor: Colors.white.withValues(alpha: 0.22),
-    disabledForegroundColor: mayoreoAreaTokens.primaryStrong.withValues(
+    foregroundColor: directionAreaTokens.primaryStrong,
+    backgroundColor: const Color(0xFF16376F).withValues(alpha: 0.28),
+    disabledForegroundColor: directionAreaTokens.primaryStrong.withValues(
       alpha: 0.42,
     ),
-    side: BorderSide(color: Colors.white.withValues(alpha: 0.58)),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.30)),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     textStyle: const TextStyle(fontWeight: FontWeight.w800),
+  );
+}
+
+ButtonStyle _vouchersPrimaryToolbarActionStyle() {
+  return FilledButton.styleFrom(
+    backgroundColor: const Color(0xFF1E4C8F).withValues(alpha: 0.94),
+    foregroundColor: Colors.white,
+    disabledBackgroundColor: const Color(0xFF26456F).withValues(alpha: 0.54),
+    disabledForegroundColor: Colors.white.withValues(alpha: 0.45),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+    elevation: 0,
   );
 }
 
@@ -3119,7 +3091,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = mayoreoAreaTokens;
+    final tokens = directionAreaTokens;
     final totalLabel = formatMoney(_total);
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -3141,37 +3113,37 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
           return KeyEventResult.ignored;
         },
         child: AreaThemeScope(
-          tokens: mayoreoAreaTokens,
+          tokens: directionAreaTokens,
           child: Theme(
             data: Theme.of(context).copyWith(
               colorScheme: Theme.of(context).colorScheme.copyWith(
-                primary: mayoreoAreaTokens.primaryStrong,
-                secondary: mayoreoAreaTokens.primaryStrong,
-                surface: const Color(0xFFFFFAF6),
-                onSurface: const Color(0xFF2D2A28),
+                primary: directionAreaTokens.primary,
+                secondary: directionAreaTokens.accent,
+                surface: const Color(0xFF0D2146),
+                onSurface: const Color(0xFFF4F8FF),
               ),
               textSelectionTheme: TextSelectionThemeData(
-                cursorColor: mayoreoAreaTokens.primaryStrong,
-                selectionColor: mayoreoAreaTokens.primarySoft.withValues(
+                cursorColor: directionAreaTokens.primary,
+                selectionColor: directionAreaTokens.primarySoft.withValues(
                   alpha: 0.48,
                 ),
-                selectionHandleColor: mayoreoAreaTokens.primaryStrong,
+                selectionHandleColor: directionAreaTokens.primary,
               ),
-              splashColor: mayoreoAreaTokens.primarySoft.withValues(
+              splashColor: directionAreaTokens.primarySoft.withValues(
                 alpha: 0.16,
               ),
-              highlightColor: mayoreoAreaTokens.primarySoft.withValues(
+              highlightColor: directionAreaTokens.primarySoft.withValues(
                 alpha: 0.10,
               ),
               filledButtonTheme: FilledButtonThemeData(
-                style: _voucherPrimaryButtonStyle(mayoreoAreaTokens),
+                style: _voucherPrimaryButtonStyle(directionAreaTokens),
               ),
               outlinedButtonTheme: OutlinedButtonThemeData(
-                style: _voucherSecondaryButtonStyle(mayoreoAreaTokens),
+                style: _voucherSecondaryButtonStyle(directionAreaTokens),
               ),
               textButtonTheme: TextButtonThemeData(
                 style: TextButton.styleFrom(
-                  foregroundColor: mayoreoAreaTokens.primaryStrong,
+                  foregroundColor: directionAreaTokens.primaryStrong,
                 ),
               ),
               segmentedButtonTheme: SegmentedButtonThemeData(
@@ -3181,13 +3153,15 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                     horizontal: 8,
                     vertical: 8,
                   ),
-                  foregroundColor: mayoreoAreaTokens.primaryStrong,
-                  selectedForegroundColor: mayoreoAreaTokens.primaryStrong,
-                  selectedBackgroundColor: mayoreoAreaTokens.badgeBackground
+                  foregroundColor: directionAreaTokens.primaryStrong,
+                  selectedForegroundColor: directionAreaTokens.primaryStrong,
+                  selectedBackgroundColor: directionAreaTokens.badgeBackground
                       .withValues(alpha: 0.92),
-                  backgroundColor: Colors.white.withValues(alpha: 0.72),
+                  backgroundColor: const Color(
+                    0xFF17396F,
+                  ).withValues(alpha: 0.46),
                   side: BorderSide(
-                    color: mayoreoAreaTokens.primarySoft.withValues(
+                    color: directionAreaTokens.primarySoft.withValues(
                       alpha: 0.42,
                     ),
                   ),
@@ -3198,315 +3172,359 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                 ),
               ),
               popupMenuTheme: PopupMenuThemeData(
-                color: mayoreoAreaTokens.surfaceTint.withValues(alpha: 0.98),
+                color: const Color(0xFF102448).withValues(alpha: 0.98),
                 elevation: 8,
-                shadowColor: Colors.black.withValues(alpha: 0.12),
+                shadowColor: Colors.black.withValues(alpha: 0.28),
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
-                    color: mayoreoAreaTokens.primarySoft.withValues(
+                    color: directionAreaTokens.primarySoft.withValues(
                       alpha: 0.58,
                     ),
                   ),
                 ),
               ),
             ),
-            child: ContractPopupSurface(
+            child: ConstrainedBox(
               constraints: const BoxConstraints(
                 minWidth: 760,
                 maxWidth: 1080,
                 maxHeight: 860,
               ),
-              padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  _VoucherDialogHeader(
-                    canGoPrevious: widget.canGoPrevious,
-                    canGoNext: widget.canGoNext,
-                    positionLabel: widget.positionLabel,
-                    onPrevious: widget.canGoPrevious
-                        ? () => Navigator.of(
-                            context,
-                          ).pop(const _VoucherDialogResult.navigate(-1))
-                        : null,
-                    onNext: widget.canGoNext
-                        ? () => Navigator.of(
-                            context,
-                          ).pop(const _VoucherDialogResult.navigate(1))
-                        : null,
-                    onClose: () => Navigator.of(context).pop(),
-                  ),
-                  const SizedBox(height: 14),
-                  Align(
-                    alignment: Alignment.center,
-                    child: _VoucherTopChip(
-                      label: 'Total',
-                      value: totalLabel,
-                      emphasized: true,
-                      centered: true,
-                      minWidth: 340,
+              child: DirectionGlassPanel(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                borderRadius: BorderRadius.circular(32),
+                blurSigma: 34,
+                fillColor: const Color(0xFF10254B).withValues(alpha: 0.72),
+                borderColor: Colors.white.withValues(alpha: 0.26),
+                shadowColor: Colors.black.withValues(alpha: 0.24),
+                edgeHighlightColor: Colors.white.withValues(alpha: 0.70),
+                bevelShadowColor: Colors.black.withValues(alpha: 0.18),
+                glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.08),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _VoucherDialogHeader(
+                      canGoPrevious: widget.canGoPrevious,
+                      canGoNext: widget.canGoNext,
+                      positionLabel: widget.positionLabel,
+                      onPrevious: widget.canGoPrevious
+                          ? () => Navigator.of(
+                              context,
+                            ).pop(const _VoucherDialogResult.navigate(-1))
+                          : null,
+                      onNext: widget.canGoNext
+                          ? () => Navigator.of(
+                              context,
+                            ).pop(const _VoucherDialogResult.navigate(1))
+                          : null,
+                      onClose: () => Navigator.of(context).pop(),
                     ),
-                  ),
-                  const SizedBox(height: 14),
-                  Expanded(
-                    child: SingleChildScrollView(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          ContractGlassCard(
-                            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Expanded(
-                                      child: _VoucherField(
-                                        label: 'Fecha',
-                                        compact: true,
-                                        child: InkWell(
-                                          onTap: _pickVoucherDate,
-                                          child: Row(
-                                            children: [
-                                              Expanded(
-                                                child: Text(
-                                                  _dateC.text,
-                                                  style: _voucherInputTextStyle(
-                                                    tokens,
+                    const SizedBox(height: 14),
+                    Align(
+                      alignment: Alignment.center,
+                      child: _VoucherTopChip(
+                        label: 'Total',
+                        value: totalLabel,
+                        emphasized: true,
+                        centered: true,
+                        minWidth: 340,
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Expanded(
+                      child: SingleChildScrollView(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            DirectionGlassPanel(
+                              padding: const EdgeInsets.fromLTRB(
+                                18,
+                                16,
+                                18,
+                                16,
+                              ),
+                              borderRadius: BorderRadius.circular(24),
+                              blurSigma: 22,
+                              fillColor: const Color(
+                                0xFF173A78,
+                              ).withValues(alpha: 0.24),
+                              borderColor: Colors.white.withValues(alpha: 0.22),
+                              shadowColor: Colors.black.withValues(alpha: 0.10),
+                              edgeHighlightColor: Colors.white.withValues(
+                                alpha: 0.58,
+                              ),
+                              bevelShadowColor: Colors.black.withValues(
+                                alpha: 0.16,
+                              ),
+                              glowColor: const Color(
+                                0xFF66D5FF,
+                              ).withValues(alpha: 0.08),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: _VoucherField(
+                                          label: 'Fecha',
+                                          compact: true,
+                                          child: InkWell(
+                                            onTap: _pickVoucherDate,
+                                            child: Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(
+                                                    _dateC.text,
+                                                    style:
+                                                        _voucherInputTextStyle(
+                                                          tokens,
+                                                        ),
                                                   ),
                                                 ),
-                                              ),
-                                              Icon(
-                                                Icons.calendar_month_rounded,
-                                                size: 18,
-                                                color: tokens.primaryStrong,
-                                              ),
-                                            ],
+                                                Icon(
+                                                  Icons.calendar_month_rounded,
+                                                  size: 18,
+                                                  color: tokens.primaryStrong,
+                                                ),
+                                              ],
+                                            ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: _VoucherField(
-                                        label: 'Folio',
-                                        compact: true,
-                                        child: TextField(
-                                          controller: _folioC,
-                                          style: _voucherInputTextStyle(tokens),
-                                          decoration: InputDecoration.collapsed(
-                                            hintText: 'Folio',
-                                            hintStyle: _voucherHintTextStyle(
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _VoucherField(
+                                          label: 'Folio',
+                                          compact: true,
+                                          child: TextField(
+                                            controller: _folioC,
+                                            style: _voucherInputTextStyle(
                                               tokens,
                                             ),
+                                            decoration:
+                                                InputDecoration.collapsed(
+                                                  hintText: 'Folio',
+                                                  hintStyle:
+                                                      _voucherHintTextStyle(
+                                                        tokens,
+                                                      ),
+                                                ),
                                           ),
                                         ),
                                       ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: _VoucherField(
-                                        label: 'Tipo',
-                                        compact: true,
-                                        child: SegmentedButton<_VoucherType>(
-                                          style: SegmentedButton.styleFrom(
-                                            visualDensity:
-                                                VisualDensity.compact,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
-                                              vertical: 8,
-                                            ),
-                                            foregroundColor:
-                                                tokens.primaryStrong,
-                                            selectedForegroundColor:
-                                                tokens.primaryStrong,
-                                            selectedBackgroundColor: tokens
-                                                .badgeBackground
-                                                .withValues(alpha: 0.92),
-                                            backgroundColor: Colors.white
-                                                .withValues(alpha: 0.72),
-                                            side: BorderSide(
-                                              color: tokens.primarySoft
-                                                  .withValues(alpha: 0.42),
-                                            ),
-                                            textStyle: const TextStyle(
-                                              fontSize: 13.5,
-                                              fontWeight: FontWeight.w800,
-                                            ),
-                                          ),
-                                          segments: const [
-                                            ButtonSegment(
-                                              value: _VoucherType.deposit,
-                                              label: Text('Entrada'),
-                                            ),
-                                            ButtonSegment(
-                                              value: _VoucherType.expense,
-                                              label: Text('Salida'),
-                                            ),
-                                          ],
-                                          selected: <_VoucherType>{_type},
-                                          onSelectionChanged: (value) {
-                                            setState(() {
-                                              _type = value.first;
-                                              final availablePeople =
-                                                  _peopleOptionsForType(_type);
-                                              _person = availablePeople.isEmpty
-                                                  ? ''
-                                                  : availablePeople.first;
-                                              _rubric = _rubricOptionsForType(
-                                                _type,
-                                              ).first;
-                                              for (final line in _lines) {
-                                                _syncLineWithRubric(line);
-                                              }
-                                            });
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                Row(
-                                  children: [
-                                    Expanded(
-                                      flex: 2,
-                                      child: _VoucherField(
-                                        label: _type == _VoucherType.deposit
-                                            ? 'Recibido de'
-                                            : 'Entregado a',
-                                        compact: true,
-                                        child: _InlineDropdown(
-                                          value: _person,
-                                          items: _peopleOptionsForType(_type),
-                                          hint: _type == _VoucherType.deposit
-                                              ? 'Recibido de'
-                                              : 'Entregado a',
-                                          onChanged: (value) {
-                                            setState(() => _person = value);
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: _VoucherField(
-                                        label: 'Rubro',
-                                        compact: true,
-                                        child: _InlineDropdown(
-                                          value: _rubric,
-                                          items: _rubricOptionsForType(_type),
-                                          hint: 'Rubro',
-                                          onChanged: (value) {
-                                            setState(() {
-                                              _rubric = value;
-                                              for (final line in _lines) {
-                                                _syncLineWithRubric(line);
-                                              }
-                                            });
-                                          },
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const SizedBox(height: 12),
-                                _VoucherField(
-                                  label: 'Comentario general',
-                                  compact: true,
-                                  child: TextField(
-                                    controller: _generalCommentC,
-                                    maxLines: 1,
-                                    style: _voucherInputTextStyle(tokens),
-                                    decoration: InputDecoration.collapsed(
-                                      hintText:
-                                          'Observación general del movimiento',
-                                      hintStyle: _voucherHintTextStyle(tokens),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(height: 14),
-                          ContractGlassCard(
-                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                ...List<Widget>.generate(_lines.length, (
-                                  index,
-                                ) {
-                                  final line = _lines[index];
-                                  final concept = _findConcept(line.concept);
-                                  return Padding(
-                                    padding: EdgeInsets.only(
-                                      bottom: index == _lines.length - 1
-                                          ? 0
-                                          : 12,
-                                    ),
-                                    child: _VoucherLineCard(
-                                      index: index,
-                                      line: line,
-                                      concepts: _conceptOptionsForRubric(),
-                                      concept: concept,
-                                      unitOptions: widget.unitOptions,
-                                      companyOptions: widget.companyOptions,
-                                      driverOptions: widget.driverOptions,
-                                      onChanged: () => setState(() {}),
-                                      onRemove: _lines.length == 1
-                                          ? null
-                                          : () {
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _VoucherField(
+                                          label: 'Tipo',
+                                          compact: true,
+                                          child: SegmentedButton<_VoucherType>(
+                                            style:
+                                                _voucherTypeSegmentedButtonStyle(
+                                                  _type,
+                                                ),
+                                            segments: const [
+                                              ButtonSegment(
+                                                value: _VoucherType.deposit,
+                                                label: Text('Entrada'),
+                                              ),
+                                              ButtonSegment(
+                                                value: _VoucherType.expense,
+                                                label: Text('Salida'),
+                                              ),
+                                            ],
+                                            selected: <_VoucherType>{_type},
+                                            onSelectionChanged: (value) {
                                               setState(() {
-                                                _lines
-                                                    .removeAt(index)
-                                                    .dispose();
+                                                _type = value.first;
+                                                final availablePeople =
+                                                    _peopleOptionsForType(
+                                                      _type,
+                                                    );
+                                                _person =
+                                                    availablePeople.isEmpty
+                                                    ? ''
+                                                    : availablePeople.first;
+                                                _rubric = _rubricOptionsForType(
+                                                  _type,
+                                                ).first;
+                                                for (final line in _lines) {
+                                                  _syncLineWithRubric(line);
+                                                }
                                               });
                                             },
-                                    ),
-                                  );
-                                }),
-                                const SizedBox(height: 10),
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: OutlinedButton(
-                                    style: _voucherSecondaryButtonStyle(tokens),
-                                    onPressed: () {
-                                      setState(
-                                        () => _lines.add(_LineItemDraft()),
-                                      );
-                                    },
-                                    child: const Text('+'),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                ),
-                              ],
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        flex: 2,
+                                        child: _VoucherField(
+                                          label: _type == _VoucherType.deposit
+                                              ? 'Recibido de'
+                                              : 'Entregado a',
+                                          compact: true,
+                                          child: _InlineDropdown(
+                                            value: _person,
+                                            items: _peopleOptionsForType(_type),
+                                            hint: _type == _VoucherType.deposit
+                                                ? 'Recibido de'
+                                                : 'Entregado a',
+                                            onChanged: (value) {
+                                              setState(() => _person = value);
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      Expanded(
+                                        child: _VoucherField(
+                                          label: 'Rubro',
+                                          compact: true,
+                                          child: _InlineDropdown(
+                                            value: _rubric,
+                                            items: _rubricOptionsForType(_type),
+                                            hint: 'Rubro',
+                                            onChanged: (value) {
+                                              setState(() {
+                                                _rubric = value;
+                                                for (final line in _lines) {
+                                                  _syncLineWithRubric(line);
+                                                }
+                                              });
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  _VoucherField(
+                                    label: 'Comentario general',
+                                    compact: true,
+                                    child: TextField(
+                                      controller: _generalCommentC,
+                                      maxLines: 1,
+                                      style: _voucherInputTextStyle(tokens),
+                                      decoration: InputDecoration.collapsed(
+                                        hintText:
+                                            'Observación general del movimiento',
+                                        hintStyle: _voucherHintTextStyle(
+                                          tokens,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
-                          ),
-                        ],
+                            const SizedBox(height: 14),
+                            DirectionGlassPanel(
+                              padding: const EdgeInsets.fromLTRB(
+                                16,
+                                14,
+                                16,
+                                14,
+                              ),
+                              borderRadius: BorderRadius.circular(24),
+                              blurSigma: 22,
+                              fillColor: const Color(
+                                0xFF173A78,
+                              ).withValues(alpha: 0.22),
+                              borderColor: Colors.white.withValues(alpha: 0.20),
+                              shadowColor: Colors.black.withValues(alpha: 0.10),
+                              edgeHighlightColor: Colors.white.withValues(
+                                alpha: 0.54,
+                              ),
+                              bevelShadowColor: Colors.black.withValues(
+                                alpha: 0.16,
+                              ),
+                              glowColor: const Color(
+                                0xFF66D5FF,
+                              ).withValues(alpha: 0.06),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  ...List<Widget>.generate(_lines.length, (
+                                    index,
+                                  ) {
+                                    final line = _lines[index];
+                                    final concept = _findConcept(line.concept);
+                                    return Padding(
+                                      padding: EdgeInsets.only(
+                                        bottom: index == _lines.length - 1
+                                            ? 0
+                                            : 12,
+                                      ),
+                                      child: _VoucherLineCard(
+                                        index: index,
+                                        line: line,
+                                        concepts: _conceptOptionsForRubric(),
+                                        concept: concept,
+                                        unitOptions: widget.unitOptions,
+                                        companyOptions: widget.companyOptions,
+                                        driverOptions: widget.driverOptions,
+                                        onChanged: () => setState(() {}),
+                                        onRemove: _lines.length == 1
+                                            ? null
+                                            : () {
+                                                setState(() {
+                                                  _lines
+                                                      .removeAt(index)
+                                                      .dispose();
+                                                });
+                                              },
+                                      ),
+                                    );
+                                  }),
+                                  const SizedBox(height: 10),
+                                  Align(
+                                    alignment: Alignment.centerRight,
+                                    child: OutlinedButton(
+                                      style: _voucherSecondaryButtonStyle(
+                                        tokens,
+                                      ),
+                                      onPressed: () {
+                                        setState(
+                                          () => _lines.add(_LineItemDraft()),
+                                        );
+                                      },
+                                      child: const Text('+'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      OutlinedButton(
-                        style: _voucherSecondaryButtonStyle(tokens),
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Cancelar'),
-                      ),
-                      const SizedBox(width: 10),
-                      FilledButton.icon(
-                        style: _voucherPrimaryButtonStyle(tokens),
-                        onPressed: _save,
-                        icon: const Icon(Icons.save_rounded),
-                        label: const Text('Guardar movimiento'),
-                      ),
-                    ],
-                  ),
-                ],
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton(
+                          style: _voucherSecondaryButtonStyle(tokens),
+                          onPressed: () => Navigator.of(context).pop(),
+                          child: const Text('Cancelar'),
+                        ),
+                        const SizedBox(width: 10),
+                        FilledButton.icon(
+                          style: _voucherPrimaryButtonStyle(tokens),
+                          onPressed: _save,
+                          icon: const Icon(Icons.save_rounded),
+                          label: const Text('Guardar movimiento'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -3525,29 +3543,50 @@ TextStyle _voucherInputTextStyle(ContractAreaTokens tokens) => TextStyle(
 TextStyle _voucherHintTextStyle(ContractAreaTokens tokens) => TextStyle(
   fontSize: 14,
   fontWeight: FontWeight.w600,
-  color: tokens.badgeText.withValues(alpha: 0.84),
+  color: kDirectionMutedText.withValues(alpha: 0.84),
 );
 
 ButtonStyle _voucherPrimaryButtonStyle(ContractAreaTokens tokens) {
   return FilledButton.styleFrom(
-    backgroundColor: tokens.primaryStrong,
+    backgroundColor: const Color(0xFF1F4D8F).withValues(alpha: 0.96),
     foregroundColor: Colors.white,
-    disabledBackgroundColor: tokens.primarySoft,
-    disabledForegroundColor: tokens.badgeText.withValues(alpha: 0.5),
+    disabledBackgroundColor: const Color(0xFF234371).withValues(alpha: 0.58),
+    disabledForegroundColor: Colors.white.withValues(alpha: 0.46),
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
     textStyle: const TextStyle(fontWeight: FontWeight.w800),
+    elevation: 0,
   );
 }
 
 ButtonStyle _voucherSecondaryButtonStyle(ContractAreaTokens tokens) {
   return OutlinedButton.styleFrom(
-    foregroundColor: tokens.primaryStrong,
-    backgroundColor: Colors.white.withValues(alpha: 0.55),
-    side: BorderSide(color: tokens.primarySoft.withValues(alpha: 0.9)),
+    foregroundColor: kDirectionSurfaceText,
+    backgroundColor: const Color(0xFF15305D).withValues(alpha: 0.48),
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     textStyle: const TextStyle(fontWeight: FontWeight.w800),
+  );
+}
+
+ButtonStyle _voucherTypeSegmentedButtonStyle(_VoucherType type) {
+  final selectedBackground = type == _VoucherType.deposit
+      ? const Color(0xFF1D7F95).withValues(alpha: 0.92)
+      : const Color(0xFF2A4E89).withValues(alpha: 0.92);
+  final selectedBorder = type == _VoucherType.deposit
+      ? const Color(0xFF7EF2E9).withValues(alpha: 0.54)
+      : const Color(0xFF8CB5FF).withValues(alpha: 0.54);
+  return SegmentedButton.styleFrom(
+    visualDensity: VisualDensity.compact,
+    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+    foregroundColor: kDirectionMutedText,
+    selectedForegroundColor: Colors.white,
+    selectedBackgroundColor: selectedBackground,
+    backgroundColor: const Color(0xFF132A52).withValues(alpha: 0.74),
+    side: BorderSide(color: selectedBorder),
+    textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
   );
 }
 
@@ -3564,7 +3603,6 @@ class _VoucherField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
     return Container(
       padding: compact
           ? const EdgeInsets.fromLTRB(12, 8, 12, 8)
@@ -3574,19 +3612,19 @@ class _VoucherField extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withValues(alpha: 0.88),
-            const Color(0xFFF5ECE6).withValues(alpha: 0.78),
+            Colors.white.withValues(alpha: 0.10),
+            const Color(0xFF12305F).withValues(alpha: 0.74),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: tokens.primarySoft.withValues(alpha: compact ? 0.34 : 0.28),
+          color: Colors.white.withValues(alpha: compact ? 0.20 : 0.16),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withValues(alpha: 0.32),
-            blurRadius: 8,
-            offset: const Offset(-1, -1),
+            color: Colors.black.withValues(alpha: 0.12),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
           ),
         ],
       ),
@@ -3598,7 +3636,7 @@ class _VoucherField extends StatelessWidget {
             style: TextStyle(
               fontSize: compact ? 11.5 : 12,
               fontWeight: FontWeight.w900,
-              color: tokens.badgeText,
+              color: kDirectionMutedText,
             ),
           ),
           SizedBox(height: compact ? 4 : 6),
@@ -3628,7 +3666,6 @@ class _VoucherDialogHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
     return Container(
       height: 66,
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -3638,20 +3675,15 @@ class _VoucherDialogHeader extends StatelessWidget {
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            Colors.white.withValues(alpha: 0.54),
-            tokens.surfaceTint.withValues(alpha: 0.40),
+            Colors.white.withValues(alpha: 0.12),
+            const Color(0xFF11284F).withValues(alpha: 0.88),
           ],
         ),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.26)),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withValues(alpha: 0.38),
-            blurRadius: 16,
-            offset: const Offset(-2, -2),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 16,
+            color: Colors.black.withValues(alpha: 0.18),
+            blurRadius: 20,
             offset: const Offset(0, 8),
           ),
         ],
@@ -3667,7 +3699,7 @@ class _VoucherDialogHeader extends StatelessWidget {
               Text(
                 'DICSA',
                 style: TextStyle(
-                  color: tokens.primaryStrong,
+                  color: kDirectionSurfaceText,
                   fontWeight: FontWeight.w900,
                   fontSize: 18,
                   letterSpacing: 0.9,
@@ -3694,7 +3726,7 @@ class _VoucherDialogHeader extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w800,
-                          color: tokens.badgeText,
+                          color: kDirectionMutedText,
                         ),
                       ),
                     ),
@@ -3726,7 +3758,6 @@ class _VoucherDialogActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -3740,22 +3771,15 @@ class _VoucherDialogActionButton extends StatelessWidget {
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
               colors: [
-                Colors.white.withValues(alpha: 0.96),
-                tokens.surfaceTint.withValues(alpha: 0.90),
+                Colors.white.withValues(alpha: 0.12),
+                const Color(0xFF173969).withValues(alpha: 0.92),
               ],
             ),
             borderRadius: BorderRadius.circular(999),
-            border: Border.all(
-              color: tokens.primarySoft.withValues(alpha: 0.28),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             boxShadow: [
               BoxShadow(
-                color: Colors.white.withValues(alpha: 0.46),
-                blurRadius: 10,
-                offset: const Offset(-2, -2),
-              ),
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.10),
+                color: Colors.black.withValues(alpha: 0.16),
                 blurRadius: 14,
                 offset: const Offset(0, 8),
               ),
@@ -3765,8 +3789,8 @@ class _VoucherDialogActionButton extends StatelessWidget {
             icon,
             size: 22,
             color: onTap == null
-                ? tokens.badgeText.withValues(alpha: 0.42)
-                : tokens.primaryStrong,
+                ? kDirectionMutedText.withValues(alpha: 0.42)
+                : kDirectionSurfaceText,
           ),
         ),
       ),
@@ -3791,7 +3815,6 @@ class _VoucherTopChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
     return Container(
       constraints: BoxConstraints(minWidth: minWidth),
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
@@ -3801,27 +3824,22 @@ class _VoucherTopChip extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             emphasized
-                ? tokens.primarySoft.withValues(alpha: 0.98)
-                : Colors.white.withValues(alpha: 0.92),
+                ? const Color(0xFF1A6C8A).withValues(alpha: 0.96)
+                : Colors.white.withValues(alpha: 0.10),
             emphasized
-                ? tokens.primary.withValues(alpha: 0.28)
-                : tokens.surfaceTint.withValues(alpha: 0.88),
+                ? const Color(0xFF173D71).withValues(alpha: 0.92)
+                : const Color(0xFF132C58).withValues(alpha: 0.88),
           ],
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: emphasized
-              ? tokens.primaryStrong.withValues(alpha: 0.22)
-              : tokens.primarySoft.withValues(alpha: 0.24),
+              ? const Color(0xFF7EF2E9).withValues(alpha: 0.34)
+              : Colors.white.withValues(alpha: 0.16),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.white.withValues(alpha: 0.46),
-            blurRadius: 10,
-            offset: const Offset(-2, -2),
-          ),
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.08),
+            color: Colors.black.withValues(alpha: 0.14),
             blurRadius: 14,
             offset: const Offset(0, 8),
           ),
@@ -3837,7 +3855,7 @@ class _VoucherTopChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w800,
-              color: emphasized ? tokens.primaryStrong : tokens.badgeText,
+              color: emphasized ? Colors.white : kDirectionSubtleText,
             ),
           ),
           const SizedBox(height: 2),
@@ -3847,7 +3865,7 @@ class _VoucherTopChip extends StatelessWidget {
             style: TextStyle(
               fontSize: emphasized ? 18.5 : 15,
               fontWeight: FontWeight.w900,
-              color: tokens.primaryStrong,
+              color: Colors.white,
             ),
           ),
         ],
@@ -3885,9 +3903,16 @@ class _VoucherLineCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.76),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.08),
+            const Color(0xFF14315F).withValues(alpha: 0.78),
+          ],
+        ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: tokens.primarySoft.withValues(alpha: 0.22)),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3899,7 +3924,7 @@ class _VoucherLineCard extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 11.5,
                   fontWeight: FontWeight.w900,
-                  color: tokens.badgeText,
+                  color: kDirectionSubtleText,
                 ),
               ),
               const Spacer(),
@@ -3907,7 +3932,10 @@ class _VoucherLineCard extends StatelessWidget {
                 IconButton(
                   onPressed: onRemove,
                   visualDensity: VisualDensity.compact,
-                  icon: const Icon(Icons.delete_outline_rounded),
+                  icon: const Icon(
+                    Icons.delete_outline_rounded,
+                    color: kDirectionMutedText,
+                  ),
                 ),
             ],
           ),
@@ -4216,55 +4244,70 @@ class _InlineDropdown extends StatelessWidget {
       ...items,
     ];
     final tokens = AreaThemeScope.of(context);
-    return DropdownButtonHideUnderline(
-      child: Theme(
-        data: Theme.of(context).copyWith(
-          splashColor: tokens.primarySoft.withValues(alpha: 0.14),
-          highlightColor: tokens.primarySoft.withValues(alpha: 0.08),
-          hoverColor: tokens.primarySoft.withValues(alpha: 0.10),
-          focusColor: Colors.transparent,
+    final displayText = value.trim().isEmpty ? hint : value;
+    final hasValue = value.trim().isNotEmpty;
+    return FocusableActionDetector(
+      shortcuts: const <ShortcutActivator, Intent>{
+        SingleActivator(LogicalKeyboardKey.enter): ActivateIntent(),
+        SingleActivator(LogicalKeyboardKey.space): ActivateIntent(),
+      },
+      actions: <Type, Action<Intent>>{
+        ActivateIntent: CallbackAction<Intent>(
+          onInvoke: (_) {
+            _openPicker(context, resolvedItems);
+            return null;
+          },
         ),
-        child: DropdownButton<String>(
-          isExpanded: true,
-          value: resolvedItems.contains(value) ? value : null,
-          borderRadius: BorderRadius.circular(16),
-          dropdownColor: const Color(0xFFFFFAF6),
-          focusColor: Colors.transparent,
-          menuMaxHeight: 320,
-          hint: Text(
-            hint,
-            style: TextStyle(color: tokens.badgeText.withValues(alpha: 0.92)),
-          ),
-          icon: Icon(
-            Icons.keyboard_arrow_down_rounded,
-            color: tokens.primaryStrong,
-          ),
-          style: TextStyle(
-            fontSize: 14,
-            fontWeight: FontWeight.w700,
-            color: tokens.primaryStrong,
-          ),
-          items: resolvedItems
-              .map(
-                (item) => DropdownMenuItem<String>(
-                  value: item,
-                  child: Text(
-                    item,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: tokens.primaryStrong,
-                    ),
+      },
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: () => _openPicker(context, resolvedItems),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 2),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  displayText,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: hasValue
+                        ? kDirectionSurfaceText
+                        : kDirectionMutedText.withValues(alpha: 0.92),
                   ),
                 ),
-              )
-              .toList(growable: false),
-          onChanged: (value) {
-            if (value != null) onChanged(value);
-          },
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.keyboard_arrow_down_rounded,
+                color: tokens.primaryStrong,
+              ),
+            ],
+          ),
         ),
       ),
     );
+  }
+
+  Future<void> _openPicker(
+    BuildContext context,
+    List<String> resolvedItems,
+  ) async {
+    final selected = await showSearchablePickerDialog<String>(
+      context,
+      title: hint,
+      options: resolvedItems
+          .map(
+            (item) => SearchablePickerOption<String>(value: item, label: item),
+          )
+          .toList(growable: false),
+      initialValue: resolvedItems.contains(value) ? value : null,
+    );
+    if (selected != null) {
+      onChanged(selected);
+    }
   }
 }

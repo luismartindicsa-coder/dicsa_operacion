@@ -29,6 +29,7 @@ import 'mayoreo_catalog_page.dart';
 import 'mayoreo_dashboard_preview_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
+import 'mayoreo_sorting.dart';
 import 'mayoreo_theme.dart';
 
 const String _kMayoreoSalesReportsTable = 'mayoreo_sales_reports';
@@ -978,7 +979,26 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
               return true;
             })
             .toList(growable: false)
-          ..sort((a, b) => b.movement.date.compareTo(a.movement.date));
+          ..sort(
+            (a, b) => compareMayoreoDateDescThenIdAsc(
+              leftDate: a.movement.date,
+              rightDate: b.movement.date,
+              leftKeys: <String?>[
+                a.movement.remision,
+                a.movement.ticket,
+                a.movement.checkNumber,
+                a.movement.reference,
+              ],
+              rightKeys: <String?>[
+                b.movement.remision,
+                b.movement.ticket,
+                b.movement.checkNumber,
+                b.movement.reference,
+              ],
+              leftFallbackId: a.movement.id,
+              rightFallbackId: b.movement.id,
+            ),
+          );
     return filtered;
   }
 
@@ -4232,11 +4252,23 @@ class _PalomarApplyRemissionsDialogState
     extends State<_PalomarApplyRemissionsDialog> {
   final Set<String> _selectedIds = <String>{};
   final TextEditingController _searchC = TextEditingController();
+  final FocusNode _searchFocus = FocusNode();
   _PalomarRemissionState? _stateFilter;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_searchFocus.canRequestFocus) {
+        _searchFocus.requestFocus();
+      }
+    });
+  }
 
   @override
   void dispose() {
     _searchC.dispose();
+    _searchFocus.dispose();
     super.dispose();
   }
 
@@ -4257,7 +4289,16 @@ class _PalomarApplyRemissionsDialogState
               ], query);
             })
             .toList(growable: false)
-          ..sort((a, b) => b.saleDate.compareTo(a.saleDate));
+          ..sort(
+            (a, b) => compareMayoreoDateDescThenIdAsc(
+              leftDate: a.saleDate,
+              rightDate: b.saleDate,
+              leftKeys: <String?>[a.ticket, a.remision],
+              rightKeys: <String?>[b.ticket, b.remision],
+              leftFallbackId: a.id,
+              rightFallbackId: b.id,
+            ),
+          );
 
     return Dialog(
       backgroundColor: Colors.transparent,
@@ -4318,6 +4359,8 @@ class _PalomarApplyRemissionsDialogState
                         children: [
                           TextField(
                             controller: _searchC,
+                            focusNode: _searchFocus,
+                            autofocus: true,
                             onChanged: (_) => setState(() {}),
                             decoration: contractGlassFieldDecoration(
                               context,
@@ -6467,19 +6510,18 @@ Future<Set<String>?> _showPalomarValueFilterDialog(
   required List<String> options,
   required Set<String> initialValues,
 }) {
-  final normalizedOptions =
-      options
-          .map((option) => option.trim())
-          .where((option) => option.isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
+  final normalizedOptions = sortedMayoreoOptions(options);
   return showDialog<Set<String>>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       final searchC = TextEditingController();
       final searchFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
       final itemFocusNodes = <FocusNode>[];
       var query = '';
       final selectedValues = <String>{...initialValues};

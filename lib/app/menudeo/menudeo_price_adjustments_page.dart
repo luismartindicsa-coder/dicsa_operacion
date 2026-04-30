@@ -26,6 +26,7 @@ import 'menudeo_deposits_expenses_page.dart';
 import 'menudeo_filter_widgets.dart';
 import 'menudeo_header_brand.dart';
 import 'menudeo_session_confirm_dialog.dart';
+import 'menudeo_sorting.dart';
 import 'menudeo_sales_page.dart';
 import 'menudeo_tickets_page.dart';
 import 'menudeo_theme.dart';
@@ -136,11 +137,11 @@ class _MenudeoPriceAdjustmentsPageState
         }
         _loading = false;
       });
-    } on PostgrestException catch (e) {
+    } catch (e) {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = e.message;
+        _error = _friendlyDataError(e);
       });
     }
   }
@@ -150,6 +151,21 @@ class _MenudeoPriceAdjustmentsPageState
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
     );
+  }
+
+  String _friendlyDataError(Object error) {
+    if (error is PostgrestException) {
+      return error.message;
+    }
+    if (error is SocketException) {
+      return 'No se pudo conectar con Supabase. Intenta de nuevo en un momento.';
+    }
+    final message = error.toString();
+    if (message.contains('Failed host lookup') ||
+        message.contains('ClientException')) {
+      return 'No se pudo conectar con Supabase. Intenta de nuevo en un momento.';
+    }
+    return message;
   }
 
   String _directionLabel(String raw) {
@@ -216,7 +232,33 @@ class _MenudeoPriceAdjustmentsPageState
           }
           return (row['price_active'] ?? true) == true;
         })
-        .toList(growable: false);
+        .toList(growable: false)
+      ..sort((a, b) {
+        final directionCompare = compareMenudeoAlpha(
+          _rowDirectionLabel(a),
+          _rowDirectionLabel(b),
+        );
+        if (directionCompare != 0) return directionCompare;
+        final groupCompare = compareMenudeoAlpha(
+          (a['group_code'] ?? '').toString(),
+          (b['group_code'] ?? '').toString(),
+        );
+        if (groupCompare != 0) return groupCompare;
+        final counterpartyCompare = compareMenudeoAlpha(
+          (a['counterparty_name'] ?? '').toString(),
+          (b['counterparty_name'] ?? '').toString(),
+        );
+        if (counterpartyCompare != 0) return counterpartyCompare;
+        final materialCompare = compareMenudeoAlpha(
+          (a['material_label_snapshot'] ?? '').toString(),
+          (b['material_label_snapshot'] ?? '').toString(),
+        );
+        if (materialCompare != 0) return materialCompare;
+        return compareMenudeoAlpha(
+          (a['price_id'] ?? '').toString(),
+          (b['price_id'] ?? '').toString(),
+        );
+      });
   }
 
   int _effectiveCurrentPageFor(int totalRows) {
@@ -1078,7 +1120,7 @@ class _MenudeoPriceAdjustmentsPageState
     }
     setState(() => _applying = true);
     try {
-      await _supa.rpc(
+      final rpcResponse = await _supa.rpc(
         'apply_men_price_adjustment',
         params: <String, dynamic>{
           'p_price_ids': targetPriceIds,
@@ -1089,17 +1131,49 @@ class _MenudeoPriceAdjustmentsPageState
               : _reasonC.text.trim(),
         },
       );
+      final appliedRows = switch (rpcResponse) {
+        final List rows => rows.length,
+        _ => 0,
+      };
+      final fallbackAppliedRows = appliedRows > 0
+          ? 0
+          : await _applyAdjustmentsDirect(targetRows: targetRows);
+      final totalAppliedRows = appliedRows + fallbackAppliedRows;
+      if (totalAppliedRows <= 0) {
+        _toast(
+          'No se guardaron cambios. Intenta recargar la pantalla y volver a aplicar el ajuste.',
+        );
+        return;
+      }
       _toast(
-        'Ajuste aplicado a ${targetPriceIds.length} precio(s) · ${_adjustmentScopeLabel(_adjustmentScope)}',
+        'Ajuste aplicado a $totalAppliedRows precio(s) · ${_adjustmentScopeLabel(_adjustmentScope)}',
       );
       _reasonC.clear();
       _adjustmentValueC.clear();
       await _loadRows();
-    } on PostgrestException catch (e) {
-      _toast('No se pudo aplicar el ajuste: ${e.message}');
+    } catch (e) {
+      _toast('No se pudo aplicar el ajuste: ${_friendlyDataError(e)}');
     } finally {
       if (mounted) setState(() => _applying = false);
     }
+  }
+
+  Future<int> _applyAdjustmentsDirect({
+    required List<Map<String, dynamic>> targetRows,
+  }) async {
+    var updated = 0;
+    for (final row in targetRows) {
+      final priceId = (row['price_id'] ?? '').toString();
+      if (priceId.isEmpty) continue;
+      final current = ((row['final_price'] ?? 0) as num).toDouble();
+      final next = _computeNewPrice(current);
+      await _supa
+          .from('men_counterparty_material_prices')
+          .update(<String, dynamic>{'final_price': next})
+          .eq('id', priceId);
+      updated += 1;
+    }
+    return updated;
   }
 
   Future<void> _showHistoryDialog() async {
@@ -6201,10 +6275,16 @@ class _AdjustmentFilterField extends StatefulWidget {
 class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
   Future<void> _openPicker() async {
     final searchC = TextEditingController();
+    final searchFocus = FocusNode();
     String query = '';
     final selected = await showDialog<String?>(
       context: context,
       builder: (dialogContext) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (searchFocus.canRequestFocus) {
+            searchFocus.requestFocus();
+          }
+        });
         return AreaThemeScope(
           tokens: menudeoAreaTokens,
           child: StatefulBuilder(
@@ -6212,6 +6292,7 @@ class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
               final filtered = widget.items
                   .where((item) => item.contains(query.toUpperCase()))
                   .toList(growable: false);
+              filtered.sort(compareMenudeoAlpha);
               final tokens = AreaThemeScope.of(context);
               return Dialog(
                 backgroundColor: Colors.transparent,
@@ -6240,6 +6321,8 @@ class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
                       const SizedBox(height: 10),
                       TextField(
                         controller: searchC,
+                        focusNode: searchFocus,
+                        autofocus: true,
                         decoration: _adjustmentFieldDecoration(
                           context,
                           hintText: 'Buscar',
@@ -6310,6 +6393,7 @@ class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
       },
     );
     searchC.dispose();
+    searchFocus.dispose();
     if (!mounted) return;
     if (selected != widget.value) {
       widget.onChanged(selected);

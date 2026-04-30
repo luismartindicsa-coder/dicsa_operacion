@@ -34,6 +34,7 @@ import 'menudeo_header_brand.dart';
 import 'menudeo_metric_card.dart';
 import 'menudeo_price_adjustments_page.dart';
 import 'menudeo_session_confirm_dialog.dart';
+import 'menudeo_sorting.dart';
 import 'menudeo_sales_page.dart';
 import 'menudeo_tickets_page.dart';
 import 'menudeo_theme.dart';
@@ -698,7 +699,21 @@ class _MenudeoDepositsExpensesPageState
           }
           return true;
         })
-        .toList(growable: false);
+        .toList(growable: false)
+      ..sort(
+        (a, b) => compareMenudeoDateDescThenIdAsc(
+          leftDate:
+              _tryParseVoucherDate(a.date) ??
+              DateTime.fromMillisecondsSinceEpoch(0),
+          rightDate:
+              _tryParseVoucherDate(b.date) ??
+              DateTime.fromMillisecondsSinceEpoch(0),
+          leftKeys: <String?>[a.folio, a.person, a.rubric],
+          rightKeys: <String?>[b.folio, b.person, b.rubric],
+          leftFallbackId: a.folio,
+          rightFallbackId: b.folio,
+        ),
+      );
   }
 
   int _effectiveCurrentPageFor(int totalRows) {

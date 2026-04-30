@@ -27,6 +27,7 @@ import 'mayoreo_dashboard_preview_page.dart';
 import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
+import 'mayoreo_sorting.dart';
 import 'mayoreo_theme.dart';
 
 const String _kMayoreoSalesReportsTable = 'mayoreo_sales_reports';
@@ -592,7 +593,17 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
           }
           return true;
         })
-        .toList(growable: false);
+        .toList(growable: false)
+      ..sort(
+        (a, b) => compareMayoreoDateDescThenIdAsc(
+          leftDate: a.saleDate,
+          rightDate: b.saleDate,
+          leftKeys: <String?>[a.ticket, a.remision],
+          rightKeys: <String?>[b.ticket, b.remision],
+          leftFallbackId: a.id,
+          rightFallbackId: b.id,
+        ),
+      );
   }
 
   int _effectiveCurrentPageFor(int totalRows) =>
@@ -4398,19 +4409,18 @@ Future<Set<String>?> _showMayoreoValueFilterDialog(
   required List<String> options,
   required Set<String> initialValues,
 }) {
-  final normalizedOptions =
-      options
-          .map((option) => option.trim())
-          .where((option) => option.isNotEmpty)
-          .toSet()
-          .toList()
-        ..sort();
+  final normalizedOptions = sortedMayoreoOptions(options);
   return showDialog<Set<String>>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       final searchC = TextEditingController();
       final searchFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
       final itemFocusNodes = <FocusNode>[];
       var query = '';
       final selectedValues = <String>{...initialValues};

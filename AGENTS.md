@@ -50,7 +50,12 @@ Regla explícita:
 - Refresh:
   - Priorizar recarga automática con las mismas reglas de defer/sincronización de Entradas/Salidas.
   - No agregar botón manual de recarga salvo requerimiento explícito del usuario.
- - UI contract:
+- Orden y foco:
+  - Si el grid o lista principal tiene fecha operativa, el orden por defecto debe ser fecha más reciente arriba y, en empate, identificador visible ascendente (`ticket`, `folio`, `remisión`, `código` o equivalente).
+  - Si una lista de opciones no tiene una secuencia operativa declarada, debe mostrarse en orden alfabético por label visible.
+  - Pickers, filtros popup, dropdowns buscables y catálogos modales con buscador deben abrir con foco automático en el campo de búsqueda.
+  - No se permite requerir click extra para empezar a escribir en un diálogo cuya interacción principal sea buscar y seleccionar.
+- UI contract:
   - Mantener diseño, paleta, sombras, estados hover/selected, diálogos y filtros exactamente alineados a Entradas/Salidas.
   - Si la página pertenece a un área distinta (`Ventas`, `Finanzas`, `RH`, etc.), mantener fijo todo el lenguaje visual base y cambiar únicamente la gama cromática mediante tokens semánticos de área.
   - No hardcodear colores por componente; el color del área debe entrar por contrato de tema, no por reinterpretación local.
@@ -105,6 +110,7 @@ Antes de dar por cerrada una página de Menudeo, validar explícitamente este ch
 - Pickers, filtros y catálogos:
   - Dropdowns y filtros por popup aceptan `ArrowUp/ArrowDown`, `Enter`, `Space` y `Esc`.
   - Los diálogos de filtros usan la paleta del área anfitriona y no heredan azul de Operación.
+  - Si el diálogo incluye buscador, debe abrir con el cursor ya listo dentro de ese buscador.
   - Clasificaciones estables de Menudeo no se capturan como texto libre.
   - Normalizar captura operativa a mayúsculas limpias cuando aplique: sin acentos raros ni variantes innecesarias.
 - Multiedición:

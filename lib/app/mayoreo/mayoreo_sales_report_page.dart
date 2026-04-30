@@ -34,6 +34,7 @@ import 'mayoreo_data_store.dart';
 import 'mayoreo_dashboard_preview_page.dart';
 import 'mayoreo_el_palomar_page.dart';
 import 'mayoreo_price_adjustments_page.dart';
+import 'mayoreo_sorting.dart';
 import 'mayoreo_theme.dart';
 
 const double _kReportDateW = 118;
@@ -933,7 +934,17 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
           }
           return true;
         })
-        .toList(growable: false);
+        .toList(growable: false)
+      ..sort(
+        (a, b) => compareMayoreoDateDescThenIdAsc(
+          leftDate: a.date,
+          rightDate: b.date,
+          leftKeys: <String?>[a.ticket, a.remision],
+          rightKeys: <String?>[b.ticket, b.remision],
+          leftFallbackId: a.id,
+          rightFallbackId: b.id,
+        ),
+      );
   }
 
   int _effectiveCurrentPageFor(int totalRows) =>
@@ -5249,12 +5260,19 @@ Future<T?> _showMayoreoSalesSingleSelectDialog<T>(
   T? initialValue,
   bool allowClear = false,
 }) {
+  final normalizedOptions = options.toList(growable: false)
+    ..sort((a, b) => compareMayoreoAlpha(a.label, b.label));
   return showDialog<T>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       final searchC = TextEditingController();
       final searchFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
       final itemFocusNodes = <FocusNode>[];
       String query = '';
       int? focusedIndex;
@@ -5270,7 +5288,7 @@ Future<T?> _showMayoreoSalesSingleSelectDialog<T>(
 
       return StatefulBuilder(
         builder: (context, setLocalState) {
-          final filtered = options
+          final filtered = normalizedOptions
               .where(
                 (option) =>
                     option.label.toLowerCase().contains(query.toLowerCase()),
@@ -5449,18 +5467,25 @@ Future<Set<T>?> _showMayoreoSalesMultiSelectDialog<T>(
   required List<_MayoreoSalesPickerOption<T>> options,
   required Set<T> initialSelected,
 }) {
+  final normalizedOptions = options.toList(growable: false)
+    ..sort((a, b) => compareMayoreoAlpha(a.label, b.label));
   return showDialog<Set<T>?>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       final searchC = TextEditingController();
       final searchFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
       final selected = <T>{...initialSelected};
       String query = '';
 
       return StatefulBuilder(
         builder: (context, setLocalState) {
-          final filtered = options
+          final filtered = normalizedOptions
               .where(
                 (option) =>
                     option.label.toLowerCase().contains(query.toLowerCase()),

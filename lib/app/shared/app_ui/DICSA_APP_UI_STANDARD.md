@@ -80,6 +80,20 @@ Referencia funcional principal:
 Aplica a:
 - páginas de resumen ejecutivo u operativo basadas en widgets
 
+Regla especifica para `Direccion` dentro de este arquetipo:
+
+- referencia funcional y de layout base: `GeneralDashboard`
+- el menú lateral de navegación abre en overlay; no debe empujar el canvas principal
+- el dashboard debe abrir con el panel cerrado por default
+- `Direccion` puede endurecer el look glass y el contraste del fondo respecto a otras areas, pero sin cambiar la estructura base del arquetipo
+- cualquier pagina nueva de `Direccion` que use este arquetipo debe clonar primero:
+  - header
+  - canvas principal
+  - panel overlay de navegación
+  - ritmo de padding y separación
+  - masas de fondo homologadas
+  - tratamiento glass del shell
+
 ### 6. Superficies Auxiliares
 
 Aplica a:
@@ -100,12 +114,38 @@ Estas reglas sí aplican a toda la app, sin importar arquetipo.
 - No agregar un botón manual de recarga si ya existe auto refresh.
 - `Cerrar sesión`, ayudas, instructivos y overlays deben usar la misma familia visual.
 
+### Orden y foco por defecto
+
+- Si una superficie principal es un grid o lista con columna de fecha operativa, el orden por defecto debe ser:
+  - fecha más reciente arriba
+  - en empate de fecha, identificador visible ascendente (`ticket`, `folio`, `remisión`, `código` o equivalente)
+- Si una lista o grid no tiene fecha como eje principal, sus filas visibles deben salir en orden operativo explícito y estable; si no existe una razón operativa mejor, usar orden alfabético ascendente por su identificador principal.
+- Listas de opciones, catálogos, pickers, dropdowns, filtros popup y selectores equivalentes deben abrir con opciones ordenadas alfabéticamente por label visible, salvo que exista una secuencia operativa declarada en este contrato.
+- Si un popup, picker o diálogo abre con buscador como interacción principal, el foco inicial debe caer automáticamente en ese buscador al abrirse.
+- Ningún diálogo con buscador debe requerir click extra para empezar a escribir.
+- Estas reglas deben resolverse en helpers o componentes compartidos cuando la superficie se repita entre módulos; no deben quedar como comparadores locales improvisados en cada página.
+
 ### Estilo visual
 
 - Reusar el mismo lenguaje visual base de la app.
 - Reusar radios, paddings, sombras y elevación del kit existente.
 - No introducir tonos nuevos si ya existe equivalente visual aprobado.
 - Todos los diálogos deben sentirse de la misma familia glass de DICSA.
+
+Regla especifica para `Direccion`:
+
+- el fondo oficial de `Direccion` es nocturno ejecutivo, no claro
+- el glass oficial de `Direccion` es oscuro-translucido con borde luminoso
+- los blobs de fondo de `Direccion` conservan geometria homologada del sistema y solo cambian su material visual
+- no reinterpretar los blobs de `Direccion` como:
+  - manchas abstractas sin forma
+  - esferas con adornos internos ajenos a la silueta
+  - overlays de brillo rectangulares o capsulares
+- el volumen de los blobs de `Direccion` debe resolverse solo con:
+  - gradiente del cuerpo
+  - glow exterior
+  - borde suave
+  - highlight o sombra radial contenidos dentro de la misma geometria
 
 ### Contrato de identidad visual por area
 
@@ -185,6 +225,16 @@ Reglas obligatorias:
 - Ningun popup, picker, date picker, menu contextual, dropdown, tooltip, selector de rango, modal de filtro o surface auxiliar puede caer al color base azul del sistema si la pagina anfitriona pertenece a otra area.
 - Si un componente compartido puede abrirse desde varias areas, su implementacion debe consumir tokens del contexto anfitrion en tiempo de apertura; no puede resolver color por defaults internos.
 - Resolver un problema cromatico local con overrides dentro de una sola pantalla no cierra el contrato: la correccion debe vivir en el componente compartido o en la capa de tema que lo abastece.
+
+Regla adicional para `Direccion`:
+
+- al replicar una pagina de `Direccion`, copiar primero el fondo y el glass desde `GeneralDashboard`
+- no volver a diseñar:
+  - distribucion de blobs
+  - material del glass
+  - contraste base de texto
+  - comportamiento overlay del panel
+- cualquier desviacion intencional en `Direccion` debe justificarse como necesidad del modulo, no como preferencia visual local
 
 #### Checklist minimo antes de aprobar una pagina de area nueva
 
