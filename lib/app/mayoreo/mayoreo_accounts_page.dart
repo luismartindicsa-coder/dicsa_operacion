@@ -45,7 +45,7 @@ const double _kAccountsOperationW = 100;
 const double _kAccountsDocumentW = 128;
 const double _kAccountsInvoiceDateW = 120;
 const double _kAccountsPaymentDateW = 120;
-const double _kAccountsStatusW = 162;
+const double _kAccountsStatusW = 208;
 const double _kAccountsActionsW = 102;
 
 enum _MayoreoAccountsOperationType { factura, cheque }
@@ -2761,8 +2761,9 @@ class _AccountsStatusChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = _statusColors(status);
     return Container(
-      constraints: const BoxConstraints(minHeight: 34),
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+      width: double.infinity,
+      constraints: const BoxConstraints(minHeight: 40),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         gradient: LinearGradient(
           colors: [scheme.$1, scheme.$2],
@@ -2772,24 +2773,26 @@ class _AccountsStatusChip extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
         border: Border.all(color: scheme.$3.withValues(alpha: 0.95)),
       ),
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: Alignment.centerLeft,
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(_statusIcon(status), size: 14, color: scheme.$4),
-            const SizedBox(width: 6),
-            Text(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Icon(_statusIcon(status), size: 14, color: scheme.$4),
+          const SizedBox(width: 7),
+          Expanded(
+            child: Text(
               _financialStatusLabel(status),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              softWrap: true,
               style: TextStyle(
                 fontSize: 11.2,
                 fontWeight: FontWeight.w900,
                 color: scheme.$4,
+                height: 1.08,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -5174,9 +5177,9 @@ String _operationTypeLabel(_MayoreoAccountsOperationType type) {
 String _financialStatusLabel(_MayoreoAccountsStatus status) {
   switch (status) {
     case _MayoreoAccountsStatus.pendienteFactura:
-      return 'PEND. FACTURA';
+      return 'PENDIENTE DE FACTURAR';
     case _MayoreoAccountsStatus.facturadaPendientePago:
-      return 'FACT. PEND. PAGO';
+      return 'FACTURA PENDIENTE DE PAGO';
     case _MayoreoAccountsStatus.pagada:
       return 'PAGADA';
     case _MayoreoAccountsStatus.pagoParcial:
@@ -5186,11 +5189,11 @@ String _financialStatusLabel(_MayoreoAccountsStatus status) {
     case _MayoreoAccountsStatus.porRevisar:
       return 'POR REVISAR';
     case _MayoreoAccountsStatus.pendienteCheque:
-      return 'PEND. CHEQUE';
+      return 'PENDIENTE DE CHEQUE';
     case _MayoreoAccountsStatus.chequeRecibido:
       return 'CHEQUE RECIBIDO';
     case _MayoreoAccountsStatus.chequePendienteCanje:
-      return 'PEND. CANJE';
+      return 'CHEQUE PENDIENTE DE CANJE';
     case _MayoreoAccountsStatus.chequeCanjeado:
       return 'CHEQUE CANJEADO';
   }
@@ -5228,20 +5231,54 @@ IconData _statusIcon(_MayoreoAccountsStatus status) {
         const Color(0xFFE9C66B),
         const Color(0xFF8A5E12),
       );
+    case _MayoreoAccountsStatus.facturadaPendientePago:
+      return (
+        const Color(0xFFE7F1FF),
+        const Color(0xFFD4E6FF),
+        const Color(0xFFAFCDF5),
+        const Color(0xFF2F5F98),
+      );
+    case _MayoreoAccountsStatus.pendienteFactura:
+      return (
+        const Color(0xFFFFF7E3),
+        const Color(0xFFFFEDB5),
+        const Color(0xFFE5C86F),
+        const Color(0xFF7A5A08),
+      );
+    case _MayoreoAccountsStatus.pendienteCheque:
+      return (
+        const Color(0xFFF6ECFF),
+        const Color(0xFFE8D6FF),
+        const Color(0xFFCDB1EE),
+        const Color(0xFF6C4299),
+      );
+    case _MayoreoAccountsStatus.chequeRecibido:
+      return (
+        const Color(0xFFE6FAF6),
+        const Color(0xFFCFF1E8),
+        const Color(0xFFA8DBCD),
+        const Color(0xFF2F7A6B),
+      );
+    case _MayoreoAccountsStatus.chequePendienteCanje:
+      return (
+        const Color(0xFFFFEEE4),
+        const Color(0xFFFFDEC8),
+        const Color(0xFFE8B58D),
+        const Color(0xFF9A5A28),
+      );
     case _MayoreoAccountsStatus.cancelada:
+      return (
+        const Color(0xFFF2F1F0),
+        const Color(0xFFE2DFDC),
+        const Color(0xFFC8C2BC),
+        const Color(0xFF6D655D),
+      );
     case _MayoreoAccountsStatus.porRevisar:
       return (
         const Color(0xFFFFE8E2),
         const Color(0xFFFFD6C8),
         const Color(0xFFE9B6A8),
         const Color(0xFF924E3B),
-      );
-    default:
-      return (
-        const Color(0xFFFFF8DF),
-        const Color(0xFFFFE97C),
-        const Color(0xFFF0D15F),
-        const Color(0xFF6A5200),
       );
   }
 }
