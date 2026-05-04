@@ -758,6 +758,9 @@ class _MayoreoPreviewBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final weeklyExpectedPaymentsLabel = summary.weeklyExpectedPaymentCount == 1
+        ? '1 factura estimada'
+        : '${summary.weeklyExpectedPaymentCount} facturas estimadas';
     return Align(
       alignment: Alignment.topCenter,
       child: ConstrainedBox(
@@ -767,59 +770,138 @@ class _MayoreoPreviewBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _MayoreoPalomarHeroCard(
-                balance: summary.palomarBalance,
-                detail: summary.palomarStatusLabel,
-                movementCount: summary.palomarMovementCount,
-                availableRemissions: summary.availablePalomarRemissions,
-                onTap: onOpenElPalomar,
-              ),
-              const SizedBox(height: 16),
               LayoutBuilder(
                 builder: (context, constraints) {
                   final width = constraints.maxWidth;
-                  final columns = width >= 1480
-                      ? 5
-                      : width >= 1160
-                      ? 3
-                      : width >= 820
-                      ? 2
-                      : 1;
                   const spacing = 16.0;
+                  if (width >= 1160) {
+                    final topCardWidth = (width - (spacing * 4)) / 5;
+                    return Column(
+                      children: [
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            SizedBox(
+                              width: (topCardWidth * 2) + spacing,
+                              child: _MayoreoPalomarHeroCard(
+                                balance: summary.palomarBalance,
+                                detail: summary.palomarStatusLabel,
+                                movementCount: summary.palomarMovementCount,
+                                availableRemissions:
+                                    summary.availablePalomarRemissions,
+                                onTap: onOpenElPalomar,
+                                maxWidth: null,
+                              ),
+                            ),
+                            const SizedBox(width: spacing),
+                            _MayoreoMetricCard(
+                              width: topCardWidth,
+                              icon: Icons.receipt_long_rounded,
+                              title: 'Facturas pendientes',
+                              value: '${summary.pendingInvoiceCount}',
+                              detail:
+                                  '${_money(summary.pendingInvoiceAmount)} por cobrar',
+                              accent: const Color(0xFFF39C12),
+                              onTap: onOpenAccounts,
+                            ),
+                            const SizedBox(width: spacing),
+                            _MayoreoMetricCard(
+                              width: topCardWidth,
+                              icon: Icons.request_page_rounded,
+                              title: 'Cheques pendientes',
+                              value: '${summary.pendingCheckCount}',
+                              detail:
+                                  '${_money(summary.pendingCheckAmount)} por conciliar',
+                              accent: const Color(0xFFE3B208),
+                              onTap: onOpenAccounts,
+                            ),
+                            const SizedBox(width: spacing),
+                            _MayoreoMetricCard(
+                              width: topCardWidth,
+                              icon: Icons.link_rounded,
+                              title: 'Reportes pendientes',
+                              value: '${summary.pendingReportsCount}',
+                              detail:
+                                  '${summary.relatedReportsCount} relacionados',
+                              accent: const Color(0xFFC78A00),
+                              onTap: onOpenSalesReports,
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: spacing),
+                        _MayoreoWeeklyExpectedCollectionsCard(
+                          icon: Icons.calendar_month_rounded,
+                          title: 'Cobranza esta semana',
+                          value: _money(summary.weeklyExpectedPaymentAmount),
+                          detail:
+                              '$weeklyExpectedPaymentsLabel · ${summary.weeklyExpectedPaymentRangeLabel}',
+                          accent: const Color(0xFFBD8A16),
+                          previewRows: summary.weeklyExpectedPaymentRows,
+                          onTap: onOpenAccounts,
+                        ),
+                      ],
+                    );
+                  }
+                  final columns = width >= 820 ? 2 : 1;
                   final cardWidth =
                       (width - ((columns - 1) * spacing)) / columns;
-                  return Wrap(
-                    spacing: spacing,
-                    runSpacing: spacing,
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      _MayoreoMetricCard(
-                        width: cardWidth,
-                        icon: Icons.receipt_long_rounded,
-                        title: 'Facturas pendientes',
-                        value: '${summary.pendingInvoiceCount}',
-                        detail:
-                            '${_money(summary.pendingInvoiceAmount)} por cobrar',
-                        accent: const Color(0xFFF39C12),
-                        onTap: onOpenAccounts,
+                      _MayoreoPalomarHeroCard(
+                        balance: summary.palomarBalance,
+                        detail: summary.palomarStatusLabel,
+                        movementCount: summary.palomarMovementCount,
+                        availableRemissions: summary.availablePalomarRemissions,
+                        onTap: onOpenElPalomar,
                       ),
-                      _MayoreoMetricCard(
-                        width: cardWidth,
-                        icon: Icons.request_page_rounded,
-                        title: 'Cheques pendientes',
-                        value: '${summary.pendingCheckCount}',
-                        detail:
-                            '${_money(summary.pendingCheckAmount)} por conciliar',
-                        accent: const Color(0xFFE3B208),
-                        onTap: onOpenAccounts,
+                      const SizedBox(height: spacing),
+                      Wrap(
+                        spacing: spacing,
+                        runSpacing: spacing,
+                        children: [
+                          _MayoreoMetricCard(
+                            width: cardWidth,
+                            icon: Icons.receipt_long_rounded,
+                            title: 'Facturas pendientes',
+                            value: '${summary.pendingInvoiceCount}',
+                            detail:
+                                '${_money(summary.pendingInvoiceAmount)} por cobrar',
+                            accent: const Color(0xFFF39C12),
+                            onTap: onOpenAccounts,
+                          ),
+                          _MayoreoMetricCard(
+                            width: cardWidth,
+                            icon: Icons.request_page_rounded,
+                            title: 'Cheques pendientes',
+                            value: '${summary.pendingCheckCount}',
+                            detail:
+                                '${_money(summary.pendingCheckAmount)} por conciliar',
+                            accent: const Color(0xFFE3B208),
+                            onTap: onOpenAccounts,
+                          ),
+                          _MayoreoMetricCard(
+                            width: cardWidth,
+                            icon: Icons.link_rounded,
+                            title: 'Reportes pendientes',
+                            value: '${summary.pendingReportsCount}',
+                            detail:
+                                '${summary.relatedReportsCount} relacionados',
+                            accent: const Color(0xFFC78A00),
+                            onTap: onOpenSalesReports,
+                          ),
+                        ],
                       ),
-                      _MayoreoMetricCard(
-                        width: cardWidth,
-                        icon: Icons.link_rounded,
-                        title: 'Reportes pendientes',
-                        value: '${summary.pendingReportsCount}',
-                        detail: '${summary.relatedReportsCount} relacionados',
-                        accent: const Color(0xFFC78A00),
-                        onTap: onOpenSalesReports,
+                      const SizedBox(height: spacing),
+                      _MayoreoWeeklyExpectedCollectionsCard(
+                        icon: Icons.calendar_month_rounded,
+                        title: 'Cobranza esta semana',
+                        value: _money(summary.weeklyExpectedPaymentAmount),
+                        detail:
+                            '$weeklyExpectedPaymentsLabel · ${summary.weeklyExpectedPaymentRangeLabel}',
+                        accent: const Color(0xFFBD8A16),
+                        previewRows: summary.weeklyExpectedPaymentRows,
+                        onTap: onOpenAccounts,
                       ),
                     ],
                   );
@@ -850,6 +932,7 @@ class _MayoreoPalomarHeroCard extends StatefulWidget {
   final int movementCount;
   final int availableRemissions;
   final Future<void> Function() onTap;
+  final double? maxWidth;
 
   const _MayoreoPalomarHeroCard({
     required this.balance,
@@ -857,6 +940,7 @@ class _MayoreoPalomarHeroCard extends StatefulWidget {
     required this.movementCount,
     required this.availableRemissions,
     required this.onTap,
+    this.maxWidth = 620,
   });
 
   @override
@@ -870,64 +954,66 @@ class _MayoreoPalomarHeroCardState extends State<_MayoreoPalomarHeroCard> {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return Center(
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 620),
-        child: MouseRegion(
-          onEnter: (_) => setState(() => _hovered = true),
-          onExit: (_) => setState(() => _hovered = false),
-          child: AnimatedScale(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            scale: _hovered ? 1.006 : 1.0,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              transform: Matrix4.identity()
-                ..translateByDouble(0.0, _hovered ? -3.0 : 0.0, 0.0, 1.0),
-              child: ContractGlassCard(
-                padding: const EdgeInsets.fromLTRB(28, 22, 28, 22),
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(26),
-                  onTap: () async => widget.onTap(),
-                  child: Column(
-                    children: [
-                      Text(
-                        'Saldo El Palomar',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w900,
-                          color: tokens.primaryStrong.withValues(alpha: 0.84),
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      Text(
-                        _money(widget.balance),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 46,
-                          fontWeight: FontWeight.w900,
-                          color: Color(0xFF1F262B),
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '${widget.availableRemissions} remisiones disponibles · ${widget.movementCount} movimientos · ${widget.detail}',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF6A6966),
-                        ),
-                      ),
-                    ],
+    final card = MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        scale: _hovered ? 1.006 : 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.identity()
+            ..translateByDouble(0.0, _hovered ? -3.0 : 0.0, 0.0, 1.0),
+          child: ContractGlassCard(
+            padding: const EdgeInsets.fromLTRB(28, 22, 28, 22),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(26),
+              onTap: () async => widget.onTap(),
+              child: Column(
+                children: [
+                  Text(
+                    'Saldo El Palomar',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: tokens.primaryStrong.withValues(alpha: 0.84),
+                    ),
                   ),
-                ),
+                  const SizedBox(height: 10),
+                  Text(
+                    _money(widget.balance),
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 46,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF1F262B),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${widget.availableRemissions} remisiones disponibles · ${widget.movementCount} movimientos · ${widget.detail}',
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xFF6A6966),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
         ),
+      ),
+    );
+    if (widget.maxWidth == null) return card;
+    return Center(
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: widget.maxWidth!),
+        child: card,
       ),
     );
   }
@@ -1045,6 +1131,283 @@ class _MayoreoMetricCardState extends State<_MayoreoMetricCard> {
   }
 }
 
+class _MayoreoWeeklyExpectedCollectionsCard extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+  final String detail;
+  final Color accent;
+  final List<_MayoreoWeeklyExpectedPaymentRow> previewRows;
+  final Future<void> Function()? onTap;
+
+  const _MayoreoWeeklyExpectedCollectionsCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.detail,
+    required this.accent,
+    required this.previewRows,
+    this.onTap,
+  });
+
+  @override
+  State<_MayoreoWeeklyExpectedCollectionsCard> createState() =>
+      _MayoreoWeeklyExpectedCollectionsCardState();
+}
+
+class _MayoreoWeeklyExpectedCollectionsCardState
+    extends State<_MayoreoWeeklyExpectedCollectionsCard> {
+  bool _hovered = false;
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = widget.onTap != null;
+    final hasOverflow = widget.previewRows.length > 4;
+    final previewRows = _expanded || !hasOverflow
+        ? widget.previewRows
+        : widget.previewRows.take(4).toList(growable: false);
+    final content = MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        scale: _hovered ? 1.008 : 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.identity()
+            ..translateByDouble(0.0, _hovered ? -3.0 : 0.0, 0.0, 1.0),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: _hovered
+                  ? [
+                      BoxShadow(
+                        color: widget.accent.withValues(alpha: 0.16),
+                        blurRadius: 26,
+                        offset: const Offset(0, 12),
+                      ),
+                    ]
+                  : const [],
+            ),
+            child: ContractGlassCard(
+              padding: const EdgeInsets.all(18),
+              child: InkWell(
+                borderRadius: BorderRadius.circular(24),
+                onTap: enabled ? () async => widget.onTap!() : null,
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final wide = constraints.maxWidth >= 980;
+                    final summary = Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 42,
+                          height: 42,
+                          decoration: BoxDecoration(
+                            color: widget.accent.withValues(alpha: 0.12),
+                            borderRadius: BorderRadius.circular(14),
+                          ),
+                          child: Icon(widget.icon, color: widget.accent),
+                        ),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                widget.title,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF5A5552),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Text(
+                                widget.value,
+                                style: const TextStyle(
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF1F262B),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                widget.detail,
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF6A6966),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    );
+                    final list = previewRows.isEmpty
+                        ? const SizedBox.shrink()
+                        : Column(
+                            children: [
+                              for (final row in previewRows) ...[
+                                _MayoreoWeeklyExpectedCollectionPreviewRow(
+                                  row: row,
+                                ),
+                                if (row != previewRows.last)
+                                  const Divider(
+                                    height: 22,
+                                    color: Color(0x1A8B6C14),
+                                  ),
+                              ],
+                            ],
+                          );
+                    if (wide) {
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(
+                                width: constraints.maxWidth * 0.34,
+                                child: summary,
+                              ),
+                              const SizedBox(width: 28),
+                              Expanded(child: list),
+                            ],
+                          ),
+                          if (hasOverflow) ...[
+                            const SizedBox(height: 14),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: () =>
+                                    setState(() => _expanded = !_expanded),
+                                icon: Icon(
+                                  _expanded
+                                      ? Icons.unfold_less_rounded
+                                      : Icons.unfold_more_rounded,
+                                ),
+                                label: Text(
+                                  _expanded ? 'Ver menos' : 'Ver más',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      );
+                    }
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        summary,
+                        if (previewRows.isNotEmpty) ...[
+                          const SizedBox(height: 16),
+                          const Divider(height: 1, color: Color(0x1A8B6C14)),
+                          const SizedBox(height: 12),
+                          list,
+                          if (hasOverflow) ...[
+                            const SizedBox(height: 12),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: TextButton.icon(
+                                onPressed: () =>
+                                    setState(() => _expanded = !_expanded),
+                                icon: Icon(
+                                  _expanded
+                                      ? Icons.unfold_less_rounded
+                                      : Icons.unfold_more_rounded,
+                                ),
+                                label: Text(
+                                  _expanded ? 'Ver menos' : 'Ver más',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                          ] else
+                            const SizedBox(height: 16),
+                        ],
+                      ],
+                    );
+                  },
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    return content;
+  }
+}
+
+class _MayoreoWeeklyExpectedCollectionPreviewRow extends StatelessWidget {
+  final _MayoreoWeeklyExpectedPaymentRow row;
+
+  const _MayoreoWeeklyExpectedCollectionPreviewRow({required this.row});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  row.clientName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF2C2A27),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 18),
+              SizedBox(
+                width: 96,
+                child: Text(
+                  row.documentNumber,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF7A726A),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          _shortDayMonth(row.estimatedPaymentDate),
+          style: const TextStyle(
+            fontSize: 11.5,
+            fontWeight: FontWeight.w800,
+            color: Color(0xFF8A6916),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          _money(row.amount),
+          style: const TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF1F262B),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _MayoreoInsightGrid extends StatelessWidget {
   final List<_MayoreoPendingTask> tasks;
   final _MayoreoDashboardSummary summary;
@@ -1114,25 +1477,38 @@ class _MayoreoInsightGrid extends StatelessWidget {
                   ),
                 ],
               )
-            : Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: _MayoreoInsightCard(
-                      onTap: onOpenPendingTasks,
-                      child: _MayoreoPendingPreviewBlock(tasks: openTasks),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: _MayoreoInsightCard(
-                      child: _PalomarPriceListBlock(
-                        items: palomarPriceItems,
-                        onOpenCatalog: onOpenCatalog,
+            : Builder(
+                builder: (context) {
+                  const sharedHeight = 520.0;
+                  return Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: SizedBox(
+                          height: sharedHeight,
+                          child: _MayoreoInsightCard(
+                            onTap: onOpenPendingTasks,
+                            child: _MayoreoPendingPreviewBlock(
+                              tasks: openTasks,
+                            ),
+                          ),
+                        ),
                       ),
-                    ),
-                  ),
-                ],
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: SizedBox(
+                          height: sharedHeight,
+                          child: _MayoreoInsightCard(
+                            child: _PalomarPriceListBlock(
+                              items: palomarPriceItems,
+                              onOpenCatalog: onOpenCatalog,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               );
         return Column(
           children: [
@@ -1300,14 +1676,8 @@ class _PalomarPriceListBlock extends StatefulWidget {
 }
 
 class _PalomarPriceListBlockState extends State<_PalomarPriceListBlock> {
-  bool _expanded = false;
-
   @override
   Widget build(BuildContext context) {
-    final visibleItems = _expanded
-        ? widget.items
-        : widget.items.take(6).toList(growable: false);
-    final hasOverflow = widget.items.length > 6;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1330,26 +1700,77 @@ class _PalomarPriceListBlockState extends State<_PalomarPriceListBlock> {
           ),
         ),
         const SizedBox(height: 18),
-        ...visibleItems.map(
-          (item) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: _DashboardListRow(item: item),
-          ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final width = constraints.maxWidth;
+            final columns = width >= 520 ? 2 : 1;
+            const spacing = 10.0;
+            final itemWidth = (width - ((columns - 1) * spacing)) / columns;
+            return Wrap(
+              spacing: spacing,
+              runSpacing: spacing,
+              children: [
+                for (final item in widget.items)
+                  SizedBox(
+                    width: itemWidth,
+                    child: _DashboardCompactListRow(item: item),
+                  ),
+              ],
+            );
+          },
         ),
-        if (hasOverflow)
-          Align(
-            alignment: Alignment.centerLeft,
-            child: TextButton.icon(
-              onPressed: () => setState(() => _expanded = !_expanded),
-              icon: Icon(
-                _expanded
-                    ? Icons.unfold_less_rounded
-                    : Icons.unfold_more_rounded,
+      ],
+    );
+  }
+}
+
+class _DashboardCompactListRow extends StatelessWidget {
+  final _DashboardListItem item;
+
+  const _DashboardCompactListRow({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = item.onTap != null;
+    final row = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x1AE7C95E)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              item.label,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: kMayoreoInk,
+                height: 1.2,
               ),
-              label: Text(_expanded ? 'Ver menos' : 'Ver más'),
             ),
           ),
-      ],
+          const SizedBox(width: 10),
+          Text(
+            item.value,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF6B5512),
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!enabled) return row;
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: () async => item.onTap!(),
+      child: row,
     );
   }
 }
@@ -1440,6 +1861,10 @@ class _MayoreoDashboardSummary {
   final List<_MayoreoDashboardPriceRow> palomarPrices;
   final int overdueEstimatedPaymentCount;
   final double overdueEstimatedPaymentAmount;
+  final int weeklyExpectedPaymentCount;
+  final double weeklyExpectedPaymentAmount;
+  final String weeklyExpectedPaymentRangeLabel;
+  final List<_MayoreoWeeklyExpectedPaymentRow> weeklyExpectedPaymentRows;
   final List<_MayoreoPendingTask> automaticPendingTasks;
 
   const _MayoreoDashboardSummary({
@@ -1457,6 +1882,10 @@ class _MayoreoDashboardSummary {
     this.palomarPrices = const <_MayoreoDashboardPriceRow>[],
     this.overdueEstimatedPaymentCount = 0,
     this.overdueEstimatedPaymentAmount = 0,
+    this.weeklyExpectedPaymentCount = 0,
+    this.weeklyExpectedPaymentAmount = 0,
+    this.weeklyExpectedPaymentRangeLabel = '',
+    this.weeklyExpectedPaymentRows = const <_MayoreoWeeklyExpectedPaymentRow>[],
     this.automaticPendingTasks = const <_MayoreoPendingTask>[],
   });
 
@@ -1469,6 +1898,20 @@ _MayoreoDashboardSummary _buildDashboardSummary({
   required String? palomarRaw,
   required MayoreoCatalogSnapshot catalogSnapshot,
 }) {
+  const prioritizedPalomarMaterials = <String>[
+    'MIXTO',
+    'PESADO',
+    'RETORNO INDUSTRIAL',
+    'BOTE',
+    'REBABA',
+    'PLACA Y ESTRUCTURA',
+    'MIXTO PARA PROCESAR',
+    'RETORNO PARA PROCESAR',
+    'PACA',
+    'PLACA Y ESTRUCTURA LARGA',
+    'RETORNO INDUSTRIAL ALTO RESIDUAL',
+    'BOTE A GRANEL',
+  ];
   var pendingReportsCount = 0;
   var relatedReportsCount = 0;
   var pendingInvoiceCount = 0;
@@ -1481,7 +1924,13 @@ _MayoreoDashboardSummary _buildDashboardSummary({
   var availablePalomarRemissions = 0;
   var overdueEstimatedPaymentCount = 0;
   var overdueEstimatedPaymentAmount = 0.0;
+  var weeklyExpectedPaymentCount = 0;
+  var weeklyExpectedPaymentAmount = 0.0;
+  final weeklyExpectedPaymentRows = <_MayoreoWeeklyExpectedPaymentRow>[];
   final automaticPendingTasks = <_MayoreoPendingTask>[];
+  final today = DateUtils.dateOnly(DateTime.now());
+  final weekStart = today.subtract(Duration(days: today.weekday - 1));
+  final weekEnd = weekStart.add(const Duration(days: 6));
   final palomarCompanyIds = catalogSnapshot.companies
       .where(
         (row) => row.active && row.name.trim().toUpperCase() == 'EL PALOMAR',
@@ -1491,6 +1940,10 @@ _MayoreoDashboardSummary _buildDashboardSummary({
   final materialsById = <String, MayoreoCatalogMaterialRecord>{
     for (final row in catalogSnapshot.materials) row.id: row,
   };
+  final prioritizedIndex = <String, int>{
+    for (var i = 0; i < prioritizedPalomarMaterials.length; i++)
+      prioritizedPalomarMaterials[i]: i,
+  };
   final palomarPrices =
       catalogSnapshot.prices
           .where(
@@ -1499,6 +1952,8 @@ _MayoreoDashboardSummary _buildDashboardSummary({
           .map((row) {
             final material = materialsById[row.materialId];
             if (material == null) return null;
+            final materialName = material.name.trim().toUpperCase();
+            if (!prioritizedIndex.containsKey(materialName)) return null;
             return _MayoreoDashboardPriceRow(
               materialName: material.name,
               price: row.amount,
@@ -1506,7 +1961,13 @@ _MayoreoDashboardSummary _buildDashboardSummary({
           })
           .whereType<_MayoreoDashboardPriceRow>()
           .toList(growable: false)
-        ..sort((a, b) => a.materialName.compareTo(b.materialName));
+        ..sort((a, b) {
+          final aIndex =
+              prioritizedIndex[a.materialName.trim().toUpperCase()] ?? 1 << 20;
+          final bIndex =
+              prioritizedIndex[b.materialName.trim().toUpperCase()] ?? 1 << 20;
+          return aIndex.compareTo(bIndex);
+        });
 
   try {
     if (salesRaw != null && salesRaw.trim().isNotEmpty) {
@@ -1557,6 +2018,26 @@ _MayoreoDashboardSummary _buildDashboardSummary({
             status != 'chequecanjeado' &&
             status != 'cancelada';
         if (!isOpen) continue;
+        if (operationType != 'cheque' &&
+            estimatedPaymentDate != null &&
+            !_dateOnly(estimatedPaymentDate).isBefore(weekStart) &&
+            !_dateOnly(estimatedPaymentDate).isAfter(weekEnd)) {
+          weeklyExpectedPaymentCount += 1;
+          weeklyExpectedPaymentAmount += approvedAmount;
+          final clientName = ((row['clientName'] as String?) ?? '').trim();
+          final documentNumber = ((row['documentNumber'] as String?) ?? '')
+              .trim();
+          weeklyExpectedPaymentRows.add(
+            _MayoreoWeeklyExpectedPaymentRow(
+              clientName: clientName.isEmpty ? 'CUENTA ABIERTA' : clientName,
+              documentNumber: documentNumber.isEmpty
+                  ? 'FACTURA SIN NUMERO'
+                  : documentNumber,
+              amount: approvedAmount,
+              estimatedPaymentDate: _dateOnly(estimatedPaymentDate),
+            ),
+          );
+        }
         if (estimatedPaymentDate != null &&
             !DateUtils.dateOnly(
               estimatedPaymentDate,
@@ -1663,8 +2144,59 @@ _MayoreoDashboardSummary _buildDashboardSummary({
     palomarPrices: palomarPrices,
     overdueEstimatedPaymentCount: overdueEstimatedPaymentCount,
     overdueEstimatedPaymentAmount: overdueEstimatedPaymentAmount,
+    weeklyExpectedPaymentCount: weeklyExpectedPaymentCount,
+    weeklyExpectedPaymentAmount: weeklyExpectedPaymentAmount,
+    weeklyExpectedPaymentRangeLabel:
+        '${_shortDayMonth(weekStart)} - ${_shortDayMonth(weekEnd)}',
+    weeklyExpectedPaymentRows:
+        (weeklyExpectedPaymentRows..sort((a, b) {
+              final byDate = a.estimatedPaymentDate.compareTo(
+                b.estimatedPaymentDate,
+              );
+              if (byDate != 0) return byDate;
+              final byClient = a.clientName.compareTo(b.clientName);
+              if (byClient != 0) return byClient;
+              return a.documentNumber.compareTo(b.documentNumber);
+            }))
+            .toList(growable: false),
     automaticPendingTasks: automaticPendingTasks,
   );
+}
+
+class _MayoreoWeeklyExpectedPaymentRow {
+  final String clientName;
+  final String documentNumber;
+  final double amount;
+  final DateTime estimatedPaymentDate;
+
+  const _MayoreoWeeklyExpectedPaymentRow({
+    required this.clientName,
+    required this.documentNumber,
+    required this.amount,
+    required this.estimatedPaymentDate,
+  });
+}
+
+DateTime _dateOnly(DateTime value) => DateUtils.dateOnly(value);
+
+String _shortDayMonth(DateTime value) {
+  const months = <int, String>{
+    1: 'ENE',
+    2: 'FEB',
+    3: 'MAR',
+    4: 'ABR',
+    5: 'MAY',
+    6: 'JUN',
+    7: 'JUL',
+    8: 'AGO',
+    9: 'SEP',
+    10: 'OCT',
+    11: 'NOV',
+    12: 'DIC',
+  };
+  final day = value.day.toString().padLeft(2, '0');
+  final month = months[value.month] ?? '';
+  return '$day $month';
 }
 
 class _MayoreoDashboardPriceRow {
@@ -1700,22 +2232,24 @@ class _MayoreoPendingPreviewBlock extends StatelessWidget {
         const SizedBox(height: 8),
         Text(
           tasks.isEmpty
-              ? 'No hay pendientes activos. Usa el botón superior para capturar tareas nuevas.'
+              ? 'No hay pendientes activos.'
               : automaticCount > 0
-              ? '${tasks.length} pendientes abiertos, incluidos $automaticCount recordatorios automáticos de cobranza.'
-              : '${tasks.length} pendientes abiertos capturados por Dirección o Ventas.',
+              ? '${tasks.length} pendientes abiertos · $automaticCount automáticos.'
+              : '${tasks.length} pendientes abiertos.',
           style: const TextStyle(
             fontSize: 13,
             fontWeight: FontWeight.w700,
             color: kMayoreoMutedInk,
             height: 1.45,
           ),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
         ),
-        const SizedBox(height: 18),
+        const SizedBox(height: 14),
         if (preview.isEmpty)
           Container(
             width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
             decoration: BoxDecoration(
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
@@ -1742,7 +2276,7 @@ class _MayoreoPendingPreviewBlock extends StatelessWidget {
         else
           ...preview.map(
             (task) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
+              padding: const EdgeInsets.only(bottom: 10),
               child: _MayoreoPendingPreviewRow(task: task),
             ),
           ),
