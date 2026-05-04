@@ -47,7 +47,6 @@ const double _kAccountsInvoiceDateW = 120;
 const double _kAccountsPaymentDateW = 120;
 const double _kAccountsStatusW = 162;
 const double _kAccountsActionsW = 102;
-const double _kAccountsGridMinHeight = 430;
 
 enum _MayoreoAccountsOperationType { factura, cheque }
 
@@ -1595,8 +1594,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
                   alignment: Alignment.topCenter,
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1440),
-                    child: SingleChildScrollView(
-                      controller: _rowsScrollController,
+                    child: Padding(
                       padding: const EdgeInsets.only(
                         left: 56,
                         right: 12,
@@ -1617,68 +1615,71 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
                             onExportCsv: _exportCsv,
                           ),
                           const SizedBox(height: 12),
-                          _AccountsGridCard(
-                            rows: filteredRows,
-                            pageRows: pageRows,
-                            selectedRowId: _selectedRowId,
-                            selectedRowIds: _selectedRowIds,
-                            rowKeys: _rowKeys,
-                            viewportKey: _rowsViewportKey,
-                            hasDateFilter:
-                                _dateFilterFrom != null ||
-                                _dateFilterTo != null,
-                            hasTicketFilter: _ticketFilters.isNotEmpty,
-                            hasClientFilter: _clientFilters.isNotEmpty,
-                            hasRemisionFilter: _remisionFilters.isNotEmpty,
-                            hasMaterialFilter: _materialFilters.isNotEmpty,
-                            hasOperationFilter: _operationFilters.isNotEmpty,
-                            hasDocumentFilter: _documentFilters.isNotEmpty,
-                            hasInvoiceDateFilter:
-                                _invoiceDateFilterFrom != null ||
-                                _invoiceDateFilterTo != null,
-                            hasPaymentDateFilter:
-                                _paymentDateFilterFrom != null ||
-                                _paymentDateFilterTo != null,
-                            hasStatusFilter: _statusFilters.isNotEmpty,
-                            onOpenDateFilter: _openDateRangeDialog,
-                            onOpenTicketFilter: _openTicketFilterDialog,
-                            onOpenClientFilter: _openClientFilterDialog,
-                            onOpenRemisionFilter: _openRemisionFilterDialog,
-                            onOpenMaterialFilter: _openMaterialFilterDialog,
-                            onOpenOperationFilter: _openOperationFilterDialog,
-                            onOpenDocumentFilter: _openDocumentFilterDialog,
-                            onOpenInvoiceDateFilter:
-                                _openInvoiceDateFilterDialog,
-                            onOpenPaymentDateFilter:
-                                _openPaymentDateFilterDialog,
-                            onOpenStatusFilter: _openStatusFilterDialog,
-                            onClearFilters: _hasActiveFilters
-                                ? _clearFilters
-                                : null,
-                            onRowPrimaryPointerDown: (rowId) =>
-                                _handleRowPrimaryPointerDown(rowId, pageRows),
-                            onTapRow: _handleRowTap,
-                            onRowDragEnter: (rowId) =>
-                                _handleRowDragEnter(rowId, pageRows),
-                            onRowPointerEnd: _handleRowsPointerEnd,
-                            onRowsPointerDown: (event) =>
-                                _handleRowsPointerDown(event, pageRows),
-                            onRowsPointerMove: (event) =>
-                                _handleRowsPointerMove(event, pageRows),
-                            onDoubleTapRow: _openDetailDialog,
-                            onMenuAction: _handleMenuAction,
-                            onSecondaryTapDown: (row, globalPosition) =>
-                                _showContextMenuForRow(
-                                  row,
-                                  pageRows,
-                                  globalPosition,
-                                ),
-                            onTapOutside: _selectedRowIds.isNotEmpty
-                                ? () {
-                                    setState(_clearSelection);
-                                    _persistState();
-                                  }
-                                : null,
+                          Expanded(
+                            child: _AccountsGridCard(
+                              rows: filteredRows,
+                              pageRows: pageRows,
+                              rowsScrollController: _rowsScrollController,
+                              selectedRowId: _selectedRowId,
+                              selectedRowIds: _selectedRowIds,
+                              rowKeys: _rowKeys,
+                              viewportKey: _rowsViewportKey,
+                              hasDateFilter:
+                                  _dateFilterFrom != null ||
+                                  _dateFilterTo != null,
+                              hasTicketFilter: _ticketFilters.isNotEmpty,
+                              hasClientFilter: _clientFilters.isNotEmpty,
+                              hasRemisionFilter: _remisionFilters.isNotEmpty,
+                              hasMaterialFilter: _materialFilters.isNotEmpty,
+                              hasOperationFilter: _operationFilters.isNotEmpty,
+                              hasDocumentFilter: _documentFilters.isNotEmpty,
+                              hasInvoiceDateFilter:
+                                  _invoiceDateFilterFrom != null ||
+                                  _invoiceDateFilterTo != null,
+                              hasPaymentDateFilter:
+                                  _paymentDateFilterFrom != null ||
+                                  _paymentDateFilterTo != null,
+                              hasStatusFilter: _statusFilters.isNotEmpty,
+                              onOpenDateFilter: _openDateRangeDialog,
+                              onOpenTicketFilter: _openTicketFilterDialog,
+                              onOpenClientFilter: _openClientFilterDialog,
+                              onOpenRemisionFilter: _openRemisionFilterDialog,
+                              onOpenMaterialFilter: _openMaterialFilterDialog,
+                              onOpenOperationFilter: _openOperationFilterDialog,
+                              onOpenDocumentFilter: _openDocumentFilterDialog,
+                              onOpenInvoiceDateFilter:
+                                  _openInvoiceDateFilterDialog,
+                              onOpenPaymentDateFilter:
+                                  _openPaymentDateFilterDialog,
+                              onOpenStatusFilter: _openStatusFilterDialog,
+                              onClearFilters: _hasActiveFilters
+                                  ? _clearFilters
+                                  : null,
+                              onRowPrimaryPointerDown: (rowId) =>
+                                  _handleRowPrimaryPointerDown(rowId, pageRows),
+                              onTapRow: _handleRowTap,
+                              onRowDragEnter: (rowId) =>
+                                  _handleRowDragEnter(rowId, pageRows),
+                              onRowPointerEnd: _handleRowsPointerEnd,
+                              onRowsPointerDown: (event) =>
+                                  _handleRowsPointerDown(event, pageRows),
+                              onRowsPointerMove: (event) =>
+                                  _handleRowsPointerMove(event, pageRows),
+                              onDoubleTapRow: _openDetailDialog,
+                              onMenuAction: _handleMenuAction,
+                              onSecondaryTapDown: (row, globalPosition) =>
+                                  _showContextMenuForRow(
+                                    row,
+                                    pageRows,
+                                    globalPosition,
+                                  ),
+                              onTapOutside: _selectedRowIds.isNotEmpty
+                                  ? () {
+                                      setState(_clearSelection);
+                                      _persistState();
+                                    }
+                                  : null,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           Align(
@@ -2164,6 +2165,7 @@ class _MayoreoGridPager extends StatelessWidget {
 class _AccountsGridCard extends StatelessWidget {
   final List<_MayoreoAccountRow> rows;
   final List<_MayoreoAccountRow> pageRows;
+  final ScrollController rowsScrollController;
   final String? selectedRowId;
   final Set<String> selectedRowIds;
   final Map<String, GlobalKey> rowKeys;
@@ -2208,6 +2210,7 @@ class _AccountsGridCard extends StatelessWidget {
   const _AccountsGridCard({
     required this.rows,
     required this.pageRows,
+    required this.rowsScrollController,
     required this.selectedRowId,
     required this.selectedRowIds,
     required this.rowKeys,
@@ -2290,10 +2293,7 @@ class _AccountsGridCard extends StatelessWidget {
               onOpenStatusFilter: onOpenStatusFilter,
             ),
             const SizedBox(height: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(
-                minHeight: _kAccountsGridMinHeight,
-              ),
+            Expanded(
               child: rows.isEmpty
                   ? Container(
                       padding: const EdgeInsets.symmetric(
@@ -2325,31 +2325,32 @@ class _AccountsGridCard extends StatelessWidget {
                       onPointerCancel: (_) => onRowPointerEnd(),
                       child: Container(
                         key: viewportKey,
-                        child: Column(
-                          children: [
-                            for (final row in pageRows) ...[
-                              _AccountsGridRow(
-                                key: rowKeys.putIfAbsent(
-                                  row.id,
-                                  () => GlobalKey(),
-                                ),
-                                row: row,
-                                selected: selectedRowIds.contains(row.id),
-                                active: row.id == selectedRowId,
-                                onPrimaryPointerDown: () =>
-                                    onRowPrimaryPointerDown(row.id),
-                                onTap: () => onTapRow(row.id),
-                                onDragEnter: () => onRowDragEnter(row.id),
-                                onDoubleTap: () => onDoubleTapRow(row),
-                                onMenuAction: (action) =>
-                                    onMenuAction(row, action),
-                                onSecondaryTapDown: (globalPosition) =>
-                                    onSecondaryTapDown(row, globalPosition),
+                        child: ListView.separated(
+                          controller: rowsScrollController,
+                          itemCount: pageRows.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final row = pageRows[index];
+                            return _AccountsGridRow(
+                              key: rowKeys.putIfAbsent(
+                                row.id,
+                                () => GlobalKey(),
                               ),
-                              if (row != pageRows.last)
-                                const SizedBox(height: 10),
-                            ],
-                          ],
+                              row: row,
+                              selected: selectedRowIds.contains(row.id),
+                              active: row.id == selectedRowId,
+                              onPrimaryPointerDown: () =>
+                                  onRowPrimaryPointerDown(row.id),
+                              onTap: () => onTapRow(row.id),
+                              onDragEnter: () => onRowDragEnter(row.id),
+                              onDoubleTap: () => onDoubleTapRow(row),
+                              onMenuAction: (action) =>
+                                  onMenuAction(row, action),
+                              onSecondaryTapDown: (globalPosition) =>
+                                  onSecondaryTapDown(row, globalPosition),
+                            );
+                          },
                         ),
                       ),
                     ),
@@ -2939,7 +2940,7 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                     child: _DetailSummaryCard(
                       icon: Icons.payments_outlined,
                       title: 'IMPORTE APROBADO',
-                      value: formatMoney(row.approvedAmount, decimals: 0),
+                      value: formatMoney(row.approvedAmount, decimals: 2),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -2947,7 +2948,7 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                     child: _DetailSummaryCard(
                       icon: Icons.pending_actions_rounded,
                       title: 'SALDO PENDIENTE',
-                      value: formatMoney(pendingBalance, decimals: 0),
+                      value: formatMoney(pendingBalance, decimals: 2),
                     ),
                   ),
                 ],
@@ -3133,7 +3134,7 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                                           label: 'SALDO PENDIENTE',
                                           value: formatMoney(
                                             pendingBalance,
-                                            decimals: 0,
+                                            decimals: 2,
                                           ),
                                         ),
                                       ),
@@ -5097,6 +5098,11 @@ _MayoreoAccountsStatus _normalizeFinancialStatus({
   required double paidAmount,
   required double approvedAmount,
 }) {
+  const tolerance = 0.5;
+  final normalizedPaidAmount = paidAmount < 0 ? 0.0 : paidAmount;
+  final pendingBalance = approvedAmount - normalizedPaidAmount;
+  final isSettled = pendingBalance <= tolerance;
+
   if (baseStatus == _MayoreoAccountsStatus.cancelada ||
       baseStatus == _MayoreoAccountsStatus.porRevisar) {
     return baseStatus;
@@ -5105,8 +5111,10 @@ _MayoreoAccountsStatus _normalizeFinancialStatus({
     if (documentNumber.isEmpty || documentDate == null) {
       return _MayoreoAccountsStatus.pendienteFactura;
     }
-    if (paidAmount <= 0) return _MayoreoAccountsStatus.facturadaPendientePago;
-    if (paidAmount < approvedAmount) return _MayoreoAccountsStatus.pagoParcial;
+    if (normalizedPaidAmount <= tolerance) {
+      return _MayoreoAccountsStatus.facturadaPendientePago;
+    }
+    if (!isSettled) return _MayoreoAccountsStatus.pagoParcial;
     return _MayoreoAccountsStatus.pagada;
   }
   if (isPalomarAccount && baseStatus == _MayoreoAccountsStatus.chequeCanjeado) {
@@ -5115,7 +5123,7 @@ _MayoreoAccountsStatus _normalizeFinancialStatus({
   if (documentNumber.isEmpty || documentDate == null) {
     return _MayoreoAccountsStatus.pendienteCheque;
   }
-  if (settlementDate == null && paidAmount <= 0) {
+  if (settlementDate == null && normalizedPaidAmount <= tolerance) {
     return _MayoreoAccountsStatus.chequeRecibido;
   }
   if (settlementDate == null) {

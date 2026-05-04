@@ -1391,15 +1391,20 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
         _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
     if (pointer == null || viewportBox == null || !viewportBox.hasSize) return;
     final local = viewportBox.globalToLocal(pointer);
-    if (local.dy < 0 || local.dy >= viewportBox.size.height) {
-      return;
-    }
     final visibleIndex = _visibleLedgerRowPositionAtGlobalPosition(
       pointer,
       pageRows,
     );
-    if (visibleIndex == null) return;
-    final row = pageRows[visibleIndex];
+    int? targetIndex = visibleIndex;
+    if (targetIndex == null) {
+      if (local.dy < 0) {
+        targetIndex = 0;
+      } else if (local.dy >= viewportBox.size.height) {
+        targetIndex = pageRows.length - 1;
+      }
+    }
+    if (targetIndex == null) return;
+    final row = pageRows[targetIndex];
     setState(() => _extendSelectionToEntry(row, pageRows));
   }
 
@@ -1970,8 +1975,7 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
                     },
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 1440),
-                      child: SingleChildScrollView(
-                        controller: _bodyScrollController,
+                      child: Padding(
                         padding: const EdgeInsets.only(
                           left: 56,
                           right: 12,
@@ -2012,153 +2016,162 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
                               onExportPdf: _exportPdf,
                             ),
                             const SizedBox(height: 14),
-                            _PalomarLedgerCard(
-                              entries: filteredEntries,
-                              pageEntries: pageEntries,
-                              selectedMovementId: _selectedMovementId,
-                              selectedMovementIds: _selectedMovementIds,
-                              rowKeyForId: _rowItemKey,
-                              viewportKey: _rowsViewportKey,
-                              hasDateFilter:
-                                  _dateFilterFrom != null ||
-                                  _dateFilterTo != null,
-                              hasTypeFilter: _typeFilters.isNotEmpty,
-                              hasCheckFilter: _checkFilters.isNotEmpty,
-                              hasRemisionFilter: _remisionFilters.isNotEmpty,
-                              hasMaterialFilter: _materialFilters.isNotEmpty,
-                              hasReferenceFilter: _referenceFilters.isNotEmpty,
-                              onOpenDateFilter: _openDateRangeFilterDialog,
-                              onOpenTypeFilter: _openTypeFilterDialog,
-                              onOpenCheckFilter: () => _openTextFilterDialog(
-                                title: 'Filtrar cheque',
-                                currentValues: _checkFilters,
-                                onSelected: (values) {
-                                  _checkFilters
-                                    ..clear()
-                                    ..addAll(values);
+                            Expanded(
+                              child: _PalomarLedgerCard(
+                                entries: filteredEntries,
+                                pageEntries: pageEntries,
+                                rowsScrollController: _bodyScrollController,
+                                selectedMovementId: _selectedMovementId,
+                                selectedMovementIds: _selectedMovementIds,
+                                rowKeyForId: _rowItemKey,
+                                viewportKey: _rowsViewportKey,
+                                hasDateFilter:
+                                    _dateFilterFrom != null ||
+                                    _dateFilterTo != null,
+                                hasTypeFilter: _typeFilters.isNotEmpty,
+                                hasCheckFilter: _checkFilters.isNotEmpty,
+                                hasRemisionFilter: _remisionFilters.isNotEmpty,
+                                hasMaterialFilter: _materialFilters.isNotEmpty,
+                                hasReferenceFilter:
+                                    _referenceFilters.isNotEmpty,
+                                onOpenDateFilter: _openDateRangeFilterDialog,
+                                onOpenTypeFilter: _openTypeFilterDialog,
+                                onOpenCheckFilter: () => _openTextFilterDialog(
+                                  title: 'Filtrar cheque',
+                                  currentValues: _checkFilters,
+                                  onSelected: (values) {
+                                    _checkFilters
+                                      ..clear()
+                                      ..addAll(values);
+                                  },
+                                  suggestions:
+                                      _movements
+                                          .expand(
+                                            (movement) => <String>[
+                                              movement.checkNumber,
+                                              movement.bankReference,
+                                            ],
+                                          )
+                                          .map((item) => item.trim())
+                                          .where((item) => item.isNotEmpty)
+                                          .toSet()
+                                          .toList(growable: false)
+                                        ..sort(),
+                                ),
+                                onOpenRemisionFilter: () =>
+                                    _openTextFilterDialog(
+                                      title: 'Filtrar remisión',
+                                      currentValues: _remisionFilters,
+                                      onSelected: (values) {
+                                        _remisionFilters
+                                          ..clear()
+                                          ..addAll(values);
+                                      },
+                                      suggestions:
+                                          _movements
+                                              .expand(
+                                                (movement) => <String>[
+                                                  movement.remision,
+                                                  movement.ticket,
+                                                ],
+                                              )
+                                              .map((item) => item.trim())
+                                              .where((item) => item.isNotEmpty)
+                                              .toSet()
+                                              .toList(growable: false)
+                                            ..sort(),
+                                    ),
+                                onOpenMaterialFilter: () =>
+                                    _openTextFilterDialog(
+                                      title: 'Filtrar material',
+                                      currentValues: _materialFilters,
+                                      onSelected: (values) {
+                                        _materialFilters
+                                          ..clear()
+                                          ..addAll(values);
+                                      },
+                                      suggestions:
+                                          _movements
+                                              .map(
+                                                (movement) =>
+                                                    movement.material.trim(),
+                                              )
+                                              .where((item) => item.isNotEmpty)
+                                              .toSet()
+                                              .toList(growable: false)
+                                            ..sort(),
+                                    ),
+                                onOpenReferenceFilter: () =>
+                                    _openTextFilterDialog(
+                                      title: 'Filtrar referencia',
+                                      currentValues: _referenceFilters,
+                                      onSelected: (values) {
+                                        _referenceFilters
+                                          ..clear()
+                                          ..addAll(values);
+                                      },
+                                      suggestions:
+                                          _movements
+                                              .expand(
+                                                (movement) => <String>[
+                                                  movement.reference,
+                                                  movement.client,
+                                                  movement.notes,
+                                                ],
+                                              )
+                                              .map((item) => item.trim())
+                                              .where((item) => item.isNotEmpty)
+                                              .toSet()
+                                              .toList(growable: false)
+                                            ..sort(),
+                                    ),
+                                onClearFilters: _activeFiltersCount > 0
+                                    ? _clearFilters
+                                    : null,
+                                onTapRow: (entry) =>
+                                    _handleLedgerRowTap(entry, pageEntries),
+                                onRowPrimaryPointerDown: (entry) =>
+                                    _handleLedgerRowPrimaryPointerDown(
+                                      entry,
+                                      pageEntries,
+                                    ),
+                                onRowDragEnter: (entry) =>
+                                    _handleLedgerRowDragEnter(
+                                      entry,
+                                      pageEntries,
+                                    ),
+                                onDoubleTapRow: (entry) async {
+                                  setState(() {
+                                    _selectedMovementId = entry.movement.id;
+                                    _selectedMovementIds
+                                      ..clear()
+                                      ..add(entry.movement.id);
+                                    _selectionAnchorMovementId =
+                                        entry.movement.id;
+                                  });
+                                  if (entry.movement.type !=
+                                      _PalomarMovementType.corteInterno) {
+                                    await _openEditMovement(entry.movement);
+                                  }
                                 },
-                                suggestions:
-                                    _movements
-                                        .expand(
-                                          (movement) => <String>[
-                                            movement.checkNumber,
-                                            movement.bankReference,
-                                          ],
-                                        )
-                                        .map((item) => item.trim())
-                                        .where((item) => item.isNotEmpty)
-                                        .toSet()
-                                        .toList(growable: false)
-                                      ..sort(),
+                                onRowsPointerDown: (event) =>
+                                    _handleLedgerRowsPointerDown(
+                                      event,
+                                      pageEntries,
+                                    ),
+                                onRowsPointerMove: (event) =>
+                                    _handleLedgerRowsPointerMove(
+                                      event,
+                                      pageEntries,
+                                    ),
+                                onRowPointerEnd: _handleLedgerRowPointerEnd,
+                                onSecondaryTapDown: (entry, globalPosition) =>
+                                    _showContextMenuForEntry(
+                                      entry,
+                                      pageEntries,
+                                      globalPosition,
+                                    ),
                               ),
-                              onOpenRemisionFilter: () => _openTextFilterDialog(
-                                title: 'Filtrar remisión',
-                                currentValues: _remisionFilters,
-                                onSelected: (values) {
-                                  _remisionFilters
-                                    ..clear()
-                                    ..addAll(values);
-                                },
-                                suggestions:
-                                    _movements
-                                        .expand(
-                                          (movement) => <String>[
-                                            movement.remision,
-                                            movement.ticket,
-                                          ],
-                                        )
-                                        .map((item) => item.trim())
-                                        .where((item) => item.isNotEmpty)
-                                        .toSet()
-                                        .toList(growable: false)
-                                      ..sort(),
-                              ),
-                              onOpenMaterialFilter: () => _openTextFilterDialog(
-                                title: 'Filtrar material',
-                                currentValues: _materialFilters,
-                                onSelected: (values) {
-                                  _materialFilters
-                                    ..clear()
-                                    ..addAll(values);
-                                },
-                                suggestions:
-                                    _movements
-                                        .map(
-                                          (movement) =>
-                                              movement.material.trim(),
-                                        )
-                                        .where((item) => item.isNotEmpty)
-                                        .toSet()
-                                        .toList(growable: false)
-                                      ..sort(),
-                              ),
-                              onOpenReferenceFilter: () =>
-                                  _openTextFilterDialog(
-                                    title: 'Filtrar referencia',
-                                    currentValues: _referenceFilters,
-                                    onSelected: (values) {
-                                      _referenceFilters
-                                        ..clear()
-                                        ..addAll(values);
-                                    },
-                                    suggestions:
-                                        _movements
-                                            .expand(
-                                              (movement) => <String>[
-                                                movement.reference,
-                                                movement.client,
-                                                movement.notes,
-                                              ],
-                                            )
-                                            .map((item) => item.trim())
-                                            .where((item) => item.isNotEmpty)
-                                            .toSet()
-                                            .toList(growable: false)
-                                          ..sort(),
-                                  ),
-                              onClearFilters: _activeFiltersCount > 0
-                                  ? _clearFilters
-                                  : null,
-                              onTapRow: (entry) =>
-                                  _handleLedgerRowTap(entry, pageEntries),
-                              onRowPrimaryPointerDown: (entry) =>
-                                  _handleLedgerRowPrimaryPointerDown(
-                                    entry,
-                                    pageEntries,
-                                  ),
-                              onRowDragEnter: (entry) =>
-                                  _handleLedgerRowDragEnter(entry, pageEntries),
-                              onDoubleTapRow: (entry) async {
-                                setState(() {
-                                  _selectedMovementId = entry.movement.id;
-                                  _selectedMovementIds
-                                    ..clear()
-                                    ..add(entry.movement.id);
-                                  _selectionAnchorMovementId =
-                                      entry.movement.id;
-                                });
-                                if (entry.movement.type !=
-                                    _PalomarMovementType.corteInterno) {
-                                  await _openEditMovement(entry.movement);
-                                }
-                              },
-                              onRowsPointerDown: (event) =>
-                                  _handleLedgerRowsPointerDown(
-                                    event,
-                                    pageEntries,
-                                  ),
-                              onRowsPointerMove: (event) =>
-                                  _handleLedgerRowsPointerMove(
-                                    event,
-                                    pageEntries,
-                                  ),
-                              onRowPointerEnd: _handleLedgerRowPointerEnd,
-                              onSecondaryTapDown: (entry, globalPosition) =>
-                                  _showContextMenuForEntry(
-                                    entry,
-                                    pageEntries,
-                                    globalPosition,
-                                  ),
                             ),
                             const SizedBox(height: 12),
                             Align(
@@ -2478,10 +2491,11 @@ class _PalomarGridHeaderFilterCell extends StatelessWidget {
 class _PalomarLedgerCard extends StatelessWidget {
   final List<_PalomarLedgerEntry> entries;
   final List<_PalomarLedgerEntry> pageEntries;
+  final ScrollController? rowsScrollController;
   final String? selectedMovementId;
   final Set<String> selectedMovementIds;
   final GlobalKey Function(String rowId) rowKeyForId;
-  final Key viewportKey;
+  final Key? viewportKey;
   final bool hasDateFilter;
   final bool hasTypeFilter;
   final bool hasCheckFilter;
@@ -2508,10 +2522,11 @@ class _PalomarLedgerCard extends StatelessWidget {
   const _PalomarLedgerCard({
     required this.entries,
     required this.pageEntries,
+    this.rowsScrollController,
     required this.selectedMovementId,
     required this.selectedMovementIds,
     required this.rowKeyForId,
-    required this.viewportKey,
+    this.viewportKey,
     required this.hasDateFilter,
     required this.hasTypeFilter,
     required this.hasCheckFilter,
@@ -2570,8 +2585,7 @@ class _PalomarLedgerCard extends StatelessWidget {
             onOpenReferenceFilter: onOpenReferenceFilter,
           ),
           const SizedBox(height: 12),
-          ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 420),
+          Expanded(
             child: entries.isEmpty
                 ? Container(
                     padding: const EdgeInsets.symmetric(
@@ -2601,28 +2615,28 @@ class _PalomarLedgerCard extends StatelessWidget {
                     onPointerCancel: (_) => onRowPointerEnd(),
                     child: Container(
                       key: viewportKey,
-                      child: Column(
-                        children: [
-                          for (final entry in pageEntries) ...[
-                            _PalomarLedgerRow(
-                              key: rowKeyForId(entry.movement.id),
-                              entry: entry,
-                              selected: selectedMovementIds.contains(
-                                entry.movement.id,
-                              ),
-                              active: entry.movement.id == selectedMovementId,
-                              onTap: () => onTapRow(entry),
-                              onPrimaryPointerDown: () =>
-                                  onRowPrimaryPointerDown(entry),
-                              onDragEnter: () => onRowDragEnter(entry),
-                              onDoubleTap: () => onDoubleTapRow(entry),
-                              onSecondaryTapDown: (globalPosition) =>
-                                  onSecondaryTapDown(entry, globalPosition),
+                      child: ListView.separated(
+                        controller: rowsScrollController,
+                        itemCount: pageEntries.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final entry = pageEntries[index];
+                          return _PalomarLedgerRow(
+                            key: rowKeyForId(entry.movement.id),
+                            entry: entry,
+                            selected: selectedMovementIds.contains(
+                              entry.movement.id,
                             ),
-                            if (entry != pageEntries.last)
-                              const SizedBox(height: 10),
-                          ],
-                        ],
+                            active: entry.movement.id == selectedMovementId,
+                            onTap: () => onTapRow(entry),
+                            onPrimaryPointerDown: () =>
+                                onRowPrimaryPointerDown(entry),
+                            onDragEnter: () => onRowDragEnter(entry),
+                            onDoubleTap: () => onDoubleTapRow(entry),
+                            onSecondaryTapDown: (globalPosition) =>
+                                onSecondaryTapDown(entry, globalPosition),
+                          );
+                        },
                       ),
                     ),
                   ),
@@ -4743,7 +4757,6 @@ class _PalomarHistoryDialog extends StatelessWidget {
                 selectedMovementId: null,
                 selectedMovementIds: const <String>{},
                 rowKeyForId: (rowId) => GlobalKey(debugLabel: 'history_$rowId'),
-                viewportKey: GlobalKey(debugLabel: 'history_viewport'),
                 hasDateFilter: false,
                 hasTypeFilter: false,
                 hasCheckFilter: false,

@@ -49,7 +49,6 @@ const double _kReportApprovedPriceW = 128;
 const double _kReportTypeW = 108;
 const double _kReportNotesW = 230;
 const double _kReportActionsW = 154;
-const double _kSalesGridBodyMinHeight = 430;
 const double _kVoucherFieldMinHeight = 84;
 const double _kVoucherInteractiveMinHeight = 24;
 const String _kMayoreoSalesReportsTable = 'mayoreo_sales_reports';
@@ -1654,8 +1653,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
         alignment: Alignment.topCenter,
         child: ConstrainedBox(
           constraints: const BoxConstraints(maxWidth: 1440),
-          child: SingleChildScrollView(
-            controller: _bodyScrollController,
+          child: Padding(
             padding: const EdgeInsets.only(left: 56, right: 56, bottom: 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1678,234 +1676,240 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
                   onShowNewReport: _openNewReportDialog,
                 ),
                 const SizedBox(height: 12),
-                _SalesGridCard(
-                  rows: filteredRows,
-                  pageRows: pageRows,
-                  selectedRowId: _selectedRowId,
-                  selectedRowIds: _selectedRowIds,
-                  onTapRow: (row) => _handleRowTap(row, filteredRows),
-                  onRowsPointerDown: (event) =>
-                      _handleRowsPointerDown(event, pageRows),
-                  onRowDragEnter: (row) => _handleRowDragEnter(row, pageRows),
-                  onRowsPointerMove: (event) =>
-                      _handleRowsPointerMove(event, pageRows),
-                  onRowPointerEnd: _handleRowPointerEnd,
-                  onDoubleTapRow: _openEditDialog,
-                  onRelateRow: _openRelateDialog,
-                  onMenuAction: _handleRowMenuAction,
-                  onSecondaryTapDown: _showContextMenuForRow,
-                  rowKeyForId: _rowItemKey,
-                  viewportKey: _rowsViewportKey,
-                  hasDateFilter:
-                      _dateFilterFrom != null || _dateFilterTo != null,
-                  hasTicketFilter: _ticketFilters.isNotEmpty,
-                  hasRemisionFilter: _remisionFilters.isNotEmpty,
-                  hasClientFilter: _clientFilterIds.isNotEmpty,
-                  hasMaterialFilter: _materialFilterIds.isNotEmpty,
-                  hasOperationFilter: _operationFilters.isNotEmpty,
-                  hasStatusFilter: _statusFilters.isNotEmpty,
-                  onOpenDateFilter: () async {
-                    final availableDates =
-                        _rows
-                            .map((row) => DateUtils.dateOnly(row.date))
-                            .toSet()
-                            .toList(growable: false)
-                          ..sort();
-                    final range = await _showMayoreoSalesDateRangeDialog(
-                      context,
-                      title: 'Filtrar fecha',
-                      initialFrom: _dateFilterFrom,
-                      initialTo: _dateFilterTo,
-                      firstDate: availableDates.isNotEmpty
-                          ? availableDates.first
-                          : DateTime(2024),
-                      lastDate: availableDates.isNotEmpty
-                          ? availableDates.last
-                          : DateTime(2035),
-                    );
-                    if (!mounted) return;
-                    if (range == null) return;
-                    setState(() {
-                      _dateFilterFrom = range.from;
-                      _dateFilterTo = range.to;
-                    });
-                    _persistState();
-                  },
-                  onOpenTicketFilter: () async {
-                    final next =
-                        await _showMayoreoSalesMultiSelectDialog<String>(
-                          context,
-                          title: 'Filtrar ticket',
-                          initialSelected: _ticketFilters,
-                          options:
-                              (_rows.map((row) => row.ticket).toSet().toList()
-                                    ..sort())
-                                  .map(
-                                    (value) =>
-                                        _MayoreoSalesPickerOption<String>(
-                                          value: value,
-                                          label: value,
-                                        ),
-                                  )
-                                  .toList(growable: false),
-                        );
-                    if (!mounted) return;
-                    if (next == null) return;
-                    setState(() {
-                      _ticketFilters
-                        ..clear()
-                        ..addAll(next);
-                    });
-                    _persistState();
-                  },
-                  onOpenRemisionFilter: () async {
-                    final next =
-                        await _showMayoreoSalesMultiSelectDialog<String>(
-                          context,
-                          title: 'Filtrar remisión',
-                          initialSelected: _remisionFilters,
-                          options:
-                              (_rows.map((row) => row.remision).toSet().toList()
-                                    ..sort())
-                                  .map(
-                                    (value) =>
-                                        _MayoreoSalesPickerOption<String>(
-                                          value: value,
-                                          label: value,
-                                        ),
-                                  )
-                                  .toList(growable: false),
-                        );
-                    if (!mounted) return;
-                    if (next == null) return;
-                    setState(() {
-                      _remisionFilters
-                        ..clear()
-                        ..addAll(next);
-                    });
-                    _persistState();
-                  },
-                  onOpenClientFilter: () async {
-                    final next =
-                        await _showMayoreoSalesMultiSelectDialog<String>(
-                          context,
-                          title: 'Filtrar cliente',
-                          initialSelected: _clientFilterIds,
-                          options: _clients
-                              .map(
-                                (item) => _MayoreoSalesPickerOption<String>(
-                                  value: item.id,
-                                  label: item.name,
-                                ),
-                              )
-                              .toList(growable: false),
-                        );
-                    if (!mounted) return;
-                    if (next == null) return;
-                    setState(() {
-                      _clientFilterIds
-                        ..clear()
-                        ..addAll(next);
-                    });
-                    _persistState();
-                  },
-                  onOpenMaterialFilter: () async {
-                    final next =
-                        await _showMayoreoSalesMultiSelectDialog<String>(
-                          context,
-                          title: 'Filtrar material',
-                          initialSelected: _materialFilterIds,
-                          options: _materials
-                              .map(
-                                (item) => _MayoreoSalesPickerOption<String>(
-                                  value: item.id,
-                                  label: item.name,
-                                ),
-                              )
-                              .toList(growable: false),
-                        );
-                    if (!mounted) return;
-                    if (next == null) return;
-                    setState(() {
-                      _materialFilterIds
-                        ..clear()
-                        ..addAll(next);
-                    });
-                    _persistState();
-                  },
-                  onOpenOperationFilter: () async {
-                    final next =
-                        await _showMayoreoSalesMultiSelectDialog<String>(
-                          context,
-                          title: 'Filtrar operación',
-                          initialSelected: _operationFilters,
-                          options: _MayoreoReportOperationType.values
-                              .map(
-                                (item) => _MayoreoSalesPickerOption<String>(
-                                  value: item.name,
-                                  label: _operationTypeLabel(item),
-                                ),
-                              )
-                              .toList(growable: false),
-                        );
-                    if (!mounted) return;
-                    if (next == null) return;
-                    setState(() {
-                      _operationFilters
-                        ..clear()
-                        ..addAll(next);
-                    });
-                    _persistState();
-                  },
-                  onOpenStatusFilter: () async {
-                    final next =
-                        await _showMayoreoSalesMultiSelectDialog<String>(
-                          context,
-                          title: 'Filtrar estatus',
-                          initialSelected: _statusFilters,
-                          options: const [
-                            _MayoreoSalesPickerOption<String>(
-                              value: 'pending',
-                              label: 'PENDIENTE',
-                            ),
-                            _MayoreoSalesPickerOption<String>(
-                              value: 'related',
-                              label: 'RELACIONADO',
-                            ),
-                          ],
-                        );
-                    if (!mounted) return;
-                    if (next == null) return;
-                    setState(() {
-                      _statusFilters
-                        ..clear()
-                        ..addAll(next);
-                    });
-                    _persistState();
-                  },
-                  onClearFilters:
-                      _dateFilterFrom != null ||
-                          _dateFilterTo != null ||
-                          _ticketFilters.isNotEmpty ||
-                          _remisionFilters.isNotEmpty ||
-                          _clientFilterIds.isNotEmpty ||
-                          _materialFilterIds.isNotEmpty ||
-                          _operationFilters.isNotEmpty ||
-                          _statusFilters.isNotEmpty
-                      ? () {
-                          setState(() {
-                            _dateFilterFrom = null;
-                            _dateFilterTo = null;
-                            _ticketFilters.clear();
-                            _remisionFilters.clear();
-                            _clientFilterIds.clear();
-                            _materialFilterIds.clear();
-                            _operationFilters.clear();
-                            _statusFilters.clear();
-                          });
-                          _persistState();
-                        }
-                      : null,
+                Expanded(
+                  child: _SalesGridCard(
+                    rows: filteredRows,
+                    pageRows: pageRows,
+                    selectedRowId: _selectedRowId,
+                    selectedRowIds: _selectedRowIds,
+                    rowsScrollController: _bodyScrollController,
+                    onTapRow: (row) => _handleRowTap(row, filteredRows),
+                    onRowsPointerDown: (event) =>
+                        _handleRowsPointerDown(event, pageRows),
+                    onRowDragEnter: (row) => _handleRowDragEnter(row, pageRows),
+                    onRowsPointerMove: (event) =>
+                        _handleRowsPointerMove(event, pageRows),
+                    onRowPointerEnd: _handleRowPointerEnd,
+                    onDoubleTapRow: _openEditDialog,
+                    onRelateRow: _openRelateDialog,
+                    onMenuAction: _handleRowMenuAction,
+                    onSecondaryTapDown: _showContextMenuForRow,
+                    rowKeyForId: _rowItemKey,
+                    viewportKey: _rowsViewportKey,
+                    hasDateFilter:
+                        _dateFilterFrom != null || _dateFilterTo != null,
+                    hasTicketFilter: _ticketFilters.isNotEmpty,
+                    hasRemisionFilter: _remisionFilters.isNotEmpty,
+                    hasClientFilter: _clientFilterIds.isNotEmpty,
+                    hasMaterialFilter: _materialFilterIds.isNotEmpty,
+                    hasOperationFilter: _operationFilters.isNotEmpty,
+                    hasStatusFilter: _statusFilters.isNotEmpty,
+                    onOpenDateFilter: () async {
+                      final availableDates =
+                          _rows
+                              .map((row) => DateUtils.dateOnly(row.date))
+                              .toSet()
+                              .toList(growable: false)
+                            ..sort();
+                      final range = await _showMayoreoSalesDateRangeDialog(
+                        context,
+                        title: 'Filtrar fecha',
+                        initialFrom: _dateFilterFrom,
+                        initialTo: _dateFilterTo,
+                        firstDate: availableDates.isNotEmpty
+                            ? availableDates.first
+                            : DateTime(2024),
+                        lastDate: availableDates.isNotEmpty
+                            ? availableDates.last
+                            : DateTime(2035),
+                      );
+                      if (!mounted) return;
+                      if (range == null) return;
+                      setState(() {
+                        _dateFilterFrom = range.from;
+                        _dateFilterTo = range.to;
+                      });
+                      _persistState();
+                    },
+                    onOpenTicketFilter: () async {
+                      final next =
+                          await _showMayoreoSalesMultiSelectDialog<String>(
+                            context,
+                            title: 'Filtrar ticket',
+                            initialSelected: _ticketFilters,
+                            options:
+                                (_rows.map((row) => row.ticket).toSet().toList()
+                                      ..sort())
+                                    .map(
+                                      (value) =>
+                                          _MayoreoSalesPickerOption<String>(
+                                            value: value,
+                                            label: value,
+                                          ),
+                                    )
+                                    .toList(growable: false),
+                          );
+                      if (!mounted) return;
+                      if (next == null) return;
+                      setState(() {
+                        _ticketFilters
+                          ..clear()
+                          ..addAll(next);
+                      });
+                      _persistState();
+                    },
+                    onOpenRemisionFilter: () async {
+                      final next =
+                          await _showMayoreoSalesMultiSelectDialog<String>(
+                            context,
+                            title: 'Filtrar remisión',
+                            initialSelected: _remisionFilters,
+                            options:
+                                (_rows
+                                        .map((row) => row.remision)
+                                        .toSet()
+                                        .toList()
+                                      ..sort())
+                                    .map(
+                                      (value) =>
+                                          _MayoreoSalesPickerOption<String>(
+                                            value: value,
+                                            label: value,
+                                          ),
+                                    )
+                                    .toList(growable: false),
+                          );
+                      if (!mounted) return;
+                      if (next == null) return;
+                      setState(() {
+                        _remisionFilters
+                          ..clear()
+                          ..addAll(next);
+                      });
+                      _persistState();
+                    },
+                    onOpenClientFilter: () async {
+                      final next =
+                          await _showMayoreoSalesMultiSelectDialog<String>(
+                            context,
+                            title: 'Filtrar cliente',
+                            initialSelected: _clientFilterIds,
+                            options: _clients
+                                .map(
+                                  (item) => _MayoreoSalesPickerOption<String>(
+                                    value: item.id,
+                                    label: item.name,
+                                  ),
+                                )
+                                .toList(growable: false),
+                          );
+                      if (!mounted) return;
+                      if (next == null) return;
+                      setState(() {
+                        _clientFilterIds
+                          ..clear()
+                          ..addAll(next);
+                      });
+                      _persistState();
+                    },
+                    onOpenMaterialFilter: () async {
+                      final next =
+                          await _showMayoreoSalesMultiSelectDialog<String>(
+                            context,
+                            title: 'Filtrar material',
+                            initialSelected: _materialFilterIds,
+                            options: _materials
+                                .map(
+                                  (item) => _MayoreoSalesPickerOption<String>(
+                                    value: item.id,
+                                    label: item.name,
+                                  ),
+                                )
+                                .toList(growable: false),
+                          );
+                      if (!mounted) return;
+                      if (next == null) return;
+                      setState(() {
+                        _materialFilterIds
+                          ..clear()
+                          ..addAll(next);
+                      });
+                      _persistState();
+                    },
+                    onOpenOperationFilter: () async {
+                      final next =
+                          await _showMayoreoSalesMultiSelectDialog<String>(
+                            context,
+                            title: 'Filtrar operación',
+                            initialSelected: _operationFilters,
+                            options: _MayoreoReportOperationType.values
+                                .map(
+                                  (item) => _MayoreoSalesPickerOption<String>(
+                                    value: item.name,
+                                    label: _operationTypeLabel(item),
+                                  ),
+                                )
+                                .toList(growable: false),
+                          );
+                      if (!mounted) return;
+                      if (next == null) return;
+                      setState(() {
+                        _operationFilters
+                          ..clear()
+                          ..addAll(next);
+                      });
+                      _persistState();
+                    },
+                    onOpenStatusFilter: () async {
+                      final next =
+                          await _showMayoreoSalesMultiSelectDialog<String>(
+                            context,
+                            title: 'Filtrar estatus',
+                            initialSelected: _statusFilters,
+                            options: const [
+                              _MayoreoSalesPickerOption<String>(
+                                value: 'pending',
+                                label: 'PENDIENTE',
+                              ),
+                              _MayoreoSalesPickerOption<String>(
+                                value: 'related',
+                                label: 'RELACIONADO',
+                              ),
+                            ],
+                          );
+                      if (!mounted) return;
+                      if (next == null) return;
+                      setState(() {
+                        _statusFilters
+                          ..clear()
+                          ..addAll(next);
+                      });
+                      _persistState();
+                    },
+                    onClearFilters:
+                        _dateFilterFrom != null ||
+                            _dateFilterTo != null ||
+                            _ticketFilters.isNotEmpty ||
+                            _remisionFilters.isNotEmpty ||
+                            _clientFilterIds.isNotEmpty ||
+                            _materialFilterIds.isNotEmpty ||
+                            _operationFilters.isNotEmpty ||
+                            _statusFilters.isNotEmpty
+                        ? () {
+                            setState(() {
+                              _dateFilterFrom = null;
+                              _dateFilterTo = null;
+                              _ticketFilters.clear();
+                              _remisionFilters.clear();
+                              _clientFilterIds.clear();
+                              _materialFilterIds.clear();
+                              _operationFilters.clear();
+                              _statusFilters.clear();
+                            });
+                            _persistState();
+                          }
+                        : null,
+                  ),
                 ),
                 const SizedBox(height: 12),
                 Align(
@@ -2957,6 +2961,7 @@ class _SalesGridCard extends StatelessWidget {
   final List<_MayoreoSalesReportRow> pageRows;
   final String? selectedRowId;
   final Set<String> selectedRowIds;
+  final ScrollController rowsScrollController;
   final ValueChanged<_MayoreoSalesReportRow> onTapRow;
   final ValueChanged<PointerDownEvent> onRowsPointerDown;
   final ValueChanged<_MayoreoSalesReportRow> onRowDragEnter;
@@ -2994,6 +2999,7 @@ class _SalesGridCard extends StatelessWidget {
     required this.pageRows,
     required this.selectedRowId,
     required this.selectedRowIds,
+    required this.rowsScrollController,
     required this.onTapRow,
     required this.onRowsPointerDown,
     required this.onRowDragEnter,
@@ -3024,102 +3030,97 @@ class _SalesGridCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return KeyedSubtree(
-      key: viewportKey,
-      child: ContractGlassCard(
-        padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _SalesGridHeader(
-              hasDateFilter: hasDateFilter,
-              hasTicketFilter: hasTicketFilter,
-              hasRemisionFilter: hasRemisionFilter,
-              hasClientFilter: hasClientFilter,
-              hasMaterialFilter: hasMaterialFilter,
-              hasOperationFilter: hasOperationFilter,
-              hasStatusFilter: hasStatusFilter,
-              onOpenDateFilter: onOpenDateFilter,
-              onOpenTicketFilter: onOpenTicketFilter,
-              onOpenRemisionFilter: onOpenRemisionFilter,
-              onOpenClientFilter: onOpenClientFilter,
-              onOpenMaterialFilter: onOpenMaterialFilter,
-              onOpenOperationFilter: onOpenOperationFilter,
-              onOpenStatusFilter: onOpenStatusFilter,
-            ),
-            if (onClearFilters != null) ...[
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: onClearFilters,
-                  icon: const Icon(Icons.filter_alt_off_rounded, size: 16),
-                  label: const Text('Limpiar filtros'),
-                ),
+    return ContractGlassCard(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _SalesGridHeader(
+            hasDateFilter: hasDateFilter,
+            hasTicketFilter: hasTicketFilter,
+            hasRemisionFilter: hasRemisionFilter,
+            hasClientFilter: hasClientFilter,
+            hasMaterialFilter: hasMaterialFilter,
+            hasOperationFilter: hasOperationFilter,
+            hasStatusFilter: hasStatusFilter,
+            onOpenDateFilter: onOpenDateFilter,
+            onOpenTicketFilter: onOpenTicketFilter,
+            onOpenRemisionFilter: onOpenRemisionFilter,
+            onOpenClientFilter: onOpenClientFilter,
+            onOpenMaterialFilter: onOpenMaterialFilter,
+            onOpenOperationFilter: onOpenOperationFilter,
+            onOpenStatusFilter: onOpenStatusFilter,
+          ),
+          if (onClearFilters != null) ...[
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: onClearFilters,
+                icon: const Icon(Icons.filter_alt_off_rounded, size: 16),
+                label: const Text('Limpiar filtros'),
               ),
-            ],
-            const SizedBox(height: 12),
-            ConstrainedBox(
-              constraints: const BoxConstraints(
-                minHeight: _kSalesGridBodyMinHeight,
-              ),
-              child: rows.isEmpty
-                  ? Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 24,
-                      ),
-                      decoration: BoxDecoration(
-                        gradient: kMayoreoPanelGradient,
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(
-                          color: mayoreoAreaTokens.border.withValues(
-                            alpha: 0.52,
-                          ),
-                        ),
-                      ),
-                      child: const Text(
-                        'No hay reportes de ventas con los filtros actuales.',
-                        style: TextStyle(
-                          fontSize: 14.5,
-                          fontWeight: FontWeight.w700,
-                          color: kMayoreoInk,
-                        ),
-                      ),
-                    )
-                  : Listener(
-                      behavior: HitTestBehavior.translucent,
-                      onPointerDown: onRowsPointerDown,
-                      onPointerMove: onRowsPointerMove,
-                      onPointerUp: (_) => onRowPointerEnd(),
-                      onPointerCancel: (_) => onRowPointerEnd(),
-                      child: Column(
-                        children: [
-                          for (final row in pageRows) ...[
-                            KeyedSubtree(
-                              key: rowKeyForId(row.id),
-                              child: _SalesGridRow(
-                                row: row,
-                                selected: selectedRowIds.contains(row.id),
-                                onTapRow: () => onTapRow(row),
-                                onDragEnter: () => onRowDragEnter(row),
-                                onDoubleTap: () => onDoubleTapRow(row),
-                                onRelate: () => onRelateRow(row),
-                                onMenuAction: (action) =>
-                                    onMenuAction(row, action),
-                                onSecondaryTapDown: (globalPosition) =>
-                                    onSecondaryTapDown(row, globalPosition),
-                              ),
-                            ),
-                            if (row != pageRows.last)
-                              const SizedBox(height: 10),
-                          ],
-                        ],
-                      ),
-                    ),
             ),
           ],
-        ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: rows.isEmpty
+                ? Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 18,
+                      vertical: 24,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: kMayoreoPanelGradient,
+                      borderRadius: BorderRadius.circular(24),
+                      border: Border.all(
+                        color: mayoreoAreaTokens.border.withValues(alpha: 0.52),
+                      ),
+                    ),
+                    child: const Text(
+                      'No hay reportes de ventas con los filtros actuales.',
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w700,
+                        color: kMayoreoInk,
+                      ),
+                    ),
+                  )
+                : Listener(
+                    behavior: HitTestBehavior.translucent,
+                    onPointerDown: onRowsPointerDown,
+                    onPointerMove: onRowsPointerMove,
+                    onPointerUp: (_) => onRowPointerEnd(),
+                    onPointerCancel: (_) => onRowPointerEnd(),
+                    child: Container(
+                      key: viewportKey,
+                      child: ListView.separated(
+                        controller: rowsScrollController,
+                        itemCount: pageRows.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final row = pageRows[index];
+                          return KeyedSubtree(
+                            key: rowKeyForId(row.id),
+                            child: _SalesGridRow(
+                              row: row,
+                              selected: selectedRowIds.contains(row.id),
+                              onTapRow: () => onTapRow(row),
+                              onDragEnter: () => onRowDragEnter(row),
+                              onDoubleTap: () => onDoubleTapRow(row),
+                              onRelate: () => onRelateRow(row),
+                              onMenuAction: (action) =>
+                                  onMenuAction(row, action),
+                              onSecondaryTapDown: (globalPosition) =>
+                                  onSecondaryTapDown(row, globalPosition),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+          ),
+        ],
       ),
     );
   }
@@ -3804,6 +3805,7 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
   String? _clientId;
   String? _materialId;
   late _MayoreoReportOperationType _operationType;
+  late final VoidCallback _recomputeApproximateAmount;
 
   bool get _isEditing => widget.initial != null;
 
@@ -3837,6 +3839,11 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
     _materialId = initial?.materialId;
     _operationType =
         initial?.operationType ?? _MayoreoReportOperationType.factura;
+    _recomputeApproximateAmount = () {
+      if (mounted) setState(() {});
+    };
+    _exitWeightC.addListener(_recomputeApproximateAmount);
+    _priceC.addListener(_recomputeApproximateAmount);
     _syncMaterialAvailability();
     if (initial == null) {
       _syncPriceFromCatalog();
@@ -3845,6 +3852,8 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
 
   @override
   void dispose() {
+    _exitWeightC.removeListener(_recomputeApproximateAmount);
+    _priceC.removeListener(_recomputeApproximateAmount);
     _ticketC.dispose();
     _remisionC.dispose();
     _exitWeightC.dispose();

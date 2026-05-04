@@ -176,12 +176,28 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
   String? _selectedRowKey;
   String? _selectionAnchorRowKey;
   final Set<String> _bulkSelectedRowKeys = <String>{};
+  final ScrollController _companyRowsScrollController = ScrollController();
+  final ScrollController _materialRowsScrollController = ScrollController();
+  final ScrollController _priceRowsScrollController = ScrollController();
+  final GlobalKey _companyRowsViewportKey = GlobalKey(
+    debugLabel: 'mayoreo_catalog_company_rows_viewport',
+  );
+  final GlobalKey _materialRowsViewportKey = GlobalKey(
+    debugLabel: 'mayoreo_catalog_material_rows_viewport',
+  );
+  final GlobalKey _priceRowsViewportKey = GlobalKey(
+    debugLabel: 'mayoreo_catalog_price_rows_viewport',
+  );
+  final Map<String, GlobalKey> _rowItemKeys = <String, GlobalKey>{};
   final FocusNode _gridRowsFocusNode = FocusNode(
     debugLabel: 'mayoreo_catalog_grid',
   );
   bool _dragSelectionActive = false;
   List<String> _dragSelectionKeys = const <String>[];
   String? _dragSelectionAnchorKey;
+  Offset? _dragPointerGlobal;
+  double _dragAutoScrollVelocity = 0;
+  Timer? _dragAutoScrollTimer;
 
   final TextEditingController _companyNameC = TextEditingController();
   final TextEditingController _companyContactC = TextEditingController();
@@ -376,6 +392,10 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
     _autoRefreshTimer?.cancel();
     _deferredRefreshTimer?.cancel();
     _catalogRealtimeChannel?.unsubscribe();
+    _dragAutoScrollTimer?.cancel();
+    _companyRowsScrollController.dispose();
+    _materialRowsScrollController.dispose();
+    _priceRowsScrollController.dispose();
     _gridRowsFocusNode.dispose();
     _companyNameC.dispose();
     _companyContactC.dispose();
@@ -1290,6 +1310,10 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
       }
       _setSingleSelection(rowKey);
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _ensureRowVisible(rowKey);
+    });
   }
 
   void _handleRowSecondarySelection(String rowKey, List<String> visibleKeys) {
@@ -1311,6 +1335,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
       _dragSelectionActive = true;
       _dragSelectionKeys = visibleKeys;
       _dragSelectionAnchorKey = rowKey;
+      _dragPointerGlobal = null;
       _setSingleSelection(rowKey);
     });
   }
@@ -1340,6 +1365,10 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
       _dragSelectionActive = false;
       _dragSelectionKeys = const <String>[];
       _dragSelectionAnchorKey = null;
+      _dragPointerGlobal = null;
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
     });
   }
 
@@ -1349,6 +1378,162 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
 
   List<String> _currentSelectionKeys() =>
       _bulkSelectedRowKeys.toList(growable: false);
+
+  ScrollController get _activeRowsScrollController {
+    switch (_activeTabIndex) {
+      case 0:
+        return _companyRowsScrollController;
+      case 1:
+        return _materialRowsScrollController;
+      default:
+        return _priceRowsScrollController;
+    }
+  }
+
+  GlobalKey get _activeRowsViewportKey {
+    switch (_activeTabIndex) {
+      case 0:
+        return _companyRowsViewportKey;
+      case 1:
+        return _materialRowsViewportKey;
+      default:
+        return _priceRowsViewportKey;
+    }
+  }
+
+  GlobalKey _rowItemKey(String rowKey) {
+    return _rowItemKeys.putIfAbsent(
+      rowKey,
+      () => GlobalKey(debugLabel: 'catalog_row_$rowKey'),
+    );
+  }
+
+  void _ensureRowVisible(String rowKey) {
+    final rowContext = _rowItemKey(rowKey).currentContext;
+    if (rowContext == null) return;
+    Scrollable.ensureVisible(
+      rowContext,
+      alignment: 0.45,
+      duration: const Duration(milliseconds: 180),
+      curve: Curves.easeOutCubic,
+    );
+  }
+
+  int? _visibleRowIndexAtGlobalPosition(
+    Offset globalPosition,
+    List<String> visibleKeys,
+  ) {
+    for (var i = 0; i < visibleKeys.length; i++) {
+      final box =
+          _rowItemKey(visibleKeys[i]).currentContext?.findRenderObject()
+              as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      final topLeft = box.localToGlobal(Offset.zero);
+      final rect = topLeft & box.size;
+      if (rect.contains(globalPosition)) return i;
+    }
+    return null;
+  }
+
+  int? _mountedEdgeRowIndex(List<String> visibleKeys, {required bool last}) {
+    final indexes = <int>[];
+    for (var i = 0; i < visibleKeys.length; i++) {
+      final box =
+          _rowItemKey(visibleKeys[i]).currentContext?.findRenderObject()
+              as RenderBox?;
+      if (box != null && box.hasSize) {
+        indexes.add(i);
+      }
+    }
+    if (indexes.isEmpty) return null;
+    return last ? indexes.last : indexes.first;
+  }
+
+  void _handleRowsPointerMove(
+    PointerMoveEvent event,
+    List<String> visibleKeys,
+  ) {
+    if (!_dragSelectionActive) return;
+    _dragPointerGlobal = event.position;
+    _updateDragAutoScroll(visibleKeys);
+    final visibleIndex = _visibleRowIndexAtGlobalPosition(
+      event.position,
+      visibleKeys,
+    );
+    if (visibleIndex == null) return;
+    _updateDragSelection(visibleKeys[visibleIndex]);
+  }
+
+  void _updateDragAutoScroll(List<String> visibleKeys) {
+    if (!_dragSelectionActive || _dragPointerGlobal == null) {
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    final box =
+        _activeRowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    const edge = 36.0;
+    const maxStep = 18.0;
+    final local = box.globalToLocal(_dragPointerGlobal!);
+    final y = local.dy;
+    if (y < edge) {
+      _dragAutoScrollVelocity = -((edge - y) / edge).clamp(0.0, 1.0) * maxStep;
+    } else if (y > box.size.height - edge) {
+      _dragAutoScrollVelocity =
+          ((y - (box.size.height - edge)) / edge).clamp(0.0, 1.0) * maxStep;
+    } else {
+      _dragAutoScrollVelocity = 0;
+    }
+    if (_dragAutoScrollVelocity == 0) {
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    _dragAutoScrollTimer ??= Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _performDragAutoScroll(visibleKeys),
+    );
+  }
+
+  void _performDragAutoScroll(List<String> visibleKeys) {
+    if (!_dragSelectionActive ||
+        _dragAutoScrollVelocity == 0 ||
+        !_activeRowsScrollController.hasClients) {
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    final position = _activeRowsScrollController.position;
+    final next = (position.pixels + _dragAutoScrollVelocity).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if ((next - position.pixels).abs() < 0.5) return;
+    _activeRowsScrollController.jumpTo(next);
+    final pointer = _dragPointerGlobal;
+    final viewportBox =
+        _activeRowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (pointer == null || viewportBox == null || !viewportBox.hasSize) return;
+    final visibleIndex = _visibleRowIndexAtGlobalPosition(pointer, visibleKeys);
+    int? targetIndex = visibleIndex;
+    if (targetIndex == null) {
+      final local = viewportBox.globalToLocal(pointer);
+      if (local.dy < 0) {
+        targetIndex = _mountedEdgeRowIndex(visibleKeys, last: false);
+      } else if (local.dy > viewportBox.size.height) {
+        targetIndex = _mountedEdgeRowIndex(visibleKeys, last: true);
+      }
+    }
+    if (targetIndex == null) return;
+    _updateDragSelection(visibleKeys[targetIndex]);
+  }
 
   bool _isMultiContextRow(String rowKey) =>
       _selectedCount > 1 && _bulkSelectedRowKeys.contains(rowKey);
@@ -1732,6 +1917,10 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
           _setSingleSelection(target);
         }
       });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _ensureRowVisible(target);
+      });
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp) {
@@ -1747,6 +1936,10 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
         } else {
           _setSingleSelection(target);
         }
+      });
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _ensureRowVisible(target);
       });
       return KeyEventResult.handled;
     }
@@ -1990,111 +2183,129 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
           ),
           const SizedBox(height: 10),
           Expanded(
-            child: ListView.separated(
-              itemCount: visibleCompanies.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final row = visibleCompanies[index];
-                final rowKey = 'co:${row.id}';
-                final visibleKeys = visibleCompanies
+            child: Listener(
+              onPointerMove: (event) => _handleRowsPointerMove(
+                event,
+                visibleCompanies
                     .map((item) => 'co:${item.id}')
-                    .toList(growable: false);
-                if (_isInlineRowEditing(rowKey)) {
-                  return _CompanyInlineEditRow(
-                    key: _companyEditKey(rowKey),
-                    row: row,
-                    onCancel: _multiEditMode
-                        ? _cancelActiveMultiEdit
-                        : _cancelInlineEdit,
-                    onSave: (payload) => _saveCompanyInline(row, payload),
-                  );
-                }
-                return _CatalogTableRow(
-                  rowKey: rowKey,
-                  selected: _isRowSelected(rowKey),
-                  onTap: () => _handleRowSelection(rowKey, visibleKeys),
-                  onPrimaryPointerDown: () =>
-                      _beginDragSelection(rowKey, visibleKeys),
-                  onDragEnter: () => _updateDragSelection(rowKey),
-                  onPointerEnd: _endDragSelection,
-                  onSecondarySelection: () =>
-                      _handleRowSecondarySelection(rowKey, visibleKeys),
-                  onDoubleTap: () => _startInlineEdit(rowKey),
-                  cells: [
-                    _CatalogTableCell.text(
-                      width: _kCompanyNameW,
-                      text: row.name,
-                      bold: true,
-                    ),
-                    _CatalogTableCell.text(
-                      width: _kCompanyContactW,
-                      text: row.contact,
-                    ),
-                    _CatalogTableCell.chip(
-                      width: _kCompanyStatusW,
-                      label: row.active ? 'ACTIVO' : 'INACTIVO',
-                      tone: row.active
-                          ? const Color(0xFF2E8B57)
-                          : const Color(0xFFB26A00),
-                    ),
-                    _CatalogTableCell.text(
-                      width: _kCompanyNotesW,
-                      text: row.notes,
-                    ),
-                  ],
-                  editableColumns: const {0, 1, 3},
-                  menuItems: _isMultiContextRow(rowKey)
-                      ? [
-                          if (!_multiEditMode)
-                            _RowMenuAction(
-                              label: 'Editar selección',
-                              icon: Icons.edit_note_rounded,
-                              onTap: _startMultiEdit,
-                            ),
-                          if (_multiEditMode)
-                            _RowMenuAction(
-                              label: 'Guardar selección',
-                              icon: Icons.check_rounded,
-                              onTap: _saveActiveMultiEdit,
-                            ),
-                          if (_multiEditMode)
-                            _RowMenuAction(
-                              label: 'Cancelar edición',
-                              icon: Icons.close_rounded,
-                              onTap: _cancelActiveMultiEdit,
-                            ),
-                          _RowMenuAction(
-                            label: 'Activar / desactivar selección',
-                            icon: Icons.toggle_on_rounded,
-                            onTap: _toggleSelectedActive,
-                          ),
-                          _RowMenuAction(
-                            label: 'Eliminar selección',
-                            icon: Icons.delete_outline_rounded,
-                            onTap: _deleteSelectedRows,
-                          ),
-                        ]
-                      : [
-                          _RowMenuAction(
-                            label: 'Editar',
-                            icon: Icons.edit_rounded,
-                            onTap: () => _startInlineEdit(rowKey),
-                          ),
-                          _RowMenuAction(
-                            label: row.active ? 'Desactivar' : 'Activar',
-                            icon: row.active
-                                ? Icons.pause_circle_rounded
-                                : Icons.check_circle_rounded,
-                            onTap: () => _toggleCompanyActive(row),
-                          ),
-                          _RowMenuAction(
-                            label: 'Eliminar',
-                            icon: Icons.delete_outline_rounded,
-                            onTap: () => _deleteCompany(row),
-                          ),
-                        ],
-                );
-              },
+                    .toList(growable: false),
+              ),
+              onPointerUp: (_) => _endDragSelection(),
+              onPointerCancel: (_) => _endDragSelection(),
+              child: Container(
+                key: _companyRowsViewportKey,
+                child: ListView.separated(
+                  controller: _companyRowsScrollController,
+                  itemCount: visibleCompanies.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final row = visibleCompanies[index];
+                    final rowKey = 'co:${row.id}';
+                    final visibleKeys = visibleCompanies
+                        .map((item) => 'co:${item.id}')
+                        .toList(growable: false);
+                    if (_isInlineRowEditing(rowKey)) {
+                      return KeyedSubtree(
+                        key: _rowItemKey(rowKey),
+                        child: _CompanyInlineEditRow(
+                          key: _companyEditKey(rowKey),
+                          row: row,
+                          onCancel: _multiEditMode
+                              ? _cancelActiveMultiEdit
+                              : _cancelInlineEdit,
+                          onSave: (payload) => _saveCompanyInline(row, payload),
+                        ),
+                      );
+                    }
+                    return _CatalogTableRow(
+                      key: _rowItemKey(rowKey),
+                      rowKey: rowKey,
+                      selected: _isRowSelected(rowKey),
+                      onTap: () => _handleRowSelection(rowKey, visibleKeys),
+                      onPrimaryPointerDown: () =>
+                          _beginDragSelection(rowKey, visibleKeys),
+                      onDragEnter: () => _updateDragSelection(rowKey),
+                      onPointerEnd: _endDragSelection,
+                      onSecondarySelection: () =>
+                          _handleRowSecondarySelection(rowKey, visibleKeys),
+                      onDoubleTap: () => _startInlineEdit(rowKey),
+                      cells: [
+                        _CatalogTableCell.text(
+                          width: _kCompanyNameW,
+                          text: row.name,
+                          bold: true,
+                        ),
+                        _CatalogTableCell.text(
+                          width: _kCompanyContactW,
+                          text: row.contact,
+                        ),
+                        _CatalogTableCell.chip(
+                          width: _kCompanyStatusW,
+                          label: row.active ? 'ACTIVO' : 'INACTIVO',
+                          tone: row.active
+                              ? const Color(0xFF2E8B57)
+                              : const Color(0xFFB26A00),
+                        ),
+                        _CatalogTableCell.text(
+                          width: _kCompanyNotesW,
+                          text: row.notes,
+                        ),
+                      ],
+                      editableColumns: const {0, 1, 3},
+                      menuItems: _isMultiContextRow(rowKey)
+                          ? [
+                              if (!_multiEditMode)
+                                _RowMenuAction(
+                                  label: 'Editar selección',
+                                  icon: Icons.edit_note_rounded,
+                                  onTap: _startMultiEdit,
+                                ),
+                              if (_multiEditMode)
+                                _RowMenuAction(
+                                  label: 'Guardar selección',
+                                  icon: Icons.check_rounded,
+                                  onTap: _saveActiveMultiEdit,
+                                ),
+                              if (_multiEditMode)
+                                _RowMenuAction(
+                                  label: 'Cancelar edición',
+                                  icon: Icons.close_rounded,
+                                  onTap: _cancelActiveMultiEdit,
+                                ),
+                              _RowMenuAction(
+                                label: 'Activar / desactivar selección',
+                                icon: Icons.toggle_on_rounded,
+                                onTap: _toggleSelectedActive,
+                              ),
+                              _RowMenuAction(
+                                label: 'Eliminar selección',
+                                icon: Icons.delete_outline_rounded,
+                                onTap: _deleteSelectedRows,
+                              ),
+                            ]
+                          : [
+                              _RowMenuAction(
+                                label: 'Editar',
+                                icon: Icons.edit_rounded,
+                                onTap: () => _startInlineEdit(rowKey),
+                              ),
+                              _RowMenuAction(
+                                label: row.active ? 'Desactivar' : 'Activar',
+                                icon: row.active
+                                    ? Icons.pause_circle_rounded
+                                    : Icons.check_circle_rounded,
+                                onTap: () => _toggleCompanyActive(row),
+                              ),
+                              _RowMenuAction(
+                                label: 'Eliminar',
+                                icon: Icons.delete_outline_rounded,
+                                onTap: () => _deleteCompany(row),
+                              ),
+                            ],
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ],
@@ -2202,128 +2413,147 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
           ),
           const SizedBox(height: 10),
           Expanded(
-            child: ListView.separated(
-              itemCount: visibleMaterials.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final row = visibleMaterials[index];
-                final rowKey = 'ma:${row.id}';
-                final visibleKeys = visibleMaterials
+            child: Listener(
+              onPointerMove: (event) => _handleRowsPointerMove(
+                event,
+                visibleMaterials
                     .map((item) => 'ma:${item.id}')
-                    .toList(growable: false);
-                if (_isInlineRowEditing(rowKey)) {
-                  return _MaterialInlineEditRow(
-                    key: _materialEditKey(rowKey),
-                    row: row,
-                    generalMaterials: _generalMaterials,
-                    onCancel: _multiEditMode
-                        ? _cancelActiveMultiEdit
-                        : _cancelInlineEdit,
-                    onSave: (payload) => _saveMaterialInline(row, payload),
-                  );
-                }
-                return _CatalogTableRow(
-                  rowKey: rowKey,
-                  selected: _isRowSelected(rowKey),
-                  onTap: () => _handleRowSelection(rowKey, visibleKeys),
-                  onPrimaryPointerDown: () =>
-                      _beginDragSelection(rowKey, visibleKeys),
-                  onDragEnter: () => _updateDragSelection(rowKey),
-                  onPointerEnd: _endDragSelection,
-                  onSecondarySelection: () =>
-                      _handleRowSecondarySelection(rowKey, visibleKeys),
-                  onDoubleTap: () => _startInlineEdit(rowKey),
-                  cells: [
-                    _CatalogTableCell.chip(
-                      width: _kMaterialLevelW,
-                      label: row.level,
-                      tone: row.level == 'GENERAL'
-                          ? const Color(0xFF8E3F2A)
-                          : const Color(0xFFE89A5B),
-                    ),
-                    _CatalogTableCell.text(
-                      width: _kMaterialNameW,
-                      text: row.name,
-                      bold: true,
-                    ),
-                    _CatalogTableCell.chip(
-                      width: _kMaterialFamilyW,
-                      label: row.level == 'GENERAL'
-                          ? '—'
-                          : (row.family ?? row.category),
-                      tone: const Color(0xFF9A6A00),
-                    ),
-                    _CatalogTableCell.text(
-                      width: _kMaterialRelationW,
-                      text: row.level == 'GENERAL'
-                          ? 'Catalogo base'
-                          : _materialRelationLabel(row.generalMaterialId),
-                    ),
-                    _CatalogTableCell.chip(
-                      width: _kMaterialStatusW,
-                      label: row.active ? 'ACTIVO' : 'INACTIVO',
-                      tone: row.active
-                          ? const Color(0xFF2E8B57)
-                          : const Color(0xFFB26A00),
-                    ),
-                    _CatalogTableCell.text(
-                      width: _kMaterialNotesW,
-                      text: row.notes,
-                    ),
-                  ],
-                  editableColumns: const {1, 2, 3, 4, 5},
-                  menuItems: _isMultiContextRow(rowKey)
-                      ? [
-                          if (!_multiEditMode)
-                            _RowMenuAction(
-                              label: 'Editar selección',
-                              icon: Icons.edit_note_rounded,
-                              onTap: _startMultiEdit,
-                            ),
-                          if (_multiEditMode)
-                            _RowMenuAction(
-                              label: 'Guardar selección',
-                              icon: Icons.check_rounded,
-                              onTap: _saveActiveMultiEdit,
-                            ),
-                          if (_multiEditMode)
-                            _RowMenuAction(
-                              label: 'Cancelar edición',
-                              icon: Icons.close_rounded,
-                              onTap: _cancelActiveMultiEdit,
-                            ),
-                          _RowMenuAction(
-                            label: 'Activar / desactivar selección',
-                            icon: Icons.toggle_on_rounded,
-                            onTap: _toggleSelectedActive,
-                          ),
-                          _RowMenuAction(
-                            label: 'Eliminar selección',
-                            icon: Icons.delete_outline_rounded,
-                            onTap: _deleteSelectedRows,
-                          ),
-                        ]
-                      : [
-                          _RowMenuAction(
-                            label: 'Editar',
-                            icon: Icons.edit_rounded,
-                            onTap: () => _startInlineEdit(rowKey),
-                          ),
-                          _RowMenuAction(
-                            label: row.active ? 'Desactivar' : 'Activar',
-                            icon: row.active
-                                ? Icons.pause_circle_rounded
-                                : Icons.check_circle_rounded,
-                            onTap: () => _toggleMaterialActive(row),
-                          ),
-                          _RowMenuAction(
-                            label: 'Eliminar',
-                            icon: Icons.delete_outline_rounded,
-                            onTap: () => _deleteMaterial(row),
-                          ),
-                        ],
-                );
-              },
+                    .toList(growable: false),
+              ),
+              onPointerUp: (_) => _endDragSelection(),
+              onPointerCancel: (_) => _endDragSelection(),
+              child: Container(
+                key: _materialRowsViewportKey,
+                child: ListView.separated(
+                  controller: _materialRowsScrollController,
+                  itemCount: visibleMaterials.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final row = visibleMaterials[index];
+                    final rowKey = 'ma:${row.id}';
+                    final visibleKeys = visibleMaterials
+                        .map((item) => 'ma:${item.id}')
+                        .toList(growable: false);
+                    if (_isInlineRowEditing(rowKey)) {
+                      return KeyedSubtree(
+                        key: _rowItemKey(rowKey),
+                        child: _MaterialInlineEditRow(
+                          key: _materialEditKey(rowKey),
+                          row: row,
+                          generalMaterials: _generalMaterials,
+                          onCancel: _multiEditMode
+                              ? _cancelActiveMultiEdit
+                              : _cancelInlineEdit,
+                          onSave: (payload) =>
+                              _saveMaterialInline(row, payload),
+                        ),
+                      );
+                    }
+                    return _CatalogTableRow(
+                      key: _rowItemKey(rowKey),
+                      rowKey: rowKey,
+                      selected: _isRowSelected(rowKey),
+                      onTap: () => _handleRowSelection(rowKey, visibleKeys),
+                      onPrimaryPointerDown: () =>
+                          _beginDragSelection(rowKey, visibleKeys),
+                      onDragEnter: () => _updateDragSelection(rowKey),
+                      onPointerEnd: _endDragSelection,
+                      onSecondarySelection: () =>
+                          _handleRowSecondarySelection(rowKey, visibleKeys),
+                      onDoubleTap: () => _startInlineEdit(rowKey),
+                      cells: [
+                        _CatalogTableCell.chip(
+                          width: _kMaterialLevelW,
+                          label: row.level,
+                          tone: row.level == 'GENERAL'
+                              ? const Color(0xFF8E3F2A)
+                              : const Color(0xFFE89A5B),
+                        ),
+                        _CatalogTableCell.text(
+                          width: _kMaterialNameW,
+                          text: row.name,
+                          bold: true,
+                        ),
+                        _CatalogTableCell.chip(
+                          width: _kMaterialFamilyW,
+                          label: row.level == 'GENERAL'
+                              ? '—'
+                              : (row.family ?? row.category),
+                          tone: const Color(0xFF9A6A00),
+                        ),
+                        _CatalogTableCell.text(
+                          width: _kMaterialRelationW,
+                          text: row.level == 'GENERAL'
+                              ? 'Catalogo base'
+                              : _materialRelationLabel(row.generalMaterialId),
+                        ),
+                        _CatalogTableCell.chip(
+                          width: _kMaterialStatusW,
+                          label: row.active ? 'ACTIVO' : 'INACTIVO',
+                          tone: row.active
+                              ? const Color(0xFF2E8B57)
+                              : const Color(0xFFB26A00),
+                        ),
+                        _CatalogTableCell.text(
+                          width: _kMaterialNotesW,
+                          text: row.notes,
+                        ),
+                      ],
+                      editableColumns: const {1, 2, 3, 4, 5},
+                      menuItems: _isMultiContextRow(rowKey)
+                          ? [
+                              if (!_multiEditMode)
+                                _RowMenuAction(
+                                  label: 'Editar selección',
+                                  icon: Icons.edit_note_rounded,
+                                  onTap: _startMultiEdit,
+                                ),
+                              if (_multiEditMode)
+                                _RowMenuAction(
+                                  label: 'Guardar selección',
+                                  icon: Icons.check_rounded,
+                                  onTap: _saveActiveMultiEdit,
+                                ),
+                              if (_multiEditMode)
+                                _RowMenuAction(
+                                  label: 'Cancelar edición',
+                                  icon: Icons.close_rounded,
+                                  onTap: _cancelActiveMultiEdit,
+                                ),
+                              _RowMenuAction(
+                                label: 'Activar / desactivar selección',
+                                icon: Icons.toggle_on_rounded,
+                                onTap: _toggleSelectedActive,
+                              ),
+                              _RowMenuAction(
+                                label: 'Eliminar selección',
+                                icon: Icons.delete_outline_rounded,
+                                onTap: _deleteSelectedRows,
+                              ),
+                            ]
+                          : [
+                              _RowMenuAction(
+                                label: 'Editar',
+                                icon: Icons.edit_rounded,
+                                onTap: () => _startInlineEdit(rowKey),
+                              ),
+                              _RowMenuAction(
+                                label: row.active ? 'Desactivar' : 'Activar',
+                                icon: row.active
+                                    ? Icons.pause_circle_rounded
+                                    : Icons.check_circle_rounded,
+                                onTap: () => _toggleMaterialActive(row),
+                              ),
+                              _RowMenuAction(
+                                label: 'Eliminar',
+                                icon: Icons.delete_outline_rounded,
+                                onTap: () => _deleteMaterial(row),
+                              ),
+                            ],
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ],
@@ -2406,117 +2636,135 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
           ),
           const SizedBox(height: 10),
           Expanded(
-            child: ListView.separated(
-              itemCount: visiblePrices.length,
-              separatorBuilder: (_, _) => const SizedBox(height: 8),
-              itemBuilder: (context, index) {
-                final row = visiblePrices[index];
-                final rowKey = 'pr:${row.id}';
-                final visibleKeys = visiblePrices
+            child: Listener(
+              onPointerMove: (event) => _handleRowsPointerMove(
+                event,
+                visiblePrices
                     .map((item) => 'pr:${item.id}')
-                    .toList(growable: false);
-                if (_isInlineRowEditing(rowKey)) {
-                  return _PriceInlineEditRow(
-                    key: _priceEditKey(rowKey),
-                    row: row,
-                    companies: _companies,
-                    materials: _commercialMaterials,
-                    onCancel: _multiEditMode
-                        ? _cancelActiveMultiEdit
-                        : _cancelInlineEdit,
-                    onSave: (payload) => _savePriceInline(row, payload),
-                  );
-                }
-                return _CatalogTableRow(
-                  rowKey: rowKey,
-                  selected: _isRowSelected(rowKey),
-                  onTap: () => _handleRowSelection(rowKey, visibleKeys),
-                  onPrimaryPointerDown: () =>
-                      _beginDragSelection(rowKey, visibleKeys),
-                  onDragEnter: () => _updateDragSelection(rowKey),
-                  onPointerEnd: _endDragSelection,
-                  onSecondarySelection: () =>
-                      _handleRowSecondarySelection(rowKey, visibleKeys),
-                  onDoubleTap: () => _startInlineEdit(rowKey),
-                  cells: [
-                    _CatalogTableCell.text(
-                      width: _kPriceCompanyW,
-                      text: _companyName(row.companyId),
-                      bold: true,
-                    ),
-                    _CatalogTableCell.text(
-                      width: _kPriceMaterialW,
-                      text: _materialName(row.materialId),
-                    ),
-                    _CatalogTableCell.text(
-                      width: _kPriceAmountW,
-                      text: _money(row.amount),
-                    ),
-                    _CatalogTableCell.chip(
-                      width: _kPriceStatusW,
-                      label: row.active ? 'ACTIVO' : 'INACTIVO',
-                      tone: row.active
-                          ? const Color(0xFF2E8B57)
-                          : const Color(0xFFB26A00),
-                    ),
-                    _CatalogTableCell.text(
-                      width: _kPriceNotesW,
-                      text: row.notes,
-                    ),
-                  ],
-                  editableColumns: const {0, 1, 2, 4},
-                  menuItems: _isMultiContextRow(rowKey)
-                      ? [
-                          if (!_multiEditMode)
-                            _RowMenuAction(
-                              label: 'Editar selección',
-                              icon: Icons.edit_note_rounded,
-                              onTap: _startMultiEdit,
-                            ),
-                          if (_multiEditMode)
-                            _RowMenuAction(
-                              label: 'Guardar selección',
-                              icon: Icons.check_rounded,
-                              onTap: _saveActiveMultiEdit,
-                            ),
-                          if (_multiEditMode)
-                            _RowMenuAction(
-                              label: 'Cancelar edición',
-                              icon: Icons.close_rounded,
-                              onTap: _cancelActiveMultiEdit,
-                            ),
-                          _RowMenuAction(
-                            label: 'Activar / desactivar selección',
-                            icon: Icons.toggle_on_rounded,
-                            onTap: _toggleSelectedActive,
-                          ),
-                          _RowMenuAction(
-                            label: 'Eliminar selección',
-                            icon: Icons.delete_outline_rounded,
-                            onTap: _deleteSelectedRows,
-                          ),
-                        ]
-                      : [
-                          _RowMenuAction(
-                            label: 'Editar',
-                            icon: Icons.edit_rounded,
-                            onTap: () => _startInlineEdit(rowKey),
-                          ),
-                          _RowMenuAction(
-                            label: row.active ? 'Desactivar' : 'Activar',
-                            icon: row.active
-                                ? Icons.pause_circle_rounded
-                                : Icons.check_circle_rounded,
-                            onTap: () => _togglePriceActive(row),
-                          ),
-                          _RowMenuAction(
-                            label: 'Eliminar',
-                            icon: Icons.delete_outline_rounded,
-                            onTap: () => _deletePrice(row),
-                          ),
-                        ],
-                );
-              },
+                    .toList(growable: false),
+              ),
+              onPointerUp: (_) => _endDragSelection(),
+              onPointerCancel: (_) => _endDragSelection(),
+              child: Container(
+                key: _priceRowsViewportKey,
+                child: ListView.separated(
+                  controller: _priceRowsScrollController,
+                  itemCount: visiblePrices.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 8),
+                  itemBuilder: (context, index) {
+                    final row = visiblePrices[index];
+                    final rowKey = 'pr:${row.id}';
+                    final visibleKeys = visiblePrices
+                        .map((item) => 'pr:${item.id}')
+                        .toList(growable: false);
+                    if (_isInlineRowEditing(rowKey)) {
+                      return KeyedSubtree(
+                        key: _rowItemKey(rowKey),
+                        child: _PriceInlineEditRow(
+                          key: _priceEditKey(rowKey),
+                          row: row,
+                          companies: _companies,
+                          materials: _commercialMaterials,
+                          onCancel: _multiEditMode
+                              ? _cancelActiveMultiEdit
+                              : _cancelInlineEdit,
+                          onSave: (payload) => _savePriceInline(row, payload),
+                        ),
+                      );
+                    }
+                    return _CatalogTableRow(
+                      key: _rowItemKey(rowKey),
+                      rowKey: rowKey,
+                      selected: _isRowSelected(rowKey),
+                      onTap: () => _handleRowSelection(rowKey, visibleKeys),
+                      onPrimaryPointerDown: () =>
+                          _beginDragSelection(rowKey, visibleKeys),
+                      onDragEnter: () => _updateDragSelection(rowKey),
+                      onPointerEnd: _endDragSelection,
+                      onSecondarySelection: () =>
+                          _handleRowSecondarySelection(rowKey, visibleKeys),
+                      onDoubleTap: () => _startInlineEdit(rowKey),
+                      cells: [
+                        _CatalogTableCell.text(
+                          width: _kPriceCompanyW,
+                          text: _companyName(row.companyId),
+                          bold: true,
+                        ),
+                        _CatalogTableCell.text(
+                          width: _kPriceMaterialW,
+                          text: _materialName(row.materialId),
+                        ),
+                        _CatalogTableCell.text(
+                          width: _kPriceAmountW,
+                          text: _money(row.amount),
+                        ),
+                        _CatalogTableCell.chip(
+                          width: _kPriceStatusW,
+                          label: row.active ? 'ACTIVO' : 'INACTIVO',
+                          tone: row.active
+                              ? const Color(0xFF2E8B57)
+                              : const Color(0xFFB26A00),
+                        ),
+                        _CatalogTableCell.text(
+                          width: _kPriceNotesW,
+                          text: row.notes,
+                        ),
+                      ],
+                      editableColumns: const {0, 1, 2, 4},
+                      menuItems: _isMultiContextRow(rowKey)
+                          ? [
+                              if (!_multiEditMode)
+                                _RowMenuAction(
+                                  label: 'Editar selección',
+                                  icon: Icons.edit_note_rounded,
+                                  onTap: _startMultiEdit,
+                                ),
+                              if (_multiEditMode)
+                                _RowMenuAction(
+                                  label: 'Guardar selección',
+                                  icon: Icons.check_rounded,
+                                  onTap: _saveActiveMultiEdit,
+                                ),
+                              if (_multiEditMode)
+                                _RowMenuAction(
+                                  label: 'Cancelar edición',
+                                  icon: Icons.close_rounded,
+                                  onTap: _cancelActiveMultiEdit,
+                                ),
+                              _RowMenuAction(
+                                label: 'Activar / desactivar selección',
+                                icon: Icons.toggle_on_rounded,
+                                onTap: _toggleSelectedActive,
+                              ),
+                              _RowMenuAction(
+                                label: 'Eliminar selección',
+                                icon: Icons.delete_outline_rounded,
+                                onTap: _deleteSelectedRows,
+                              ),
+                            ]
+                          : [
+                              _RowMenuAction(
+                                label: 'Editar',
+                                icon: Icons.edit_rounded,
+                                onTap: () => _startInlineEdit(rowKey),
+                              ),
+                              _RowMenuAction(
+                                label: row.active ? 'Desactivar' : 'Activar',
+                                icon: row.active
+                                    ? Icons.pause_circle_rounded
+                                    : Icons.check_circle_rounded,
+                                onTap: () => _togglePriceActive(row),
+                              ),
+                              _RowMenuAction(
+                                label: 'Eliminar',
+                                icon: Icons.delete_outline_rounded,
+                                onTap: () => _deletePrice(row),
+                              ),
+                            ],
+                    );
+                  },
+                ),
+              ),
             ),
           ),
         ],
@@ -5108,6 +5356,7 @@ class _CatalogTableRow extends StatefulWidget {
   final Set<int> editableColumns;
 
   const _CatalogTableRow({
+    super.key,
     required this.rowKey,
     required this.selected,
     required this.onTap,
