@@ -214,6 +214,24 @@ class AuthAccess {
   }
 
   static Future<bool> validateDirectionPassword(String password) async {
+    return _validateEmailPassword(_directionEmail, password);
+  }
+
+  static Future<bool> validateMayoreoPassword(String password) async {
+    return _validateEmailPassword(_mayoreoEmail, password);
+  }
+
+  static Future<bool> validateCashCutSupervisorPassword(String password) async {
+    final trimmed = password.trim();
+    if (trimmed.isEmpty) return false;
+    if (await validateDirectionPassword(trimmed)) return true;
+    return validateMayoreoPassword(trimmed);
+  }
+
+  static Future<bool> _validateEmailPassword(
+    String email,
+    String password,
+  ) async {
     final trimmed = password.trim();
     if (trimmed.isEmpty) return false;
 
@@ -228,10 +246,7 @@ class AuthAccess {
     );
 
     try {
-      await client.signInWithPassword(
-        email: _directionEmail,
-        password: trimmed,
-      );
+      await client.signInWithPassword(email: email, password: trimmed);
       try {
         await client.signOut();
       } catch (_) {}

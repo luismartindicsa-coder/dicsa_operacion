@@ -318,7 +318,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       final granted = await _authorizeDirectionGate(
         title: 'Acceso a corte de caja',
         message:
-            'Solo Dirección puede hacer el corte. Captura la contraseña de Dirección para continuar.',
+            'Dirección o Mayoreo pueden hacer el corte. Captura una contraseña autorizada para continuar.',
       );
       if (!granted) return;
     }
@@ -1271,7 +1271,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     final granted = await _authorizeDirectionGate(
       title: 'Acceso a historial de cortes',
       message:
-          'Solo Dirección puede ver los cortes. Captura la contraseña de Dirección para continuar.',
+          'Dirección o Mayoreo pueden ver los cortes. Captura una contraseña autorizada para continuar.',
     );
     if (!granted || !mounted) return;
     if (!mounted) return;
@@ -3022,7 +3022,7 @@ class _PendingChecksDialogState extends State<_PendingChecksDialog> {
                         if (_checkedIds.isNotEmpty) {
                           await _saveSelectedChecks();
                         }
-                        if (!mounted) return;
+                        if (!context.mounted) return;
                         Navigator.of(context).pop(true);
                       },
                       icon: const Icon(Icons.play_arrow_rounded),
@@ -3078,7 +3078,9 @@ class _DirectionPasswordDialogState extends State<_DirectionPasswordDialog> {
       _submitting = true;
       _error = null;
     });
-    final ok = await AuthAccess.validateDirectionPassword(_passwordC.text);
+    final ok = await AuthAccess.validateCashCutSupervisorPassword(
+      _passwordC.text,
+    );
     if (!mounted) return;
     if (ok) {
       Navigator.of(context).pop(true);
@@ -3086,7 +3088,7 @@ class _DirectionPasswordDialogState extends State<_DirectionPasswordDialog> {
     }
     setState(() {
       _submitting = false;
-      _error = 'La contraseña de Dirección no es válida.';
+      _error = 'La contraseña autorizada no es válida.';
     });
   }
 
@@ -3140,7 +3142,7 @@ class _DirectionPasswordDialogState extends State<_DirectionPasswordDialog> {
                 ),
                 const SizedBox(height: 14),
                 _DashboardCutField(
-                  label: 'Contraseña de Dirección',
+                  label: 'Contraseña autorizada',
                   child: TextField(
                     controller: _passwordC,
                     focusNode: _passwordFocus,
@@ -3149,7 +3151,7 @@ class _DirectionPasswordDialogState extends State<_DirectionPasswordDialog> {
                     onSubmitted: (_) => _submit(),
                     decoration: InputDecoration(
                       isCollapsed: true,
-                      hintText: 'Capturar contraseña',
+                      hintText: 'Dirección o Mayoreo',
                       hintStyle: _dashboardCutHintTextStyle(tokens),
                       border: InputBorder.none,
                       suffixIcon: IconButton(

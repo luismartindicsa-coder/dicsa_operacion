@@ -1915,13 +1915,15 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
         },
       );
     } finally {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        humedadC.dispose();
-        basuraC.dispose();
-        sobreprecioC.dispose();
-        exitOrderNumberC.dispose();
-        comentarioC.dispose();
-      });
+      // `showDialog` completes before the reverse route animation fully
+      // detaches the text fields. Disposing controllers immediately can race
+      // with those widgets still listening during ESC close.
+      await Future<void>.delayed(const Duration(milliseconds: 260));
+      humedadC.dispose();
+      basuraC.dispose();
+      sobreprecioC.dispose();
+      exitOrderNumberC.dispose();
+      comentarioC.dispose();
     }
   }
 
