@@ -38,7 +38,7 @@ jobs:
         run: flutter pub get
 
       - name: Build macOS app
-        run: flutter build macos --release
+        run: flutter build macos --release --no-codesign
 
       - name: Package macOS app
         run: |
