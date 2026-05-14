@@ -15,6 +15,7 @@ import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
+import '../maintenance/purchase_orders_page.dart';
 import '../shared/page_routes.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
@@ -27,6 +28,7 @@ import '../shared/utils/number_formatters.dart';
 import 'inventory_movements_grid.dart';
 import 'inventory_stock_v2_body.dart';
 import 'inventory_transformation_grid.dart';
+import 'operation_directory_page.dart';
 import 'services_page.dart';
 import 'warehouse_page.dart';
 import 'weighings_page.dart';
@@ -597,6 +599,28 @@ class _InventoryPageState extends State<InventoryPage>
     );
   }
 
+  Future<void> _goToPurchaseOrders() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const PurchaseOrdersPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToOperationDirectory() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const OperationDirectoryPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   Future<void> _goToWarehouse() async {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -624,6 +648,8 @@ class _InventoryPageState extends State<InventoryPage>
         onGoToProduction: _goToProduction,
         onGoToWeighings: _goToWeighings,
         onGoToMaintenance: _goToMaintenance,
+        onGoToPurchaseOrders: _goToPurchaseOrders,
+        onGoToOperationDirectory: _goToOperationDirectory,
         onGoToWarehouse: _goToWarehouse,
         onGoToCatalogs: null,
         topContent: Builder(
@@ -1003,6 +1029,28 @@ class _InventoryProductionPageState extends State<InventoryProductionPage>
     );
   }
 
+  Future<void> _goToPurchaseOrders() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const PurchaseOrdersPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToOperationDirectory() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const OperationDirectoryPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   Future<void> _goToWarehouse() async {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -1037,6 +1085,8 @@ class _InventoryProductionPageState extends State<InventoryProductionPage>
       onGoToServices: _goToServices,
       onGoToWeighings: _goToWeighings,
       onGoToMaintenance: _goToMaintenance,
+      onGoToPurchaseOrders: _goToPurchaseOrders,
+      onGoToOperationDirectory: _goToOperationDirectory,
       onGoToWarehouse: _goToWarehouse,
       onHeaderGuide: () => showProductionUsageGuideDialog(context),
       headerGuideLabel: 'Instructivo',
@@ -1570,6 +1620,28 @@ class _InventoryStockPageState extends State<InventoryStockPage>
     Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const MaintenancePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToPurchaseOrders() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const PurchaseOrdersPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToOperationDirectory() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const OperationDirectoryPage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
@@ -2765,6 +2837,8 @@ class _InventoryStockPageState extends State<InventoryStockPage>
         onGoToServices: _goToServices,
         onGoToWeighings: _goToWeighings,
         onGoToMaintenance: _goToMaintenance,
+        onGoToPurchaseOrders: _goToPurchaseOrders,
+        onGoToOperationDirectory: _goToOperationDirectory,
         onGoToWarehouse: _goToWarehouse,
         onHeaderGuide: _showInventoryUsageGuide,
         headerGuideLabel: 'Instructivo',

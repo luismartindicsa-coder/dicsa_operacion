@@ -11,6 +11,7 @@ import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
+import '../maintenance/purchase_orders_page.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
@@ -19,6 +20,7 @@ import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/number_formatters.dart';
 import 'inventory_page.dart';
+import 'operation_directory_page.dart';
 import 'services_page.dart';
 import 'services_shell.dart';
 import 'warehouse_page.dart';
@@ -1408,6 +1410,28 @@ class _WeighingsPageState extends State<WeighingsPage>
     );
   }
 
+  Future<void> _goToPurchaseOrders() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const PurchaseOrdersPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToOperationDirectory() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const OperationDirectoryPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   Future<void> _goToWarehouse() async {
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
@@ -1460,6 +1484,8 @@ class _WeighingsPageState extends State<WeighingsPage>
       onGoToServices: _goToServices,
       onGoToWeighings: () async {},
       onGoToMaintenance: _goToMaintenance,
+      onGoToPurchaseOrders: _goToPurchaseOrders,
+      onGoToOperationDirectory: _goToOperationDirectory,
       onGoToWarehouse: _goToWarehouse,
       topContent: Padding(
         padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),

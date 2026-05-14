@@ -16,13 +16,17 @@ import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
+import '../maintenance/purchase_orders_page.dart';
 import '../services/inventory_page.dart';
+import '../services/operation_directory_page.dart';
 import '../services/services_page.dart';
 import '../services/services_shell.dart';
 import '../services/warehouse_page.dart';
 import '../services/weighings_page.dart';
 import '../shared/app_error_reporter.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
+import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart'
+    as shared_picker;
 import '../shared/page_routes.dart';
 import '../shared/utils/number_formatters.dart';
 
@@ -108,6 +112,12 @@ const Map<String, String> _kMaterialSourceLabel = {
   'servicio_tecnico': 'Servicio tecnico',
 };
 
+const Map<String, String> _kPurchaseOrderLineTypeLabel = {
+  'material': 'Material',
+  'mano_obra': 'Mano de obra',
+  'refaccion': 'Refaccion',
+};
+
 const Map<String, List<String>> _kNextStatuses = {
   'aviso_falla': ['revision_area', 'rechazado'],
   'revision_area': ['reporte_mantenimiento', 'rechazado'],
@@ -150,6 +160,32 @@ const List<String> _kFixedAreas = [
   'FLOTILLA',
 ];
 
+List<String> _normalizeMaintenanceNames(Iterable<String> values) {
+  final seen = <String>{};
+  final normalized = <String>[];
+  for (final raw in values) {
+    final value = raw.trim().replaceAll(RegExp(r'\s+'), ' ');
+    if (value.isEmpty) continue;
+    final key = value.toLowerCase();
+    if (!seen.add(key)) continue;
+    normalized.add(value);
+  }
+  normalized.sort((a, b) => a.toLowerCase().compareTo(b.toLowerCase()));
+  return normalized;
+}
+
+bool _isMissingMaintenanceDirectoryTaxonomyError(PostgrestException error) {
+  final message = error.message.toLowerCase();
+  return message.contains('operation_directory_areas') ||
+      message.contains('operation_directory_specialties');
+}
+
+bool _isMissingOperationDirectoryContactsForMaintenanceError(
+  PostgrestException error,
+) {
+  return error.message.toLowerCase().contains('operation_directory_contacts');
+}
+
 String _normEnum(dynamic value) =>
     (value ?? '').toString().toLowerCase().trim();
 
@@ -186,6 +222,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   bool _exportingReportCsv = false;
   bool _autoReloading = false;
   bool _pendingAutoReload = false;
+  bool _purchaseOrderLinksAvailable = true;
   bool _suspendAutosave = false;
   bool _autosavePending = false;
   DateTime? _lastBackgroundRefreshAt;
@@ -201,6 +238,7 @@ class _MaintenancePageState extends State<MaintenancePage>
 
   String _search = '';
   String? _statusFilter;
+  AuthResolvedProfile? _resolvedProfile;
   String _profileRole = 'viewer';
   String _profileName = '';
   String? _hoveredOrderId;
@@ -209,6 +247,9 @@ class _MaintenancePageState extends State<MaintenancePage>
   String? _selectedOrderId;
   Map<String, dynamic>? _selectedOrder;
   List<Map<String, dynamic>> _vehicleCatalog = const [];
+  List<String> _directoryAreaOptions = const [];
+  List<String> _directorySpecialtyOptions = const [];
+  List<Map<String, dynamic>> _directoryContacts = const [];
   String? _selectedVehicleId;
 
   final TextEditingController _areaC = TextEditingController();
@@ -288,6 +329,8 @@ class _MaintenancePageState extends State<MaintenancePage>
   Future<void> _bootstrap() async {
     await _loadProfile();
     await _loadVehicleCatalog();
+    await _loadDirectoryTaxonomyOptions();
+    await _loadDirectoryContacts();
     await _loadOrders();
     if (!mounted) return;
     setState(() => _loading = false);
@@ -424,26 +467,173 @@ class _MaintenancePageState extends State<MaintenancePage>
     }
   }
 
+  Future<void> _loadDirectoryTaxonomyOptions() async {
+    try {
+      final areas = await _supa
+          .from('operation_directory_areas')
+          .select('name')
+          .eq('active', true)
+          .order('name');
+      final specialties = await _supa
+          .from('operation_directory_specialties')
+          .select('name')
+          .eq('active', true)
+          .order('name');
+      _directoryAreaOptions = _normalizeMaintenanceNames(
+        (areas as List).map(
+          (row) => (row as Map<String, dynamic>)['name']?.toString() ?? '',
+        ),
+      );
+      _directorySpecialtyOptions = _normalizeMaintenanceNames(
+        (specialties as List).map(
+          (row) => (row as Map<String, dynamic>)['name']?.toString() ?? '',
+        ),
+      );
+    } on PostgrestException catch (e, st) {
+      if (!_isMissingMaintenanceDirectoryTaxonomyError(e)) {
+        AppErrorReporter.report(
+          e,
+          st,
+          fallbackMessage:
+              'No se pudieron cargar áreas y especialidades del Directorio.',
+        );
+      }
+      _directoryAreaOptions = const [];
+      _directorySpecialtyOptions = const [];
+    }
+  }
+
+  Future<void> _loadDirectoryContacts() async {
+    try {
+      final rows = await _supa
+          .from('operation_directory_contacts')
+          .select('id,name,contact,active')
+          .eq('active', true)
+          .order('name');
+      _directoryContacts = (rows as List)
+          .map((row) => Map<String, dynamic>.from(row as Map<String, dynamic>))
+          .toList(growable: false);
+    } on PostgrestException catch (e, st) {
+      if (!_isMissingOperationDirectoryContactsForMaintenanceError(e)) {
+        AppErrorReporter.report(
+          e,
+          st,
+          fallbackMessage: 'No se pudo cargar el directorio operativo.',
+        );
+      }
+      _directoryContacts = const [];
+    }
+  }
+
+  List<String> _maintenanceSpecialtyOptions() {
+    return _normalizeMaintenanceNames(<String>[
+      ..._kCategoryLabel.keys,
+      ..._directorySpecialtyOptions,
+      _category,
+    ]);
+  }
+
+  String _maintenanceSpecialtyLabel(String value) {
+    return _kCategoryLabel[value] ?? value;
+  }
+
+  String _selectedDirectoryContactDisplayValue() {
+    final name = _mechanicNameC.text.trim();
+    final contact = _mechanicContactC.text.trim();
+    if (name.isEmpty) return 'Seleccionar contacto';
+    final suffix = contact.isEmpty ? '' : ' · $contact';
+    return '$name$suffix';
+  }
+
+  bool get _isAccountingRestrictedMaintenanceUser =>
+      AuthAccess.hasAccountingOperationsAccess(_resolvedProfile) &&
+      !AuthAccess.hasFullOperationsAccess(_resolvedProfile) &&
+      !AuthAccess.isDirectionRole(_resolvedProfile);
+
+  bool _isSectionLockedForAccounting(String title) {
+    if (!_isAccountingRestrictedMaintenanceUser) return false;
+    return title != 'Materiales / Refacciones / Mano de obra' &&
+        title != 'Costos totales';
+  }
+
+  void _toastAccountingMaterialsOnlyRestriction() {
+    _toast(
+      'Contabilidad solo puede modificar materiales/refacciones/mano de obra en la OT.',
+    );
+  }
+
+  Future<void> _pickDirectoryContactForOt() async {
+    if (_directoryContacts.isEmpty) return;
+    final currentName = _mechanicNameC.text.trim().toLowerCase();
+    final currentMatch = _directoryContacts
+        .cast<Map<String, dynamic>?>()
+        .firstWhere(
+          (row) =>
+              ((row?['name'] ?? '').toString().trim().toLowerCase()) ==
+              currentName,
+          orElse: () => null,
+        );
+    final initialValue = (currentMatch?['id'] ?? '').toString();
+    final picked = await shared_picker.showSearchablePickerDialog<String>(
+      context,
+      title: 'Contacto del directorio',
+      initialValue: initialValue,
+      allowClear: true,
+      options: [
+        const shared_picker.SearchablePickerOption<String>(
+          value: '',
+          label: 'Sin seleccionar',
+        ),
+        ..._directoryContacts.map(
+          (row) => shared_picker.SearchablePickerOption<String>(
+            value: (row['id'] ?? '').toString(),
+            label:
+                '${(row['name'] ?? '').toString()}${(row['contact'] ?? '').toString().trim().isEmpty ? '' : ' · ${(row['contact'] ?? '').toString()}'}',
+          ),
+        ),
+      ],
+    );
+    if (picked == null || !mounted) return;
+    if (picked.isEmpty) {
+      setState(() {
+        _mechanicNameC.clear();
+        _mechanicContactC.clear();
+      });
+      _scheduleAutosave();
+      return;
+    }
+    final selected = _directoryContacts
+        .cast<Map<String, dynamic>?>()
+        .firstWhere(
+          (row) => (row?['id'] ?? '').toString() == picked,
+          orElse: () => null,
+        );
+    if (selected == null) return;
+    setState(() {
+      _mechanicNameC.text = (selected['name'] ?? '').toString().trim();
+      _mechanicContactC.text = (selected['contact'] ?? '').toString().trim();
+    });
+    _scheduleAutosave();
+  }
+
   Future<void> _loadProfile() async {
     final user = _supa.auth.currentUser;
     if (user == null) return;
     _profileName = (user.email ?? '').trim();
 
     try {
-      final row = await _supa
-          .from('profiles')
-          .select('role')
-          .eq('user_id', user.id)
-          .maybeSingle();
-      _profileRole = ((row?['role'] as String?) ?? 'viewer')
-          .toLowerCase()
-          .trim();
+      _resolvedProfile = await AuthAccess.resolveCurrentProfile();
+      _profileRole = _resolvedProfile?.role ?? 'viewer';
+      if ((_resolvedProfile?.email ?? '').trim().isNotEmpty) {
+        _profileName = _resolvedProfile!.email;
+      }
     } catch (e, st) {
       AppErrorReporter.report(
         e,
         st,
         fallbackMessage: 'No se pudo cargar el perfil de mantenimiento.',
       );
+      _resolvedProfile = null;
       _profileRole = 'viewer';
     }
   }
@@ -657,7 +847,7 @@ class _MaintenancePageState extends State<MaintenancePage>
           _serialC.text = (match?['serial_number'] ?? '').toString();
         }
       }
-      if (!_kFixedAreas.contains(_areaC.text.trim().toUpperCase())) {
+      if (_areaC.text.trim().isEmpty) {
         _areaC.text = _kFixedAreas.first;
       }
     });
@@ -741,6 +931,9 @@ class _MaintenancePageState extends State<MaintenancePage>
   String? _buildAutosaveFingerprint() {
     final orderId = _selectedOrder?['id']?.toString();
     if (orderId == null || orderId.isEmpty) return null;
+    if (_isAccountingRestrictedMaintenanceUser) {
+      return jsonEncode({'order_id': orderId, 'materials': _materials});
+    }
     return jsonEncode({
       'order_id': orderId,
       'area_label': _areaC.text.trim(),
@@ -884,6 +1077,12 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   List<MapEntry<String, String>> _orderContextActions() {
+    if (_isAccountingRestrictedMaintenanceUser) {
+      return const <MapEntry<String, String>>[
+        MapEntry('save', 'GUARDAR MATERIALES'),
+        MapEntry('pdf', 'DESCARGAR PDF'),
+      ];
+    }
     return const <MapEntry<String, String>>[
       MapEntry('save', 'GUARDAR'),
       MapEntry('status', 'EDITAR ESTADO'),
@@ -938,6 +1137,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _createOrder() async {
+    if (_isAccountingRestrictedMaintenanceUser) {
+      _toastAccountingMaterialsOnlyRestriction();
+      return;
+    }
     if (_creating) return;
     final user = _supa.auth.currentUser;
     if (user == null) return;
@@ -1036,41 +1239,51 @@ class _MaintenancePageState extends State<MaintenancePage>
 
       await _supa
           .from('maintenance_orders')
-          .update({
-            'area_label': _areaC.text.trim(),
-            'equipment_id': _selectedVehicleId,
-            'equipment_label': _equipmentC.text.trim(),
-            'equipment_serial': _serialC.text.trim(),
-            'requester_name': _requesterC.text.trim(),
-            'mechanic_name': _mechanicNameC.text.trim().isEmpty
-                ? null
-                : _mechanicNameC.text.trim(),
-            'mechanic_contact': _mechanicContactC.text.trim().isEmpty
-                ? null
-                : _mechanicContactC.text.trim(),
-            'priority': _priority,
-            'type': _type,
-            'category': _category,
-            'impact': _impact,
-            'problem_description': _descriptionC.text.trim(),
-            'diagnosis': _diagnosisC.text.trim().isEmpty
-                ? null
-                : _diagnosisC.text.trim(),
-            'work_summary': _summaryC.text.trim().isEmpty
-                ? null
-                : _summaryC.text.trim(),
-            'assigned_to_name': _assignedToC.text.trim().isEmpty
-                ? null
-                : _assignedToC.text.trim(),
-            'assigned_at': _assignedToC.text.trim().isEmpty
-                ? null
-                : DateTime.now().toIso8601String(),
-            'cost_estimated_total': estTotal,
-            'cost_actual_total': realTotal,
-          })
+          .update(
+            _isAccountingRestrictedMaintenanceUser
+                ? <String, dynamic>{
+                    'cost_estimated_total': estTotal,
+                    'cost_actual_total': realTotal,
+                  }
+                : <String, dynamic>{
+                    'area_label': _areaC.text.trim(),
+                    'equipment_id': _selectedVehicleId,
+                    'equipment_label': _equipmentC.text.trim(),
+                    'equipment_serial': _serialC.text.trim(),
+                    'requester_name': _requesterC.text.trim(),
+                    'mechanic_name': _mechanicNameC.text.trim().isEmpty
+                        ? null
+                        : _mechanicNameC.text.trim(),
+                    'mechanic_contact': _mechanicContactC.text.trim().isEmpty
+                        ? null
+                        : _mechanicContactC.text.trim(),
+                    'priority': _priority,
+                    'type': _type,
+                    'category': _category,
+                    'impact': _impact,
+                    'problem_description': _descriptionC.text.trim(),
+                    'diagnosis': _diagnosisC.text.trim().isEmpty
+                        ? null
+                        : _diagnosisC.text.trim(),
+                    'work_summary': _summaryC.text.trim().isEmpty
+                        ? null
+                        : _summaryC.text.trim(),
+                    'assigned_to_name': _assignedToC.text.trim().isEmpty
+                        ? null
+                        : _assignedToC.text.trim(),
+                    'assigned_at': _assignedToC.text.trim().isEmpty
+                        ? null
+                        : DateTime.now().toIso8601String(),
+                    'cost_estimated_total': estTotal,
+                    'cost_actual_total': realTotal,
+                  },
+          )
           .eq('id', orderId);
 
-      await _replaceChildRows(orderId);
+      await _replaceChildRows(
+        orderId,
+        materialsOnly: _isAccountingRestrictedMaintenanceUser,
+      );
       _lastSavedFingerprint = fingerprintBeforeSave;
       _autosavePending = false;
       if (refreshAfterSave) {
@@ -1078,36 +1291,42 @@ class _MaintenancePageState extends State<MaintenancePage>
         await _loadOrderDetails(orderId);
       } else if (mounted) {
         setState(() {
-          _selectedOrder = {
-            ...?_selectedOrder,
-            'area_label': _areaC.text.trim(),
-            'equipment_id': _selectedVehicleId,
-            'equipment_label': _equipmentC.text.trim(),
-            'equipment_serial': _serialC.text.trim(),
-            'requester_name': _requesterC.text.trim(),
-            'mechanic_name': _mechanicNameC.text.trim().isEmpty
-                ? null
-                : _mechanicNameC.text.trim(),
-            'mechanic_contact': _mechanicContactC.text.trim().isEmpty
-                ? null
-                : _mechanicContactC.text.trim(),
-            'priority': _priority,
-            'type': _type,
-            'category': _category,
-            'impact': _impact,
-            'problem_description': _descriptionC.text.trim(),
-            'diagnosis': _diagnosisC.text.trim().isEmpty
-                ? null
-                : _diagnosisC.text.trim(),
-            'work_summary': _summaryC.text.trim().isEmpty
-                ? null
-                : _summaryC.text.trim(),
-            'assigned_to_name': _assignedToC.text.trim().isEmpty
-                ? null
-                : _assignedToC.text.trim(),
-            'cost_estimated_total': estTotal,
-            'cost_actual_total': realTotal,
-          };
+          _selectedOrder = _isAccountingRestrictedMaintenanceUser
+              ? {
+                  ...?_selectedOrder,
+                  'cost_estimated_total': estTotal,
+                  'cost_actual_total': realTotal,
+                }
+              : {
+                  ...?_selectedOrder,
+                  'area_label': _areaC.text.trim(),
+                  'equipment_id': _selectedVehicleId,
+                  'equipment_label': _equipmentC.text.trim(),
+                  'equipment_serial': _serialC.text.trim(),
+                  'requester_name': _requesterC.text.trim(),
+                  'mechanic_name': _mechanicNameC.text.trim().isEmpty
+                      ? null
+                      : _mechanicNameC.text.trim(),
+                  'mechanic_contact': _mechanicContactC.text.trim().isEmpty
+                      ? null
+                      : _mechanicContactC.text.trim(),
+                  'priority': _priority,
+                  'type': _type,
+                  'category': _category,
+                  'impact': _impact,
+                  'problem_description': _descriptionC.text.trim(),
+                  'diagnosis': _diagnosisC.text.trim().isEmpty
+                      ? null
+                      : _diagnosisC.text.trim(),
+                  'work_summary': _summaryC.text.trim().isEmpty
+                      ? null
+                      : _summaryC.text.trim(),
+                  'assigned_to_name': _assignedToC.text.trim().isEmpty
+                      ? null
+                      : _assignedToC.text.trim(),
+                  'cost_estimated_total': estTotal,
+                  'cost_actual_total': realTotal,
+                };
         });
       }
       if (showToast) _toast('OT guardada');
@@ -1123,28 +1342,37 @@ class _MaintenancePageState extends State<MaintenancePage>
     }
   }
 
-  Future<void> _replaceChildRows(String orderId) async {
-    await _supa.from('maintenance_tasks').delete().eq('ot_id', orderId);
+  Future<void> _replaceChildRows(
+    String orderId, {
+    bool materialsOnly = false,
+  }) async {
+    if (!materialsOnly) {
+      await _supa.from('maintenance_tasks').delete().eq('ot_id', orderId);
+    }
     await _supa.from('maintenance_materials').delete().eq('ot_id', orderId);
-    await _supa.from('maintenance_time_logs').delete().eq('ot_id', orderId);
+    if (!materialsOnly) {
+      await _supa.from('maintenance_time_logs').delete().eq('ot_id', orderId);
+    }
 
     final tasks = <Map<String, dynamic>>[];
-    for (var i = 0; i < _tasks.length; i++) {
-      final row = _tasks[i];
-      final desc = (row['description'] ?? '').toString().trim();
-      if (desc.isEmpty) continue;
-      tasks.add({
-        'ot_id': orderId,
-        'line_no': i + 1,
-        'description': desc,
-        'unit': _emptyAsNull(row['unit']),
-        'qty': _toDouble(row['qty']),
-        'is_done': row['is_done'] == true,
-        'notes': _emptyAsNull(row['notes']),
-        'done_at': row['is_done'] == true
-            ? DateTime.now().toIso8601String()
-            : null,
-      });
+    if (!materialsOnly) {
+      for (var i = 0; i < _tasks.length; i++) {
+        final row = _tasks[i];
+        final desc = (row['description'] ?? '').toString().trim();
+        if (desc.isEmpty) continue;
+        tasks.add({
+          'ot_id': orderId,
+          'line_no': i + 1,
+          'description': desc,
+          'unit': _emptyAsNull(row['unit']),
+          'qty': _toDouble(row['qty']),
+          'is_done': row['is_done'] == true,
+          'notes': _emptyAsNull(row['notes']),
+          'done_at': row['is_done'] == true
+              ? DateTime.now().toIso8601String()
+              : null,
+        });
+      }
     }
 
     final materials = <Map<String, dynamic>>[];
@@ -1161,28 +1389,36 @@ class _MaintenancePageState extends State<MaintenancePage>
         'cost_estimated': _toDouble(row['cost_estimated']),
         'cost_actual': _toDouble(row['cost_actual']),
         'notes': _emptyAsNull(row['notes']),
+        'purchase_order_id': _emptyAsNull(row['purchase_order_id']),
+        'purchase_order_line_id': _emptyAsNull(row['purchase_order_line_id']),
+        'purchase_order_folio': _emptyAsNull(row['purchase_order_folio']),
+        'purchase_order_line_description': _emptyAsNull(
+          row['purchase_order_line_description'],
+        ),
       });
     }
 
     final timeLogs = <Map<String, dynamic>>[];
-    for (final row in _timeLogs) {
-      final startAt = row['start_at']?.toString();
-      if (startAt == null || startAt.isEmpty) continue;
-      final endAt = row['end_at']?.toString();
-      final start = DateTime.tryParse(startAt);
-      final end = endAt == null ? null : DateTime.tryParse(endAt);
-      final minutes = (start != null && end != null)
-          ? end.difference(start).inMinutes.clamp(0, 100000)
-          : null;
+    if (!materialsOnly) {
+      for (final row in _timeLogs) {
+        final startAt = row['start_at']?.toString();
+        if (startAt == null || startAt.isEmpty) continue;
+        final endAt = row['end_at']?.toString();
+        final start = DateTime.tryParse(startAt);
+        final end = endAt == null ? null : DateTime.tryParse(endAt);
+        final minutes = (start != null && end != null)
+            ? end.difference(start).inMinutes.clamp(0, 100000)
+            : null;
 
-      timeLogs.add({
-        'ot_id': orderId,
-        'tech_name': _emptyAsNull(row['tech_name']),
-        'start_at': startAt,
-        'end_at': endAt,
-        'minutes': minutes,
-        'note': _emptyAsNull(row['note']),
-      });
+        timeLogs.add({
+          'ot_id': orderId,
+          'tech_name': _emptyAsNull(row['tech_name']),
+          'start_at': startAt,
+          'end_at': endAt,
+          'minutes': minutes,
+          'note': _emptyAsNull(row['note']),
+        });
+      }
     }
 
     if (tasks.isNotEmpty) {
@@ -1197,6 +1433,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _changeStatus() async {
+    if (_isAccountingRestrictedMaintenanceUser) {
+      _toastAccountingMaterialsOnlyRestriction();
+      return;
+    }
     final order = _selectedOrder;
     final orderId = order?['id']?.toString();
     final current = order?['status']?.toString() ?? '';
@@ -1315,6 +1555,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _deleteSelectedOrder() async {
+    if (_isAccountingRestrictedMaintenanceUser) {
+      _toastAccountingMaterialsOnlyRestriction();
+      return;
+    }
     final order = _selectedOrder;
     final orderId = order?['id']?.toString();
     if (orderId == null || orderId.isEmpty) return;
@@ -1477,7 +1721,7 @@ class _MaintenancePageState extends State<MaintenancePage>
             _pdfSection('CLASIFICACION', [
               'Tipo: ${_kTypeLabel[(order['type'] ?? '').toString()] ?? order['type']}',
               'Prioridad: ${_kPriorityLabel[(order['priority'] ?? '').toString()] ?? order['priority']}',
-              'Categoria: ${_kCategoryLabel[(order['category'] ?? '').toString()] ?? order['category']}',
+              'Especialidad: ${_kCategoryLabel[(order['category'] ?? '').toString()] ?? order['category']}',
               'Impacto: ${_kImpactLabel[(order['impact'] ?? '').toString()] ?? order['impact']}',
             ]),
             _pdfSection('DESCRIPCION DEL PROBLEMA', [
@@ -1529,7 +1773,14 @@ class _MaintenancePageState extends State<MaintenancePage>
                       _materialSourceLabel((e['source'] ?? '').toString()),
                       _fmtMoney(_toDouble(e['cost_estimated']) ?? 0),
                       _fmtMoney(_toDouble(e['cost_actual']) ?? 0),
-                      (e['notes'] ?? '').toString(),
+                      [
+                        if ((e['purchase_order_folio'] ?? '')
+                            .toString()
+                            .trim()
+                            .isNotEmpty)
+                          'OC ${(e['purchase_order_folio'] ?? '').toString().trim()}',
+                        (e['notes'] ?? '').toString(),
+                      ].where((part) => part.trim().isNotEmpty).join(' · '),
                     ],
                   )
                   .toList(),
@@ -2463,6 +2714,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _openEvidenceModal(String orderId) async {
+    if (_isAccountingRestrictedMaintenanceUser) {
+      _toastAccountingMaterialsOnlyRestriction();
+      return;
+    }
     await _loadOrderDetails(orderId);
     if (!mounted) return;
 
@@ -2584,6 +2839,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _addEvidence(String orderId) async {
+    if (_isAccountingRestrictedMaintenanceUser) {
+      _toastAccountingMaterialsOnlyRestriction();
+      return;
+    }
     String category = 'durante';
     final commentC = TextEditingController();
     final urlC = TextEditingController();
@@ -2836,6 +3095,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _addTask() async {
+    if (_isAccountingRestrictedMaintenanceUser) {
+      _toastAccountingMaterialsOnlyRestriction();
+      return;
+    }
     final row = await _showTaskDialog();
     if (row == null) return;
     setState(() => _tasks.add(row));
@@ -2843,6 +3106,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _editTask(int index) async {
+    if (_isAccountingRestrictedMaintenanceUser) {
+      _toastAccountingMaterialsOnlyRestriction();
+      return;
+    }
     final row = await _showTaskDialog(initial: _tasks[index]);
     if (row == null) return;
     setState(() => _tasks[index] = row);
@@ -2974,7 +3241,7 @@ class _MaintenancePageState extends State<MaintenancePage>
 
   Future<Map<String, dynamic>?> _showMaterialDialog({
     Map<String, dynamic>? initial,
-  }) {
+  }) async {
     final nameC = TextEditingController(
       text: (initial?['name'] ?? '').toString(),
     );
@@ -2991,12 +3258,23 @@ class _MaintenancePageState extends State<MaintenancePage>
       text: (initial?['notes'] ?? '').toString(),
     );
     String source = (initial?['source'] ?? 'almacen').toString();
+    final allPurchaseOrderLines = await _loadAuthorizedPurchaseOrderLines();
+    String? selectedPurchaseLineId =
+        (initial?['purchase_order_line_id'] ?? '').toString().trim().isEmpty
+        ? null
+        : (initial?['purchase_order_line_id'] ?? '').toString();
+    if (!mounted) return null;
 
     return _showMaintenanceDialog<Map<String, dynamic>>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setLocal) {
+            final purchaseOrderLines =
+                _filterAuthorizedPurchaseOrderLinesForSource(
+                  allPurchaseOrderLines,
+                  source,
+                );
             return AlertDialog(
               title: Text(
                 initial == null
@@ -3062,7 +3340,10 @@ class _MaintenancePageState extends State<MaintenancePage>
                             ],
                             onChanged: (v) {
                               if (v == null) return;
-                              setLocal(() => source = v);
+                              setLocal(() {
+                                source = v;
+                                selectedPurchaseLineId = null;
+                              });
                             },
                             decoration: _maintenanceInputDecoration(
                               labelText: 'Fuente',
@@ -3072,6 +3353,102 @@ class _MaintenancePageState extends State<MaintenancePage>
                       ],
                     ),
                     const SizedBox(height: 8),
+                    if (source != 'almacen') ...[
+                      if (_purchaseOrderLinksAvailable)
+                        DropdownButtonFormField<String?>(
+                          initialValue:
+                              purchaseOrderLines.any(
+                                (row) =>
+                                    row['purchase_order_line_id'] ==
+                                    selectedPurchaseLineId,
+                              )
+                              ? selectedPurchaseLineId
+                              : null,
+                          isExpanded: true,
+                          menuMaxHeight: 320,
+                          borderRadius: BorderRadius.circular(12),
+                          dropdownColor: const Color(0xFFF4FAF8),
+                          items: [
+                            const DropdownMenuItem<String?>(
+                              value: null,
+                              child: Text('Sin orden autorizada'),
+                            ),
+                            ...purchaseOrderLines.map((row) {
+                              final lineId =
+                                  row['purchase_order_line_id']?.toString() ??
+                                  '';
+                              final folio = (row['folio'] ?? '').toString();
+                              final typeLabel =
+                                  _kPurchaseOrderLineTypeLabel[(row['line_type'] ??
+                                          '')
+                                      .toString()] ??
+                                  'Concepto';
+                              final description = (row['description'] ?? '')
+                                  .toString();
+                              final total = _fmtMoney(
+                                _toDouble(row['line_total']) ?? 0,
+                              );
+                              return DropdownMenuItem<String?>(
+                                value: lineId,
+                                child: Text(
+                                  '$folio · $typeLabel · $description · $total',
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              );
+                            }),
+                          ],
+                          onChanged: (value) {
+                            setLocal(() {
+                              selectedPurchaseLineId = value;
+                              final selectedRow = purchaseOrderLines
+                                  .where(
+                                    (row) =>
+                                        row['purchase_order_line_id'] == value,
+                                  )
+                                  .cast<Map<String, dynamic>?>()
+                                  .firstWhere(
+                                    (row) => row != null,
+                                    orElse: () => null,
+                                  );
+                              if (selectedRow == null) return;
+                              nameC.text = (selectedRow['description'] ?? '')
+                                  .toString();
+                              if (qtyC.text.trim().isEmpty) {
+                                qtyC.text = (selectedRow['qty'] ?? '')
+                                    .toString();
+                              }
+                              final selectedTotal =
+                                  _toDouble(selectedRow['line_total']) ?? 0;
+                              estC.text = selectedTotal.toStringAsFixed(2);
+                              realC.text = selectedTotal.toStringAsFixed(2);
+                              notesC.text =
+                                  'OC ${(selectedRow['folio'] ?? '').toString()} · ${(selectedRow['target_label'] ?? '').toString()}';
+                            });
+                          },
+                          decoration: _maintenanceInputDecoration(
+                            labelText: 'Orden autorizada',
+                          ),
+                        )
+                      else
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF4D6),
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: const Color(0xFFE9CA6B)),
+                          ),
+                          child: const Text(
+                            'Las órdenes autorizadas estarán disponibles aquí cuando se aplique la migración de Compras OT en Supabase.',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF7A5A00),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 8),
+                    ],
                     Row(
                       children: [
                         Expanded(
@@ -3122,6 +3499,14 @@ class _MaintenancePageState extends State<MaintenancePage>
                   onPressed: () {
                     final name = nameC.text.trim();
                     if (name.isEmpty) return;
+                    final selectedRow = allPurchaseOrderLines
+                        .where(
+                          (row) =>
+                              row['purchase_order_line_id'] ==
+                              selectedPurchaseLineId,
+                        )
+                        .cast<Map<String, dynamic>?>()
+                        .firstWhere((row) => row != null, orElse: () => null);
                     Navigator.pop(dialogContext, {
                       'name': name,
                       'qty': _toDouble(qtyC.text),
@@ -3129,6 +3514,12 @@ class _MaintenancePageState extends State<MaintenancePage>
                       'cost_estimated': _toDouble(estC.text),
                       'cost_actual': _toDouble(realC.text),
                       'notes': notesC.text.trim(),
+                      'purchase_order_id': selectedRow?['purchase_order_id'],
+                      'purchase_order_line_id':
+                          selectedRow?['purchase_order_line_id'],
+                      'purchase_order_folio': selectedRow?['folio'],
+                      'purchase_order_line_description':
+                          selectedRow?['description'],
                     });
                   },
                   child: const Text('Guardar'),
@@ -3141,7 +3532,50 @@ class _MaintenancePageState extends State<MaintenancePage>
     );
   }
 
+  Future<List<Map<String, dynamic>>> _loadAuthorizedPurchaseOrderLines() async {
+    try {
+      final rows = await _supa
+          .from('v_maintenance_authorized_purchase_order_lines')
+          .select('*')
+          .order('order_date', ascending: false)
+          .order('folio')
+          .order('line_no');
+      _purchaseOrderLinksAvailable = true;
+      return (rows as List)
+          .map((row) => Map<String, dynamic>.from(row as Map<String, dynamic>))
+          .toList();
+    } on PostgrestException catch (e) {
+      if (_isMissingAuthorizedPurchaseOrdersViewError(e)) {
+        _purchaseOrderLinksAvailable = false;
+        return <Map<String, dynamic>>[];
+      }
+      rethrow;
+    }
+  }
+
+  List<Map<String, dynamic>> _filterAuthorizedPurchaseOrderLinesForSource(
+    List<Map<String, dynamic>> rows,
+    String source,
+  ) {
+    final allowedTypes = switch (source) {
+      'compra' || 'proveedor' => const {'material', 'refaccion'},
+      'mano_obra' => const {'mano_obra'},
+      'servicio_tecnico' => const {'material', 'mano_obra', 'refaccion'},
+      _ => const <String>{},
+    };
+    if (allowedTypes.isEmpty) return const <Map<String, dynamic>>[];
+    return rows
+        .where(
+          (row) => allowedTypes.contains((row['line_type'] ?? '').toString()),
+        )
+        .toList();
+  }
+
   Future<void> _addTimeLog() async {
+    if (_isAccountingRestrictedMaintenanceUser) {
+      _toastAccountingMaterialsOnlyRestriction();
+      return;
+    }
     final row = await _showTimeDialog();
     if (row == null) return;
     setState(() => _timeLogs.add(row));
@@ -3149,6 +3583,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _editTimeLog(int index) async {
+    if (_isAccountingRestrictedMaintenanceUser) {
+      _toastAccountingMaterialsOnlyRestriction();
+      return;
+    }
     final row = await _showTimeDialog(initial: _timeLogs[index]);
     if (row == null) return;
     setState(() => _timeLogs[index] = row);
@@ -3489,6 +3927,20 @@ class _MaintenancePageState extends State<MaintenancePage>
     ).pushReplacement(appPageRoute(page: const WeighingsPage()));
   }
 
+  Future<void> _goToPurchaseOrders() async {
+    if (!mounted) return;
+    Navigator.of(
+      context,
+    ).pushReplacement(appPageRoute(page: const PurchaseOrdersPage()));
+  }
+
+  Future<void> _goToOperationDirectory() async {
+    if (!mounted) return;
+    Navigator.of(
+      context,
+    ).pushReplacement(appPageRoute(page: const OperationDirectoryPage()));
+  }
+
   Future<void> _goToWarehouse() async {
     if (!mounted) return;
     Navigator.of(
@@ -3512,6 +3964,8 @@ class _MaintenancePageState extends State<MaintenancePage>
       onGoToServices: _goToServices,
       onGoToWeighings: _goToWeighings,
       onGoToMaintenance: () async {},
+      onGoToPurchaseOrders: _goToPurchaseOrders,
+      onGoToOperationDirectory: _goToOperationDirectory,
       onGoToWarehouse: _goToWarehouse,
       topContent: _buildTopActions(),
       child: _loading
@@ -3556,11 +4010,25 @@ class _MaintenancePageState extends State<MaintenancePage>
               final actions = FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
-                child: FilledButton.icon(
-                  style: _maintenanceActionFilledButtonStyle(),
-                  onPressed: _creating ? null : _createOrder,
-                  icon: const Icon(Icons.add_box_rounded),
-                  label: const Text('Nueva OT'),
+                child: Wrap(
+                  spacing: 8,
+                  children: [
+                    FilledButton.icon(
+                      style: _maintenanceActionFilledButtonStyle(),
+                      onPressed:
+                          _creating || _isAccountingRestrictedMaintenanceUser
+                          ? null
+                          : _createOrder,
+                      icon: const Icon(Icons.add_box_rounded),
+                      label: const Text('Nueva OT'),
+                    ),
+                    OutlinedButton.icon(
+                      style: _maintenanceActionOutlinedButtonStyle(),
+                      onPressed: _goToPurchaseOrders,
+                      icon: const Icon(Icons.shopping_cart_checkout_rounded),
+                      label: const Text('Compras OT'),
+                    ),
+                  ],
                 ),
               );
 
@@ -3585,6 +4053,16 @@ class _MaintenancePageState extends State<MaintenancePage>
                       color: Color(0xFF2A4B49),
                     ),
                   ),
+                  if (_isAccountingRestrictedMaintenanceUser)
+                    const Text(
+                      'Contabilidad: solo materiales y costos',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF8A5A00),
+                      ),
+                    ),
                 ],
               );
 
@@ -6862,6 +7340,7 @@ class _MaintenancePageState extends State<MaintenancePage>
     Widget child, {
     double? height,
   }) {
+    final lockedForAccounting = _isSectionLockedForAccounting(title);
     final content = height == null
         ? child
         : SizedBox(
@@ -6886,8 +7365,36 @@ class _MaintenancePageState extends State<MaintenancePage>
               Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
             ],
           ),
+          if (lockedForAccounting) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFFFF4D6),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: const Color(0xFFE9CA6B)),
+              ),
+              child: const Text(
+                'Solo lectura para contabilidad. Esta sección la mantiene Operación.',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF7A5A00),
+                ),
+              ),
+            ),
+          ],
           const SizedBox(height: 8),
-          content,
+          ExcludeFocus(
+            excluding: lockedForAccounting,
+            child: AbsorbPointer(
+              absorbing: lockedForAccounting,
+              child: Opacity(
+                opacity: lockedForAccounting ? 0.74 : 1,
+                child: content,
+              ),
+            ),
+          ),
         ],
       ),
     );
@@ -6943,9 +7450,14 @@ class _MaintenancePageState extends State<MaintenancePage>
 
   Widget _buildGeneralSection() {
     final requestedAt = _fmtDateTimeNullable(_selectedOrder?['requested_at']);
-    final selectedArea = _kFixedAreas.contains(_areaC.text.trim().toUpperCase())
-        ? _areaC.text.trim().toUpperCase()
-        : _kFixedAreas.first;
+    final areaOptions = _normalizeMaintenanceNames(<String>[
+      ..._kFixedAreas,
+      ..._directoryAreaOptions,
+      _areaC.text,
+    ]);
+    final selectedArea = areaOptions.contains(_areaC.text.trim())
+        ? _areaC.text.trim()
+        : areaOptions.first;
     if (_areaC.text != selectedArea) {
       _areaC.text = selectedArea;
     }
@@ -6978,7 +7490,7 @@ class _MaintenancePageState extends State<MaintenancePage>
                 menuMaxHeight: 360,
                 borderRadius: BorderRadius.circular(12),
                 dropdownColor: const Color(0xFFF4FAF8),
-                items: _kFixedAreas
+                items: areaOptions
                     .map(
                       (a) => DropdownMenuItem<String>(value: a, child: Text(a)),
                     )
@@ -7065,12 +7577,65 @@ class _MaintenancePageState extends State<MaintenancePage>
         Row(
           children: [
             Expanded(
+              child: InkWell(
+                borderRadius: BorderRadius.circular(12),
+                onTap: _directoryContacts.isEmpty
+                    ? null
+                    : _pickDirectoryContactForOt,
+                child: InputDecorator(
+                  decoration: _maintenanceInputDecoration(
+                    labelText: 'Directorio',
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _selectedDirectoryContactDisplayValue(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Icon(
+                        Icons.unfold_more_rounded,
+                        size: 18,
+                        color: _directoryContacts.isEmpty
+                            ? const Color(0xFF9AAAB8)
+                            : const Color(0xFF17324A),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
               child: TextField(
                 controller: _mechanicNameC,
                 decoration: _maintenanceInputDecoration(labelText: 'Mecanico'),
               ),
             ),
-            const SizedBox(width: 8),
+          ],
+        ),
+        const SizedBox(height: 4),
+        const Align(
+          alignment: Alignment.centerLeft,
+          child: Padding(
+            padding: EdgeInsets.only(left: 2),
+            child: Text(
+              'El directorio solo autollena la OT. Se guarda snapshot para no afectar órdenes antiguas.',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF5A7287),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Row(
+          children: [
             Expanded(
               child: TextField(
                 controller: _mechanicContactC,
@@ -7080,6 +7645,13 @@ class _MaintenancePageState extends State<MaintenancePage>
                 ),
               ),
             ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: _readOnlyInfoField(
+                label: 'Modo guardado',
+                value: 'Snapshot OT',
+              ),
+            ),
           ],
         ),
       ],
@@ -7087,6 +7659,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Widget _buildClassificationSection() {
+    final specialtyOptions = _maintenanceSpecialtyOptions();
     return Column(
       children: [
         _classificationRow(
@@ -7134,16 +7707,19 @@ class _MaintenancePageState extends State<MaintenancePage>
         ),
         const SizedBox(height: 6),
         _classificationRow(
-          'Categoria',
+          'Especialidad',
           DropdownButtonFormField<String>(
             initialValue: _category,
             isExpanded: true,
             menuMaxHeight: 360,
             borderRadius: BorderRadius.circular(12),
             dropdownColor: const Color(0xFFF4FAF8),
-            items: _kCategoryLabel.entries
+            items: specialtyOptions
                 .map(
-                  (e) => DropdownMenuItem(value: e.key, child: Text(e.value)),
+                  (value) => DropdownMenuItem(
+                    value: value,
+                    child: Text(_maintenanceSpecialtyLabel(value)),
+                  ),
                 )
                 .toList(),
             onChanged: (v) {
@@ -7184,9 +7760,11 @@ class _MaintenancePageState extends State<MaintenancePage>
     return Row(
       children: [
         SizedBox(
-          width: 84,
+          width: 104,
           child: Text(
             label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
@@ -7302,6 +7880,27 @@ class _MaintenancePageState extends State<MaintenancePage>
 
     return Column(
       children: [
+        if (_isAccountingRestrictedMaintenanceUser)
+          Container(
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFFEAF6FF),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: const Color(0xFF9EC8E8).withValues(alpha: 0.9),
+              ),
+            ),
+            child: const Text(
+              'Contabilidad puede editar esta sección para capturar materiales, refacciones, mano de obra y costos, sin modificar el resto de la OT.',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF214B6B),
+              ),
+            ),
+          ),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -7331,7 +7930,7 @@ class _MaintenancePageState extends State<MaintenancePage>
             child: ListTile(
               title: Text((row['name'] ?? '').toString()),
               subtitle: Text(
-                'Cant: ${(row['qty'] ?? '').toString()} · Fuente: ${_materialSourceLabel((row['source'] ?? '').toString())} · Est: ${_fmtMoney(_toDouble(row['cost_estimated']) ?? 0)} · Real: ${_fmtMoney(_toDouble(row['cost_actual']) ?? 0)}',
+                'Cant: ${(row['qty'] ?? '').toString()} · Fuente: ${_materialSourceLabel((row['source'] ?? '').toString())} · Est: ${_fmtMoney(_toDouble(row['cost_estimated']) ?? 0)} · Real: ${_fmtMoney(_toDouble(row['cost_actual']) ?? 0)}${(row['purchase_order_folio'] ?? '').toString().trim().isEmpty ? '' : ' · OC ${(row['purchase_order_folio'] ?? '').toString().trim()}'}',
               ),
               trailing: Wrap(
                 spacing: 2,
@@ -7573,6 +8172,11 @@ String _fmtDateTimeNullable(dynamic raw) {
   return _fmtDateTime(dt);
 }
 
+bool _isMissingAuthorizedPurchaseOrdersViewError(PostgrestException error) {
+  final message = error.message.toLowerCase();
+  return message.contains('v_maintenance_authorized_purchase_order_lines');
+}
+
 String _labelForImpact(List<MapEntry<String, int>> impacts) {
   if (impacts.isEmpty) return '-';
   final key = impacts.first.key;
@@ -7629,7 +8233,18 @@ Future<T?> _showMaintenanceDialog<T>({
             ),
           ),
         ),
-        child: builder(dialogContext),
+        child: Focus(
+          autofocus: true,
+          onKeyEvent: (_, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            if (event.logicalKey != LogicalKeyboardKey.escape) {
+              return KeyEventResult.ignored;
+            }
+            Navigator.of(dialogContext).maybePop();
+            return KeyEventResult.handled;
+          },
+          child: builder(dialogContext),
+        ),
       );
     },
   );

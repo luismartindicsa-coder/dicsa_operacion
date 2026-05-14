@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import '../dashboard/general_dashboard_page.dart';
 import 'direction_cash_entries_exits_page.dart';
+import 'direction_menudeo_analysis_page.dart';
 import 'direction_theme.dart';
 import '../shared/app_shell.dart';
 import '../shared/page_routes.dart';
@@ -106,6 +107,9 @@ class _DirectionCashTaxonomyPageState extends State<DirectionCashTaxonomyPage> {
       case 'Dashboard Dirección':
         unawaited(_openDashboard());
         return;
+      case 'Análisis Menudeo':
+        unawaited(_openMenudeoAnalysisPage());
+        return;
       case 'Catálogo Bóveda':
         if (_menuOpen) setState(() => _menuOpen = false);
         return;
@@ -123,6 +127,17 @@ class _DirectionCashTaxonomyPageState extends State<DirectionCashTaxonomyPage> {
     await Navigator.of(context).push(
       appPageRoute(
         page: const DirectionCashEntriesExitsPage(instantOpen: true),
+        duration: const Duration(milliseconds: 300),
+        reverseDuration: const Duration(milliseconds: 220),
+      ),
+    );
+  }
+
+  Future<void> _openMenudeoAnalysisPage() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const DirectionMenudeoAnalysisPage(instantOpen: true),
         duration: const Duration(milliseconds: 300),
         reverseDuration: const Duration(milliseconds: 220),
       ),
@@ -1341,156 +1356,34 @@ class _TaxonomySidePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DirectionGlassPanel(
-      borderRadius: BorderRadius.circular(24),
-      blurSigma: 30,
-      fillColor: const Color(0xFF173A78).withValues(alpha: 0.28),
-      borderColor: Colors.white.withValues(alpha: 0.34),
-      shadowColor: const Color(0xFF4DC7FF).withValues(alpha: 0.08),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.72),
-      bevelShadowColor: Colors.black.withValues(alpha: 0.16),
-      glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.12),
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Navegación Dirección',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              SizedBox(height: 4),
-              Text(
-                'Páginas activas del módulo ejecutivo',
-                style: TextStyle(
-                  color: Color(0xB8D5E5FF),
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          const Text(
-            'MODULO DIRECCION',
-            style: TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w900,
-              letterSpacing: 1.5,
-              color: kDirectionSubtleText,
-            ),
-          ),
-          const SizedBox(height: 8),
-          _TaxonomyNavItem(
-            icon: Icons.tune_rounded,
-            title: 'Catálogo Bóveda',
-            subtitle: 'Conceptos y subconceptos',
-            highlighted: true,
-          ),
-          const SizedBox(height: 8),
-          _TaxonomyNavItem(
-            icon: Icons.account_balance_wallet_rounded,
-            title: 'Bóveda',
-            subtitle: 'Captura operativa de efectivo',
-            onTapSync: () => onNavigate('Bóveda'),
-          ),
-          const SizedBox(height: 8),
-          _TaxonomyNavItem(
-            icon: Icons.space_dashboard_rounded,
-            title: 'Dashboard Dirección',
-            subtitle: 'Vista global del negocio',
-            onTapSync: () => onNavigate('Dashboard Dirección'),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _TaxonomyNavItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool highlighted;
-  final VoidCallback? onTapSync;
-
-  const _TaxonomyNavItem({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.highlighted = false,
-    this.onTapSync,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    final darkText = highlighted;
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(22),
-        onTap: onTapSync,
-        child: Ink(
-          padding: const EdgeInsets.all(14),
-          decoration: BoxDecoration(
-            gradient: highlighted ? kDirectionSelectionGradient : null,
-            color: highlighted
-                ? null
-                : const Color(0xFF16376C).withValues(alpha: 0.26),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(
-              color: highlighted
-                  ? const Color(0xFF7ED7FF).withValues(alpha: 0.34)
-                  : tokens.border.withValues(alpha: 0.30),
-            ),
-          ),
-          child: Row(
-            children: [
-              Icon(
-                icon,
-                color: darkText
-                    ? const Color(0xFF0A1834)
-                    : kDirectionSurfaceText,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: darkText
-                            ? const Color(0xFF0A1834)
-                            : kDirectionSurfaceText,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      subtitle,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: darkText
-                            ? const Color(0xAA0A1834)
-                            : kDirectionMutedText,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
+    return DirectionModuleMenuPanel(
+      subtitle: 'Páginas activas del módulo ejecutivo',
+      entries: [
+        DirectionModuleMenuEntry(
+          icon: Icons.space_dashboard_rounded,
+          title: 'Dashboard Dirección',
+          subtitle: 'Vista general del área',
+          onTap: () => onNavigate('Dashboard Dirección'),
         ),
-      ),
+        DirectionModuleMenuEntry(
+          icon: Icons.analytics_rounded,
+          title: 'Análisis Menudeo',
+          subtitle: 'Mercado, efectivo y operación',
+          onTap: () => onNavigate('Análisis Menudeo'),
+        ),
+        DirectionModuleMenuEntry(
+          icon: Icons.account_balance_wallet_rounded,
+          title: 'Bóveda',
+          subtitle: 'Captura operativa de efectivo',
+          onTap: () => onNavigate('Bóveda'),
+        ),
+        const DirectionModuleMenuEntry(
+          icon: Icons.tune_rounded,
+          title: 'Catálogo Bóveda',
+          subtitle: 'Conceptos, personas y parámetros',
+          current: true,
+        ),
+      ],
     );
   }
 }

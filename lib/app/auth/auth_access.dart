@@ -21,6 +21,7 @@ class AuthAccess {
   static final SupabaseClient _supa = Supabase.instance.client;
   static const String _directionEmail = 'direccion@dicsamx.com';
   static const String _operationsEmail = 'operacion@dicsamx.com';
+  static const String _accountingEmail = 'contabilidad@dicsamx.com';
   static const String _menudeoEmail = 'menudeo@dicsamx.com';
   static const String _mayoreoEmail = 'mayoreo@dicsamx.com';
 
@@ -51,6 +52,10 @@ class AuthAccess {
 
   static bool _isOperationsEmailValue(String? email) {
     return (email ?? '').toLowerCase().trim() == _operationsEmail;
+  }
+
+  static bool _isAccountingEmailValue(String? email) {
+    return (email ?? '').toLowerCase().trim() == _accountingEmail;
   }
 
   static bool _isMenudeoRoleValue(String role) {
@@ -100,6 +105,13 @@ class AuthAccess {
 
   static bool hasLogisticsAccess(AuthResolvedProfile? profile) {
     return _roleIn(profile, {'services', 'logistics', 'logistica'});
+  }
+
+  static bool hasAccountingOperationsAccess(AuthResolvedProfile? profile) {
+    if (profile == null || !profile.isActive) return false;
+    if (isDirectionRole(profile)) return true;
+    if (_isAccountingEmailValue(profile.email)) return true;
+    return _roleIn(profile, {'accounting', 'contabilidad', 'finanzas'});
   }
 
   static bool isDirectionRole(AuthResolvedProfile? profile) {
@@ -179,11 +191,20 @@ class AuthAccess {
       return module == ServicesOverlayNavModule.entradasSalidas ||
           module == ServicesOverlayNavModule.servicios ||
           module == ServicesOverlayNavModule.almacen ||
-          module == ServicesOverlayNavModule.pesadas;
+          module == ServicesOverlayNavModule.pesadas ||
+          module == ServicesOverlayNavModule.directorioOperacion;
+    }
+
+    if (hasAccountingOperationsAccess(profile)) {
+      return module == ServicesOverlayNavModule.mantenimiento ||
+          module == ServicesOverlayNavModule.comprasOt ||
+          module == ServicesOverlayNavModule.directorioOperacion;
     }
 
     if (profile.role == 'maintenance') {
-      return module == ServicesOverlayNavModule.mantenimiento;
+      return module == ServicesOverlayNavModule.mantenimiento ||
+          module == ServicesOverlayNavModule.comprasOt ||
+          module == ServicesOverlayNavModule.directorioOperacion;
     }
 
     return false;
@@ -200,6 +221,10 @@ class AuthAccess {
       case 'logistics':
       case 'logistica':
         return 'services';
+      case 'accounting':
+      case 'contabilidad':
+      case 'finanzas':
+        return 'purchase_orders';
       case 'maintenance':
         return 'maintenance';
       case 'ops_manager':
@@ -208,6 +233,7 @@ class AuthAccess {
       case 'admin':
         return 'dashboard';
       default:
+        if (_isAccountingEmailValue(profile.email)) return 'purchase_orders';
         if (_isOperationsEmailValue(profile.email)) return 'dashboard';
         return 'dashboard';
     }

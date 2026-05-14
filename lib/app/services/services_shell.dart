@@ -13,6 +13,8 @@ enum ServicesOverlayNavModule {
   servicios,
   pesadas,
   mantenimiento,
+  comprasOt,
+  directorioOperacion,
 }
 
 class ServicesShell extends StatefulWidget {
@@ -29,6 +31,8 @@ class ServicesShell extends StatefulWidget {
   final Future<void> Function()? onGoToServices;
   final Future<void> Function()? onGoToWeighings;
   final Future<void> Function()? onGoToMaintenance;
+  final Future<void> Function()? onGoToPurchaseOrders;
+  final Future<void> Function()? onGoToOperationDirectory;
   final Future<void> Function()? onGoToWarehouse;
   final Future<void> Function()? onGoToCatalogs;
   final Future<void> Function()? onHeaderGuide;
@@ -49,6 +53,8 @@ class ServicesShell extends StatefulWidget {
     this.onGoToServices,
     this.onGoToWeighings,
     this.onGoToMaintenance,
+    this.onGoToPurchaseOrders,
+    this.onGoToOperationDirectory,
     this.onGoToWarehouse,
     this.onGoToCatalogs,
     this.onHeaderGuide,
@@ -314,6 +320,8 @@ class _ServicesShellState extends State<ServicesShell>
                       onGoToServices: widget.onGoToServices,
                       onGoToWeighings: widget.onGoToWeighings,
                       onGoToMaintenance: widget.onGoToMaintenance,
+                      onGoToPurchaseOrders: widget.onGoToPurchaseOrders,
+                      onGoToOperationDirectory: widget.onGoToOperationDirectory,
                       onGoToWarehouse: widget.onGoToWarehouse,
                       onGoToCatalogs: widget.onGoToCatalogs,
                       onNavigate: () {
@@ -1035,6 +1043,8 @@ class _ServicesSideMenu extends StatelessWidget {
   final Future<void> Function()? onGoToServices;
   final Future<void> Function()? onGoToWeighings;
   final Future<void> Function()? onGoToMaintenance;
+  final Future<void> Function()? onGoToPurchaseOrders;
+  final Future<void> Function()? onGoToOperationDirectory;
   final Future<void> Function()? onGoToWarehouse;
   final Future<void> Function()? onGoToCatalogs;
   final VoidCallback onNavigate;
@@ -1050,6 +1060,8 @@ class _ServicesSideMenu extends StatelessWidget {
     required this.onGoToServices,
     required this.onGoToWeighings,
     required this.onGoToMaintenance,
+    required this.onGoToPurchaseOrders,
+    required this.onGoToOperationDirectory,
     required this.onGoToWarehouse,
     required this.onGoToCatalogs,
     required this.onNavigate,
@@ -1140,6 +1152,25 @@ class _ServicesSideMenu extends StatelessWidget {
               title: 'Mantenimiento',
               active: activeModule == ServicesOverlayNavModule.mantenimiento,
               onTap: () => _handleTap(onGoToMaintenance),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (can(ServicesOverlayNavModule.comprasOt)) ...[
+            _SideMenuTile(
+              icon: Icons.shopping_cart_checkout_rounded,
+              title: 'Compras OT',
+              active: activeModule == ServicesOverlayNavModule.comprasOt,
+              onTap: () => _handleTap(onGoToPurchaseOrders),
+            ),
+            const SizedBox(height: 8),
+          ],
+          if (can(ServicesOverlayNavModule.directorioOperacion)) ...[
+            _SideMenuTile(
+              icon: Icons.contact_phone_outlined,
+              title: 'Directorio',
+              active:
+                  activeModule == ServicesOverlayNavModule.directorioOperacion,
+              onTap: () => _handleTap(onGoToOperationDirectory),
             ),
             const SizedBox(height: 8),
           ],

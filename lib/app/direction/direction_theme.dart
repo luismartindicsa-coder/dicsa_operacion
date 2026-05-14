@@ -623,6 +623,164 @@ class _DirectionHeaderButtonState extends State<DirectionHeaderButton> {
   }
 }
 
+class DirectionModuleMenuEntry {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final bool current;
+  final VoidCallback? onTap;
+
+  const DirectionModuleMenuEntry({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    this.current = false,
+    this.onTap,
+  });
+}
+
+class DirectionModuleMenuPanel extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final List<DirectionModuleMenuEntry> entries;
+
+  const DirectionModuleMenuPanel({
+    super.key,
+    this.title = 'Navegación Dirección',
+    this.subtitle = 'Páginas y accesos ejecutivos del área',
+    required this.entries,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return DirectionGlassPanel(
+      borderRadius: BorderRadius.circular(24),
+      blurSigma: 30,
+      fillColor: const Color(0xFF173A78).withValues(alpha: 0.28),
+      borderColor: Colors.white.withValues(alpha: 0.34),
+      shadowColor: const Color(0xFF4DC7FF).withValues(alpha: 0.08),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.72),
+      bevelShadowColor: Colors.black.withValues(alpha: 0.16),
+      glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.12),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: Color(0xB8D5E5FF),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 14),
+          for (var i = 0; i < entries.length; i++) ...[
+            _DirectionModuleMenuAction(entry: entries[i]),
+            if (i != entries.length - 1) const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DirectionModuleMenuAction extends StatefulWidget {
+  final DirectionModuleMenuEntry entry;
+
+  const _DirectionModuleMenuAction({required this.entry});
+
+  @override
+  State<_DirectionModuleMenuAction> createState() =>
+      _DirectionModuleMenuActionState();
+}
+
+class _DirectionModuleMenuActionState
+    extends State<_DirectionModuleMenuAction> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final highlighted = widget.entry.current || _hovered;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(18),
+        onTap: widget.entry.current ? null : widget.entry.onTap,
+        child: DirectionGlassPanel(
+          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+          borderRadius: BorderRadius.circular(18),
+          blurSigma: 26,
+          fillColor: highlighted
+              ? const Color(0xFF5EDCFF).withValues(alpha: 0.16)
+              : const Color(0xFF173A78).withValues(alpha: 0.18),
+          borderColor: Colors.white.withValues(
+            alpha: highlighted ? 0.32 : 0.20,
+          ),
+          shadowColor: Colors.black.withValues(alpha: 0.08),
+          edgeHighlightColor: Colors.white.withValues(alpha: 0.68),
+          bevelShadowColor: Colors.black.withValues(alpha: 0.14),
+          glowColor: highlighted
+              ? const Color(0xFF66D5FF).withValues(alpha: 0.14)
+              : const Color(0xFF66D5FF).withValues(alpha: 0.06),
+          child: Row(
+            children: [
+              Icon(widget.entry.icon, size: 18, color: Colors.white),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.entry.title,
+                      style: const TextStyle(
+                        color: kDirectionSurfaceText,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 14,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      widget.entry.subtitle,
+                      style: const TextStyle(
+                        color: kDirectionMutedText,
+                        fontWeight: FontWeight.w600,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (widget.entry.current)
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Color(0xFF8EF1FF),
+                  size: 20,
+                )
+              else
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: kDirectionMutedText,
+                  size: 20,
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class DirectionMetricCard extends StatelessWidget {
   final double width;
   final double height;

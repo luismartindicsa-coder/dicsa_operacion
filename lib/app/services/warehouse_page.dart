@@ -12,6 +12,7 @@ import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
+import '../maintenance/purchase_orders_page.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
@@ -19,6 +20,7 @@ import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/utils/number_formatters.dart';
 import 'inventory_page.dart';
+import 'operation_directory_page.dart';
 import 'services_page.dart';
 import 'services_shell.dart';
 import 'weighings_page.dart';
@@ -1137,6 +1139,20 @@ class _WarehousePageState extends State<WarehousePage>
     ).pushReplacement(appPageRoute(page: const MaintenancePage()));
   }
 
+  Future<void> _goToPurchaseOrders() async {
+    if (!mounted) return;
+    Navigator.of(
+      context,
+    ).pushReplacement(appPageRoute(page: const PurchaseOrdersPage()));
+  }
+
+  Future<void> _goToOperationDirectory() async {
+    if (!mounted) return;
+    Navigator.of(
+      context,
+    ).pushReplacement(appPageRoute(page: const OperationDirectoryPage()));
+  }
+
   Future<void> _showWarehouseUsageGuide() async {
     await showDialog<void>(
       context: context,
@@ -1266,6 +1282,8 @@ class _WarehousePageState extends State<WarehousePage>
       onGoToServices: _goToServices,
       onGoToWeighings: _goToWeighings,
       onGoToMaintenance: _goToMaintenance,
+      onGoToPurchaseOrders: _goToPurchaseOrders,
+      onGoToOperationDirectory: _goToOperationDirectory,
       onGoToWarehouse: () async {},
       onHeaderGuide: _showWarehouseUsageGuide,
       headerGuideLabel: 'Instructivo',

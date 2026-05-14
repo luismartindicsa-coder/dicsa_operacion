@@ -1,9 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/gestures.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
@@ -82,6 +87,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
   Future<void> _persistRowsQueue = Future<void>.value();
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
+  bool _exportingReportPdf = false;
   bool _exportingCsv = false;
   String? _selectedRowId;
   final Set<String> _selectedRowIds = <String>{};
@@ -105,6 +111,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
   final ScrollController _rowsScrollController = ScrollController();
   final GlobalKey _rowsViewportKey = GlobalKey();
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
+  final Object _selectionTapRegionGroup = Object();
   bool _dragSelectingRows = false;
   bool _pointerDownAdditiveSelection = false;
   bool _suppressNextRowTap = false;
@@ -686,7 +693,12 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
   void _toggleRowSelection(String rowId) {
     _selectedRowId = rowId;
     _selectionAnchorId = rowId;
-    if (!_selectedRowIds.contains(rowId)) {
+    if (_selectedRowIds.contains(rowId)) {
+      _selectedRowIds.remove(rowId);
+      if (_selectedRowIds.isEmpty) {
+        _selectedRowIds.add(rowId);
+      }
+    } else {
       _selectedRowIds.add(rowId);
     }
     _dragSelectingRows = false;
@@ -798,7 +810,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     _updateRowsDragAutoScroll(rows);
   }
 
-  void _handleRowTap(String rowId) {
+  void _handleRowTap(String rowId, List<_MayoreoAccountRow> rows) {
     if (_suppressNextRowTap || _pointerDownAdditiveSelection) {
       setState(() {
         _suppressNextRowTap = false;
@@ -806,7 +818,34 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
       });
       return;
     }
-    setState(() => _selectSingleRow(rowId));
+    final currentIndex = _visiblePositionForId(rowId, rows);
+    final anchorIndex = _selectionAnchorId == null
+        ? -1
+        : _visiblePositionForId(_selectionAnchorId, rows);
+    setState(() {
+      _selectedRowId = rowId;
+      if (_isShiftPressed() && anchorIndex >= 0 && currentIndex >= 0) {
+        _selectVisibleRange(rows, anchorIndex, currentIndex);
+      } else if (_isShortcutModifierPressed()) {
+        if (_selectedRowIds.contains(rowId)) {
+          _selectedRowIds.remove(rowId);
+          if (_selectedRowIds.isEmpty) {
+            _selectedRowIds.add(rowId);
+          }
+        } else {
+          _selectedRowIds.add(rowId);
+        }
+        _selectionAnchorId = rowId;
+      } else if (_selectedRowIds.length > 1 &&
+          _selectedRowIds.contains(rowId)) {
+        _selectedRowId = rowId;
+      } else {
+        _selectedRowIds
+          ..clear()
+          ..add(rowId);
+        _selectionAnchorId = rowId;
+      }
+    });
     _persistState();
   }
 
@@ -1060,10 +1099,21 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
 
   Future<void> _exportCsv() async {
     if (_exportingCsv) return;
+    final filteredRowsSnapshot = List<_MayoreoAccountRow>.from(_filteredRows);
+    final selectedIdsSnapshot = Set<String>.from(_selectedRowIds);
+    final selectedRowIdSnapshot = _selectedRowId;
     setState(() => _exportingCsv = true);
     try {
       final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-      final rows = _filteredRows;
+      final rows = _rowsForExportSelection(
+        sourceRows: filteredRowsSnapshot,
+        selectedIds: selectedIdsSnapshot,
+        selectedRowId: selectedRowIdSnapshot,
+      );
+      if (rows.isEmpty) {
+        _toast('No hay cuentas seleccionadas para exportar');
+        return;
+      }
       final csv = StringBuffer()
         ..writeln(
           [
@@ -1120,6 +1170,348 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     } finally {
       if (mounted) setState(() => _exportingCsv = false);
     }
+  }
+
+  List<_MayoreoAccountRow> _rowsForExportSelection({
+    List<_MayoreoAccountRow>? sourceRows,
+    Set<String>? selectedIds,
+    String? selectedRowId,
+  }) {
+    final filteredRows = sourceRows ?? _filteredRows;
+    final effectiveSelectedIds = selectedIds != null
+        ? Set<String>.from(selectedIds)
+        : (_selectedRowIds.isNotEmpty
+              ? Set<String>.from(_selectedRowIds)
+              : (selectedRowId ?? _selectedRowId) == null
+              ? <String>{}
+              : <String>{(selectedRowId ?? _selectedRowId)!});
+    if (effectiveSelectedIds.isNotEmpty) {
+      final selectedRows = filteredRows
+          .where((row) => effectiveSelectedIds.contains(row.id))
+          .toList(growable: false);
+      if (selectedRows.isNotEmpty) return selectedRows;
+    }
+    return filteredRows.isEmpty
+        ? const <_MayoreoAccountRow>[]
+        : [filteredRows.first];
+  }
+
+  Future<void> _exportAccountsReportPdf() async {
+    if (_exportingReportPdf) return;
+    final filteredRowsSnapshot = List<_MayoreoAccountRow>.from(_filteredRows);
+    final selectedIdsSnapshot = Set<String>.from(_selectedRowIds);
+    final selectedRowIdSnapshot = _selectedRowId;
+    setState(() => _exportingReportPdf = true);
+    try {
+      final rows = _rowsForExportSelection(
+        sourceRows: filteredRowsSnapshot,
+        selectedIds: selectedIdsSnapshot,
+        selectedRowId: selectedRowIdSnapshot,
+      );
+      if (rows.isEmpty) {
+        _toast('No hay cuentas seleccionadas para exportar');
+        return;
+      }
+      final bytes = await _buildAccountsReportPdfBytes(rows);
+      final now = DateTime.now();
+      final suggestedName =
+          'mayoreo_cuentas_reporte_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.pdf';
+      String? outputPath;
+      if (!kIsWeb) {
+        outputPath = await FilePicker.platform.saveFile(
+          dialogTitle: 'Guardar reporte de cuentas de mayoreo como PDF',
+          fileName: suggestedName,
+          allowedExtensions: const ['pdf'],
+          type: FileType.custom,
+          lockParentWindow: true,
+        );
+      }
+      if (outputPath == null || outputPath.trim().isEmpty) {
+        _toast('Guardado cancelado');
+        return;
+      }
+      final normalized = outputPath.toLowerCase().endsWith('.pdf')
+          ? outputPath
+          : '$outputPath.pdf';
+      await File(normalized).writeAsBytes(bytes, flush: true);
+      _toast('PDF guardado: $normalized');
+    } catch (e) {
+      _toast('No se pudo exportar PDF: $e');
+    } finally {
+      if (mounted) setState(() => _exportingReportPdf = false);
+    }
+  }
+
+  Future<Uint8List> _buildAccountsReportPdfBytes(
+    List<_MayoreoAccountRow> rows,
+  ) async {
+    final doc = pw.Document();
+    pw.MemoryImage? logoImage;
+    try {
+      final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+      logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+    } catch (_) {}
+
+    final now = DateTime.now();
+    final printedAt =
+        '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final totalAmount = rows.fold<double>(
+      0,
+      (sum, row) => sum + row.approvedAmount,
+    );
+    final totalWeight = rows.fold<double>(
+      0,
+      (sum, row) => sum + row.approvedWeight,
+    );
+    final uniqueClients = rows
+        .map((row) => row.clientName.trim())
+        .where((value) => value.isNotEmpty)
+        .toSet();
+    final clientLabel = uniqueClients.isEmpty
+        ? 'CLIENTE: -'
+        : uniqueClients.length == 1
+        ? 'CLIENTE: ${uniqueClients.first}'
+        : 'CLIENTE: VARIOS CLIENTES';
+
+    pw.Widget summaryCard(String label, String value) {
+      return pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: pw.BoxDecoration(
+            color: PdfColor.fromHex('#FFF0AE'),
+            borderRadius: pw.BorderRadius.circular(14),
+            border: pw.Border.all(color: PdfColor.fromHex('#E1C863')),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                label,
+                style: pw.TextStyle(
+                  fontSize: 9.2,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColor.fromHex('#7B6515'),
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Text(
+                value,
+                style: pw.TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColor.fromHex('#3E3311'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    pw.Widget cellText(
+      String value, {
+      bool bold = false,
+      pw.TextAlign textAlign = pw.TextAlign.left,
+      String colorHex = '#2D2612',
+    }) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.all(7),
+        child: pw.Text(
+          value,
+          textAlign: textAlign,
+          style: pw.TextStyle(
+            fontSize: 8.7,
+            fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            color: PdfColor.fromHex(colorHex),
+          ),
+        ),
+      );
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(24, 24, 24, 24),
+        build: (context) => [
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              if (logoImage != null)
+                pw.SizedBox(
+                  width: 52,
+                  height: 52,
+                  child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                ),
+              if (logoImage != null) pw.SizedBox(width: 10),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'REPORTE DE VENTAS',
+                      style: pw.TextStyle(
+                        fontSize: 18,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColor.fromHex('#2D2612'),
+                      ),
+                    ),
+                    pw.SizedBox(height: 4),
+                    pw.Text(
+                      clientLabel,
+                      style: pw.TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: PdfColor.fromHex('#3E3311'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.Text(printedAt, style: const pw.TextStyle(fontSize: 9.5)),
+            ],
+          ),
+          pw.SizedBox(height: 14),
+          pw.Row(
+            children: [
+              summaryCard('CUENTAS', '${rows.length}'),
+              pw.SizedBox(width: 10),
+              summaryCard('PESO TOTAL', formatDecimal(totalWeight)),
+              pw.SizedBox(width: 10),
+              summaryCard('IMPORTE TOTAL', formatMoney(totalAmount)),
+            ],
+          ),
+          pw.SizedBox(height: 16),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColor.fromHex('#D9C98A')),
+            columnWidths: <int, pw.TableColumnWidth>{
+              0: const pw.FlexColumnWidth(0.9),
+              1: const pw.FlexColumnWidth(1.55),
+              2: const pw.FlexColumnWidth(1.15),
+              3: const pw.FlexColumnWidth(1.5),
+              4: const pw.FlexColumnWidth(1.05),
+              5: const pw.FlexColumnWidth(0.82),
+              6: const pw.FlexColumnWidth(0.82),
+              7: const pw.FlexColumnWidth(1.45),
+              8: const pw.FlexColumnWidth(0.92),
+              9: const pw.FlexColumnWidth(0.82),
+              10: const pw.FlexColumnWidth(0.92),
+            },
+            children: [
+              pw.TableRow(
+                decoration: pw.BoxDecoration(
+                  color: PdfColor.fromHex('#FFF0AE'),
+                ),
+                children:
+                    [
+                          'FECHA',
+                          'MATERIAL',
+                          'FACTURA / CHEQUE',
+                          'FECHA FACTURA',
+                          'FECHA APROX. PAGO',
+                          'DIAS CREDITO',
+                          'DIAS VENC.',
+                          'ESTATUS',
+                          'PESO',
+                          'PRECIO',
+                          'IMPORTE',
+                        ]
+                        .map(
+                          (label) => pw.Padding(
+                            padding: const pw.EdgeInsets.all(7),
+                            child: pw.Text(
+                              label,
+                              style: pw.TextStyle(
+                                fontSize: 8.7,
+                                fontWeight: pw.FontWeight.bold,
+                                color: PdfColor.fromHex('#4B3B0F'),
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+              ),
+              ...rows.asMap().entries.map((entry) {
+                final index = entry.key;
+                final row = entry.value;
+                final documentDate = row.documentDate;
+                final estimatedPaymentDate = row.estimatedPaymentDate;
+                final today = DateUtils.dateOnly(now);
+                final creditDays =
+                    documentDate == null || estimatedPaymentDate == null
+                    ? ''
+                    : DateUtils.dateOnly(estimatedPaymentDate)
+                          .difference(DateUtils.dateOnly(documentDate))
+                          .inDays
+                          .toString();
+                final overdueDays =
+                    estimatedPaymentDate == null || !row.isFinanciallyOpen
+                    ? ''
+                    : today.isAfter(DateUtils.dateOnly(estimatedPaymentDate))
+                    ? '-${today.difference(DateUtils.dateOnly(estimatedPaymentDate)).inDays}'
+                    : '';
+                final documentLabel = row.documentNumber.isEmpty
+                    ? _operationTypeLabel(row.operationType)
+                    : row.documentNumber;
+                return pw.TableRow(
+                  decoration: pw.BoxDecoration(
+                    color: index.isEven
+                        ? PdfColors.white
+                        : PdfColor.fromHex('#FFF9E8'),
+                  ),
+                  children: [
+                    cellText(_formatDate(row.saleDate)),
+                    cellText(row.materialName),
+                    cellText(
+                      documentLabel,
+                      bold: true,
+                      colorHex: row.documentNumber.isEmpty
+                          ? '#7A7259'
+                          : '#2D2612',
+                    ),
+                    cellText(
+                      documentDate == null ? '-' : _formatDate(documentDate),
+                    ),
+                    cellText(
+                      estimatedPaymentDate == null
+                          ? '-'
+                          : _formatDate(estimatedPaymentDate),
+                    ),
+                    cellText(creditDays.isEmpty ? '-' : creditDays),
+                    cellText(
+                      overdueDays.isEmpty ? '-' : overdueDays,
+                      bold: overdueDays.isNotEmpty,
+                      textAlign: pw.TextAlign.center,
+                      colorHex: overdueDays.isNotEmpty ? '#B14E20' : '#2D2612',
+                    ),
+                    cellText(
+                      _financialStatusLabel(row.status),
+                      bold: true,
+                      textAlign: pw.TextAlign.center,
+                    ),
+                    cellText(
+                      '${formatDecimal(row.approvedWeight)} KG',
+                      textAlign: pw.TextAlign.right,
+                    ),
+                    cellText(
+                      formatMoney(row.approvedPrice),
+                      bold: true,
+                      textAlign: pw.TextAlign.right,
+                    ),
+                    cellText(
+                      formatMoney(row.approvedAmount, decimals: 0),
+                      bold: true,
+                      textAlign: pw.TextAlign.right,
+                    ),
+                  ],
+                );
+              }),
+            ],
+          ),
+        ],
+      ),
+    );
+    return doc.save();
   }
 
   Future<void> _openClientFilterDialog() async {
@@ -1603,16 +1995,21 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          _AccountsTopBar(
-                            selectedRow: selectedRow,
-                            visibleCount: filteredRows.length,
-                            selectedCount: _selectedRowIds.length,
-                            pendingTotal: pendingTotal,
-                            paidTotal: paidTotal,
-                            toInvoiceTotal: toInvoiceTotal,
-                            pendingCheckTotal: pendingCheckTotal,
-                            exportingCsv: _exportingCsv,
-                            onExportCsv: _exportCsv,
+                          TapRegion(
+                            groupId: _selectionTapRegionGroup,
+                            child: _AccountsTopBar(
+                              selectedRow: selectedRow,
+                              visibleCount: filteredRows.length,
+                              selectedCount: _selectedRowIds.length,
+                              pendingTotal: pendingTotal,
+                              paidTotal: paidTotal,
+                              toInvoiceTotal: toInvoiceTotal,
+                              pendingCheckTotal: pendingCheckTotal,
+                              exportingReportPdf: _exportingReportPdf,
+                              exportingCsv: _exportingCsv,
+                              onExportReportPdf: _exportAccountsReportPdf,
+                              onExportCsv: _exportCsv,
+                            ),
                           ),
                           const SizedBox(height: 12),
                           Expanded(
@@ -1624,6 +2021,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
                               selectedRowIds: _selectedRowIds,
                               rowKeys: _rowKeys,
                               viewportKey: _rowsViewportKey,
+                              tapRegionGroupId: _selectionTapRegionGroup,
                               hasDateFilter:
                                   _dateFilterFrom != null ||
                                   _dateFilterTo != null,
@@ -1657,7 +2055,8 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
                                   : null,
                               onRowPrimaryPointerDown: (rowId) =>
                                   _handleRowPrimaryPointerDown(rowId, pageRows),
-                              onTapRow: _handleRowTap,
+                              onTapRow: (rowId) =>
+                                  _handleRowTap(rowId, filteredRows),
                               onRowDragEnter: (rowId) =>
                                   _handleRowDragEnter(rowId, pageRows),
                               onRowPointerEnd: _handleRowsPointerEnd,
@@ -1767,7 +2166,9 @@ class _AccountsTopBar extends StatelessWidget {
   final double paidTotal;
   final double toInvoiceTotal;
   final double pendingCheckTotal;
+  final bool exportingReportPdf;
   final bool exportingCsv;
+  final Future<void> Function() onExportReportPdf;
   final Future<void> Function() onExportCsv;
 
   const _AccountsTopBar({
@@ -1778,7 +2179,9 @@ class _AccountsTopBar extends StatelessWidget {
     required this.paidTotal,
     required this.toInvoiceTotal,
     required this.pendingCheckTotal,
+    required this.exportingReportPdf,
     required this.exportingCsv,
+    required this.onExportReportPdf,
     required this.onExportCsv,
   });
 
@@ -1802,6 +2205,24 @@ class _AccountsTopBar extends StatelessWidget {
                   spacing: 8,
                   runSpacing: 8,
                   children: [
+                    OutlinedButton.icon(
+                      style: _mayoreoToolbarSecondaryActionStyle(),
+                      onPressed: exportingReportPdf
+                          ? null
+                          : () => unawaited(onExportReportPdf()),
+                      icon: exportingReportPdf
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.picture_as_pdf_rounded),
+                      label: Text(
+                        exportingReportPdf
+                            ? 'Generando reporte...'
+                            : 'Descargar reporte',
+                      ),
+                    ),
                     OutlinedButton.icon(
                       style: _mayoreoToolbarSecondaryActionStyle(),
                       onPressed: exportingCsv
@@ -2170,6 +2591,7 @@ class _AccountsGridCard extends StatelessWidget {
   final Set<String> selectedRowIds;
   final Map<String, GlobalKey> rowKeys;
   final Key viewportKey;
+  final Object tapRegionGroupId;
   final bool hasDateFilter;
   final bool hasTicketFilter;
   final bool hasClientFilter;
@@ -2215,6 +2637,7 @@ class _AccountsGridCard extends StatelessWidget {
     required this.selectedRowIds,
     required this.rowKeys,
     required this.viewportKey,
+    required this.tapRegionGroupId,
     required this.hasDateFilter,
     required this.hasTicketFilter,
     required this.hasClientFilter,
@@ -2251,6 +2674,7 @@ class _AccountsGridCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TapRegion(
+      groupId: tapRegionGroupId,
       onTapOutside: onTapOutside == null ? null : (_) => onTapOutside!.call(),
       child: ContractGlassCard(
         padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
@@ -2319,6 +2743,7 @@ class _AccountsGridCard extends StatelessWidget {
                       ),
                     )
                   : Listener(
+                      behavior: HitTestBehavior.translucent,
                       onPointerDown: onRowsPointerDown,
                       onPointerMove: onRowsPointerMove,
                       onPointerUp: (_) => onRowPointerEnd(),
@@ -2340,8 +2765,6 @@ class _AccountsGridCard extends StatelessWidget {
                               row: row,
                               selected: selectedRowIds.contains(row.id),
                               active: row.id == selectedRowId,
-                              onPrimaryPointerDown: () =>
-                                  onRowPrimaryPointerDown(row.id),
                               onTap: () => onTapRow(row.id),
                               onDragEnter: () => onRowDragEnter(row.id),
                               onDoubleTap: () => onDoubleTapRow(row),
@@ -2528,7 +2951,6 @@ class _AccountsGridRow extends StatefulWidget {
   final _MayoreoAccountRow row;
   final bool selected;
   final bool active;
-  final VoidCallback onPrimaryPointerDown;
   final VoidCallback onTap;
   final VoidCallback onDragEnter;
   final VoidCallback onDoubleTap;
@@ -2540,7 +2962,6 @@ class _AccountsGridRow extends StatefulWidget {
     required this.row,
     required this.selected,
     required this.active,
-    required this.onPrimaryPointerDown,
     required this.onTap,
     required this.onDragEnter,
     required this.onDoubleTap,
@@ -2611,7 +3032,6 @@ class _AccountsGridRowState extends State<_AccountsGridRow> {
               color: Colors.transparent,
               child: GestureDetector(
                 behavior: HitTestBehavior.translucent,
-                onTapDown: (_) => widget.onPrimaryPointerDown(),
                 onSecondaryTapDown: widget.onSecondaryTapDown == null
                     ? null
                     : (details) => unawaited(

@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/auth_navigation.dart';
 import '../direction/direction_cash_entries_exits_page.dart';
 import '../direction/direction_cash_taxonomy_page.dart';
+import '../direction/direction_menudeo_analysis_page.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../shared/app_shell.dart';
@@ -107,6 +108,17 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     );
   }
 
+  Future<void> _openDirectionMenudeoAnalysis() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const DirectionMenudeoAnalysisPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Focus(
@@ -160,6 +172,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       onOpenGeneralDashboard: () async {},
       onOpenDirectionCashWorkspace: _openDirectionCashWorkspace,
       onOpenDirectionCashCatalog: _openDirectionCashCatalog,
+      onOpenDirectionMenudeoAnalysis: _openDirectionMenudeoAnalysis,
       onOpenOperationalDashboard: _openOperationalDashboard,
       onOpenMenudeo: _openRetailDashboard,
       onOpenMayoreo: _openMayoreoPreviewDashboard,
@@ -177,6 +190,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
           padding: const EdgeInsets.only(left: 56, right: 2, bottom: 8),
           child: _DirectionDashboardCanvas(
             onOpenVault: _openDirectionCashWorkspace,
+            onOpenMenudeoAnalysis: _openDirectionMenudeoAnalysis,
           ),
         ),
       ),
@@ -224,8 +238,12 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
 
 class _DirectionDashboardCanvas extends StatelessWidget {
   final Future<void> Function() onOpenVault;
+  final Future<void> Function() onOpenMenudeoAnalysis;
 
-  const _DirectionDashboardCanvas({required this.onOpenVault});
+  const _DirectionDashboardCanvas({
+    required this.onOpenVault,
+    required this.onOpenMenudeoAnalysis,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -250,8 +268,162 @@ class _DirectionDashboardCanvas extends StatelessWidget {
               child: _DirectionVaultHeroCard(onTap: onOpenVault),
             ),
           ),
-          const SizedBox(height: 540),
+          const SizedBox(height: 20),
+          const Text(
+            'ÁREAS DE ANÁLISIS',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 2.0,
+              color: Color(0xFF8CCFFF),
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: 420,
+            child: _DirectionAnalysisEntryCard(
+              title: 'Menudeo',
+              subtitle:
+                  'Mercado, efectivo y operación del canal con foco ejecutivo.',
+              badge: 'Mercado activo',
+              icon: Icons.storefront_rounded,
+              onTap: onOpenMenudeoAnalysis,
+            ),
+          ),
+          const SizedBox(height: 320),
         ],
+      ),
+    );
+  }
+}
+
+class _DirectionAnalysisEntryCard extends StatefulWidget {
+  final String title;
+  final String subtitle;
+  final String badge;
+  final IconData icon;
+  final Future<void> Function() onTap;
+
+  const _DirectionAnalysisEntryCard({
+    required this.title,
+    required this.subtitle,
+    required this.badge,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  State<_DirectionAnalysisEntryCard> createState() =>
+      _DirectionAnalysisEntryCardState();
+}
+
+class _DirectionAnalysisEntryCardState
+    extends State<_DirectionAnalysisEntryCard> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: AnimatedSlide(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        offset: _hovering ? const Offset(0, -0.014) : Offset.zero,
+        child: AnimatedScale(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          scale: _hovering ? 1.01 : 1.0,
+          child: _DirectionGlassPanel(
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+            borderRadius: BorderRadius.circular(26),
+            blurSigma: 30,
+            fillColor: const Color(0xFF173A78).withValues(alpha: 0.22),
+            borderColor: Colors.white.withValues(alpha: 0.26),
+            shadowColor: Colors.black.withValues(alpha: 0.10),
+            edgeHighlightColor: Colors.white.withValues(alpha: 0.66),
+            bevelShadowColor: Colors.black.withValues(alpha: 0.16),
+            glowColor: const Color(
+              0xFF66D5FF,
+            ).withValues(alpha: _hovering ? 0.14 : 0.08),
+            child: Material(
+              color: Colors.transparent,
+              child: InkWell(
+                borderRadius: BorderRadius.circular(22),
+                onTap: () async => widget.onTap(),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 52,
+                      height: 52,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(16),
+                        color: const Color(0xFF66D5FF).withValues(alpha: 0.14),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.24),
+                        ),
+                      ),
+                      child: Icon(widget.icon, color: Colors.white, size: 24),
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 10,
+                              vertical: 6,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(999),
+                              color: Colors.white.withValues(alpha: 0.10),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.18),
+                              ),
+                            ),
+                            child: Text(
+                              widget.badge,
+                              style: const TextStyle(
+                                color: Color(0xFFBFE7FF),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Text(
+                            widget.title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            widget.subtitle,
+                            style: const TextStyle(
+                              color: Color(0xFFD0E4FF),
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Icon(
+                      Icons.arrow_outward_rounded,
+                      color: Color(0xFF92E9FF),
+                      size: 22,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -854,6 +1026,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final Future<void> Function()? onOpenGeneralDashboard;
   final Future<void> Function()? onOpenDirectionCashWorkspace;
   final Future<void> Function()? onOpenDirectionCashCatalog;
+  final Future<void> Function()? onOpenDirectionMenudeoAnalysis;
   final Future<void> Function()? onOpenOperationalDashboard;
   final Future<void> Function()? onOpenMenudeo;
   final Future<void> Function()? onOpenMayoreo;
@@ -866,6 +1039,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onOpenGeneralDashboard,
     this.onOpenDirectionCashWorkspace,
     this.onOpenDirectionCashCatalog,
+    this.onOpenDirectionMenudeoAnalysis,
     this.onOpenOperationalDashboard,
     this.onOpenMenudeo,
     this.onOpenMayoreo,
@@ -943,6 +1117,13 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                       title: 'Catálogo Bóveda',
                       subtitle: 'Conceptos, personas y parámetros',
                       onTap: onOpenDirectionCashCatalog,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.analytics_rounded,
+                      title: 'Análisis Menudeo',
+                      subtitle: 'Mercado, efectivo y operación',
+                      onTap: onOpenDirectionMenudeoAnalysis,
                     ),
                   ],
                 ),

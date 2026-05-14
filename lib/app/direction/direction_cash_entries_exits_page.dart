@@ -25,6 +25,7 @@ import '../menudeo/menudeo_filter_widgets.dart';
 import '../menudeo/menudeo_session_confirm_dialog.dart';
 import 'direction_cash_taxonomy_page.dart';
 import 'direction_cash_taxonomy_store.dart';
+import 'direction_menudeo_analysis_page.dart';
 import 'direction_theme.dart';
 
 const String _kDirectionCashVouchersArea = 'direccion_boveda_vouchers';
@@ -701,10 +702,24 @@ class _DirectionCashEntriesExitsPageState
     );
   }
 
+  Future<void> _openMenudeoAnalysisPage() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const DirectionMenudeoAnalysisPage(instantOpen: true),
+        duration: const Duration(milliseconds: 300),
+        reverseDuration: const Duration(milliseconds: 220),
+      ),
+    );
+  }
+
   void _handleNavigationAction(String label) {
     switch (label) {
       case 'Dashboard Dirección':
         unawaited(_openDirectionDashboard());
+        return;
+      case 'Análisis Menudeo':
+        unawaited(_openMenudeoAnalysisPage());
         return;
       case 'Catálogo Bóveda':
         unawaited(_openCashTaxonomyPage());
@@ -1821,250 +1836,36 @@ class _DepositsSidePanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return Padding(
       padding: const EdgeInsets.only(right: 12),
-      child: DirectionGlassPanel(
-        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-        borderRadius: BorderRadius.circular(24),
-        blurSigma: 30,
-        fillColor: const Color(0xFF173A78).withValues(alpha: 0.28),
-        borderColor: Colors.white.withValues(alpha: 0.34),
-        shadowColor: const Color(0xFF4DC7FF).withValues(alpha: 0.08),
-        edgeHighlightColor: Colors.white.withValues(alpha: 0.72),
-        bevelShadowColor: Colors.black.withValues(alpha: 0.16),
-        glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.12),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Navegación Dirección',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Páginas activas del módulo ejecutivo',
-                    style: TextStyle(
-                      color: Color(0xB8D5E5FF),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              if (canReturnToDirection) ...[
-                _DepositsSidePanelItem(
-                  icon: Icons.arrow_back_rounded,
-                  title: 'Volver a Dirección',
-                  onTapSync: () => onNavigate('Dashboard Dirección'),
-                ),
-                const SizedBox(height: 10),
-              ],
-              const _DepositsSectionHeader(label: 'MENU'),
-              const SizedBox(height: 8),
-              _DepositsSidePanelItem(
-                icon: Icons.account_balance_wallet_rounded,
-                title: 'Bóveda',
-                subtitle: 'Entradas, salidas y movimientos',
-                highlighted: true,
-              ),
-              const SizedBox(height: 14),
-              const _DepositsSectionHeader(label: 'ACCESOS'),
-              const SizedBox(height: 8),
-              if (canReturnToDirection) ...[
-                _DepositsSidePanelItem(
-                  icon: Icons.tune_rounded,
-                  title: 'Catálogo Bóveda',
-                  subtitle: 'Conceptos y parámetros',
-                  onTapSync: () => onNavigate('Catálogo Bóveda'),
-                ),
-                const SizedBox(height: 8),
-                _DepositsSidePanelItem(
-                  icon: Icons.assessment_outlined,
-                  title: 'Dashboard Dirección',
-                  subtitle: 'Vista global del negocio',
-                  onTapSync: () => onNavigate('Dashboard Dirección'),
-                ),
-                const SizedBox(height: 8),
-              ],
-              _DepositsSidePanelItem(
-                icon: Icons.space_dashboard_rounded,
-                title: 'Dashboard Dirección',
-                subtitle: 'Vista ejecutiva principal',
-                onTap: onBack,
-              ),
-            ],
+      child: DirectionModuleMenuPanel(
+        subtitle: 'Páginas activas del módulo ejecutivo',
+        entries: [
+          DirectionModuleMenuEntry(
+            icon: Icons.space_dashboard_rounded,
+            title: 'Dashboard Dirección',
+            subtitle: 'Vista general del área',
+            onTap: () => unawaited(onBack()),
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DepositsSectionHeader extends StatelessWidget {
-  final String label;
-
-  const _DepositsSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Row(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
-            color: tokens.badgeText,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: tokens.primarySoft.withValues(alpha: 0.32),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _DepositsSidePanelItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
-  final bool highlighted;
-
-  const _DepositsSidePanelItem({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.onTap,
-    this.onTapSync,
-    this.highlighted = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final enabled = onTap != null || onTapSync != null;
-    final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
-    final selectedState = highlighted;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(24),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(24),
-          onTap: !enabled
-              ? null
-              : () async {
-                  if (onTap != null) {
-                    await onTap!();
-                  } else {
-                    onTapSync?.call();
-                  }
-                },
-          child: Ink(
-            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-            decoration: BoxDecoration(
-              gradient: selectedState
-                  ? const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Color(0x26FFFFFF),
-                        Color(0x287FD7FF),
-                        Color(0x301C407F),
-                      ],
-                      stops: [0.0, 0.46, 1.0],
-                    )
-                  : kDirectionSelectionGradient,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: selectedState
-                    ? const Color(0xFF7ED7FF).withValues(alpha: 0.34)
-                    : Colors.white.withValues(alpha: 0.18),
-              ),
-              boxShadow: selectedState
-                  ? [
-                      BoxShadow(
-                        color: const Color(0xFF68D9FF).withValues(alpha: 0.14),
-                        blurRadius: 22,
-                        offset: const Offset(0, 10),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+          if (canReturnToDirection)
+            DirectionModuleMenuEntry(
+              icon: Icons.analytics_rounded,
+              title: 'Análisis Menudeo',
+              subtitle: 'Mercado, efectivo y operación',
+              onTap: () => onNavigate('Análisis Menudeo'),
             ),
-            child: Row(
-              children: [
-                Icon(icon, color: Colors.white),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                          color: kDirectionSurfaceText,
-                        ),
-                      ),
-                      if (hasSubtitle) ...[
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitle!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w700,
-                            color: kDirectionMutedText,
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                if (highlighted) ...[
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.check_circle_rounded,
-                    color: const Color(0xFF7ED7FF),
-                    size: 22,
-                  ),
-                ] else ...[
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: kDirectionSurfaceText,
-                    size: 22,
-                  ),
-                ],
-              ],
-            ),
+          const DirectionModuleMenuEntry(
+            icon: Icons.account_balance_wallet_rounded,
+            title: 'Bóveda',
+            subtitle: 'Entradas, salidas y movimientos',
+            current: true,
           ),
-        ),
+          if (canReturnToDirection)
+            DirectionModuleMenuEntry(
+              icon: Icons.tune_rounded,
+              title: 'Catálogo Bóveda',
+              subtitle: 'Conceptos, personas y parámetros',
+              onTap: () => onNavigate('Catálogo Bóveda'),
+            ),
+        ],
       ),
     );
   }

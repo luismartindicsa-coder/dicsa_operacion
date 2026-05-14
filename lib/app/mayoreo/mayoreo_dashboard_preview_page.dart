@@ -445,9 +445,13 @@ class _MayoreoDashboardPreviewPageState
       ),
     );
     if (!mounted || nextTasks == null) return;
-    setState(() => _pendingTasks = nextTasks);
-    await _persistPendingTasks();
-    await _loadDashboardState();
+    await _runWithRefreshPause(() async {
+      if (!mounted) return null;
+      setState(() => _pendingTasks = nextTasks);
+      await _persistPendingTasks();
+      await _loadDashboardState();
+      return null;
+    });
   }
 
   void _handleNavigationAction(String label) {
@@ -2216,71 +2220,93 @@ class _MayoreoPendingPreviewBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final preview = tasks.take(4).toList(growable: false);
     final automaticCount = tasks.where((task) => task.isSystemGenerated).length;
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text(
-          'Pendientes por atender',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w900,
-            color: kMayoreoInk,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          tasks.isEmpty
-              ? 'No hay pendientes activos.'
-              : automaticCount > 0
-              ? '${tasks.length} pendientes abiertos · $automaticCount automáticos.'
-              : '${tasks.length} pendientes abiertos.',
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: kMayoreoMutedInk,
-            height: 1.45,
-          ),
-          maxLines: 2,
-          overflow: TextOverflow.ellipsis,
-        ),
-        const SizedBox(height: 14),
-        if (preview.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withValues(alpha: 0.88),
-                  mayoreoAreaTokens.badgeBackground.withValues(alpha: 0.70),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: mayoreoAreaTokens.border.withValues(alpha: 0.84),
-              ),
-            ),
-            child: const Text(
-              'Sin pendientes activos.',
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final useTwoColumns = constraints.maxWidth >= 560;
+        final preview = tasks
+            .take(useTwoColumns ? 8 : 4)
+            .toList(growable: false);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Pendientes por atender',
               style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w800,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
                 color: kMayoreoInk,
               ),
             ),
-          )
-        else
-          ...preview.map(
-            (task) => Padding(
-              padding: const EdgeInsets.only(bottom: 10),
-              child: _MayoreoPendingPreviewRow(task: task),
+            const SizedBox(height: 8),
+            Text(
+              tasks.isEmpty
+                  ? 'No hay pendientes activos.'
+                  : automaticCount > 0
+                  ? '${tasks.length} pendientes abiertos · $automaticCount automáticos.'
+                  : '${tasks.length} pendientes abiertos.',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: kMayoreoMutedInk,
+                height: 1.45,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
             ),
-          ),
-      ],
+            const SizedBox(height: 14),
+            if (preview.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 16,
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.88),
+                      mayoreoAreaTokens.badgeBackground.withValues(alpha: 0.70),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(
+                    color: mayoreoAreaTokens.border.withValues(alpha: 0.84),
+                  ),
+                ),
+                child: const Text(
+                  'Sin pendientes activos.',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w800,
+                    color: kMayoreoInk,
+                  ),
+                ),
+              )
+            else if (useTwoColumns)
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  for (final task in preview)
+                    SizedBox(
+                      width: (constraints.maxWidth - 10) / 2,
+                      child: _MayoreoPendingPreviewRow(task: task),
+                    ),
+                ],
+              )
+            else
+              ...preview.map(
+                (task) => Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _MayoreoPendingPreviewRow(task: task),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

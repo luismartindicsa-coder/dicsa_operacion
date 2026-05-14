@@ -11,6 +11,7 @@ import '../dashboard/general_dashboard_page.dart';
 import '../services/inventory_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
+import '../services/operation_directory_page.dart';
 import '../services/services_catalog_page.dart';
 import '../services/services_page.dart';
 import '../services/warehouse_page.dart';
@@ -152,6 +153,13 @@ class _DashboardPageState extends State<DashboardPage> {
     await Navigator.of(context).push(appPageRoute(page: const WarehousePage()));
   }
 
+  Future<void> _openOperationDirectory() async {
+    if (!mounted) return;
+    await Navigator.of(
+      context,
+    ).push(appPageRoute(page: const OperationDirectoryPage()));
+  }
+
   Future<void> _logout(BuildContext context) async {
     final ok = await showDialog<bool>(
       context: context,
@@ -263,6 +271,7 @@ class _DashboardPageState extends State<DashboardPage> {
       onOpenWeighings: _openWeighings,
       onOpenMaintenance: _openMaintenance,
       onOpenWarehouse: _openWarehouse,
+      onOpenOperationDirectory: _openOperationDirectory,
       onOpenRetailDashboard: AuthAccess.canAccessMenudeoDashboard(_profile)
           ? _openRetailDashboard
           : null,
@@ -670,6 +679,7 @@ class _DashboardSideMenu extends StatelessWidget {
   final Future<void> Function() onOpenWeighings;
   final Future<void> Function() onOpenMaintenance;
   final Future<void> Function() onOpenWarehouse;
+  final Future<void> Function() onOpenOperationDirectory;
   final Future<void> Function()? onOpenRetailDashboard;
   final Future<void> Function()? onOpenCatalogsFleet;
   final Future<void> Function()? onOpenCatalogsCompanies;
@@ -687,6 +697,7 @@ class _DashboardSideMenu extends StatelessWidget {
     required this.onOpenWeighings,
     required this.onOpenMaintenance,
     required this.onOpenWarehouse,
+    required this.onOpenOperationDirectory,
     this.onOpenRetailDashboard,
     this.onOpenCatalogsFleet,
     this.onOpenCatalogsCompanies,
@@ -783,6 +794,13 @@ class _DashboardSideMenu extends StatelessWidget {
                             title: 'Mantenimiento',
                             subtitle: 'Ordenes de trabajo y evidencias',
                             onTap: onOpenMaintenance,
+                          ),
+                          const SizedBox(height: 8),
+                          _SideMenuActionItem(
+                            icon: Icons.contacts_outlined,
+                            title: 'Directorio',
+                            subtitle: 'Proveedores, especialidades y contacto',
+                            onTap: onOpenOperationDirectory,
                           ),
                         ],
                       ),

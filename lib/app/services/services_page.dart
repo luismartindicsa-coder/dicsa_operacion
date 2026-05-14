@@ -11,7 +11,9 @@ import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
+import '../maintenance/purchase_orders_page.dart';
 import 'inventory_page.dart';
+import 'operation_directory_page.dart';
 import 'warehouse_page.dart';
 import 'weighings_page.dart';
 import 'services_shell.dart'; // ajusta el path si lo guardaste en /ui/ o /app/
@@ -1209,6 +1211,28 @@ class _ServicesPageState extends State<ServicesPage>
     Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const MaintenancePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToPurchaseOrders() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const PurchaseOrdersPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
+  Future<void> _goToOperationDirectory() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const OperationDirectoryPage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
@@ -3519,6 +3543,8 @@ class _ServicesPageState extends State<ServicesPage>
       onGoToServices: () async {},
       onGoToWeighings: _goToWeighings,
       onGoToMaintenance: _goToMaintenance,
+      onGoToPurchaseOrders: _goToPurchaseOrders,
+      onGoToOperationDirectory: _goToOperationDirectory,
       onGoToWarehouse: _goToWarehouse,
       onGoToCatalogs: null,
       topContent: _loadingCats || _loadingRows
