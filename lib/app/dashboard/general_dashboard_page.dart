@@ -7,7 +7,10 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/auth_navigation.dart';
 import '../direction/direction_cash_entries_exits_page.dart';
 import '../direction/direction_cash_taxonomy_page.dart';
+import '../direction/direction_maintenance_page.dart';
 import '../direction/direction_menudeo_analysis_page.dart';
+import '../direction/direction_operations_repository.dart';
+import '../direction/direction_purchase_orders_page.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../shared/app_shell.dart';
@@ -119,6 +122,28 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     );
   }
 
+  Future<void> _openDirectionPurchaseOrders() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const DirectionPurchaseOrdersPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openDirectionMaintenance() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const DirectionMaintenancePage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Focus(
@@ -191,6 +216,8 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
           child: _DirectionDashboardCanvas(
             onOpenVault: _openDirectionCashWorkspace,
             onOpenMenudeoAnalysis: _openDirectionMenudeoAnalysis,
+            onOpenPurchaseOrders: _openDirectionPurchaseOrders,
+            onOpenMaintenance: _openDirectionMaintenance,
           ),
         ),
       ),
@@ -239,10 +266,14 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
 class _DirectionDashboardCanvas extends StatelessWidget {
   final Future<void> Function() onOpenVault;
   final Future<void> Function() onOpenMenudeoAnalysis;
+  final Future<void> Function() onOpenPurchaseOrders;
+  final Future<void> Function() onOpenMaintenance;
 
   const _DirectionDashboardCanvas({
     required this.onOpenVault,
     required this.onOpenMenudeoAnalysis,
+    required this.onOpenPurchaseOrders,
+    required this.onOpenMaintenance,
   });
 
   @override
@@ -279,20 +310,126 @@ class _DirectionDashboardCanvas extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 12),
-          SizedBox(
-            width: 420,
-            child: _DirectionAnalysisEntryCard(
-              title: 'Menudeo',
-              subtitle:
-                  'Mercado, efectivo y operación del canal con foco ejecutivo.',
-              badge: 'Mercado activo',
-              icon: Icons.storefront_rounded,
-              onTap: onOpenMenudeoAnalysis,
-            ),
+          Wrap(
+            spacing: 14,
+            runSpacing: 14,
+            children: [
+              SizedBox(
+                width: 420,
+                child: _DirectionPurchaseOrdersEntryCard(
+                  onTap: onOpenPurchaseOrders,
+                ),
+              ),
+              SizedBox(
+                width: 420,
+                child: _DirectionMaintenanceEntryCard(onTap: onOpenMaintenance),
+              ),
+              SizedBox(
+                width: 420,
+                child: _DirectionAnalysisEntryCard(
+                  title: 'Menudeo',
+                  subtitle:
+                      'Mercado, efectivo y operación del canal con foco ejecutivo.',
+                  badge: 'Mercado activo',
+                  icon: Icons.storefront_rounded,
+                  onTap: onOpenMenudeoAnalysis,
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 320),
         ],
       ),
+    );
+  }
+}
+
+class _DirectionPurchaseOrdersEntryCard extends StatefulWidget {
+  final Future<void> Function() onTap;
+
+  const _DirectionPurchaseOrdersEntryCard({required this.onTap});
+
+  @override
+  State<_DirectionPurchaseOrdersEntryCard> createState() =>
+      _DirectionPurchaseOrdersEntryCardState();
+}
+
+class _DirectionPurchaseOrdersEntryCardState
+    extends State<_DirectionPurchaseOrdersEntryCard> {
+  late final Future<DirectionPurchaseOrdersSummary> _summary =
+      DirectionOperationsRepository().loadPurchaseOrdersSummary();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<DirectionPurchaseOrdersSummary>(
+      future: _summary,
+      builder: (context, snapshot) {
+        final summary = snapshot.data;
+        final badge = summary == null
+            ? 'Cargando...'
+            : summary.criticalCount > 0
+            ? '${summary.criticalCount} críticas'
+            : summary.pendingCount > 0
+            ? '${summary.pendingCount} pendientes'
+            : 'Al día';
+        final subtitle = summary == null
+            ? 'Autorizaciones y rechazos ejecutivos.'
+            : summary.pendingCount == 0
+            ? 'No hay compras pendientes de Dirección.'
+            : '${summary.pendingCount} por resolver · ${formatMoney(summary.pendingAmount)} pendientes';
+        return _DirectionAnalysisEntryCard(
+          title: 'Compras OT',
+          subtitle: subtitle,
+          badge: badge,
+          icon: Icons.shopping_cart_checkout_rounded,
+          onTap: widget.onTap,
+        );
+      },
+    );
+  }
+}
+
+class _DirectionMaintenanceEntryCard extends StatefulWidget {
+  final Future<void> Function() onTap;
+
+  const _DirectionMaintenanceEntryCard({required this.onTap});
+
+  @override
+  State<_DirectionMaintenanceEntryCard> createState() =>
+      _DirectionMaintenanceEntryCardState();
+}
+
+class _DirectionMaintenanceEntryCardState
+    extends State<_DirectionMaintenanceEntryCard> {
+  late final Future<DirectionMaintenanceSummary> _summary =
+      DirectionOperationsRepository().loadMaintenanceSummary();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<DirectionMaintenanceSummary>(
+      future: _summary,
+      builder: (context, snapshot) {
+        final summary = snapshot.data;
+        final badge = summary == null
+            ? 'Cargando...'
+            : summary.criticalCount > 0
+            ? '${summary.criticalCount} críticas'
+            : summary.openCount > 0
+            ? '${summary.openCount} abiertas'
+            : 'Sin alertas';
+        final subtitle = summary == null
+            ? 'Seguimiento ejecutivo de órdenes de trabajo.'
+            : summary.openCount == 0
+            ? 'No hay OT abiertas por seguir.'
+            : '${summary.staleCount} sin movimiento · ${summary.waitingDirectionCount} en cotización';
+        return _DirectionAnalysisEntryCard(
+          title: 'Mantenimiento OT',
+          subtitle: subtitle,
+          badge: badge,
+          icon: Icons.build_circle_outlined,
+          onTap: widget.onTap,
+        );
+      },
     );
   }
 }

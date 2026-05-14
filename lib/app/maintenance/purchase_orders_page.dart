@@ -65,7 +65,9 @@ const double _kPoTotalColW = 116;
 const double _kPoActionsColW = 172;
 
 class PurchaseOrdersPage extends StatefulWidget {
-  const PurchaseOrdersPage({super.key});
+  final String? initialOrderId;
+
+  const PurchaseOrdersPage({super.key, this.initialOrderId});
 
   @override
   State<PurchaseOrdersPage> createState() => _PurchaseOrdersPageState();
@@ -92,6 +94,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   final Map<String, Set<String>> _columnValueFilters = <String, Set<String>>{};
   String? _selectedOrderId;
   AuthResolvedProfile? _profile;
+  bool _consumedInitialOrderSelection = false;
 
   bool get _isDirection => AuthAccess.isDirectionRole(_profile);
 
@@ -185,6 +188,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
 
   Future<void> _loadOrders() async {
     try {
+      final targetInitialOrderId = widget.initialOrderId?.trim() ?? '';
       final orders = await _supa
           .from('maintenance_purchase_orders')
           .select('*')
@@ -194,6 +198,25 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
       final orderList = (orders as List)
           .map((row) => Map<String, dynamic>.from(row))
           .toList();
+      if (!_consumedInitialOrderSelection &&
+          targetInitialOrderId.isNotEmpty &&
+          !orderList.any(
+            (row) => (row['id'] ?? '').toString() == targetInitialOrderId,
+          )) {
+        final exactOrderRows = await _supa
+            .from('maintenance_purchase_orders')
+            .select('*')
+            .eq('id', targetInitialOrderId)
+            .limit(1);
+        final exactList = (exactOrderRows as List)
+            .map(
+              (row) => Map<String, dynamic>.from(row as Map<String, dynamic>),
+            )
+            .toList(growable: false);
+        if (exactList.isNotEmpty) {
+          orderList.insert(0, exactList.first);
+        }
+      }
       _orders = orderList;
 
       final ids = orderList
@@ -215,6 +238,14 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
         }
       }
       _selectedOrderId = _sanitizeSelectedOrderId(_selectedOrderId, orderList);
+      if (!_consumedInitialOrderSelection &&
+          targetInitialOrderId.isNotEmpty &&
+          orderList.any(
+            (row) => (row['id'] ?? '').toString() == targetInitialOrderId,
+          )) {
+        _selectedOrderId = targetInitialOrderId;
+        _consumedInitialOrderSelection = true;
+      }
       _purchaseOrdersSchemaReady = true;
       _purchaseOrdersSchemaMessage = null;
     } on PostgrestException catch (e) {
@@ -227,6 +258,12 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
           'Compras OT necesita la migración nueva en Supabase. Aplica `supabase db push` y vuelve a cargar.';
     }
     if (mounted) setState(() {});
+    if (_consumedInitialOrderSelection) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _ensureOrderVisible(_selectedOrderId);
+      });
+    }
   }
 
   List<Map<String, dynamic>> get _filteredOrders {

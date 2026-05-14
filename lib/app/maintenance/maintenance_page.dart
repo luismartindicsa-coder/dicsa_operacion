@@ -16,6 +16,7 @@ import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
+import '../direction/direction_operations_repository.dart';
 import '../maintenance/purchase_orders_page.dart';
 import '../services/inventory_page.dart';
 import '../services/operation_directory_page.dart';
@@ -195,10 +196,12 @@ class _MaintenanceDateFilterDialogResult {
   const _MaintenanceDateFilterDialogResult({this.range, this.clear = false});
 }
 
-enum _MaintenanceWorkspace { orders, reports }
+enum _MaintenanceWorkspace { orders, reports, alerts }
 
 class MaintenancePage extends StatefulWidget {
-  const MaintenancePage({super.key});
+  final String? initialOrderId;
+
+  const MaintenancePage({super.key, this.initialOrderId});
 
   @override
   State<MaintenancePage> createState() => _MaintenancePageState();
@@ -251,6 +254,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   List<String> _directorySpecialtyOptions = const [];
   List<Map<String, dynamic>> _directoryContacts = const [];
   String? _selectedVehicleId;
+  final DirectionOperationsRepository _directionOpsRepo =
+      DirectionOperationsRepository();
+  DirectionMaintenanceSummary? _alertsSummary;
+  String? _alertsError;
 
   final TextEditingController _areaC = TextEditingController();
   final TextEditingController _equipmentC = TextEditingController();
@@ -262,6 +269,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   final TextEditingController _diagnosisC = TextEditingController();
   final TextEditingController _summaryC = TextEditingController();
   final TextEditingController _assignedToC = TextEditingController();
+  final ScrollController _ordersScrollController = ScrollController();
   final ScrollController _detailScrollController = ScrollController();
   final ScrollController _reportsScrollController = ScrollController();
 
@@ -285,6 +293,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   Set<String> _reportStatusFilters = <String>{};
   Set<String> _reportTypeFilters = <String>{};
   DateTimeRange? _reportDateRange;
+  bool _consumedInitialOrderSelection = false;
 
   @override
   void initState() {
@@ -303,6 +312,7 @@ class _MaintenancePageState extends State<MaintenancePage>
     _autosaveTimer?.cancel();
     _maintenanceRealtimeChannel?.unsubscribe();
     _ordersListFocusNode.dispose();
+    _ordersScrollController.dispose();
     _detailScrollController.dispose();
     _reportsScrollController.dispose();
     _detachAutosaveListeners();
@@ -332,8 +342,82 @@ class _MaintenancePageState extends State<MaintenancePage>
     await _loadDirectoryTaxonomyOptions();
     await _loadDirectoryContacts();
     await _loadOrders();
+    await _loadAlertsSummary();
     if (!mounted) return;
     setState(() => _loading = false);
+  }
+
+  Future<void> _loadAlertsSummary({bool silent = false}) async {
+    try {
+      final summary = await _directionOpsRepo.loadMaintenanceSummary();
+      if (!mounted) return;
+      setState(() {
+        _alertsSummary = summary;
+        _alertsError = null;
+      });
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage: 'No se pudieron cargar las alertas de mantenimiento.',
+      );
+      if (!mounted) return;
+      setState(() {
+        _alertsError = 'No se pudieron cargar las alertas: $e';
+        if (!silent) _alertsSummary = null;
+      });
+    }
+  }
+
+  String get _maintenanceOrderListFields =>
+      'id,ot_folio,status,priority,type,category,impact,requested_at,area_label,equipment_label,assigned_to_name,updated_at,mechanic_name,mechanic_contact,requester_name,cost_estimated_total,cost_actual_total';
+
+  Future<Map<String, dynamic>?> _fetchMaintenanceOrderListRow(
+    String orderId,
+  ) async {
+    if (orderId.trim().isEmpty) return null;
+    final rows = await _supa
+        .from('maintenance_orders')
+        .select(_maintenanceOrderListFields)
+        .eq('id', orderId)
+        .limit(1);
+    final list = (rows as List)
+        .cast<Map<String, dynamic>>()
+        .map((row) {
+          final mapped = Map<String, dynamic>.from(row);
+          mapped['status'] = _normEnum(mapped['status']);
+          mapped['priority'] = _normEnum(mapped['priority']);
+          mapped['type'] = _normEnum(mapped['type']);
+          return mapped;
+        })
+        .toList(growable: false);
+    return list.isEmpty ? null : list.first;
+  }
+
+  void _ensureMaintenanceOrderVisible(String? orderId) {
+    if (orderId == null || orderId.isEmpty) return;
+    final rows = _filteredOrders;
+    final index = rows.indexWhere(
+      (row) => (row['id'] ?? '').toString() == orderId,
+    );
+    if (index < 0 || !_ordersScrollController.hasClients) return;
+    const rowExtentEstimate = 92.0;
+    final target = index * rowExtentEstimate;
+    final viewport = _ordersScrollController.position.viewportDimension;
+    final current = _ordersScrollController.offset;
+    final maxVisible = current + viewport - rowExtentEstimate;
+    if (target < current) {
+      _ordersScrollController.jumpTo(
+        target.clamp(0, _ordersScrollController.position.maxScrollExtent),
+      );
+    } else if (target > maxVisible) {
+      _ordersScrollController.jumpTo(
+        (target - (viewport - rowExtentEstimate)).clamp(
+          0,
+          _ordersScrollController.position.maxScrollExtent,
+        ),
+      );
+    }
   }
 
   void _setupAutoRefresh() {
@@ -432,6 +516,7 @@ class _MaintenancePageState extends State<MaintenancePage>
     _autoReloading = true;
     try {
       await _loadOrders(refreshSelectedDetails: _selectedOrderId != null);
+      await _loadAlertsSummary(silent: true);
       _lastBackgroundRefreshAt = DateTime.now();
     } finally {
       _autoReloading = false;
@@ -640,11 +725,10 @@ class _MaintenancePageState extends State<MaintenancePage>
 
   Future<void> _loadOrders({bool refreshSelectedDetails = true}) async {
     try {
+      final targetInitialOrderId = widget.initialOrderId?.trim() ?? '';
       final rows = await _supa
           .from('maintenance_orders')
-          .select(
-            'id,ot_folio,status,priority,type,category,impact,requested_at,area_label,equipment_label,assigned_to_name,updated_at,mechanic_name,mechanic_contact,requester_name,cost_estimated_total,cost_actual_total',
-          )
+          .select(_maintenanceOrderListFields)
           .order('requested_at', ascending: false)
           .limit(400);
 
@@ -655,6 +739,18 @@ class _MaintenancePageState extends State<MaintenancePage>
         mapped['type'] = _normEnum(mapped['type']);
         return mapped;
       }).toList();
+      if (!_consumedInitialOrderSelection &&
+          targetInitialOrderId.isNotEmpty &&
+          !list.any(
+            (row) => (row['id'] ?? '').toString() == targetInitialOrderId,
+          )) {
+        final exactRow = await _fetchMaintenanceOrderListRow(
+          targetInitialOrderId,
+        );
+        if (exactRow != null) {
+          list.insert(0, exactRow);
+        }
+      }
       _orders = list;
 
       final ids = _orders
@@ -731,6 +827,15 @@ class _MaintenancePageState extends State<MaintenancePage>
         _selectedOrderId = _orders.first['id']?.toString();
       }
 
+      if (!_consumedInitialOrderSelection &&
+          targetInitialOrderId.isNotEmpty &&
+          _orders.any(
+            (row) => (row['id'] ?? '').toString() == targetInitialOrderId,
+          )) {
+        _selectedOrderId = targetInitialOrderId;
+        _consumedInitialOrderSelection = true;
+      }
+
       _sanitizeReportFilters();
 
       if (refreshSelectedDetails && _selectedOrderId != null) {
@@ -738,6 +843,12 @@ class _MaintenancePageState extends State<MaintenancePage>
       }
 
       if (mounted) setState(() {});
+      if (_consumedInitialOrderSelection) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _ensureMaintenanceOrderVisible(_selectedOrderId);
+        });
+      }
     } catch (e) {
       _toast('No se pudieron cargar OT: $e');
     }
@@ -1039,6 +1150,25 @@ class _MaintenancePageState extends State<MaintenancePage>
     if (currentIndex < 0) currentIndex = 0;
     final next = (currentIndex + delta).clamp(0, rows.length - 1);
     _selectOrderByIndex(rows, next);
+  }
+
+  void _openOrderFromAlerts(String orderId) {
+    if (orderId.trim().isEmpty) return;
+    final rows = _filteredOrders;
+    final index = rows.indexWhere(
+      (row) => (row['id'] ?? '').toString() == orderId,
+    );
+    setState(() => _workspace = _MaintenanceWorkspace.orders);
+    if (index >= 0) {
+      _selectOrderByIndex(rows, index);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _ensureMaintenanceOrderVisible(orderId);
+      });
+      return;
+    }
+    setState(() => _selectedOrderId = orderId);
+    unawaited(_loadOrderDetails(orderId));
   }
 
   Future<void> _openOrderContextMenu(
@@ -3977,7 +4107,9 @@ class _MaintenancePageState extends State<MaintenancePage>
                 Expanded(
                   child: _workspace == _MaintenanceWorkspace.orders
                       ? _buildOrdersWorkspace()
-                      : _buildReportsWorkspace(),
+                      : _workspace == _MaintenanceWorkspace.reports
+                      ? _buildReportsWorkspace()
+                      : _buildAlertsWorkspace(),
                 ),
               ],
             ),
@@ -3988,7 +4120,9 @@ class _MaintenancePageState extends State<MaintenancePage>
     return OperationalGlassToolbarPanel(
       child: _workspace == _MaintenanceWorkspace.orders
           ? _buildOrdersTopActionsBar()
-          : _buildReportsTopActionsBar(),
+          : _workspace == _MaintenanceWorkspace.reports
+          ? _buildReportsTopActionsBar()
+          : _buildAlertsTopActionsBar(),
     );
   }
 
@@ -4090,6 +4224,45 @@ class _MaintenancePageState extends State<MaintenancePage>
                 ],
               );
             },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAlertsTopActionsBar() {
+    final summary = _alertsSummary;
+    final critical = summary?.criticalCount ?? 0;
+    final stale = summary?.staleCount ?? 0;
+    final waiting = summary?.waitingDirectionCount ?? 0;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
+      child: Card(
+        elevation: 0,
+        color: Colors.white.withValues(alpha: 0.34),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              Expanded(
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _summaryTag('Críticas', '$critical'),
+                    _summaryTag('Sin movimiento', '$stale'),
+                    _summaryTag('Esperando decisión', '$waiting'),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              OutlinedButton.icon(
+                onPressed: _loading ? null : () => _loadAlertsSummary(),
+                icon: const Icon(Icons.refresh_rounded),
+                label: const Text('Actualizar alertas'),
+              ),
+            ],
           ),
         ),
       ),
@@ -4223,6 +4396,8 @@ class _MaintenancePageState extends State<MaintenancePage>
 
   Widget _buildWorkspaceSwitcher() {
     final isOrders = _workspace == _MaintenanceWorkspace.orders;
+    final isReports = _workspace == _MaintenanceWorkspace.reports;
+    final isAlerts = _workspace == _MaintenanceWorkspace.alerts;
     return Container(
       width: double.infinity,
       padding: const EdgeInsets.all(6),
@@ -4260,9 +4435,20 @@ class _MaintenancePageState extends State<MaintenancePage>
               title: 'Reportes OT',
               subtitle: 'Resumenes y analitica',
               icon: Icons.insights_rounded,
-              selected: !isOrders,
+              selected: isReports,
               onTap: () =>
                   setState(() => _workspace = _MaintenanceWorkspace.reports),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: _workspaceSwitchChip(
+              title: 'Alertas OT',
+              subtitle: 'Seguimiento y faltantes',
+              icon: Icons.notifications_active_rounded,
+              selected: isAlerts,
+              onTap: () =>
+                  setState(() => _workspace = _MaintenanceWorkspace.alerts),
             ),
           ),
         ],
@@ -6676,6 +6862,263 @@ class _MaintenancePageState extends State<MaintenancePage>
     );
   }
 
+  Widget _buildAlertsWorkspace() {
+    final summary = _alertsSummary;
+    if (summary == null) {
+      return Container(
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.75),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.62)),
+        ),
+        alignment: Alignment.center,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(_alertsError ?? 'Cargando alertas de mantenimiento...'),
+        ),
+      );
+    }
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              _metricCard(
+                'OT abiertas',
+                '${summary.openCount}',
+                Icons.build_circle_outlined,
+              ),
+              const SizedBox(width: 8),
+              _metricCard(
+                'Críticas',
+                '${summary.criticalCount}',
+                Icons.priority_high_rounded,
+              ),
+              const SizedBox(width: 8),
+              _metricCard(
+                'Sin movimiento',
+                '${summary.staleCount}',
+                Icons.timelapse_rounded,
+              ),
+              const SizedBox(width: 8),
+              _metricCard(
+                'Esperando decisión',
+                '${summary.waitingDirectionCount}',
+                Icons.rule_folder_outlined,
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final wide = constraints.maxWidth >= 1100;
+              final alertsCard = _buildOperationalAlertsCard(summary);
+              final listCard = _buildOperationalPendingAlertsCard(summary);
+              if (wide) {
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(flex: 4, child: alertsCard),
+                    const SizedBox(width: 10),
+                    Expanded(flex: 7, child: listCard),
+                  ],
+                );
+              }
+              return Column(
+                children: [alertsCard, const SizedBox(height: 10), listCard],
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOperationalAlertsCard(DirectionMaintenanceSummary summary) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.76),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.64)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Alertas y seguimiento',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          if (summary.alerts.isEmpty) const Text('Sin alertas relevantes.'),
+          ...summary.alerts.map((alert) {
+            final color = switch (alert.severity) {
+              DirectionFollowupSeverity.info => const Color(0xFF4DA3FF),
+              DirectionFollowupSeverity.warning => const Color(0xFFFFA726),
+              DirectionFollowupSeverity.critical => const Color(0xFFE53935),
+            };
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 10),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: color.withValues(alpha: 0.26)),
+                ),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.notifications_active_rounded, color: color),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            alert.title,
+                            style: const TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(alert.detail),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildOperationalPendingAlertsCard(
+    DirectionMaintenanceSummary summary,
+  ) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.76),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.64)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'OT que requieren seguimiento',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900),
+          ),
+          const SizedBox(height: 12),
+          if (summary.pendingItems.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 16),
+              child: Text('No hay OT críticas o estancadas para seguimiento.'),
+            ),
+          ...summary.pendingItems.map((item) {
+            final accent = item.impact == 'paro_total'
+                ? const Color(0xFFE53935)
+                : item.ageHours >= 48
+                ? const Color(0xFFFFA726)
+                : const Color(0xFF4DA3FF);
+            return Container(
+              margin: const EdgeInsets.only(bottom: 10),
+              padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.72),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: accent.withValues(alpha: 0.24)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.folio,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            fontSize: 15,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 5,
+                        ),
+                        decoration: BoxDecoration(
+                          color: accent.withValues(alpha: 0.10),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(
+                            color: accent.withValues(alpha: 0.28),
+                          ),
+                        ),
+                        child: Text(
+                          '${item.ageHours.round()} h',
+                          style: TextStyle(
+                            color: accent,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${item.areaLabel.isEmpty ? '-' : item.areaLabel} · ${item.equipmentLabel.isEmpty ? 'Sin equipo' : item.equipmentLabel}',
+                    style: TextStyle(
+                      color: Colors.blueGrey.shade800,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${_kStatusLabel[item.status] ?? item.status} · ${_kPriorityLabel[item.priority] ?? item.priority} · ${_kImpactLabel[item.impact] ?? item.impact}',
+                    style: TextStyle(
+                      color: Colors.blueGrey.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Estimado: ${_fmtMoney(item.estimatedTotal)} · Real: ${_fmtMoney(item.actualTotal)}',
+                    style: TextStyle(
+                      color: Colors.blueGrey.shade700,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  if (item.missingReasons.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Le falta: ${item.missingReasons.join(', ')}',
+                      style: TextStyle(
+                        color: Colors.blueGrey.shade800,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: () => _openOrderFromAlerts(item.id),
+                    icon: const Icon(Icons.open_in_new_rounded),
+                    label: const Text('Abrir OT'),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
   Widget _buildOrdersTable() {
     final rows = _filteredOrders;
 
@@ -6782,6 +7225,7 @@ class _MaintenancePageState extends State<MaintenancePage>
                       return KeyEventResult.ignored;
                     },
                     child: ListView.builder(
+                      controller: _ordersScrollController,
                       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
                       itemCount: rows.length,
                       itemBuilder: (context, index) {
