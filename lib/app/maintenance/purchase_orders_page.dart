@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -80,6 +81,9 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   );
   final ScrollController _rowsScrollController = ScrollController();
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
+  final GlobalKey _rowsViewportKey = GlobalKey(
+    debugLabel: 'purchase-orders-viewport',
+  );
 
   bool _loading = true;
   bool _saving = false;
@@ -93,8 +97,19 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   List<Map<String, dynamic>> _directoryContacts = <Map<String, dynamic>>[];
   final Map<String, Set<String>> _columnValueFilters = <String, Set<String>>{};
   String? _selectedOrderId;
+  String? _selectionAnchorOrderId;
+  final Set<String> _selectedOrderIds = <String>{};
   AuthResolvedProfile? _profile;
   bool _consumedInitialOrderSelection = false;
+  Offset? _marqueeStartLocal;
+  Offset? _marqueePointerLocal;
+  Offset? _marqueeStartContent;
+  Offset? _marqueeCurrentContent;
+  bool _marqueeActive = false;
+  bool _marqueeAdditive = false;
+  Set<String> _marqueeBaseSelection = <String>{};
+  Timer? _marqueeAutoScrollTimer;
+  double _marqueeAutoScrollVelocity = 0;
 
   bool get _isDirection => AuthAccess.isDirectionRole(_profile);
 
@@ -106,6 +121,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
 
   @override
   void dispose() {
+    _marqueeAutoScrollTimer?.cancel();
     _rowsFocusNode.dispose();
     _rowsScrollController.dispose();
     super.dispose();
@@ -340,8 +356,209 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     return rows.indexWhere((row) => row['id']?.toString() == _selectedOrderId);
   }
 
+  Set<String> _currentSelectionIds() {
+    if (_selectedOrderIds.isNotEmpty) return {..._selectedOrderIds};
+    final id = _selectedOrderId;
+    if (id == null || id.isEmpty) return <String>{};
+    return <String>{id};
+  }
+
+  bool _isCtrlOrCmdPressed() {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    return pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight);
+  }
+
+  bool _isShiftPressed() {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    return pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+  }
+
+  bool _isSelectionExtendPressed() =>
+      _isCtrlOrCmdPressed() || _isShiftPressed();
+
   GlobalKey _rowKeyFor(String orderId) =>
       _rowKeys.putIfAbsent(orderId, () => GlobalKey(debugLabel: orderId));
+
+  double get _rowsScrollOffset =>
+      _rowsScrollController.hasClients ? _rowsScrollController.offset : 0;
+
+  Offset _localToContent(Offset local) =>
+      Offset(local.dx, local.dy + _rowsScrollOffset);
+
+  Rect _marqueeRectContent() {
+    final start = _marqueeStartContent ?? Offset.zero;
+    final current = _marqueeCurrentContent ?? start;
+    return Rect.fromPoints(start, current);
+  }
+
+  Rect _marqueeRectForPaint() =>
+      _marqueeRectContent().shift(Offset(0, -_rowsScrollOffset));
+
+  Rect _clampRectToViewport(Rect rectViewport) {
+    final viewportContext = _rowsViewportKey.currentContext;
+    final viewportBox = viewportContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null) return rectViewport;
+    final width = viewportBox.size.width;
+    final height = viewportBox.size.height;
+    final left = rectViewport.left.clamp(0.0, width).toDouble();
+    final top = rectViewport.top.clamp(0.0, height).toDouble();
+    final right = rectViewport.right.clamp(0.0, width).toDouble();
+    final bottom = rectViewport.bottom.clamp(0.0, height).toDouble();
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  Set<String> _marqueeIntersectedIds(Rect rectContent) {
+    final viewportContext = _rowsViewportKey.currentContext;
+    final viewportBox = viewportContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null) return const <String>{};
+    final scrollOffset = _rowsScrollOffset;
+    final hits = <String>{};
+    for (final row in _filteredOrders) {
+      final id = row['id']?.toString() ?? '';
+      if (id.isEmpty) continue;
+      final rowContext = _rowKeyFor(id).currentContext;
+      final rowBox = rowContext?.findRenderObject() as RenderBox?;
+      if (rowBox == null || !rowBox.hasSize) continue;
+      final topLeftGlobal = rowBox.localToGlobal(Offset.zero);
+      final topLeftViewport = viewportBox.globalToLocal(topLeftGlobal);
+      final viewportRect = Rect.fromLTWH(
+        topLeftViewport.dx,
+        topLeftViewport.dy,
+        rowBox.size.width,
+        rowBox.size.height,
+      );
+      final rowRectContent = viewportRect.shift(Offset(0, scrollOffset));
+      if (rowRectContent.overlaps(rectContent)) hits.add(id);
+    }
+    return hits;
+  }
+
+  void _applyMarqueeSelection() {
+    if (!_marqueeActive) return;
+    final rect = _marqueeRectContent();
+    final hit = _marqueeIntersectedIds(rect);
+    final next = _marqueeAdditive ? ({..._marqueeBaseSelection, ...hit}) : hit;
+    if (!mounted) return;
+    setState(() {
+      _selectedOrderIds
+        ..clear()
+        ..addAll(next);
+      if (next.isEmpty) {
+        _selectedOrderId = null;
+        return;
+      }
+      if (_selectedOrderId != null && next.contains(_selectedOrderId)) return;
+      for (final row in _filteredOrders) {
+        final id = row['id']?.toString() ?? '';
+        if (next.contains(id)) {
+          _selectedOrderId = id;
+          _selectionAnchorOrderId ??= id;
+          return;
+        }
+      }
+    });
+  }
+
+  void _startMarqueeSelection(Offset local) {
+    _marqueeStartLocal = local;
+    _marqueePointerLocal = local;
+    _marqueeStartContent = _localToContent(local);
+    _marqueeCurrentContent = _marqueeStartContent;
+    _marqueeAdditive = _isSelectionExtendPressed();
+    _marqueeBaseSelection = _currentSelectionIds();
+    _marqueeActive = false;
+  }
+
+  void _updateMarqueeAutoScroll() {
+    if (!_marqueeActive || _marqueePointerLocal == null) {
+      _marqueeAutoScrollVelocity = 0;
+      _marqueeAutoScrollTimer?.cancel();
+      _marqueeAutoScrollTimer = null;
+      return;
+    }
+    final box =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      _marqueeAutoScrollVelocity = 0;
+      return;
+    }
+    const edge = 36.0;
+    const maxStep = 18.0;
+    final y = _marqueePointerLocal!.dy;
+    if (y < edge) {
+      _marqueeAutoScrollVelocity =
+          -((edge - y) / edge).clamp(0.0, 1.0) * maxStep;
+    } else if (y > box.size.height - edge) {
+      _marqueeAutoScrollVelocity =
+          ((y - (box.size.height - edge)) / edge).clamp(0.0, 1.0) * maxStep;
+    } else {
+      _marqueeAutoScrollVelocity = 0;
+    }
+    if (_marqueeAutoScrollVelocity == 0) {
+      _marqueeAutoScrollTimer?.cancel();
+      _marqueeAutoScrollTimer = null;
+      return;
+    }
+    _marqueeAutoScrollTimer ??= Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _tickMarqueeAutoScroll(),
+    );
+  }
+
+  void _tickMarqueeAutoScroll() {
+    if (!_marqueeActive ||
+        _marqueeAutoScrollVelocity == 0 ||
+        !_rowsScrollController.hasClients) {
+      _marqueeAutoScrollTimer?.cancel();
+      _marqueeAutoScrollTimer = null;
+      return;
+    }
+    final pos = _rowsScrollController.position;
+    final next = (pos.pixels + _marqueeAutoScrollVelocity).clamp(
+      pos.minScrollExtent,
+      pos.maxScrollExtent,
+    );
+    if (next == pos.pixels) return;
+    _rowsScrollController.jumpTo(next);
+    if (_marqueePointerLocal != null) {
+      _marqueeCurrentContent = _localToContent(_marqueePointerLocal!);
+    }
+    _applyMarqueeSelection();
+  }
+
+  void _updateMarqueeSelection(Offset local) {
+    if (_marqueeStartLocal == null) return;
+    _marqueePointerLocal = local;
+    _marqueeCurrentContent = _localToContent(local);
+    final shouldActivate = (local - _marqueeStartLocal!).distance > 6;
+    if (!shouldActivate && !_marqueeActive) return;
+    if (!_marqueeActive && mounted) {
+      setState(() => _marqueeActive = true);
+    }
+    _applyMarqueeSelection();
+    _updateMarqueeAutoScroll();
+  }
+
+  void _endMarqueeSelection() {
+    _marqueeAutoScrollVelocity = 0;
+    _marqueeAutoScrollTimer?.cancel();
+    _marqueeAutoScrollTimer = null;
+    _marqueeStartLocal = null;
+    _marqueePointerLocal = null;
+    _marqueeStartContent = null;
+    _marqueeCurrentContent = null;
+    _marqueeAdditive = false;
+    _marqueeBaseSelection = <String>{};
+    if (_marqueeActive && mounted) {
+      setState(() => _marqueeActive = false);
+    } else {
+      _marqueeActive = false;
+    }
+  }
 
   void _ensureOrderVisible(String? orderId, {int? moveDelta}) {
     if (orderId == null) return;
@@ -402,11 +619,91 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     bool requestFocus = true,
     bool ensureVisible = true,
     int? moveDelta,
+    bool additive = false,
+    bool additiveToggle = true,
+    bool allowToggle = true,
   }) {
     if (!mounted) return;
-    setState(() => _selectedOrderId = orderId);
+    final normalized = orderId?.trim();
+    setState(() {
+      if (normalized == null || normalized.isEmpty) {
+        _selectedOrderId = null;
+        _selectionAnchorOrderId = null;
+        _selectedOrderIds.clear();
+      } else if (additive) {
+        final next = {..._currentSelectionIds()};
+        if (additiveToggle && next.contains(normalized)) {
+          next.remove(normalized);
+        } else {
+          next.add(normalized);
+        }
+        _selectedOrderIds
+          ..clear()
+          ..addAll(next);
+        if (next.isEmpty) {
+          _selectedOrderId = null;
+          _selectionAnchorOrderId = null;
+        } else {
+          _selectedOrderId = normalized;
+          _selectionAnchorOrderId ??= normalized;
+        }
+      } else {
+        if (allowToggle &&
+            _selectedOrderId == normalized &&
+            _selectedOrderIds.length <= 1) {
+          _selectedOrderId = null;
+          _selectionAnchorOrderId = null;
+          _selectedOrderIds.clear();
+        } else {
+          _selectedOrderId = normalized;
+          _selectionAnchorOrderId = normalized;
+          _selectedOrderIds
+            ..clear()
+            ..add(normalized);
+        }
+      }
+    });
     if (requestFocus) _rowsFocusNode.requestFocus();
-    if (ensureVisible) _ensureOrderVisible(orderId, moveDelta: moveDelta);
+    if (ensureVisible) _ensureOrderVisible(normalized, moveDelta: moveDelta);
+  }
+
+  void _extendSelectionTo(String orderId, List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty || orderId.trim().isEmpty) return;
+    final anchorId = (_selectionAnchorOrderId?.isNotEmpty ?? false)
+        ? _selectionAnchorOrderId!
+        : (_selectedOrderId?.isNotEmpty ?? false)
+        ? _selectedOrderId!
+        : orderId;
+    final anchorIndex = rows.indexWhere(
+      (row) => row['id']?.toString() == anchorId,
+    );
+    final currentIndex = rows.indexWhere(
+      (row) => row['id']?.toString() == orderId,
+    );
+    if (anchorIndex < 0 || currentIndex < 0) {
+      _selectOrder(
+        orderId,
+        requestFocus: true,
+        ensureVisible: false,
+        allowToggle: false,
+      );
+      return;
+    }
+    final start = math.min(anchorIndex, currentIndex);
+    final end = math.max(anchorIndex, currentIndex);
+    final ids = <String>{};
+    for (var i = start; i <= end; i++) {
+      final id = rows[i]['id']?.toString() ?? '';
+      if (id.isNotEmpty) ids.add(id);
+    }
+    setState(() {
+      _selectedOrderId = orderId;
+      _selectionAnchorOrderId = anchorId;
+      _selectedOrderIds
+        ..clear()
+        ..addAll(ids);
+    });
+    _rowsFocusNode.requestFocus();
   }
 
   void _moveSelection(int delta) {
@@ -549,11 +846,33 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     if (rows.isEmpty) return KeyEventResult.ignored;
     final key = event.logicalKey;
     if (key == LogicalKeyboardKey.arrowDown) {
-      _moveSelection(1);
+      if (_isShiftPressed()) {
+        final currentIndex = _selectedIndexIn(rows);
+        final safeIndex = currentIndex < 0 ? 0 : currentIndex;
+        final nextIndex = (safeIndex + 1).clamp(0, rows.length - 1);
+        final nextId = rows[nextIndex]['id']?.toString();
+        if (nextId != null && nextId.isNotEmpty) {
+          _extendSelectionTo(nextId, rows);
+          _ensureOrderVisible(nextId, moveDelta: 1);
+        }
+      } else {
+        _moveSelection(1);
+      }
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp) {
-      _moveSelection(-1);
+      if (_isShiftPressed()) {
+        final currentIndex = _selectedIndexIn(rows);
+        final safeIndex = currentIndex < 0 ? 0 : currentIndex;
+        final nextIndex = (safeIndex - 1).clamp(0, rows.length - 1);
+        final nextId = rows[nextIndex]['id']?.toString();
+        if (nextId != null && nextId.isNotEmpty) {
+          _extendSelectionTo(nextId, rows);
+          _ensureOrderVisible(nextId, moveDelta: -1);
+        }
+      } else {
+        _moveSelection(-1);
+      }
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.f2 ||
@@ -1041,198 +1360,219 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
 
   Future<void> _openColumnFilterDialog(String columnId, String label) async {
     final initialSelected = {...(_columnValueFilters[columnId] ?? <String>{})};
+    final scrollController = ScrollController();
 
-    final result = await showDialog<_PurchaseOrderFilterDialogResult>(
-      context: context,
-      builder: (dialogContext) {
-        final localSelected = <String>{...initialSelected};
-        String localSearch = '';
+    try {
+      final result = await showDialog<_PurchaseOrderFilterDialogResult>(
+        context: context,
+        builder: (dialogContext) {
+          final localSelected = <String>{...initialSelected};
+          String localSearch = '';
 
-        return StatefulBuilder(
-          builder: (_, setLocalState) {
-            final options = _columnDistinctValues(
-              columnId,
-              search: localSearch,
-            );
-            final allVisibleSelected =
-                options.isNotEmpty && options.every(localSelected.contains);
-
-            void applyAndClose() {
-              Navigator.pop(
-                dialogContext,
-                _PurchaseOrderFilterDialogResult(selectedValues: localSelected),
+          return StatefulBuilder(
+            builder: (_, setLocalState) {
+              final options = _columnDistinctValues(
+                columnId,
+                search: localSearch,
               );
-            }
+              final allVisibleSelected =
+                  options.isNotEmpty && options.every(localSelected.contains);
 
-            return Focus(
-              onKeyEvent: (_, event) {
-                if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                final key = event.logicalKey;
-                if (key == LogicalKeyboardKey.enter ||
-                    key == LogicalKeyboardKey.numpadEnter) {
-                  applyAndClose();
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              child: Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 24,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                    child: Container(
-                      width: 420,
-                      constraints: const BoxConstraints(maxHeight: 560),
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                      decoration: _purchaseOrderFilterDialogDecoration(),
-                      child: FocusScope(
-                        autofocus: true,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Filtro: $label',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF0B2B2B),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            TextField(
-                              onChanged: (v) =>
-                                  setLocalState(() => localSearch = v),
-                              onSubmitted: (_) => applyAndClose(),
-                              decoration: _poInputDecoration(
-                                labelText: 'Buscar',
-                                prefixIcon: const Icon(Icons.search_rounded),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                TextButton(
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: const Color(0xFF2A4B49),
-                                  ),
-                                  onPressed: () {
-                                    setLocalState(() {
-                                      if (allVisibleSelected) {
-                                        localSelected.removeAll(options);
-                                      } else {
-                                        localSelected.addAll(options);
-                                      }
-                                    });
-                                  },
-                                  child: Text(
-                                    allVisibleSelected
-                                        ? 'Deseleccionar visibles'
-                                        : 'Seleccionar visibles',
-                                  ),
+              void applyAndClose() {
+                Navigator.pop(
+                  dialogContext,
+                  _PurchaseOrderFilterDialogResult(
+                    selectedValues: localSelected,
+                  ),
+                );
+              }
+
+              return Focus(
+                onKeyEvent: (_, event) {
+                  if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                  final key = event.logicalKey;
+                  if (key == LogicalKeyboardKey.enter ||
+                      key == LogicalKeyboardKey.numpadEnter) {
+                    applyAndClose();
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: Dialog(
+                  backgroundColor: Colors.transparent,
+                  insetPadding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 24,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                      child: Container(
+                        width: 420,
+                        constraints: const BoxConstraints(maxHeight: 560),
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                        decoration: _purchaseOrderFilterDialogDecoration(),
+                        child: FocusScope(
+                          autofocus: true,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Filtro: $label',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0B2B2B),
                                 ),
-                                const Spacer(),
-                                Text('${localSelected.length} seleccionados'),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Expanded(
-                              child: options.isEmpty
-                                  ? const Center(
-                                      child: Text('Sin valores para mostrar'),
-                                    )
-                                  : ScrollConfiguration(
-                                      behavior: const MaterialScrollBehavior()
-                                          .copyWith(
-                                            dragDevices: <PointerDeviceKind>{
-                                              PointerDeviceKind.touch,
-                                              PointerDeviceKind.mouse,
-                                              PointerDeviceKind.stylus,
-                                              PointerDeviceKind.invertedStylus,
-                                              PointerDeviceKind.unknown,
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                onChanged: (v) =>
+                                    setLocalState(() => localSearch = v),
+                                onSubmitted: (_) => applyAndClose(),
+                                decoration: _poInputDecoration(
+                                  labelText: 'Buscar',
+                                  prefixIcon: const Icon(Icons.search_rounded),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  TextButton(
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: const Color(0xFF2A4B49),
+                                    ),
+                                    onPressed: () {
+                                      setLocalState(() {
+                                        if (allVisibleSelected) {
+                                          localSelected.removeAll(options);
+                                        } else {
+                                          localSelected.addAll(options);
+                                        }
+                                      });
+                                    },
+                                    child: Text(
+                                      allVisibleSelected
+                                          ? 'Deseleccionar visibles'
+                                          : 'Seleccionar visibles',
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text('${localSelected.length} seleccionados'),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Expanded(
+                                child: options.isEmpty
+                                    ? const Center(
+                                        child: Text('Sin valores para mostrar'),
+                                      )
+                                    : ScrollConfiguration(
+                                        behavior: const MaterialScrollBehavior()
+                                            .copyWith(
+                                              dragDevices: <PointerDeviceKind>{
+                                                PointerDeviceKind.touch,
+                                                PointerDeviceKind.mouse,
+                                                PointerDeviceKind.stylus,
+                                                PointerDeviceKind
+                                                    .invertedStylus,
+                                                PointerDeviceKind.unknown,
+                                              },
+                                            ),
+                                        child: Scrollbar(
+                                          controller: scrollController,
+                                          thumbVisibility: true,
+                                          trackVisibility: true,
+                                          interactive: true,
+                                          child: ListView.builder(
+                                            controller: scrollController,
+                                            primary: false,
+                                            dragStartBehavior:
+                                                DragStartBehavior.down,
+                                            itemCount: options.length,
+                                            itemBuilder: (_, i) {
+                                              final value = options[i];
+                                              final checked = localSelected
+                                                  .contains(value);
+                                              return _PurchaseOrderFilterValueTile(
+                                                label: value,
+                                                selected: checked,
+                                                onTap: () {
+                                                  setLocalState(() {
+                                                    if (checked) {
+                                                      localSelected.remove(
+                                                        value,
+                                                      );
+                                                    } else {
+                                                      localSelected.add(value);
+                                                    }
+                                                  });
+                                                },
+                                              );
                                             },
                                           ),
-                                      child: ListView.builder(
-                                        itemCount: options.length,
-                                        itemBuilder: (_, i) {
-                                          final value = options[i];
-                                          final checked = localSelected
-                                              .contains(value);
-                                          return _PurchaseOrderFilterValueTile(
-                                            label: value,
-                                            selected: checked,
-                                            onTap: () {
-                                              setLocalState(() {
-                                                if (checked) {
-                                                  localSelected.remove(value);
-                                                } else {
-                                                  localSelected.add(value);
-                                                }
-                                              });
-                                            },
-                                          );
-                                        },
+                                        ),
                                       ),
-                                    ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                OutlinedButton(
-                                  style:
-                                      _purchaseOrderFilterOutlinedButtonStyle(),
-                                  onPressed: () => Navigator.pop(dialogContext),
-                                  child: const Text('Cancelar'),
-                                ),
-                                const SizedBox(width: 8),
-                                OutlinedButton(
-                                  style:
-                                      _purchaseOrderFilterOutlinedButtonStyle(),
-                                  onPressed: () {
-                                    Navigator.pop(
-                                      dialogContext,
-                                      const _PurchaseOrderFilterDialogResult(
-                                        selectedValues: <String>{},
-                                      ),
-                                    );
-                                  },
-                                  child: const Text('Limpiar'),
-                                ),
-                                const SizedBox(width: 8),
-                                FilledButton(
-                                  style:
-                                      _purchaseOrderFilterFilledButtonStyle(),
-                                  onPressed: applyAndClose,
-                                  child: const Text('Aplicar'),
-                                ),
-                              ],
-                            ),
-                          ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  OutlinedButton(
+                                    style:
+                                        _purchaseOrderFilterOutlinedButtonStyle(),
+                                    onPressed: () =>
+                                        Navigator.pop(dialogContext),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  OutlinedButton(
+                                    style:
+                                        _purchaseOrderFilterOutlinedButtonStyle(),
+                                    onPressed: () {
+                                      Navigator.pop(
+                                        dialogContext,
+                                        const _PurchaseOrderFilterDialogResult(
+                                          selectedValues: <String>{},
+                                        ),
+                                      );
+                                    },
+                                    child: const Text('Limpiar'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilledButton(
+                                    style:
+                                        _purchaseOrderFilterFilledButtonStyle(),
+                                    onPressed: applyAndClose,
+                                    child: const Text('Aplicar'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            );
-          },
-        );
-      },
-    );
-    if (!mounted) return;
-    if (result == null) return;
-    setState(() {
-      if (result.selectedValues.isEmpty) {
-        _columnValueFilters.remove(columnId);
-      } else {
-        _columnValueFilters[columnId] = result.selectedValues;
-      }
-    });
+              );
+            },
+          );
+        },
+      );
+      if (!mounted) return;
+      if (result == null) return;
+      setState(() {
+        if (result.selectedValues.isEmpty) {
+          _columnValueFilters.remove(columnId);
+        } else {
+          _columnValueFilters[columnId] = result.selectedValues;
+        }
+      });
+    } finally {
+      scrollController.dispose();
+    }
   }
 
   ButtonStyle _purchaseOrdersActionFilledButtonStyle() {
@@ -1560,55 +1900,132 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                     ),
                     const SizedBox(height: 8),
                     Expanded(
-                      child: ScrollConfiguration(
-                        behavior: const MaterialScrollBehavior().copyWith(
-                          dragDevices: <PointerDeviceKind>{
-                            PointerDeviceKind.touch,
-                            PointerDeviceKind.mouse,
-                            PointerDeviceKind.stylus,
-                            PointerDeviceKind.invertedStylus,
-                            PointerDeviceKind.unknown,
+                      child: Scrollbar(
+                        controller: _rowsScrollController,
+                        thumbVisibility: true,
+                        trackVisibility: true,
+                        interactive: true,
+                        child: Listener(
+                          behavior: HitTestBehavior.translucent,
+                          onPointerDown: (event) {
+                            if (event.kind != PointerDeviceKind.mouse &&
+                                event.kind != PointerDeviceKind.stylus &&
+                                event.kind != PointerDeviceKind.unknown) {
+                              return;
+                            }
+                            if (event.buttons != kPrimaryMouseButton) return;
+                            _startMarqueeSelection(event.localPosition);
                           },
-                        ),
-                        child: Scrollbar(
-                          controller: _rowsScrollController,
-                          thumbVisibility: true,
-                          trackVisibility: true,
-                          interactive: true,
-                          child: ListView.separated(
-                            controller: _rowsScrollController,
-                            itemCount: rows.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 6),
-                            itemBuilder: (context, index) {
-                              final order = rows[index];
-                              final orderId = order['id']?.toString();
-                              return _PurchaseOrderRowCard(
-                                key: orderId == null
-                                    ? ValueKey(index)
-                                    : _rowKeyFor(orderId),
-                                order: order,
-                                total: _orderTotal(orderId ?? ''),
-                                selected:
-                                    orderId != null &&
-                                    orderId == _selectedOrderId,
-                                onTap: () => _selectOrder(orderId),
-                                onDoubleTap: () => _editOrder(order),
-                                onSecondaryTapDown: (details) {
-                                  unawaited(
-                                    _showOrderActionsMenu(
-                                      order,
-                                      globalPosition: details.globalPosition,
+                          onPointerMove: (event) {
+                            if (event.buttons != kPrimaryMouseButton) return;
+                            _updateMarqueeSelection(event.localPosition);
+                          },
+                          onPointerUp: (_) => _endMarqueeSelection(),
+                          onPointerCancel: (_) => _endMarqueeSelection(),
+                          child: Container(
+                            key: _rowsViewportKey,
+                            child: ClipRect(
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  AbsorbPointer(
+                                    absorbing: _marqueeActive,
+                                    child: ListView.builder(
+                                      controller: _rowsScrollController,
+                                      padding: const EdgeInsets.only(
+                                        bottom: 12,
+                                      ),
+                                      itemCount: rows.length,
+                                      itemBuilder: (context, index) {
+                                        final order = rows[index];
+                                        final orderId = order['id']?.toString();
+                                        final isSelected =
+                                            orderId != null &&
+                                            _currentSelectionIds().contains(
+                                              orderId,
+                                            );
+                                        return Padding(
+                                          padding: EdgeInsets.only(
+                                            bottom: index == rows.length - 1
+                                                ? 0
+                                                : 6,
+                                          ),
+                                          child: _PurchaseOrderRowCard(
+                                            key: orderId == null
+                                                ? ValueKey(index)
+                                                : _rowKeyFor(orderId),
+                                            order: order,
+                                            total: _orderTotal(orderId ?? ''),
+                                            selected: isSelected,
+                                            onTap: () {
+                                              final normalized =
+                                                  orderId?.trim() ?? '';
+                                              if (normalized.isEmpty) return;
+                                              if (_isShiftPressed()) {
+                                                _extendSelectionTo(
+                                                  normalized,
+                                                  rows,
+                                                );
+                                                return;
+                                              }
+                                              _selectOrder(
+                                                normalized,
+                                                requestFocus: true,
+                                                ensureVisible: false,
+                                                additive: _isCtrlOrCmdPressed(),
+                                                additiveToggle: true,
+                                                allowToggle: false,
+                                              );
+                                            },
+                                            onDoubleTap: () =>
+                                                _editOrder(order),
+                                            onSecondaryTapDown: (details) {
+                                              final normalized =
+                                                  orderId?.trim() ?? '';
+                                              if (normalized.isNotEmpty &&
+                                                  !_currentSelectionIds()
+                                                      .contains(normalized)) {
+                                                _selectOrder(
+                                                  normalized,
+                                                  requestFocus: true,
+                                                  ensureVisible: false,
+                                                  allowToggle: false,
+                                                );
+                                              }
+                                              unawaited(
+                                                _showOrderActionsMenu(
+                                                  order,
+                                                  globalPosition:
+                                                      details.globalPosition,
+                                                ),
+                                              );
+                                            },
+                                            onOpenActions: (buttonContext) =>
+                                                _showOrderActionsMenu(
+                                                  order,
+                                                  anchorContext: buttonContext,
+                                                ),
+                                          ),
+                                        );
+                                      },
                                     ),
-                                  );
-                                },
-                                onOpenActions: (buttonContext) =>
-                                    _showOrderActionsMenu(
-                                      order,
-                                      anchorContext: buttonContext,
+                                  ),
+                                  if (_marqueeActive)
+                                    Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: CustomPaint(
+                                          painter:
+                                              _PurchaseOrderMarqueeSelectionPainter(
+                                                rect: _clampRectToViewport(
+                                                  _marqueeRectForPaint(),
+                                                ),
+                                              ),
+                                        ),
+                                      ),
                                     ),
-                              );
-                            },
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -2118,7 +2535,6 @@ class _PurchaseOrderRowCard extends StatelessWidget {
         mouseCursor: SystemMouseCursors.click,
         hoverColor: const Color(0xFFEFF7FD),
         onTapDown: (_) => onTap(),
-        onTap: onTap,
         onDoubleTap: onDoubleTap,
         onSecondaryTapDown: onSecondaryTapDown,
         child: Padding(
@@ -2237,28 +2653,14 @@ class _PurchaseOrderRowCard extends StatelessWidget {
                   width: _kPoActionsColW,
                   trailingWidth: _kPoActionsColW,
                   leading: const SizedBox.shrink(),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        'Menu',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF35526A).withValues(alpha: 0.9),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Builder(
-                        builder: (buttonContext) {
-                          return IconButton(
-                            tooltip: 'Acciones',
-                            onPressed: () => onOpenActions(buttonContext),
-                            icon: const Icon(Icons.more_horiz_rounded),
-                          );
-                        },
-                      ),
-                    ],
+                  trailing: Builder(
+                    builder: (buttonContext) {
+                      return IconButton(
+                        tooltip: 'Acciones',
+                        onPressed: () => onOpenActions(buttonContext),
+                        icon: const Icon(Icons.more_horiz_rounded),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -2268,6 +2670,30 @@ class _PurchaseOrderRowCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _PurchaseOrderMarqueeSelectionPainter extends CustomPainter {
+  final Rect rect;
+
+  const _PurchaseOrderMarqueeSelectionPainter({required this.rect});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (rect.isEmpty) return;
+    final fill = Paint()
+      ..color = const Color(0xFF4B8DBD).withValues(alpha: 0.18);
+    final stroke = Paint()
+      ..color = const Color(0xFF3C7FB0).withValues(alpha: 0.80)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawRect(rect, fill);
+    canvas.drawRect(rect, stroke);
+  }
+
+  @override
+  bool shouldRepaint(
+    covariant _PurchaseOrderMarqueeSelectionPainter oldDelegate,
+  ) => oldDelegate.rect != rect;
 }
 
 class _PurchaseOrderGridColumnDivider extends StatelessWidget {
@@ -2400,38 +2826,15 @@ class _OrderLineCard extends StatelessWidget {
               AnchoredActionSlot(
                 width: 128,
                 trailingWidth: 128,
-                leading: selected
-                    ? const Text(
-                        'Menu',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF35526A),
-                        ),
-                      )
-                    : const SizedBox.shrink(),
-                trailing: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Acciones',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF35526A).withValues(alpha: 0.9),
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    Builder(
-                      builder: (buttonContext) {
-                        return IconButton(
-                          onPressed: () => onOpenActions(buttonContext),
-                          tooltip: 'Acciones del renglón',
-                          icon: const Icon(Icons.more_horiz_rounded),
-                        );
-                      },
-                    ),
-                  ],
+                leading: const SizedBox.shrink(),
+                trailing: Builder(
+                  builder: (buttonContext) {
+                    return IconButton(
+                      onPressed: () => onOpenActions(buttonContext),
+                      tooltip: 'Acciones del renglón',
+                      icon: const Icon(Icons.more_horiz_rounded),
+                    );
+                  },
                 ),
               ),
             ],

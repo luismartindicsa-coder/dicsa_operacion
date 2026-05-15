@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
@@ -61,6 +62,9 @@ class _OperationDirectoryPageState extends State<OperationDirectoryPage> {
   final ScrollController _verticalScrollController = ScrollController();
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
   final Map<String, Set<String>> _columnValueFilters = <String, Set<String>>{};
+  final GlobalKey _rowsViewportKey = GlobalKey(
+    debugLabel: 'directory-rows-viewport',
+  );
 
   bool _loading = true;
   bool _saving = false;
@@ -71,6 +75,17 @@ class _OperationDirectoryPageState extends State<OperationDirectoryPage> {
   List<String> _availableAreas = <String>[];
   List<String> _availableSpecialties = <String>[];
   String? _selectedContactId;
+  String? _selectionAnchorContactId;
+  final Set<String> _selectedContactIds = <String>{};
+  Offset? _marqueeStartLocal;
+  Offset? _marqueePointerLocal;
+  Offset? _marqueeStartContent;
+  Offset? _marqueeCurrentContent;
+  bool _marqueeActive = false;
+  bool _marqueeAdditive = false;
+  Set<String> _marqueeBaseSelection = <String>{};
+  Timer? _marqueeAutoScrollTimer;
+  double _marqueeAutoScrollVelocity = 0;
 
   @override
   void initState() {
@@ -80,6 +95,7 @@ class _OperationDirectoryPageState extends State<OperationDirectoryPage> {
 
   @override
   void dispose() {
+    _marqueeAutoScrollTimer?.cancel();
     _rowsFocusNode.dispose();
     _verticalScrollController.dispose();
     super.dispose();
@@ -266,6 +282,210 @@ class _OperationDirectoryPageState extends State<OperationDirectoryPage> {
   GlobalKey _rowKeyFor(String id) =>
       _rowKeys.putIfAbsent(id, () => GlobalKey(debugLabel: id));
 
+  Set<String> _currentSelectionIds() {
+    if (_selectedContactIds.isNotEmpty) return {..._selectedContactIds};
+    final id = _selectedContactId;
+    if (id == null || id.isEmpty) return <String>{};
+    return <String>{id};
+  }
+
+  bool _isCtrlOrCmdPressed() {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    return pressed.contains(LogicalKeyboardKey.controlLeft) ||
+        pressed.contains(LogicalKeyboardKey.controlRight) ||
+        pressed.contains(LogicalKeyboardKey.metaLeft) ||
+        pressed.contains(LogicalKeyboardKey.metaRight);
+  }
+
+  bool _isShiftPressed() {
+    final pressed = HardwareKeyboard.instance.logicalKeysPressed;
+    return pressed.contains(LogicalKeyboardKey.shiftLeft) ||
+        pressed.contains(LogicalKeyboardKey.shiftRight);
+  }
+
+  bool _isSelectionExtendPressed() =>
+      _isCtrlOrCmdPressed() || _isShiftPressed();
+
+  double get _rowsScrollOffset => _verticalScrollController.hasClients
+      ? _verticalScrollController.offset
+      : 0;
+
+  Offset _localToContent(Offset local) =>
+      Offset(local.dx, local.dy + _rowsScrollOffset);
+
+  Rect _marqueeRectContent() {
+    final start = _marqueeStartContent ?? Offset.zero;
+    final current = _marqueeCurrentContent ?? start;
+    return Rect.fromPoints(start, current);
+  }
+
+  Rect _marqueeRectForPaint() =>
+      _marqueeRectContent().shift(Offset(0, -_rowsScrollOffset));
+
+  Rect _clampRectToViewport(Rect rectViewport) {
+    final viewportContext = _rowsViewportKey.currentContext;
+    final viewportBox = viewportContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null) return rectViewport;
+    final width = viewportBox.size.width;
+    final height = viewportBox.size.height;
+    final left = rectViewport.left.clamp(0.0, width).toDouble();
+    final top = rectViewport.top.clamp(0.0, height).toDouble();
+    final right = rectViewport.right.clamp(0.0, width).toDouble();
+    final bottom = rectViewport.bottom.clamp(0.0, height).toDouble();
+    return Rect.fromLTRB(left, top, right, bottom);
+  }
+
+  Set<String> _marqueeIntersectedIds(Rect rectContent) {
+    final viewportContext = _rowsViewportKey.currentContext;
+    final viewportBox = viewportContext?.findRenderObject() as RenderBox?;
+    if (viewportBox == null) return const <String>{};
+    final scrollOffset = _rowsScrollOffset;
+    final hits = <String>{};
+    for (final row in _filteredContacts) {
+      final id = row['id']?.toString() ?? '';
+      if (id.isEmpty) continue;
+      final rowContext = _rowKeyFor(id).currentContext;
+      final rowBox = rowContext?.findRenderObject() as RenderBox?;
+      if (rowBox == null || !rowBox.hasSize) continue;
+      final topLeftGlobal = rowBox.localToGlobal(Offset.zero);
+      final topLeftViewport = viewportBox.globalToLocal(topLeftGlobal);
+      final viewportRect = Rect.fromLTWH(
+        topLeftViewport.dx,
+        topLeftViewport.dy,
+        rowBox.size.width,
+        rowBox.size.height,
+      );
+      final rowRectContent = viewportRect.shift(Offset(0, scrollOffset));
+      if (rowRectContent.overlaps(rectContent)) hits.add(id);
+    }
+    return hits;
+  }
+
+  void _applyMarqueeSelection() {
+    if (!_marqueeActive) return;
+    final rect = _marqueeRectContent();
+    final hit = _marqueeIntersectedIds(rect);
+    final next = _marqueeAdditive ? ({..._marqueeBaseSelection, ...hit}) : hit;
+    if (!mounted) return;
+    setState(() {
+      _selectedContactIds
+        ..clear()
+        ..addAll(next);
+      if (next.isEmpty) {
+        _selectedContactId = null;
+        return;
+      }
+      if (_selectedContactId != null && next.contains(_selectedContactId)) {
+        return;
+      }
+      for (final row in _filteredContacts) {
+        final id = row['id']?.toString() ?? '';
+        if (next.contains(id)) {
+          _selectedContactId = id;
+          _selectionAnchorContactId ??= id;
+          return;
+        }
+      }
+    });
+  }
+
+  void _startMarqueeSelection(Offset local) {
+    _marqueeStartLocal = local;
+    _marqueePointerLocal = local;
+    _marqueeStartContent = _localToContent(local);
+    _marqueeCurrentContent = _marqueeStartContent;
+    _marqueeAdditive = _isSelectionExtendPressed();
+    _marqueeBaseSelection = _currentSelectionIds();
+    _marqueeActive = false;
+  }
+
+  void _updateMarqueeAutoScroll() {
+    if (!_marqueeActive || _marqueePointerLocal == null) {
+      _marqueeAutoScrollVelocity = 0;
+      _marqueeAutoScrollTimer?.cancel();
+      _marqueeAutoScrollTimer = null;
+      return;
+    }
+    final box =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      _marqueeAutoScrollVelocity = 0;
+      return;
+    }
+    const edge = 36.0;
+    const maxStep = 18.0;
+    final y = _marqueePointerLocal!.dy;
+    if (y < edge) {
+      _marqueeAutoScrollVelocity =
+          -((edge - y) / edge).clamp(0.0, 1.0) * maxStep;
+    } else if (y > box.size.height - edge) {
+      _marqueeAutoScrollVelocity =
+          ((y - (box.size.height - edge)) / edge).clamp(0.0, 1.0) * maxStep;
+    } else {
+      _marqueeAutoScrollVelocity = 0;
+    }
+    if (_marqueeAutoScrollVelocity == 0) {
+      _marqueeAutoScrollTimer?.cancel();
+      _marqueeAutoScrollTimer = null;
+      return;
+    }
+    _marqueeAutoScrollTimer ??= Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _tickMarqueeAutoScroll(),
+    );
+  }
+
+  void _tickMarqueeAutoScroll() {
+    if (!_marqueeActive ||
+        _marqueeAutoScrollVelocity == 0 ||
+        !_verticalScrollController.hasClients) {
+      _marqueeAutoScrollTimer?.cancel();
+      _marqueeAutoScrollTimer = null;
+      return;
+    }
+    final pos = _verticalScrollController.position;
+    final next = (pos.pixels + _marqueeAutoScrollVelocity).clamp(
+      pos.minScrollExtent,
+      pos.maxScrollExtent,
+    );
+    if (next == pos.pixels) return;
+    _verticalScrollController.jumpTo(next);
+    if (_marqueePointerLocal != null) {
+      _marqueeCurrentContent = _localToContent(_marqueePointerLocal!);
+    }
+    _applyMarqueeSelection();
+  }
+
+  void _updateMarqueeSelection(Offset local) {
+    if (_marqueeStartLocal == null) return;
+    _marqueePointerLocal = local;
+    _marqueeCurrentContent = _localToContent(local);
+    final shouldActivate = (local - _marqueeStartLocal!).distance > 6;
+    if (!shouldActivate && !_marqueeActive) return;
+    if (!_marqueeActive && mounted) {
+      setState(() => _marqueeActive = true);
+    }
+    _applyMarqueeSelection();
+    _updateMarqueeAutoScroll();
+  }
+
+  void _endMarqueeSelection() {
+    _marqueeAutoScrollVelocity = 0;
+    _marqueeAutoScrollTimer?.cancel();
+    _marqueeAutoScrollTimer = null;
+    _marqueeStartLocal = null;
+    _marqueePointerLocal = null;
+    _marqueeStartContent = null;
+    _marqueeCurrentContent = null;
+    _marqueeAdditive = false;
+    _marqueeBaseSelection = <String>{};
+    if (_marqueeActive && mounted) {
+      setState(() => _marqueeActive = false);
+    } else {
+      _marqueeActive = false;
+    }
+  }
+
   void _ensureVisible(String? id, {int? moveDelta}) {
     if (id == null) return;
     final rows = _filteredContacts;
@@ -304,11 +524,52 @@ class _OperationDirectoryPageState extends State<OperationDirectoryPage> {
     bool requestFocus = true,
     bool ensureVisible = true,
     int? moveDelta,
+    bool additive = false,
+    bool additiveToggle = true,
+    bool allowToggle = true,
   }) {
     if (!mounted) return;
-    setState(() => _selectedContactId = id);
+    final normalized = id?.trim();
+    setState(() {
+      if (normalized == null || normalized.isEmpty) {
+        _selectedContactId = null;
+        _selectionAnchorContactId = null;
+        _selectedContactIds.clear();
+      } else if (additive) {
+        final next = {..._currentSelectionIds()};
+        if (additiveToggle && next.contains(normalized)) {
+          next.remove(normalized);
+        } else {
+          next.add(normalized);
+        }
+        _selectedContactIds
+          ..clear()
+          ..addAll(next);
+        if (next.isEmpty) {
+          _selectedContactId = null;
+          _selectionAnchorContactId = null;
+        } else {
+          _selectedContactId = normalized;
+          _selectionAnchorContactId ??= normalized;
+        }
+      } else {
+        if (allowToggle &&
+            _selectedContactId == normalized &&
+            _selectedContactIds.length <= 1) {
+          _selectedContactId = null;
+          _selectionAnchorContactId = null;
+          _selectedContactIds.clear();
+        } else {
+          _selectedContactId = normalized;
+          _selectionAnchorContactId = normalized;
+          _selectedContactIds
+            ..clear()
+            ..add(normalized);
+        }
+      }
+    });
     if (requestFocus) _rowsFocusNode.requestFocus();
-    if (ensureVisible) _ensureVisible(id, moveDelta: moveDelta);
+    if (ensureVisible) _ensureVisible(normalized, moveDelta: moveDelta);
   }
 
   int _selectedIndexIn(List<Map<String, dynamic>> rows) {
@@ -329,6 +590,43 @@ class _OperationDirectoryPageState extends State<OperationDirectoryPage> {
       requestFocus: true,
       moveDelta: delta,
     );
+  }
+
+  void _extendSelectionTo(String id, List<Map<String, dynamic>> rows) {
+    if (rows.isEmpty || id.trim().isEmpty) return;
+    final anchorId = (_selectionAnchorContactId?.isNotEmpty ?? false)
+        ? _selectionAnchorContactId!
+        : (_selectedContactId?.isNotEmpty ?? false)
+        ? _selectedContactId!
+        : id;
+    final anchorIndex = rows.indexWhere(
+      (row) => row['id']?.toString() == anchorId,
+    );
+    final currentIndex = rows.indexWhere((row) => row['id']?.toString() == id);
+    if (anchorIndex < 0 || currentIndex < 0) {
+      _selectContact(
+        id,
+        requestFocus: true,
+        ensureVisible: false,
+        allowToggle: false,
+      );
+      return;
+    }
+    final start = math.min(anchorIndex, currentIndex);
+    final end = math.max(anchorIndex, currentIndex);
+    final ids = <String>{};
+    for (var i = start; i <= end; i++) {
+      final rowId = rows[i]['id']?.toString() ?? '';
+      if (rowId.isNotEmpty) ids.add(rowId);
+    }
+    setState(() {
+      _selectedContactId = id;
+      _selectionAnchorContactId = anchorId;
+      _selectedContactIds
+        ..clear()
+        ..addAll(ids);
+    });
+    _rowsFocusNode.requestFocus();
   }
 
   Map<String, dynamic>? get _selectedContactRow {
@@ -439,11 +737,33 @@ class _OperationDirectoryPageState extends State<OperationDirectoryPage> {
     if (rows.isEmpty) return KeyEventResult.ignored;
     final key = event.logicalKey;
     if (key == LogicalKeyboardKey.arrowDown) {
-      _moveSelection(1);
+      if (_isShiftPressed()) {
+        final currentIndex = _selectedIndexIn(rows);
+        final safeIndex = currentIndex < 0 ? 0 : currentIndex;
+        final nextIndex = (safeIndex + 1).clamp(0, rows.length - 1);
+        final nextId = rows[nextIndex]['id']?.toString();
+        if (nextId != null && nextId.isNotEmpty) {
+          _extendSelectionTo(nextId, rows);
+          _ensureVisible(nextId, moveDelta: 1);
+        }
+      } else {
+        _moveSelection(1);
+      }
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp) {
-      _moveSelection(-1);
+      if (_isShiftPressed()) {
+        final currentIndex = _selectedIndexIn(rows);
+        final safeIndex = currentIndex < 0 ? 0 : currentIndex;
+        final nextIndex = (safeIndex - 1).clamp(0, rows.length - 1);
+        final nextId = rows[nextIndex]['id']?.toString();
+        if (nextId != null && nextId.isNotEmpty) {
+          _extendSelectionTo(nextId, rows);
+          _ensureVisible(nextId, moveDelta: -1);
+        }
+      } else {
+        _moveSelection(-1);
+      }
       return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.f2 ||
@@ -533,196 +853,217 @@ class _OperationDirectoryPageState extends State<OperationDirectoryPage> {
 
   Future<void> _openColumnFilterDialog(String columnId, String label) async {
     final initialSelected = {...(_columnValueFilters[columnId] ?? <String>{})};
-    final result = await showDialog<_DirectoryFilterDialogResult>(
-      context: context,
-      builder: (dialogContext) {
-        final localSelected = <String>{...initialSelected};
-        String localSearch = '';
-        return StatefulBuilder(
-          builder: (_, setLocalState) {
-            final options = _columnDistinctValues(
-              columnId,
-              search: localSearch,
-            );
-            final allVisibleSelected =
-                options.isNotEmpty && options.every(localSelected.contains);
-
-            void applyAndClose() {
-              Navigator.pop(
-                dialogContext,
-                _DirectoryFilterDialogResult(selectedValues: localSelected),
+    final scrollController = ScrollController();
+    try {
+      final result = await showDialog<_DirectoryFilterDialogResult>(
+        context: context,
+        builder: (dialogContext) {
+          final localSelected = <String>{...initialSelected};
+          String localSearch = '';
+          return StatefulBuilder(
+            builder: (_, setLocalState) {
+              final options = _columnDistinctValues(
+                columnId,
+                search: localSearch,
               );
-            }
+              final allVisibleSelected =
+                  options.isNotEmpty && options.every(localSelected.contains);
 
-            return Focus(
-              onKeyEvent: (_, event) {
-                if (event is! KeyDownEvent) return KeyEventResult.ignored;
-                final key = event.logicalKey;
-                if (key == LogicalKeyboardKey.enter ||
-                    key == LogicalKeyboardKey.numpadEnter) {
-                  applyAndClose();
-                  return KeyEventResult.handled;
-                }
-                return KeyEventResult.ignored;
-              },
-              child: Dialog(
-                backgroundColor: Colors.transparent,
-                insetPadding: const EdgeInsets.symmetric(
-                  horizontal: 18,
-                  vertical: 24,
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(20),
-                  child: BackdropFilter(
-                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-                    child: Container(
-                      width: 420,
-                      constraints: const BoxConstraints(maxHeight: 560),
-                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                      decoration: _directoryFilterDialogDecoration(),
-                      child: FocusScope(
-                        autofocus: true,
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Filtro: $label',
-                              style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF0B2B2B),
-                              ),
-                            ),
-                            const SizedBox(height: 10),
-                            TextField(
-                              onChanged: (v) =>
-                                  setLocalState(() => localSearch = v),
-                              onSubmitted: (_) => applyAndClose(),
-                              decoration: _directoryInputDecoration(
-                                labelText: 'Buscar',
-                                prefixIcon: const Icon(Icons.search_rounded),
-                              ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              children: [
-                                TextButton(
-                                  style: TextButton.styleFrom(
-                                    foregroundColor: const Color(0xFF2A4B49),
-                                  ),
-                                  onPressed: () {
-                                    setLocalState(() {
-                                      if (allVisibleSelected) {
-                                        localSelected.removeAll(options);
-                                      } else {
-                                        localSelected.addAll(options);
-                                      }
-                                    });
-                                  },
-                                  child: Text(
-                                    allVisibleSelected
-                                        ? 'Deseleccionar visibles'
-                                        : 'Seleccionar visibles',
-                                  ),
+              void applyAndClose() {
+                Navigator.pop(
+                  dialogContext,
+                  _DirectoryFilterDialogResult(selectedValues: localSelected),
+                );
+              }
+
+              return Focus(
+                onKeyEvent: (_, event) {
+                  if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                  final key = event.logicalKey;
+                  if (key == LogicalKeyboardKey.enter ||
+                      key == LogicalKeyboardKey.numpadEnter) {
+                    applyAndClose();
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: Dialog(
+                  backgroundColor: Colors.transparent,
+                  insetPadding: const EdgeInsets.symmetric(
+                    horizontal: 18,
+                    vertical: 24,
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(20),
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                      child: Container(
+                        width: 420,
+                        constraints: const BoxConstraints(maxHeight: 560),
+                        padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                        decoration: _directoryFilterDialogDecoration(),
+                        child: FocusScope(
+                          autofocus: true,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Filtro: $label',
+                                style: const TextStyle(
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  color: Color(0xFF0B2B2B),
                                 ),
-                                const Spacer(),
-                                Text('${localSelected.length} seleccionados'),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Expanded(
-                              child: options.isEmpty
-                                  ? const Center(
-                                      child: Text('Sin valores para mostrar'),
-                                    )
-                                  : ScrollConfiguration(
-                                      behavior: const MaterialScrollBehavior()
-                                          .copyWith(
-                                            dragDevices: <PointerDeviceKind>{
-                                              PointerDeviceKind.touch,
-                                              PointerDeviceKind.mouse,
-                                              PointerDeviceKind.stylus,
-                                              PointerDeviceKind.invertedStylus,
-                                              PointerDeviceKind.unknown,
+                              ),
+                              const SizedBox(height: 10),
+                              TextField(
+                                onChanged: (v) =>
+                                    setLocalState(() => localSearch = v),
+                                onSubmitted: (_) => applyAndClose(),
+                                decoration: _directoryInputDecoration(
+                                  labelText: 'Buscar',
+                                  prefixIcon: const Icon(Icons.search_rounded),
+                                ),
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                children: [
+                                  TextButton(
+                                    style: TextButton.styleFrom(
+                                      foregroundColor: const Color(0xFF2A4B49),
+                                    ),
+                                    onPressed: () {
+                                      setLocalState(() {
+                                        if (allVisibleSelected) {
+                                          localSelected.removeAll(options);
+                                        } else {
+                                          localSelected.addAll(options);
+                                        }
+                                      });
+                                    },
+                                    child: Text(
+                                      allVisibleSelected
+                                          ? 'Deseleccionar visibles'
+                                          : 'Seleccionar visibles',
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  Text('${localSelected.length} seleccionados'),
+                                ],
+                              ),
+                              const SizedBox(height: 6),
+                              Expanded(
+                                child: options.isEmpty
+                                    ? const Center(
+                                        child: Text('Sin valores para mostrar'),
+                                      )
+                                    : ScrollConfiguration(
+                                        behavior: const MaterialScrollBehavior()
+                                            .copyWith(
+                                              dragDevices: <PointerDeviceKind>{
+                                                PointerDeviceKind.touch,
+                                                PointerDeviceKind.mouse,
+                                                PointerDeviceKind.stylus,
+                                                PointerDeviceKind
+                                                    .invertedStylus,
+                                                PointerDeviceKind.unknown,
+                                              },
+                                            ),
+                                        child: Scrollbar(
+                                          controller: scrollController,
+                                          thumbVisibility: true,
+                                          trackVisibility: true,
+                                          interactive: true,
+                                          child: ListView.builder(
+                                            controller: scrollController,
+                                            primary: false,
+                                            dragStartBehavior:
+                                                DragStartBehavior.down,
+                                            itemCount: options.length,
+                                            itemBuilder: (_, i) {
+                                              final value = options[i];
+                                              final checked = localSelected
+                                                  .contains(value);
+                                              return _DirectoryFilterValueTile(
+                                                label: value,
+                                                selected: checked,
+                                                onTap: () {
+                                                  setLocalState(() {
+                                                    if (checked) {
+                                                      localSelected.remove(
+                                                        value,
+                                                      );
+                                                    } else {
+                                                      localSelected.add(value);
+                                                    }
+                                                  });
+                                                },
+                                              );
                                             },
                                           ),
-                                      child: ListView.builder(
-                                        itemCount: options.length,
-                                        itemBuilder: (_, i) {
-                                          final value = options[i];
-                                          final checked = localSelected
-                                              .contains(value);
-                                          return _DirectoryFilterValueTile(
-                                            label: value,
-                                            selected: checked,
-                                            onTap: () {
-                                              setLocalState(() {
-                                                if (checked) {
-                                                  localSelected.remove(value);
-                                                } else {
-                                                  localSelected.add(value);
-                                                }
-                                              });
-                                            },
-                                          );
-                                        },
+                                        ),
                                       ),
-                                    ),
-                            ),
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.end,
-                              children: [
-                                OutlinedButton(
-                                  style: _directoryFilterOutlinedButtonStyle(),
-                                  onPressed: () => Navigator.pop(dialogContext),
-                                  child: const Text('Cancelar'),
-                                ),
-                                const SizedBox(width: 8),
-                                OutlinedButton(
-                                  style: _directoryFilterOutlinedButtonStyle(),
-                                  onPressed: () {
-                                    Navigator.pop(
-                                      dialogContext,
-                                      const _DirectoryFilterDialogResult(
-                                        selectedValues: <String>{},
-                                      ),
-                                    );
-                                  },
-                                  child: const Text('Limpiar'),
-                                ),
-                                const SizedBox(width: 8),
-                                FilledButton(
-                                  style: _directoryFilterFilledButtonStyle(),
-                                  onPressed: applyAndClose,
-                                  child: const Text('Aplicar'),
-                                ),
-                              ],
-                            ),
-                          ],
+                              ),
+                              const SizedBox(height: 8),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.end,
+                                children: [
+                                  OutlinedButton(
+                                    style:
+                                        _directoryFilterOutlinedButtonStyle(),
+                                    onPressed: () =>
+                                        Navigator.pop(dialogContext),
+                                    child: const Text('Cancelar'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  OutlinedButton(
+                                    style:
+                                        _directoryFilterOutlinedButtonStyle(),
+                                    onPressed: () {
+                                      Navigator.pop(
+                                        dialogContext,
+                                        const _DirectoryFilterDialogResult(
+                                          selectedValues: <String>{},
+                                        ),
+                                      );
+                                    },
+                                    child: const Text('Limpiar'),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  FilledButton(
+                                    style: _directoryFilterFilledButtonStyle(),
+                                    onPressed: applyAndClose,
+                                    child: const Text('Aplicar'),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            );
-          },
-        );
-      },
-    );
-    if (!mounted || result == null) return;
-    setState(() {
-      if (result.selectedValues.isEmpty) {
-        _columnValueFilters.remove(columnId);
-      } else {
-        _columnValueFilters[columnId] = result.selectedValues;
-      }
-      _selectedContactId = _sanitizeSelectedId(
-        _selectedContactId,
-        _filteredContacts,
+              );
+            },
+          );
+        },
       );
-    });
+      if (!mounted || result == null) return;
+      setState(() {
+        if (result.selectedValues.isEmpty) {
+          _columnValueFilters.remove(columnId);
+        } else {
+          _columnValueFilters[columnId] = result.selectedValues;
+        }
+        _selectedContactId = _sanitizeSelectedId(
+          _selectedContactId,
+          _filteredContacts,
+        );
+      });
+    } finally {
+      scrollController.dispose();
+    }
   }
 
   Future<void> _createContact() async {
@@ -1403,53 +1744,129 @@ class _OperationDirectoryPageState extends State<OperationDirectoryPage> {
                     ),
                     const SizedBox(height: 8),
                     Expanded(
-                      child: ScrollConfiguration(
-                        behavior: const MaterialScrollBehavior().copyWith(
-                          dragDevices: <PointerDeviceKind>{
-                            PointerDeviceKind.touch,
-                            PointerDeviceKind.mouse,
-                            PointerDeviceKind.stylus,
-                            PointerDeviceKind.invertedStylus,
-                            PointerDeviceKind.unknown,
+                      child: Scrollbar(
+                        controller: _verticalScrollController,
+                        thumbVisibility: true,
+                        trackVisibility: true,
+                        interactive: true,
+                        child: Listener(
+                          behavior: HitTestBehavior.translucent,
+                          onPointerDown: (event) {
+                            if (event.kind != PointerDeviceKind.mouse &&
+                                event.kind != PointerDeviceKind.stylus &&
+                                event.kind != PointerDeviceKind.unknown) {
+                              return;
+                            }
+                            if (event.buttons != kPrimaryMouseButton) return;
+                            _startMarqueeSelection(event.localPosition);
                           },
-                        ),
-                        child: Scrollbar(
-                          controller: _verticalScrollController,
-                          thumbVisibility: true,
-                          trackVisibility: true,
-                          interactive: true,
-                          child: ListView.separated(
-                            controller: _verticalScrollController,
-                            itemCount: rows.length,
-                            separatorBuilder: (_, _) =>
-                                const SizedBox(height: 6),
-                            itemBuilder: (context, index) {
-                              final row = rows[index];
-                              final id = row['id']?.toString();
-                              return _DirectoryRowCard(
-                                key: id == null
-                                    ? ValueKey(index)
-                                    : _rowKeyFor(id),
-                                row: row,
-                                selected:
-                                    id != null && id == _selectedContactId,
-                                onTap: () => _selectContact(id),
-                                onDoubleTap: () => _editContact(row),
-                                onSecondaryTapDown: (details) {
-                                  unawaited(
-                                    _showActionsMenu(
-                                      row,
-                                      globalPosition: details.globalPosition,
+                          onPointerMove: (event) {
+                            if (event.buttons != kPrimaryMouseButton) return;
+                            _updateMarqueeSelection(event.localPosition);
+                          },
+                          onPointerUp: (_) => _endMarqueeSelection(),
+                          onPointerCancel: (_) => _endMarqueeSelection(),
+                          child: Container(
+                            key: _rowsViewportKey,
+                            child: ClipRect(
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  AbsorbPointer(
+                                    absorbing: _marqueeActive,
+                                    child: ListView.builder(
+                                      controller: _verticalScrollController,
+                                      padding: const EdgeInsets.only(
+                                        bottom: 12,
+                                      ),
+                                      itemCount: rows.length,
+                                      itemBuilder: (context, index) {
+                                        final row = rows[index];
+                                        final id = row['id']?.toString();
+                                        final isSelected =
+                                            id != null &&
+                                            _currentSelectionIds().contains(id);
+                                        return Padding(
+                                          padding: EdgeInsets.only(
+                                            bottom: index == rows.length - 1
+                                                ? 0
+                                                : 6,
+                                          ),
+                                          child: _DirectoryRowCard(
+                                            key: id == null
+                                                ? ValueKey(index)
+                                                : _rowKeyFor(id),
+                                            row: row,
+                                            selected: isSelected,
+                                            onTap: () {
+                                              final normalized =
+                                                  id?.trim() ?? '';
+                                              if (normalized.isEmpty) return;
+                                              if (_isShiftPressed()) {
+                                                _extendSelectionTo(
+                                                  normalized,
+                                                  rows,
+                                                );
+                                                return;
+                                              }
+                                              _selectContact(
+                                                normalized,
+                                                requestFocus: true,
+                                                ensureVisible: false,
+                                                additive: _isCtrlOrCmdPressed(),
+                                                additiveToggle: true,
+                                                allowToggle: false,
+                                              );
+                                            },
+                                            onDoubleTap: () =>
+                                                _editContact(row),
+                                            onSecondaryTapDown: (details) {
+                                              final normalized =
+                                                  id?.trim() ?? '';
+                                              if (normalized.isNotEmpty &&
+                                                  !_currentSelectionIds()
+                                                      .contains(normalized)) {
+                                                _selectContact(
+                                                  normalized,
+                                                  requestFocus: true,
+                                                  ensureVisible: false,
+                                                  allowToggle: false,
+                                                );
+                                              }
+                                              unawaited(
+                                                _showActionsMenu(
+                                                  row,
+                                                  globalPosition:
+                                                      details.globalPosition,
+                                                ),
+                                              );
+                                            },
+                                            onOpenActions: (buttonContext) =>
+                                                _showActionsMenu(
+                                                  row,
+                                                  anchorContext: buttonContext,
+                                                ),
+                                          ),
+                                        );
+                                      },
                                     ),
-                                  );
-                                },
-                                onOpenActions: (buttonContext) =>
-                                    _showActionsMenu(
-                                      row,
-                                      anchorContext: buttonContext,
+                                  ),
+                                  if (_marqueeActive)
+                                    Positioned.fill(
+                                      child: IgnorePointer(
+                                        child: CustomPaint(
+                                          painter:
+                                              _DirectoryMarqueeSelectionPainter(
+                                                rect: _clampRectToViewport(
+                                                  _marqueeRectForPaint(),
+                                                ),
+                                              ),
+                                        ),
+                                      ),
                                     ),
-                              );
-                            },
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ),
@@ -1787,7 +2204,6 @@ class _DirectoryRowCard extends StatelessWidget {
         mouseCursor: SystemMouseCursors.click,
         hoverColor: const Color(0xFFEFF7FD),
         onTapDown: (_) => onTap(),
-        onTap: onTap,
         onDoubleTap: onDoubleTap,
         onSecondaryTapDown: onSecondaryTapDown,
         child: Padding(
@@ -1882,28 +2298,14 @@ class _DirectoryRowCard extends StatelessWidget {
                   width: _kDirActionsColW,
                   trailingWidth: _kDirActionsColW,
                   leading: const SizedBox.shrink(),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Text(
-                        'Menu',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Color(0xFF35526A),
-                        ),
-                      ),
-                      const SizedBox(width: 4),
-                      Builder(
-                        builder: (buttonContext) {
-                          return IconButton(
-                            tooltip: 'Acciones',
-                            onPressed: () => onOpenActions(buttonContext),
-                            icon: const Icon(Icons.more_horiz_rounded),
-                          );
-                        },
-                      ),
-                    ],
+                  trailing: Builder(
+                    builder: (buttonContext) {
+                      return IconButton(
+                        tooltip: 'Acciones',
+                        onPressed: () => onOpenActions(buttonContext),
+                        icon: const Icon(Icons.more_horiz_rounded),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -1913,6 +2315,29 @@ class _DirectoryRowCard extends StatelessWidget {
       ),
     );
   }
+}
+
+class _DirectoryMarqueeSelectionPainter extends CustomPainter {
+  final Rect rect;
+
+  const _DirectoryMarqueeSelectionPainter({required this.rect});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (rect.isEmpty) return;
+    final fill = Paint()
+      ..color = const Color(0xFF4B8DBD).withValues(alpha: 0.18);
+    final stroke = Paint()
+      ..color = const Color(0xFF3C7FB0).withValues(alpha: 0.80)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    canvas.drawRect(rect, fill);
+    canvas.drawRect(rect, stroke);
+  }
+
+  @override
+  bool shouldRepaint(covariant _DirectoryMarqueeSelectionPainter oldDelegate) =>
+      oldDelegate.rect != rect;
 }
 
 class _DirectoryGridColumnDivider extends StatelessWidget {
@@ -2034,12 +2459,14 @@ class _DirectoryMultiSelectField extends StatelessWidget {
   final List<String> values;
   final List<String> options;
   final ValueChanged<List<String>> onChanged;
+  final Future<bool> Function(String value)? onDeleteOption;
 
   const _DirectoryMultiSelectField({
     required this.label,
     required this.values,
     required this.options,
     required this.onChanged,
+    this.onDeleteOption,
   });
 
   @override
@@ -2053,6 +2480,7 @@ class _DirectoryMultiSelectField extends StatelessWidget {
         title: label,
         initialValues: values,
         options: options,
+        onDeleteOption: onDeleteOption,
       );
       if (picked == null) return;
       onChanged(picked);
@@ -2107,11 +2535,15 @@ class _DirectoryFilterValueTile extends StatelessWidget {
   final String label;
   final bool selected;
   final VoidCallback onTap;
+  final VoidCallback? onDelete;
+  final String? deleteTooltip;
 
   const _DirectoryFilterValueTile({
     required this.label,
     required this.selected,
     required this.onTap,
+    this.onDelete,
+    this.deleteTooltip,
   });
 
   @override
@@ -2174,6 +2606,24 @@ class _DirectoryFilterValueTile extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (onDelete != null) ...[
+                  const SizedBox(width: 8),
+                  InkWell(
+                    borderRadius: BorderRadius.circular(999),
+                    onTap: onDelete,
+                    child: Padding(
+                      padding: const EdgeInsets.all(2),
+                      child: Tooltip(
+                        message: deleteTooltip ?? 'Eliminar opción',
+                        child: const Icon(
+                          Icons.delete_outline_rounded,
+                          size: 18,
+                          color: Color(0xFF8A1F1F),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -2209,6 +2659,7 @@ Future<List<String>?> _showDirectoryTagPickerDialog({
   required String title,
   required List<String> initialValues,
   required List<String> options,
+  Future<bool> Function(String value)? onDeleteOption,
 }) {
   return _showDirectoryDialog<List<String>>(
     context: context,
@@ -2216,6 +2667,7 @@ Future<List<String>?> _showDirectoryTagPickerDialog({
       title: title,
       initialValues: initialValues,
       options: options,
+      onDeleteOption: onDeleteOption,
     ),
   );
 }
@@ -2224,11 +2676,13 @@ class _DirectoryTagPickerDialog extends StatefulWidget {
   final String title;
   final List<String> initialValues;
   final List<String> options;
+  final Future<bool> Function(String value)? onDeleteOption;
 
   const _DirectoryTagPickerDialog({
     required this.title,
     required this.initialValues,
     required this.options,
+    this.onDeleteOption,
   });
 
   @override
@@ -2240,6 +2694,7 @@ class _DirectoryTagPickerDialogState extends State<_DirectoryTagPickerDialog> {
   late final TextEditingController _searchC;
   late final Set<String> _selected;
   late final List<String> _options;
+  final ScrollController _optionsScrollController = ScrollController();
   String _query = '';
 
   @override
@@ -2262,6 +2717,7 @@ class _DirectoryTagPickerDialogState extends State<_DirectoryTagPickerDialog> {
   @override
   void dispose() {
     _searchC.dispose();
+    _optionsScrollController.dispose();
     super.dispose();
   }
 
@@ -2300,6 +2756,22 @@ class _DirectoryTagPickerDialogState extends State<_DirectoryTagPickerDialog> {
       _selected.add(normalized);
       _query = '';
       _searchC.clear();
+    });
+  }
+
+  Future<void> _deleteOption(String value) async {
+    final deleteRemotely = widget.onDeleteOption;
+    if (deleteRemotely != null) {
+      final deleted = await deleteRemotely(value);
+      if (!deleted || !mounted) return;
+    }
+    setState(() {
+      _options.removeWhere(
+        (option) => option.toLowerCase() == value.toLowerCase(),
+      );
+      _selected.removeWhere(
+        (option) => option.toLowerCase() == value.toLowerCase(),
+      );
     });
   }
 
@@ -2362,57 +2834,58 @@ class _DirectoryTagPickerDialogState extends State<_DirectoryTagPickerDialog> {
                 const SizedBox(height: 10),
                 SizedBox(
                   height: 34,
-                  child: ScrollConfiguration(
-                    behavior: const MaterialScrollBehavior().copyWith(
-                      dragDevices: <PointerDeviceKind>{
-                        PointerDeviceKind.touch,
-                        PointerDeviceKind.mouse,
-                        PointerDeviceKind.stylus,
-                        PointerDeviceKind.invertedStylus,
-                        PointerDeviceKind.unknown,
-                      },
-                    ),
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: selectedValues.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 8),
-                      itemBuilder: (context, index) {
-                        final value = selectedValues[index];
-                        return Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE7F1F8),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: const Color(
-                                0xFFB7D7D2,
-                              ).withValues(alpha: 0.9),
+                  child: SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    child: Row(
+                      children: [
+                        for (
+                          var index = 0;
+                          index < selectedValues.length;
+                          index++
+                        )
+                          Padding(
+                            padding: EdgeInsets.only(
+                              right: index == selectedValues.length - 1 ? 0 : 8,
+                            ),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 10,
+                              ),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFE7F1F8),
+                                borderRadius: BorderRadius.circular(999),
+                                border: Border.all(
+                                  color: const Color(
+                                    0xFFB7D7D2,
+                                  ).withValues(alpha: 0.9),
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    selectedValues[index],
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF17324A),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 6),
+                                  InkWell(
+                                    borderRadius: BorderRadius.circular(999),
+                                    onTap: () =>
+                                        _toggleValue(selectedValues[index]),
+                                    child: const Icon(
+                                      Icons.close_rounded,
+                                      size: 16,
+                                      color: Color(0xFF35526A),
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                value,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF17324A),
-                                ),
-                              ),
-                              const SizedBox(width: 6),
-                              InkWell(
-                                borderRadius: BorderRadius.circular(999),
-                                onTap: () => _toggleValue(value),
-                                child: const Icon(
-                                  Icons.close_rounded,
-                                  size: 16,
-                                  color: Color(0xFF35526A),
-                                ),
-                              ),
-                            ],
-                          ),
-                        );
-                      },
+                      ],
                     ),
                   ),
                 ),
@@ -2421,28 +2894,20 @@ class _DirectoryTagPickerDialogState extends State<_DirectoryTagPickerDialog> {
               Expanded(
                 child: visibleOptions.isEmpty
                     ? const Center(child: Text('Sin coincidencias'))
-                    : ScrollConfiguration(
-                        behavior: const MaterialScrollBehavior().copyWith(
-                          dragDevices: <PointerDeviceKind>{
-                            PointerDeviceKind.touch,
-                            PointerDeviceKind.mouse,
-                            PointerDeviceKind.stylus,
-                            PointerDeviceKind.invertedStylus,
-                            PointerDeviceKind.unknown,
-                          },
-                        ),
-                        child: ListView.builder(
-                          itemCount: visibleOptions.length,
-                          itemBuilder: (context, index) {
-                            final value = visibleOptions[index];
-                            final selected = _selected.contains(value);
-                            return _DirectoryFilterValueTile(
-                              label: value,
-                              selected: selected,
-                              onTap: () => _toggleValue(value),
-                            );
-                          },
-                        ),
+                    : ListView.builder(
+                        controller: _optionsScrollController,
+                        itemCount: visibleOptions.length,
+                        itemBuilder: (context, index) {
+                          final value = visibleOptions[index];
+                          final selected = _selected.contains(value);
+                          return _DirectoryFilterValueTile(
+                            label: value,
+                            selected: selected,
+                            onTap: () => _toggleValue(value),
+                            onDelete: () => _deleteOption(value),
+                            deleteTooltip: 'Eliminar "$value"',
+                          );
+                        },
                       ),
               ),
               const SizedBox(height: 10),
@@ -2500,6 +2965,8 @@ class _DirectoryContactDialogState extends State<_DirectoryContactDialog> {
   late bool _active;
   late List<String> _selectedAreas;
   late List<String> _selectedSpecialties;
+  late List<String> _areaOptions;
+  late List<String> _specialtyOptions;
 
   @override
   void initState() {
@@ -2538,6 +3005,8 @@ class _DirectoryContactDialogState extends State<_DirectoryContactDialog> {
         widget.initial?['specialty'],
       ),
     );
+    _areaOptions = _normalizeTagNames(widget.availableAreas);
+    _specialtyOptions = _normalizeTagNames(widget.availableSpecialties);
   }
 
   @override
@@ -2567,6 +3036,106 @@ class _DirectoryContactDialogState extends State<_DirectoryContactDialog> {
         active: _active,
       ),
     );
+  }
+
+  Future<bool> _deleteTaxonomyOption({
+    required String table,
+    required String value,
+    required bool isArea,
+  }) async {
+    final normalized = value.trim();
+    if (normalized.isEmpty) return false;
+    final messenger = ScaffoldMessenger.of(context);
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return ContractConfirmDialogKeyHandler(
+          onConfirm: () => Navigator.of(dialogContext).pop(true),
+          onCancel: () => Navigator.of(dialogContext).pop(false),
+          child: ContractDialogShell(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Eliminar opción',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF17324A),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      'Se eliminará "$normalized" del catálogo de ${isArea ? 'áreas' : 'especialidades'} y también se quitará de los contactos que la tengan asignada.',
+                      style: const TextStyle(
+                        fontSize: 14,
+                        height: 1.35,
+                        color: Color(0xFF35526A),
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(false),
+                          child: const Text('Cancelar'),
+                        ),
+                        const SizedBox(width: 10),
+                        FilledButton(
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(true),
+                          child: const Text('Eliminar'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    );
+    if (confirmed != true || !mounted) return false;
+    try {
+      await Supabase.instance.client
+          .from(table)
+          .delete()
+          .eq('name', normalized);
+      setState(() {
+        if (isArea) {
+          _areaOptions.removeWhere(
+            (option) => option.toLowerCase() == normalized.toLowerCase(),
+          );
+          _selectedAreas.removeWhere(
+            (option) => option.toLowerCase() == normalized.toLowerCase(),
+          );
+        } else {
+          _specialtyOptions.removeWhere(
+            (option) => option.toLowerCase() == normalized.toLowerCase(),
+          );
+          _selectedSpecialties.removeWhere(
+            (option) => option.toLowerCase() == normalized.toLowerCase(),
+          );
+        }
+      });
+      messenger.showSnackBar(
+        SnackBar(content: Text('Opción eliminada: $normalized')),
+      );
+      return true;
+    } catch (e) {
+      messenger.showSnackBar(
+        SnackBar(content: Text('No se pudo eliminar "$normalized": $e')),
+      );
+      return false;
+    }
   }
 
   @override
@@ -2616,10 +3185,16 @@ class _DirectoryContactDialogState extends State<_DirectoryContactDialog> {
                                   child: _DirectoryMultiSelectField(
                                     label: 'Área',
                                     values: _selectedAreas,
-                                    options: widget.availableAreas,
+                                    options: _areaOptions,
                                     onChanged: (values) {
                                       setState(() => _selectedAreas = values);
                                     },
+                                    onDeleteOption: (value) =>
+                                        _deleteTaxonomyOption(
+                                          table: 'operation_directory_areas',
+                                          value: value,
+                                          isArea: true,
+                                        ),
                                   ),
                                 ),
                                 SizedBox(
@@ -2627,12 +3202,19 @@ class _DirectoryContactDialogState extends State<_DirectoryContactDialog> {
                                   child: _DirectoryMultiSelectField(
                                     label: 'Especialidad',
                                     values: _selectedSpecialties,
-                                    options: widget.availableSpecialties,
+                                    options: _specialtyOptions,
                                     onChanged: (values) {
                                       setState(
                                         () => _selectedSpecialties = values,
                                       );
                                     },
+                                    onDeleteOption: (value) =>
+                                        _deleteTaxonomyOption(
+                                          table:
+                                              'operation_directory_specialties',
+                                          value: value,
+                                          isArea: false,
+                                        ),
                                   ),
                                 ),
                                 SizedBox(

@@ -267,197 +267,180 @@ class _SearchablePickerDialogState<T>
                   Expanded(
                     child: filtered.isEmpty
                         ? const Center(child: Text('Sin resultados'))
-                        : ScrollConfiguration(
-                            behavior: const MaterialScrollBehavior().copyWith(
-                              dragDevices: <PointerDeviceKind>{
-                                PointerDeviceKind.touch,
-                                PointerDeviceKind.mouse,
-                                PointerDeviceKind.stylus,
-                                PointerDeviceKind.invertedStylus,
-                                PointerDeviceKind.unknown,
-                              },
-                            ),
-                            child: ListView.builder(
-                              controller: _listScrollController,
-                              itemCount: filtered.length,
-                              itemBuilder: (_, index) {
-                                final option = filtered[index];
-                                final selected =
-                                    option.value == widget.initialValue;
-                                final hovered = _hoveredIndex == index;
-                                final focused = _focusedIndex == index;
-                                return Column(
-                                  children: [
-                                    Focus(
-                                      focusNode: _itemFocusNodes[index],
-                                      onFocusChange: (hasFocus) {
-                                        if (!mounted) return;
-                                        setState(() {
-                                          if (hasFocus) {
-                                            _focusedIndex = index;
-                                          } else if (_focusedIndex == index) {
-                                            _focusedIndex = null;
-                                          }
-                                        });
-                                        if (!hasFocus) return;
-                                        WidgetsBinding.instance
-                                            .addPostFrameCallback((_) {
-                                              final itemContext =
-                                                  _itemKeys[index]
-                                                      .currentContext;
-                                              if (itemContext == null) return;
-                                              Scrollable.ensureVisible(
-                                                itemContext,
-                                                alignment: 0.5,
-                                                duration: const Duration(
-                                                  milliseconds: 90,
-                                                ),
-                                                curve: Curves.easeOutCubic,
-                                              );
-                                            });
-                                      },
-                                      onKeyEvent: (_, event) {
-                                        if (event is! KeyDownEvent) {
-                                          return KeyEventResult.ignored;
+                        : ListView.builder(
+                            controller: _listScrollController,
+                            itemCount: filtered.length,
+                            itemBuilder: (_, index) {
+                              final option = filtered[index];
+                              final selected =
+                                  option.value == widget.initialValue;
+                              final hovered = _hoveredIndex == index;
+                              final focused = _focusedIndex == index;
+                              return Column(
+                                children: [
+                                  Focus(
+                                    focusNode: _itemFocusNodes[index],
+                                    onFocusChange: (hasFocus) {
+                                      if (!mounted) return;
+                                      setState(() {
+                                        if (hasFocus) {
+                                          _focusedIndex = index;
+                                        } else if (_focusedIndex == index) {
+                                          _focusedIndex = null;
                                         }
-                                        final key = event.logicalKey;
-                                        if (key == LogicalKeyboardKey.arrowUp) {
-                                          if (index == 0) {
-                                            _searchFocusNode.requestFocus();
-                                          } else {
-                                            _itemFocusNodes[index - 1]
-                                                .requestFocus();
-                                          }
-                                          return KeyEventResult.handled;
-                                        }
-                                        if (key ==
-                                                LogicalKeyboardKey.arrowDown &&
-                                            index <
-                                                _itemFocusNodes.length - 1) {
-                                          _itemFocusNodes[index + 1]
-                                              .requestFocus();
-                                          return KeyEventResult.handled;
-                                        }
-                                        if (key == LogicalKeyboardKey.enter ||
-                                            key ==
-                                                LogicalKeyboardKey
-                                                    .numpadEnter ||
-                                            key == LogicalKeyboardKey.space) {
-                                          Navigator.of(
-                                            context,
-                                          ).pop(option.value);
-                                          return KeyEventResult.handled;
-                                        }
+                                      });
+                                      if (!hasFocus) return;
+                                      WidgetsBinding.instance
+                                          .addPostFrameCallback((_) {
+                                            final itemContext =
+                                                _itemKeys[index].currentContext;
+                                            if (itemContext == null) {
+                                              return;
+                                            }
+                                            Scrollable.ensureVisible(
+                                              itemContext,
+                                              alignment: 0.5,
+                                              duration: const Duration(
+                                                milliseconds: 90,
+                                              ),
+                                              curve: Curves.easeOutCubic,
+                                            );
+                                          });
+                                    },
+                                    onKeyEvent: (_, event) {
+                                      if (event is! KeyDownEvent) {
                                         return KeyEventResult.ignored;
+                                      }
+                                      final key = event.logicalKey;
+                                      if (key == LogicalKeyboardKey.arrowUp) {
+                                        if (index == 0) {
+                                          _searchFocusNode.requestFocus();
+                                        } else {
+                                          _itemFocusNodes[index - 1]
+                                              .requestFocus();
+                                        }
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (key == LogicalKeyboardKey.arrowDown &&
+                                          index < _itemFocusNodes.length - 1) {
+                                        _itemFocusNodes[index + 1]
+                                            .requestFocus();
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (key == LogicalKeyboardKey.enter ||
+                                          key ==
+                                              LogicalKeyboardKey.numpadEnter ||
+                                          key == LogicalKeyboardKey.space) {
+                                        Navigator.of(context).pop(option.value);
+                                        return KeyEventResult.handled;
+                                      }
+                                      return KeyEventResult.ignored;
+                                    },
+                                    child: MouseRegion(
+                                      onEnter: (_) =>
+                                          setState(() => _hoveredIndex = index),
+                                      onExit: (_) {
+                                        if (_hoveredIndex != index) {
+                                          return;
+                                        }
+                                        setState(() => _hoveredIndex = null);
                                       },
-                                      child: MouseRegion(
-                                        onEnter: (_) => setState(
-                                          () => _hoveredIndex = index,
+                                      child: AnimatedContainer(
+                                        key: _itemKeys[index],
+                                        duration: const Duration(
+                                          milliseconds: 1,
                                         ),
-                                        onExit: (_) {
-                                          if (_hoveredIndex != index) return;
-                                          setState(() => _hoveredIndex = null);
-                                        },
-                                        child: AnimatedContainer(
-                                          key: _itemKeys[index],
-                                          duration: const Duration(
-                                            milliseconds: 1,
+                                        curve: Curves.linear,
+                                        decoration: BoxDecoration(
+                                          color: focused
+                                              ? tokens.badgeBackground
+                                                    .withValues(alpha: 0.92)
+                                              : hovered
+                                              ? tokens.primarySoft.withValues(
+                                                  alpha: 0.98,
+                                                )
+                                              : Colors.transparent,
+                                          borderRadius: BorderRadius.circular(
+                                            14,
                                           ),
-                                          curve: Curves.linear,
-                                          decoration: BoxDecoration(
+                                          border: Border.all(
                                             color: focused
-                                                ? tokens.badgeBackground
-                                                      .withValues(alpha: 0.92)
+                                                ? tokens.primary.withValues(
+                                                    alpha: 0.88,
+                                                  )
                                                 : hovered
-                                                ? tokens.primarySoft.withValues(
-                                                    alpha: 0.98,
+                                                ? tokens.border.withValues(
+                                                    alpha: 0.62,
                                                   )
                                                 : Colors.transparent,
+                                            width: focused
+                                                ? 1.25
+                                                : hovered
+                                                ? 1.0
+                                                : 0.0,
+                                          ),
+                                          boxShadow: hovered
+                                              ? [
+                                                  BoxShadow(
+                                                    color: tokens.primaryStrong
+                                                        .withValues(
+                                                          alpha: 0.12,
+                                                        ),
+                                                    blurRadius: 8,
+                                                    offset: const Offset(0, 2),
+                                                  ),
+                                                ]
+                                              : null,
+                                        ),
+                                        child: ListTile(
+                                          dense: true,
+                                          selected: selected,
+                                          hoverColor: Colors.transparent,
+                                          splashColor: Colors.transparent,
+                                          shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(
                                               14,
                                             ),
-                                            border: Border.all(
-                                              color: focused
-                                                  ? tokens.primary.withValues(
-                                                      alpha: 0.88,
-                                                    )
-                                                  : hovered
-                                                  ? tokens.border.withValues(
-                                                      alpha: 0.62,
-                                                    )
-                                                  : Colors.transparent,
-                                              width: focused
-                                                  ? 1.25
-                                                  : hovered
-                                                  ? 1.0
-                                                  : 0.0,
-                                            ),
-                                            boxShadow: hovered
-                                                ? [
-                                                    BoxShadow(
-                                                      color: tokens
-                                                          .primaryStrong
-                                                          .withValues(
-                                                            alpha: 0.12,
-                                                          ),
-                                                      blurRadius: 8,
-                                                      offset: const Offset(
-                                                        0,
-                                                        2,
-                                                      ),
-                                                    ),
-                                                  ]
-                                                : null,
                                           ),
-                                          child: ListTile(
-                                            dense: true,
-                                            selected: selected,
-                                            hoverColor: Colors.transparent,
-                                            splashColor: Colors.transparent,
-                                            shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(14),
-                                            ),
-                                            contentPadding:
-                                                const EdgeInsets.symmetric(
-                                                  horizontal: 14,
-                                                  vertical: 2,
-                                                ),
-                                            title: Text(
-                                              option.label,
-                                              overflow: TextOverflow.ellipsis,
-                                              style: TextStyle(
-                                                color: tokens.primaryStrong,
-                                                fontWeight: FontWeight.w500,
-                                                letterSpacing: 0.2,
+                                          contentPadding:
+                                              const EdgeInsets.symmetric(
+                                                horizontal: 14,
+                                                vertical: 2,
                                               ),
+                                          title: Text(
+                                            option.label,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: TextStyle(
+                                              color: tokens.primaryStrong,
+                                              fontWeight: FontWeight.w500,
+                                              letterSpacing: 0.2,
                                             ),
-                                            trailing: selected
-                                                ? Icon(
-                                                    Icons.check,
-                                                    size: 18,
-                                                    color: tokens.primary,
-                                                  )
-                                                : null,
-                                            onTap: () => Navigator.of(
-                                              context,
-                                            ).pop(option.value),
                                           ),
+                                          trailing: selected
+                                              ? Icon(
+                                                  Icons.check,
+                                                  size: 18,
+                                                  color: tokens.primary,
+                                                )
+                                              : null,
+                                          onTap: () => Navigator.of(
+                                            context,
+                                          ).pop(option.value),
                                         ),
                                       ),
                                     ),
-                                    if (index < filtered.length - 1)
-                                      Divider(
-                                        height: 1,
-                                        thickness: 1,
-                                        color: tokens.border.withValues(
-                                          alpha: 0.56,
-                                        ),
+                                  ),
+                                  if (index < filtered.length - 1)
+                                    Divider(
+                                      height: 1,
+                                      thickness: 1,
+                                      color: tokens.border.withValues(
+                                        alpha: 0.56,
                                       ),
-                                  ],
-                                );
-                              },
-                            ),
+                                    ),
+                                ],
+                              );
+                            },
                           ),
                   ),
                 ],
