@@ -5,12 +5,14 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_navigation.dart';
+import '../compras/compras_dashboard_page.dart';
 import '../direction/direction_cash_entries_exits_page.dart';
 import '../direction/direction_cash_taxonomy_page.dart';
 import '../direction/direction_maintenance_page.dart';
 import '../direction/direction_menudeo_analysis_page.dart';
 import '../direction/direction_operations_repository.dart';
 import '../direction/direction_purchase_orders_page.dart';
+import '../finanzas/finanzas_dashboard_page.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../shared/app_shell.dart';
@@ -83,6 +85,28 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     await Navigator.of(context).push(
       appPageRoute(
         page: const MayoreoDashboardPreviewPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openComprasDashboard() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const ComprasDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openFinanzasDashboard() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const FinanzasDashboardPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -201,6 +225,8 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       onOpenOperationalDashboard: _openOperationalDashboard,
       onOpenMenudeo: _openRetailDashboard,
       onOpenMayoreo: _openMayoreoPreviewDashboard,
+      onOpenCompras: _openComprasDashboard,
+      onOpenFinanzas: _openFinanzasDashboard,
       onToggleDirectionExpanded: () =>
           setState(() => _directionExpanded = !_directionExpanded),
       onToggleAreasExpanded: () =>
@@ -1167,6 +1193,8 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final Future<void> Function()? onOpenOperationalDashboard;
   final Future<void> Function()? onOpenMenudeo;
   final Future<void> Function()? onOpenMayoreo;
+  final Future<void> Function()? onOpenCompras;
+  final Future<void> Function()? onOpenFinanzas;
 
   const _GeneralDashboardSideMenu({
     required this.directionExpanded,
@@ -1180,6 +1208,8 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onOpenOperationalDashboard,
     this.onOpenMenudeo,
     this.onOpenMayoreo,
+    this.onOpenCompras,
+    this.onOpenFinanzas,
   });
 
   @override
@@ -1290,6 +1320,20 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                       title: 'Ventas Mayoreo',
                       subtitle: 'Preview activo del área',
                       onTap: onOpenMayoreo,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.shopping_cart_checkout_rounded,
+                      title: 'Compras Mayoreo',
+                      subtitle: 'Dashboard preliminar homologado',
+                      onTap: onOpenCompras,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.account_balance_wallet_outlined,
+                      title: 'Finanzas',
+                      subtitle: 'Centro preliminar de flujo y pagos',
+                      onTap: onOpenFinanzas,
                     ),
                   ],
                 ),

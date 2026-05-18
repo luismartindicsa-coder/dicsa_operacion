@@ -1,7 +1,10 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
@@ -2201,6 +2204,8 @@ class _DashboardCashCutDialog extends StatefulWidget {
 }
 
 class _DashboardCashCutDialogState extends State<_DashboardCashCutDialog> {
+  static const double _kCashCutPrintWidthMm = 78;
+  static const double _kCashCutPrintHeightMm = 133;
   late final TextEditingController _openingC;
   late final TextEditingController _depositsC;
   late final TextEditingController _expensesC;
@@ -2246,6 +2251,265 @@ class _DashboardCashCutDialogState extends State<_DashboardCashCutDialog> {
 
   double _parse(TextEditingController controller) =>
       double.tryParse(controller.text.trim()) ?? 0;
+
+  Future<Uint8List> _buildCashCutPrintPdfBytes() async {
+    final doc = pw.Document();
+    pw.MemoryImage? logoImage;
+    try {
+      final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+      logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+    } catch (_) {}
+
+    final printedAt = DateTime.now();
+    final printedDate =
+        '${printedAt.day.toString().padLeft(2, '0')}/${printedAt.month.toString().padLeft(2, '0')}/${printedAt.year}';
+    final printedTime =
+        '${printedAt.hour.toString().padLeft(2, '0')}:${printedAt.minute.toString().padLeft(2, '0')}';
+    final opening = _parse(_openingC);
+    final deposits = _parse(_depositsC);
+    final expenses = _parse(_expensesC);
+    final counted = _parse(_countedC);
+    final pending = _pendingC.text.trim().isEmpty ? '0' : _pendingC.text.trim();
+    final ticketPageFormat = PdfPageFormat(
+      _kCashCutPrintWidthMm * PdfPageFormat.mm,
+      _kCashCutPrintHeightMm * PdfPageFormat.mm,
+      marginLeft: 2.5 * PdfPageFormat.mm,
+      marginRight: 2.5 * PdfPageFormat.mm,
+      marginTop: 3 * PdfPageFormat.mm,
+      marginBottom: 3.5 * PdfPageFormat.mm,
+    );
+
+    pw.Widget divider({double spacing = 5}) {
+      return pw.Padding(
+        padding: pw.EdgeInsets.symmetric(vertical: spacing),
+        child: pw.Container(
+          width: double.infinity,
+          height: 1,
+          color: PdfColors.grey500,
+        ),
+      );
+    }
+
+    pw.Widget buildRow(
+      String label,
+      String value, {
+      bool emphasized = false,
+      double labelWidth = 38,
+    }) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 4),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.SizedBox(
+              width: labelWidth,
+              child: pw.Text(
+                label,
+                style: pw.TextStyle(
+                  fontSize: emphasized ? 9.2 : 8.2,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+            pw.SizedBox(width: 4),
+            pw.Expanded(
+              child: pw.Text(
+                value.isEmpty ? ' ' : value,
+                textAlign: emphasized ? pw.TextAlign.right : pw.TextAlign.left,
+                style: pw.TextStyle(
+                  fontSize: emphasized ? 13.8 : 8.6,
+                  fontWeight: emphasized
+                      ? pw.FontWeight.bold
+                      : pw.FontWeight.normal,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    doc.addPage(
+      pw.Page(
+        pageFormat: ticketPageFormat,
+        margin: const pw.EdgeInsets.fromLTRB(4, 5, 4, 6),
+        build: (_) {
+          return pw.Container(
+            decoration: pw.BoxDecoration(
+              color: PdfColors.white,
+              border: pw.Border.all(color: PdfColors.grey600, width: 1),
+            ),
+            padding: const pw.EdgeInsets.fromLTRB(8, 8, 8, 9),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    pw.Spacer(),
+                    if (logoImage != null)
+                      pw.SizedBox(
+                        width: 38,
+                        height: 18,
+                        child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                      ),
+                    if (logoImage != null) pw.SizedBox(width: 4),
+                    pw.Text(
+                      'DICSA',
+                      style: pw.TextStyle(
+                        fontSize: 12.8,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.Spacer(),
+                  ],
+                ),
+                pw.SizedBox(height: 5),
+                pw.Center(
+                  child: pw.Text(
+                    'COMPROBANTE DE CORTE DE CAJA',
+                    style: pw.TextStyle(
+                      fontSize: 8.4,
+                      fontWeight: pw.FontWeight.bold,
+                      letterSpacing: 0.5,
+                    ),
+                  ),
+                ),
+                divider(),
+                buildRow('Fecha', printedDate, labelWidth: 30),
+                buildRow('Hora', printedTime, labelWidth: 30),
+                buildRow('Estado', _status, labelWidth: 34),
+                divider(spacing: 4),
+                buildRow('Apertura', formatMoney(opening)),
+                buildRow('Ventas', formatMoney(widget.initial.salesTotal)),
+                buildRow('Compras', formatMoney(widget.initial.purchasesTotal)),
+                buildRow('Depositos', formatMoney(deposits), labelWidth: 42),
+                buildRow('Gastos', formatMoney(expenses)),
+                divider(spacing: 4),
+                buildRow(
+                  'Teorico',
+                  formatMoney(
+                    opening +
+                        widget.initial.salesTotal +
+                        deposits -
+                        widget.initial.purchasesTotal -
+                        expenses,
+                  ),
+                  labelWidth: 38,
+                ),
+                buildRow('Conteo', formatMoney(counted), labelWidth: 38),
+                buildRow(
+                  'Dif.',
+                  formatMoney(
+                    counted -
+                        (opening +
+                            widget.initial.salesTotal +
+                            deposits -
+                            widget.initial.purchasesTotal -
+                            expenses),
+                  ),
+                  emphasized: true,
+                  labelWidth: 24,
+                ),
+                buildRow('Pend.', pending, labelWidth: 30),
+                if (_notesC.text.trim().isNotEmpty) ...[
+                  divider(spacing: 4),
+                  buildRow('Notas', _notesC.text.trim(), labelWidth: 30),
+                ],
+                pw.Spacer(),
+                pw.Row(
+                  children: [
+                    pw.Expanded(
+                      child: pw.Column(
+                        children: [
+                          pw.Container(
+                            height: 10,
+                            decoration: const pw.BoxDecoration(
+                              border: pw.Border(
+                                bottom: pw.BorderSide(
+                                  color: PdfColors.black,
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                          ),
+                          pw.SizedBox(height: 3),
+                          pw.Text(
+                            'CAJA',
+                            style: const pw.TextStyle(fontSize: 7.2),
+                          ),
+                        ],
+                      ),
+                    ),
+                    pw.SizedBox(width: 12),
+                    pw.Expanded(
+                      child: pw.Column(
+                        children: [
+                          pw.Container(
+                            height: 10,
+                            decoration: const pw.BoxDecoration(
+                              border: pw.Border(
+                                bottom: pw.BorderSide(
+                                  color: PdfColors.black,
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                          ),
+                          pw.SizedBox(height: 3),
+                          pw.Text(
+                            'DIRECCION',
+                            style: const pw.TextStyle(fontSize: 7.2),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    return doc.save();
+  }
+
+  Future<void> _openCashCutPdf() async {
+    try {
+      final pdfBytes = await _buildCashCutPrintPdfBytes();
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final file = File(
+        '${Directory.systemTemp.path}/menudeo_corte_caja_$stamp.pdf',
+      );
+      await file.writeAsBytes(pdfBytes, flush: true);
+      await _openPdfFile(file.path);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo abrir el corte en PDF: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _openPdfFile(String path) async {
+    ProcessResult result;
+    if (Platform.isMacOS) {
+      result = await Process.run('open', [path]);
+    } else if (Platform.isWindows) {
+      result = await Process.run('cmd', ['/c', 'start', '', path]);
+    } else {
+      result = await Process.run('xdg-open', [path]);
+    }
+    if (result.exitCode != 0) {
+      throw Exception(
+        (result.stderr as Object?)?.toString() ?? 'No se pudo abrir el archivo',
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2294,6 +2558,13 @@ class _DashboardCashCutDialogState extends State<_DashboardCashCutDialog> {
                             ),
                           ),
                         ),
+                        if (!widget.openingOnly) ...[
+                          IconButton(
+                            tooltip: 'Imprimir corte',
+                            onPressed: () => unawaited(_openCashCutPdf()),
+                            icon: const Icon(Icons.print_rounded),
+                          ),
+                        ],
                         IconButton(
                           onPressed: () => Navigator.of(context).pop(),
                           icon: const Icon(Icons.close_rounded),

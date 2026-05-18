@@ -1,9 +1,12 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
@@ -3020,6 +3023,8 @@ class _VoucherEditorDialog extends StatefulWidget {
 }
 
 class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
+  static const double _kVoucherPrintWidthMm = 78;
+  static const double _kVoucherPrintHeightMm = 133;
   late _VoucherType _type;
   late final TextEditingController _folioC;
   late final TextEditingController _dateC;
@@ -3149,6 +3154,279 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
       line.destination = '';
       line.subconcept = '';
       line.mode = '';
+    }
+  }
+
+  Future<Uint8List> _buildVoucherPrintPdfBytes() async {
+    final doc = pw.Document();
+    pw.MemoryImage? logoImage;
+    try {
+      final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+      logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+    } catch (_) {}
+
+    final printableLines = _lines
+        .map((line) => line.toRecord())
+        .where(
+          (line) =>
+              line.concept.trim().isNotEmpty || line.amount.trim().isNotEmpty,
+        )
+        .toList(growable: false);
+    final printedAt = DateTime.now();
+    final printedTime =
+        '${printedAt.hour.toString().padLeft(2, '0')}:${printedAt.minute.toString().padLeft(2, '0')}';
+    final total = _total;
+    final ticketPageFormat = PdfPageFormat(
+      _kVoucherPrintWidthMm * PdfPageFormat.mm,
+      _kVoucherPrintHeightMm * PdfPageFormat.mm,
+      marginLeft: 2.5 * PdfPageFormat.mm,
+      marginRight: 2.5 * PdfPageFormat.mm,
+      marginTop: 3 * PdfPageFormat.mm,
+      marginBottom: 3.5 * PdfPageFormat.mm,
+    );
+
+    pw.Widget buildRow(
+      String label,
+      String value, {
+      bool emphasized = false,
+      double labelWidth = 36,
+    }) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 4),
+        child: pw.Row(
+          crossAxisAlignment: pw.CrossAxisAlignment.start,
+          children: [
+            pw.SizedBox(
+              width: labelWidth,
+              child: pw.Text(
+                label,
+                style: pw.TextStyle(
+                  fontSize: emphasized ? 9.4 : 8.2,
+                  fontWeight: pw.FontWeight.bold,
+                ),
+              ),
+            ),
+            pw.SizedBox(width: 4),
+            pw.Expanded(
+              child: pw.Text(
+                value.isEmpty ? ' ' : value,
+                textAlign: emphasized ? pw.TextAlign.right : pw.TextAlign.left,
+                style: pw.TextStyle(
+                  fontSize: emphasized ? 14.8 : 8.6,
+                  fontWeight: emphasized
+                      ? pw.FontWeight.bold
+                      : pw.FontWeight.normal,
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    pw.Widget divider({double spacing = 5}) {
+      return pw.Padding(
+        padding: pw.EdgeInsets.symmetric(vertical: spacing),
+        child: pw.Container(
+          width: double.infinity,
+          height: 1,
+          color: PdfColors.grey500,
+        ),
+      );
+    }
+
+    doc.addPage(
+      pw.Page(
+        pageFormat: ticketPageFormat,
+        margin: const pw.EdgeInsets.fromLTRB(4, 5, 4, 6),
+        build: (_) {
+          return pw.Container(
+            decoration: pw.BoxDecoration(
+              color: PdfColors.white,
+              border: pw.Border.all(color: PdfColors.grey600, width: 1),
+            ),
+            padding: const pw.EdgeInsets.fromLTRB(8, 8, 8, 9),
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: [
+                pw.Row(
+                  crossAxisAlignment: pw.CrossAxisAlignment.center,
+                  children: [
+                    pw.Spacer(),
+                    if (logoImage != null)
+                      pw.SizedBox(
+                        width: 38,
+                        height: 18,
+                        child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                      ),
+                    if (logoImage != null) pw.SizedBox(width: 4),
+                    pw.Text(
+                      'DICSA',
+                      style: pw.TextStyle(
+                        fontSize: 12.8,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.Spacer(),
+                  ],
+                ),
+                pw.SizedBox(height: 5),
+                pw.Center(
+                  child: pw.Text(
+                    'COMPROBANTE DE ${_type == _VoucherType.deposit ? 'DEPOSITO' : 'GASTO'}',
+                    style: pw.TextStyle(
+                      fontSize: 8.8,
+                      fontWeight: pw.FontWeight.bold,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+                divider(),
+                buildRow('Fecha', _dateC.text.trim(), labelWidth: 30),
+                buildRow('Hora', printedTime, labelWidth: 30),
+                buildRow('Folio', _folioC.text.trim(), labelWidth: 30),
+                buildRow('Rubro', _rubric.trim(), labelWidth: 34),
+                buildRow(
+                  _type == _VoucherType.deposit ? 'Recibe' : 'Entrega',
+                  _person.trim(),
+                  labelWidth: 38,
+                ),
+                divider(spacing: 4),
+                if (printableLines.isNotEmpty)
+                  ...printableLines
+                      .take(5)
+                      .map(
+                        (line) => buildRow(
+                          line.concept.trim().isEmpty
+                              ? 'Concepto'
+                              : line.concept,
+                          formatMoney(double.tryParse(line.amount) ?? 0),
+                          labelWidth: 42,
+                        ),
+                      ),
+                if (_generalCommentC.text.trim().isNotEmpty) ...[
+                  divider(spacing: 4),
+                  buildRow(
+                    'Desc.',
+                    _generalCommentC.text.trim(),
+                    labelWidth: 30,
+                  ),
+                ],
+                divider(spacing: 4),
+                pw.Container(
+                  width: double.infinity,
+                  padding: const pw.EdgeInsets.fromLTRB(7, 7, 7, 8),
+                  decoration: pw.BoxDecoration(
+                    color: PdfColors.grey100,
+                    border: pw.Border.all(color: PdfColors.grey500, width: 1),
+                    borderRadius: pw.BorderRadius.circular(4),
+                  ),
+                  child: buildRow(
+                    'Total',
+                    formatMoney(total),
+                    emphasized: true,
+                    labelWidth: 36,
+                  ),
+                ),
+                pw.Spacer(),
+                pw.Row(
+                  children: [
+                    pw.Expanded(
+                      child: pw.Column(
+                        children: [
+                          pw.Container(
+                            height: 10,
+                            decoration: const pw.BoxDecoration(
+                              border: pw.Border(
+                                bottom: pw.BorderSide(
+                                  color: PdfColors.black,
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                          ),
+                          pw.SizedBox(height: 3),
+                          pw.Text(
+                            _type == _VoucherType.deposit
+                                ? 'ENTREGO'
+                                : 'AUTORIZO',
+                            style: const pw.TextStyle(fontSize: 7.2),
+                          ),
+                        ],
+                      ),
+                    ),
+                    pw.SizedBox(width: 12),
+                    pw.Expanded(
+                      child: pw.Column(
+                        children: [
+                          pw.Container(
+                            height: 10,
+                            decoration: const pw.BoxDecoration(
+                              border: pw.Border(
+                                bottom: pw.BorderSide(
+                                  color: PdfColors.black,
+                                  width: 1,
+                                ),
+                              ),
+                            ),
+                          ),
+                          pw.SizedBox(height: 3),
+                          pw.Text(
+                            _type == _VoucherType.deposit
+                                ? 'RECIBIO'
+                                : 'RECIBE',
+                            style: const pw.TextStyle(fontSize: 7.2),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    return doc.save();
+  }
+
+  Future<void> _openVoucherPdf() async {
+    try {
+      final pdfBytes = await _buildVoucherPrintPdfBytes();
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final folio = _folioC.text.trim().isEmpty
+          ? 'voucher'
+          : _folioC.text.trim();
+      final file = File(
+        '${Directory.systemTemp.path}/menudeo_${_type.name}_${folio}_$stamp.pdf',
+      );
+      await file.writeAsBytes(pdfBytes, flush: true);
+      await _openPdfFile(file.path);
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo abrir el voucher en PDF: $e'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _openPdfFile(String path) async {
+    ProcessResult result;
+    if (Platform.isMacOS) {
+      result = await Process.run('open', [path]);
+    } else if (Platform.isWindows) {
+      result = await Process.run('cmd', ['/c', 'start', '', path]);
+    } else {
+      result = await Process.run('xdg-open', [path]);
+    }
+    if (result.exitCode != 0) {
+      throw Exception(
+        (result.stderr as Object?)?.toString() ?? 'No se pudo abrir el archivo',
+      );
     }
   }
 
@@ -3296,6 +3574,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _VoucherDialogHeader(
+                    onPrint: _openVoucherPdf,
                     canGoPrevious: widget.canGoPrevious,
                     canGoNext: widget.canGoNext,
                     positionLabel: widget.positionLabel,
@@ -3686,6 +3965,7 @@ class _VoucherField extends StatelessWidget {
 }
 
 class _VoucherDialogHeader extends StatelessWidget {
+  final Future<void> Function()? onPrint;
   final bool canGoPrevious;
   final bool canGoNext;
   final String? positionLabel;
@@ -3694,6 +3974,7 @@ class _VoucherDialogHeader extends StatelessWidget {
   final VoidCallback onClose;
 
   const _VoucherDialogHeader({
+    this.onPrint,
     required this.onClose,
     this.canGoPrevious = false,
     this.canGoNext = false,
@@ -3756,6 +4037,13 @@ class _VoucherDialogHeader extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
+                if (onPrint != null) ...[
+                  _VoucherDialogActionButton(
+                    icon: Icons.print_rounded,
+                    onTap: () => unawaited(onPrint!()),
+                  ),
+                  const SizedBox(width: 8),
+                ],
                 if (canGoPrevious || canGoNext) ...[
                   _VoucherDialogActionButton(
                     icon: Icons.arrow_back_rounded,
