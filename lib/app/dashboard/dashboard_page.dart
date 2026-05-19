@@ -2340,6 +2340,8 @@ class _DashboardInventoryTileModel {
   final String label;
   final String value;
   final String? secondaryValue;
+  final String helperLabel;
+  final bool isManualEmpty;
   final Color color;
 
   const _DashboardInventoryTileModel({
@@ -2347,8 +2349,56 @@ class _DashboardInventoryTileModel {
     required this.label,
     required this.value,
     required this.secondaryValue,
+    required this.helperLabel,
+    required this.isManualEmpty,
     required this.color,
   });
+}
+
+class _DashboardManualYardCount {
+  final String widgetKey;
+  final String sourceKind;
+  final String? material;
+  final String? commercialMaterialCode;
+  final int countUnits;
+  final double weightKg;
+  final String notes;
+  final DateTime countedAt;
+  final DateTime updatedAt;
+
+  const _DashboardManualYardCount({
+    required this.widgetKey,
+    required this.sourceKind,
+    required this.material,
+    required this.commercialMaterialCode,
+    required this.countUnits,
+    required this.weightKg,
+    required this.notes,
+    required this.countedAt,
+    required this.updatedAt,
+  });
+
+  bool get hasValue =>
+      countUnits > 0 || weightKg > 0 || notes.trim().isNotEmpty;
+
+  static _DashboardManualYardCount fromMap(Map<String, dynamic> row) {
+    return _DashboardManualYardCount(
+      widgetKey: (row['widget_key'] ?? '').toString(),
+      sourceKind: (row['source_kind'] ?? '').toString(),
+      material: (row['material'] as String?)?.trim(),
+      commercialMaterialCode: (row['commercial_material_code'] as String?)
+          ?.trim(),
+      countUnits: ((row['count_units'] as num?) ?? 0).toInt(),
+      weightKg: ((row['weight_kg'] as num?) ?? 0).toDouble(),
+      notes: (row['notes'] ?? '').toString(),
+      countedAt:
+          DateTime.tryParse((row['counted_at'] ?? '').toString()) ??
+          DateTime.now(),
+      updatedAt:
+          DateTime.tryParse((row['updated_at'] ?? '').toString()) ??
+          DateTime.now(),
+    );
+  }
 }
 
 class _InventoryYardPanel extends StatefulWidget {
@@ -2394,6 +2444,8 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   final Map<String, double> _commercialOnHandBales = <String, double>{};
   final Map<String, _DashboardCommercialMaterialOption>
   _commercialOptionsByCode = <String, _DashboardCommercialMaterialOption>{};
+  final Map<String, _DashboardManualYardCount> _manualYardCounts =
+      <String, _DashboardManualYardCount>{};
   List<_ProductionLineSeries> _pacaProductionSeries = const [];
   List<_ProductionLineSeries> _separationSeries = const [];
   List<_InventoryCommercialBreakdownItem> _scrapBreakdown = const [];
@@ -2449,6 +2501,12 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'material_commercial_catalog_v2',
+          callback: (_) => _requestReload(),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'dashboard_yard_manual_counts',
           callback: (_) => _requestReload(),
         )
         .subscribe();
@@ -2579,12 +2637,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   List<_DashboardInventoryWidgetPref> _fixedWidgetPrefs() {
     const defaults = <Map<String, String?>>[
       {'source_kind': 'bales_total'},
-      {'source_kind': 'operational_material', 'material': 'CARTON'},
-      {'source_kind': 'operational_material', 'material': 'CHATARRA'},
-      {'source_kind': 'operational_material', 'material': 'METAL'},
-      {'source_kind': 'operational_material', 'material': 'PAPEL'},
-      {'source_kind': 'operational_material', 'material': 'PLASTICO'},
-      {'source_kind': 'operational_material', 'material': 'MADERA'},
       {
         'source_kind': 'commercial_material',
         'commercial_material_code': 'PACA_NACIONAL',
@@ -2640,13 +2692,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     return _isBaleOperationalMaterial(material) ? label : '$label en patio';
   }
 
-  double _yardKgForOperationalMaterial(String material) {
-    final normalized = _normalizeOperational(material);
-    final operationalKg = _operationalOnHandKg[normalized] ?? 0;
-    final commercialKg = _commercialPatioOnHandKgByGeneral[normalized] ?? 0;
-    return operationalKg + commercialKg;
-  }
-
   Future<void> _reload({bool showLoader = false}) async {
     if (!mounted || _refreshing) return;
     _refreshing = true;
@@ -2693,6 +2738,13 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
             )
             .gte('run.op_date', _sqlDate(trendStart))
             .lte('run.op_date', _sqlDate(asOfDate)),
+        _supa
+            .from('dashboard_yard_manual_counts')
+            .select(
+              'widget_key,source_kind,material,commercial_material_code,'
+              'count_units,weight_kg,notes,counted_at,updated_at',
+            )
+            .eq('site', _kDashboardInventorySite),
       ]);
 
       final generalBalanceRows = (responses[0] as List)
@@ -2701,6 +2753,8 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
           .cast<Map<String, dynamic>>();
       final catalogRows = (responses[2] as List).cast<Map<String, dynamic>>();
       final transformationOutputs = (responses[4] as List)
+          .cast<Map<String, dynamic>>();
+      final manualCountRows = (responses[5] as List)
           .cast<Map<String, dynamic>>();
 
       final operational = <String, double>{};
@@ -2910,6 +2964,11 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
                 _kProductionSeriesPalette.length],
           ),
       ];
+      final manualCounts = <String, _DashboardManualYardCount>{};
+      for (final row in manualCountRows) {
+        final item = _DashboardManualYardCount.fromMap(row);
+        manualCounts[item.widgetKey] = item;
+      }
 
       if (!mounted) return;
       setState(() {
@@ -2934,6 +2993,9 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         _commercialOptionsByCode
           ..clear()
           ..addAll(commercialOptionsByCode);
+        _manualYardCounts
+          ..clear()
+          ..addAll(manualCounts);
         _pacaProductionSeries = pacaProductionSeries;
         _separationSeries = separationSeries;
         _scrapBreakdown = scrap;
@@ -2959,59 +3021,86 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
 
   String _fmtKg(double value) => '${formatDecimal(value, decimals: 1)} kg';
 
+  String _fmtCountedAt(DateTime value) {
+    final date = DateUtils.dateOnly(value);
+    final now = DateUtils.dateOnly(DateTime.now());
+    final time =
+        '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+    if (date == now) return 'Hoy $time';
+    final dd = value.day.toString().padLeft(2, '0');
+    final mm = value.month.toString().padLeft(2, '0');
+    return '$dd/$mm $time';
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   _DashboardInventoryTileModel? _buildTileModel(
     _DashboardInventoryWidgetPref pref,
-    Map<String, double> baleByMaterial,
-    double totalPacasKg,
   ) {
+    final manual = _manualYardCounts[pref.widgetKey];
+    final hasManual = manual?.hasValue == true;
+
+    _DashboardInventoryTileModel buildManualTile({
+      required String label,
+      required bool isBale,
+      required Color color,
+    }) {
+      final value = hasManual
+          ? (isBale ? '${manual!.countUnits} pacas' : _fmtKg(manual!.weightKg))
+          : 'Sin conteo';
+      final secondary = hasManual
+          ? (isBale
+                ? (manual!.weightKg > 0 ? _fmtKg(manual.weightKg) : null)
+                : null)
+          : 'Toca para capturar';
+      final helper = hasManual
+          ? 'Conteo manual · ${_fmtCountedAt(manual!.countedAt)}'
+          : 'Conteo manual pendiente';
+      return _DashboardInventoryTileModel(
+        pref: pref,
+        label: label,
+        value: value,
+        secondaryValue: secondary,
+        helperLabel: helper,
+        isManualEmpty: !hasManual,
+        color: color,
+      );
+    }
+
     switch (pref.sourceKind) {
       case 'bales_total':
-        final totalPacas = baleByMaterial.entries.fold<double>(
-          0,
-          (sum, entry) => sum + entry.value,
-        );
-        return _DashboardInventoryTileModel(
-          pref: pref,
+        return buildManualTile(
           label: 'Pacas en patio',
-          value: '${totalPacas.toStringAsFixed(0)} pacas',
-          secondaryValue: _fmtKg(totalPacasKg),
+          isBale: true,
           color: const Color(0xFFD6F4FF),
         );
       case 'operational_material':
         final material = _normalizeOperational((pref.material ?? '').trim());
         if (material.isEmpty) return null;
-        final kg = _yardKgForOperationalMaterial(material);
         final isBale = _isBaleOperationalMaterial(material);
-        final fallbackCommercialBales = _commercialOnHandBales[material] ?? 0;
-        final baleCount = (_operationalOnHandBales[material] ?? 0) > 0
-            ? (_operationalOnHandBales[material] ?? 0)
-            : fallbackCommercialBales;
-        return _DashboardInventoryTileModel(
-          pref: pref,
+        return buildManualTile(
           label: _tileLabelForOperationalMaterial(material),
-          value: isBale ? '${baleCount.toStringAsFixed(0)} pacas' : _fmtKg(kg),
-          secondaryValue: isBale ? _fmtKg(kg) : 'Existencia actual',
+          isBale: isBale,
           color: _tileColorForMaterial(material),
         );
       case 'commercial_material':
         final code = (pref.commercialMaterialCode ?? '').trim();
         if (code.isEmpty) return null;
         final option = _commercialOptionsByCode[code];
-        final kg = _commercialOnHandKg[code] ?? 0;
         final inventoryMaterial = _normalizeOperational(
           option?.inventoryMaterial ?? '',
         );
         final isBale =
             _isBaleOperationalMaterial(inventoryMaterial) ||
             _isBaleCommercialMaterialCode(code);
-        final baleCount = _commercialOnHandBales[code] ?? 0;
-        return _DashboardInventoryTileModel(
-          pref: pref,
+        return buildManualTile(
           label: option?.name.isNotEmpty == true ? option!.name : code,
-          value: isBale ? '${baleCount.toStringAsFixed(0)} pacas' : _fmtKg(kg),
-          secondaryValue: isBale
-              ? _fmtKg(kg)
-              : _materialUiLabel(option?.inventoryMaterial ?? ''),
+          isBale: isBale,
           color: _tileColorForMaterial(option?.inventoryMaterial),
         );
       default:
@@ -3019,43 +3108,188 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     }
   }
 
+  bool _prefUsesBaleCount(_DashboardInventoryWidgetPref pref) {
+    switch (pref.sourceKind) {
+      case 'bales_total':
+        return true;
+      case 'operational_material':
+        return _isBaleOperationalMaterial(pref.material ?? '');
+      case 'commercial_material':
+        final code = pref.commercialMaterialCode ?? '';
+        final option = _commercialOptionsByCode[code];
+        return _isBaleCommercialMaterialCode(code) ||
+            _isBaleOperationalMaterial(option?.inventoryMaterial ?? '');
+      default:
+        return false;
+    }
+  }
+
+  Future<void> _openManualTileEditor(_DashboardInventoryTileModel tile) async {
+    final pref = tile.pref;
+    final initial = _manualYardCounts[pref.widgetKey];
+    final isBale = _prefUsesBaleCount(pref);
+    final unitsC = TextEditingController(
+      text: initial == null || initial.countUnits <= 0
+          ? ''
+          : initial.countUnits.toString(),
+    );
+    final kgC = TextEditingController(
+      text: initial == null || initial.weightKg <= 0
+          ? ''
+          : formatDecimal(initial.weightKg, decimals: 1),
+    );
+    final notesC = TextEditingController(text: initial?.notes ?? '');
+
+    Future<void> save() async {
+      final unitsRaw = unitsC.text.trim();
+      final kgRaw = kgC.text.trim().replaceAll(',', '');
+      final units = unitsRaw.isEmpty ? 0 : int.tryParse(unitsRaw);
+      final kg = kgRaw.isEmpty ? 0.0 : double.tryParse(kgRaw);
+      if (units == null || units < 0) {
+        _toast('Las pacas contadas deben ser un numero entero valido.');
+        return;
+      }
+      if (kg == null || kg < 0) {
+        _toast('Los kg del conteo manual no son validos.');
+        return;
+      }
+      if (isBale && units == 0 && kg == 0) {
+        _toast('Captura al menos pacas o kg para guardar este conteo.');
+        return;
+      }
+      if (!isBale && kg == 0) {
+        _toast('Captura los kg contados para guardar este card.');
+        return;
+      }
+      try {
+        await _supa.from('dashboard_yard_manual_counts').upsert({
+          'site': _kDashboardInventorySite,
+          'widget_key': pref.widgetKey,
+          'source_kind': pref.sourceKind,
+          'material': pref.material,
+          'commercial_material_code': pref.commercialMaterialCode,
+          'count_units': units,
+          'weight_kg': double.parse(kg.toStringAsFixed(3)),
+          'notes': notesC.text.trim().isEmpty ? null : notesC.text.trim(),
+          'counted_at': DateTime.now().toIso8601String(),
+          'updated_by': _supa.auth.currentUser?.id,
+        }, onConflict: 'site,widget_key');
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        _toast('Conteo manual guardado.');
+        _requestReload();
+      } on PostgrestException catch (e) {
+        _toast('No se pudo guardar el conteo manual: ${e.message}');
+      } catch (e) {
+        _toast('No se pudo guardar el conteo manual: $e');
+      }
+    }
+
+    Future<void> clear() async {
+      try {
+        await _supa
+            .from('dashboard_yard_manual_counts')
+            .delete()
+            .eq('site', _kDashboardInventorySite)
+            .eq('widget_key', pref.widgetKey);
+        if (!mounted) return;
+        Navigator.of(context).pop();
+        _toast('Conteo manual borrado.');
+        _requestReload();
+      } on PostgrestException catch (e) {
+        _toast('No se pudo borrar el conteo manual: ${e.message}');
+      } catch (e) {
+        _toast('No se pudo borrar el conteo manual: $e');
+      }
+    }
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: Text(tile.label),
+          content: SizedBox(
+            width: 420,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Este card ya no usa formula automatica. Guarda aqui el conteo manual real de patio.',
+                  ),
+                  const SizedBox(height: 16),
+                  if (isBale) ...[
+                    TextField(
+                      controller: unitsC,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Pacas contadas',
+                        helperText:
+                            'Captura las pacas vistas fisicamente en patio.',
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  TextField(
+                    controller: kgC,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    decoration: InputDecoration(
+                      labelText: isBale
+                          ? 'Kg medidos (opcional)'
+                          : 'Kg contados',
+                      helperText: isBale
+                          ? 'Si tambien pesaron o estimaron el lote, registralo aqui.'
+                          : 'Captura los kg reales contados en patio.',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: notesC,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: const InputDecoration(
+                      labelText: 'Notas (opcional)',
+                    ),
+                  ),
+                  if (initial != null) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      'Ultimo conteo: ${_fmtCountedAt(initial.countedAt)}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF476765),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            if (initial != null)
+              TextButton(onPressed: clear, child: const Text('Borrar conteo')),
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(onPressed: save, child: const Text('Guardar')),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final baleByMaterial = <String, double>{};
-    final baleKgByMaterial = <String, double>{};
-    for (final entry in _operationalOnHandBales.entries) {
-      if (!_isBaleOperationalMaterial(entry.key)) continue;
-      final key = _normalizeOperational(entry.key);
-      baleByMaterial[key] = (baleByMaterial[key] ?? 0) + entry.value;
-      baleKgByMaterial[key] =
-          (baleKgByMaterial[key] ?? 0) + (_operationalOnHandKg[entry.key] ?? 0);
-    }
-    for (final entry in _commercialOnHandBales.entries) {
-      if (!_isBaleCommercialMaterialCode(entry.key)) continue;
-      final key = _normalizeOperational(entry.key);
-      baleByMaterial[key] = (baleByMaterial[key] ?? 0) + entry.value;
-      baleKgByMaterial[key] =
-          (baleKgByMaterial[key] ?? 0) + (_commercialOnHandKg[entry.key] ?? 0);
-    }
-    for (final key in const <String>[
-      'BALE_NATIONAL',
-      'BALE_AMERICAN',
-      'BALE_CLEAN',
-      'BALE_TRASH',
-      'CAPLE',
-    ]) {
-      baleByMaterial.putIfAbsent(key, () => 0);
-      baleKgByMaterial.putIfAbsent(key, () => 0);
-    }
-    final totalPacasKg = baleKgByMaterial.values.fold<double>(
-      0,
-      (sum, value) => sum + value,
-    );
     final visiblePrefs =
         _fixedWidgetPrefs().where((pref) => pref.isVisible).toList()
           ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     final tileModels = visiblePrefs
-        .map((pref) => _buildTileModel(pref, baleByMaterial, totalPacasKg))
+        .map(_buildTileModel)
         .whereType<_DashboardInventoryTileModel>()
         .toList();
 
@@ -3083,7 +3317,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
                         width: smallW,
                         editMode: false,
                         isSelected: false,
-                        onTap: widget.onOpenInventoryProduction,
+                        onTap: () => _openManualTileEditor(tile),
                       ),
                     )
                     .toList(),
@@ -3249,7 +3483,7 @@ class _SquareTile extends StatelessWidget {
                     color: Color(0xFF1D3B39),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Text(
                   tile.value,
                   style: const TextStyle(
@@ -3269,6 +3503,31 @@ class _SquareTile extends StatelessWidget {
                     ),
                   ),
                 ],
+                const SizedBox(height: 14),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        tile.helperLabel,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: tile.isManualEmpty
+                              ? const Color(0xFF7B5D2B)
+                              : const Color(0xFF355957),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Icon(
+                      Icons.edit_note_rounded,
+                      size: 18,
+                      color: const Color(0xFF244846).withValues(alpha: 0.82),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),

@@ -12,8 +12,11 @@ import '../shared/app_shell.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../mayoreo/mayoreo_sorting.dart';
 import 'finanzas_data_store.dart';
 import 'finanzas_dashboard_page.dart';
 import 'finanzas_theme.dart';
@@ -34,6 +37,12 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
   static const double _kFinanceCompanyLinkW = 260;
   static const double _kFinanceCompanyStatusW = 120;
   static const double _kFinanceCompanyNotesW = 360;
+  static const double _kFinanceCompanyContentW =
+      _kFinanceCompanyNameW +
+      _kFinanceCompanySourceW +
+      _kFinanceCompanyLinkW +
+      _kFinanceCompanyStatusW +
+      _kFinanceCompanyNotesW;
 
   static const double _kFinanceConceptNameW = 250;
   static const double _kFinanceConceptFamilyW = 170;
@@ -41,12 +50,25 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
   static const double _kFinanceConceptRulesW = 190;
   static const double _kFinanceConceptStatusW = 120;
   static const double _kFinanceConceptNotesW = 300;
+  static const double _kFinanceConceptContentW =
+      _kFinanceConceptNameW +
+      _kFinanceConceptFamilyW +
+      _kFinanceConceptDirectionW +
+      _kFinanceConceptRulesW +
+      _kFinanceConceptStatusW +
+      _kFinanceConceptNotesW;
 
   static const double _kFinanceRelationCompanyW = 250;
   static const double _kFinanceRelationConceptW = 240;
   static const double _kFinanceRelationModeW = 160;
   static const double _kFinanceRelationStatusW = 120;
   static const double _kFinanceRelationNotesW = 380;
+  static const double _kFinanceRelationContentW =
+      _kFinanceRelationCompanyW +
+      _kFinanceRelationConceptW +
+      _kFinanceRelationModeW +
+      _kFinanceRelationStatusW +
+      _kFinanceRelationNotesW;
 
   static const List<String> _kFinanceCompanySources = <String>[
     'COMPRAS',
@@ -652,6 +674,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
           const _FinanceFilterSummaryRow(labels: <String>[]),
           const SizedBox(height: 10),
           const _FinanceHeaderRow(
+            contentWidth: _FinanzasCatalogPageState._kFinanceCompanyContentW,
             columns: [
               _FinanceHeaderColumn('EMPRESA', _kFinanceCompanyNameW),
               _FinanceHeaderColumn('ORIGEN', _kFinanceCompanySourceW),
@@ -662,6 +685,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
           ),
           const SizedBox(height: 10),
           _FinanceInsertRow(
+            contentWidth: _FinanzasCatalogPageState._kFinanceCompanyContentW,
             onSubmit: _saveCompany,
             children: [
               _FinanceFieldCell(
@@ -673,7 +697,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
               ),
               _FinanceFieldCell(
                 width: _kFinanceCompanySourceW,
-                child: _FinanceSimpleDropdown<String>(
+                child: _FinancePickerField<String>(
                   value: _companySource,
                   items: _kFinanceCompanySources,
                   hint: 'Origen',
@@ -766,6 +790,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
           const _FinanceFilterSummaryRow(labels: <String>[]),
           const SizedBox(height: 10),
           const _FinanceHeaderRow(
+            contentWidth: _FinanzasCatalogPageState._kFinanceConceptContentW,
             columns: [
               _FinanceHeaderColumn('CONCEPTO', _kFinanceConceptNameW),
               _FinanceHeaderColumn('FAMILIA', _kFinanceConceptFamilyW),
@@ -777,6 +802,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
           ),
           const SizedBox(height: 10),
           _FinanceInsertRow(
+            contentWidth: _FinanzasCatalogPageState._kFinanceConceptContentW,
             onSubmit: _saveConcept,
             children: [
               _FinanceFieldCell(
@@ -788,7 +814,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
               ),
               _FinanceFieldCell(
                 width: _kFinanceConceptFamilyW,
-                child: _FinanceSimpleDropdown<String>(
+                child: _FinancePickerField<String>(
                   value: _conceptFamily,
                   items: _kFinanceConceptFamilies,
                   hint: 'Familia',
@@ -798,7 +824,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
               ),
               _FinanceFieldCell(
                 width: _kFinanceConceptDirectionW,
-                child: _FinanceSimpleDropdown<String>(
+                child: _FinancePickerField<String>(
                   value: _conceptDirection,
                   items: _kFinanceDirections,
                   hint: 'Direccion',
@@ -902,6 +928,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
           const _FinanceFilterSummaryRow(labels: <String>[]),
           const SizedBox(height: 10),
           const _FinanceHeaderRow(
+            contentWidth: _FinanzasCatalogPageState._kFinanceRelationContentW,
             columns: [
               _FinanceHeaderColumn('EMPRESA', _kFinanceRelationCompanyW),
               _FinanceHeaderColumn('CONCEPTO', _kFinanceRelationConceptW),
@@ -912,11 +939,12 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
           ),
           const SizedBox(height: 10),
           _FinanceInsertRow(
+            contentWidth: _FinanzasCatalogPageState._kFinanceRelationContentW,
             onSubmit: _saveRelation,
             children: [
               _FinanceFieldCell(
                 width: _kFinanceRelationCompanyW,
-                child: _FinanceSimpleDropdown<String>(
+                child: _FinancePickerField<String>(
                   value: _relationCompanyId,
                   items: _companies
                       .map((row) => row.id)
@@ -929,7 +957,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
               ),
               _FinanceFieldCell(
                 width: _kFinanceRelationConceptW,
-                child: _FinanceSimpleDropdown<String>(
+                child: _FinancePickerField<String>(
                   value: _relationConceptId,
                   items: _concepts.map((row) => row.id).toList(growable: false),
                   hint: 'Concepto',
@@ -940,7 +968,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
               ),
               _FinanceFieldCell(
                 width: _kFinanceRelationModeW,
-                child: _FinanceSimpleDropdown<String>(
+                child: _FinancePickerField<String>(
                   value: _relationMode,
                   items: _kFinanceRelationModes,
                   hint: 'Modo',
@@ -1140,8 +1168,9 @@ class _FinanceHeaderColumn {
 
 class _FinanceHeaderRow extends StatelessWidget {
   final List<_FinanceHeaderColumn> columns;
+  final double contentWidth;
 
-  const _FinanceHeaderRow({required this.columns});
+  const _FinanceHeaderRow({required this.columns, required this.contentWidth});
 
   @override
   Widget build(BuildContext context) {
@@ -1155,44 +1184,35 @@ class _FinanceHeaderRow extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final totalWidth =
-                columns.fold<double>(0, (sum, column) => sum + column.width) +
-                _FinanzasCatalogPageState._kFinanceActionsW;
             return SizedBox(
               width: constraints.maxWidth,
-              child: Row(
-                children: [
-                  Expanded(
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: totalWidth,
-                        child: Row(
-                          children: [
-                            for (final column in columns)
-                              SizedBox(
-                                width: column.width,
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 10),
-                                  child: Text(
-                                    column.label,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: textStyle.copyWith(
-                                      color: tokens.badgeText,
-                                    ),
-                                  ),
-                                ),
+              child: ContractGridScaledRow(
+                child: SizedBox(
+                  width:
+                      contentWidth +
+                      _FinanzasCatalogPageState._kFinanceActionsW,
+                  child: Row(
+                    children: [
+                      for (final column in columns)
+                        SizedBox(
+                          width: column.width,
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Text(
+                              column.label,
+                              overflow: TextOverflow.ellipsis,
+                              style: textStyle.copyWith(
+                                color: tokens.badgeText,
                               ),
-                            const SizedBox(
-                              width:
-                                  _FinanzasCatalogPageState._kFinanceActionsW,
                             ),
-                          ],
+                          ),
                         ),
+                      const SizedBox(
+                        width: _FinanzasCatalogPageState._kFinanceActionsW,
                       ),
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
             );
           },
@@ -1203,10 +1223,15 @@ class _FinanceHeaderRow extends StatelessWidget {
 }
 
 class _FinanceInsertRow extends StatelessWidget {
+  final double contentWidth;
   final List<Widget> children;
   final VoidCallback onSubmit;
 
-  const _FinanceInsertRow({required this.children, required this.onSubmit});
+  const _FinanceInsertRow({
+    required this.contentWidth,
+    required this.children,
+    required this.onSubmit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1220,20 +1245,36 @@ class _FinanceInsertRow extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              ...children,
-              SizedBox(
-                width: _FinanzasCatalogPageState._kFinanceActionsW,
-                child: Align(
-                  alignment: Alignment.centerRight,
-                  child: _FinanceAddButton(onTap: onSubmit),
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            return SizedBox(
+              width: constraints.maxWidth,
+              child: ContractGridScaledRow(
+                child: SizedBox(
+                  width:
+                      contentWidth +
+                      _FinanzasCatalogPageState._kFinanceActionsW,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ...children,
+                      AnchoredActionSlot(
+                        width: _FinanzasCatalogPageState._kFinanceActionsW,
+                        trailingWidth:
+                            _FinanzasCatalogPageState._kFinanceActionsW,
+                        leading: const SizedBox.shrink(),
+                        trailing: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerRight,
+                          child: _FinanceAddButton(onTap: onSubmit),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -1290,37 +1331,19 @@ class _FinanceTextField extends StatelessWidget {
     return TextField(
       controller: controller,
       textCapitalization: TextCapitalization.characters,
-      decoration: InputDecoration(
-        hintText: hintText,
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.72),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(
-            color: finanzasAreaTokens.border.withValues(alpha: 0.9),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(color: finanzasAreaTokens.primaryStrong),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 12,
-        ),
-      ),
+      decoration: contractGlassFieldDecoration(context, hintText: hintText),
     );
   }
 }
 
-class _FinanceSimpleDropdown<T> extends StatelessWidget {
+class _FinancePickerField<T> extends StatelessWidget {
   final T? value;
   final List<T> items;
   final String hint;
   final ValueChanged<T?> onChanged;
   final String Function(T value)? labelBuilder;
 
-  const _FinanceSimpleDropdown({
+  const _FinancePickerField({
     required this.value,
     required this.items,
     required this.hint,
@@ -1328,56 +1351,54 @@ class _FinanceSimpleDropdown<T> extends StatelessWidget {
     this.labelBuilder,
   });
 
+  Future<void> _openPicker(BuildContext context) async {
+    final selected = await _showFinanceSingleSelectDialog<T>(
+      context,
+      title: hint,
+      initialValue: value,
+      options: items
+          .map(
+            (item) => _FinancePickerOption<T>(
+              value: item,
+              label: labelBuilder == null
+                  ? item.toString()
+                  : labelBuilder!(item),
+            ),
+          )
+          .toList(growable: false),
+    );
+    onChanged(selected);
+  }
+
   @override
   Widget build(BuildContext context) {
-    return DropdownButtonFormField<T>(
-      initialValue: items.contains(value) ? value : null,
-      isExpanded: true,
-      iconSize: 18,
-      decoration: InputDecoration(
-        hintText: hint,
-        filled: true,
-        fillColor: Colors.white.withValues(alpha: 0.72),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(
-            color: finanzasAreaTokens.border.withValues(alpha: 0.9),
-          ),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(18),
-          borderSide: BorderSide(color: finanzasAreaTokens.primaryStrong),
-        ),
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 14,
-          vertical: 12,
+    final label = value == null
+        ? hint
+        : (labelBuilder == null ? value.toString() : labelBuilder!(value as T));
+    return InkWell(
+      borderRadius: BorderRadius.circular(16),
+      onTap: () => _openPicker(context),
+      child: InputDecorator(
+        isEmpty: value == null,
+        decoration: contractGlassFieldDecoration(context, hintText: null),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: value == null ? kFinanzasMutedInk : kFinanzasInk,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+          ],
         ),
       ),
-      items: items
-          .map(
-            (item) => DropdownMenuItem<T>(
-              value: item,
-              child: Text(
-                labelBuilder == null ? item.toString() : labelBuilder!(item),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          )
-          .toList(growable: false),
-      selectedItemBuilder: (context) => items
-          .map(
-            (item) => Align(
-              alignment: Alignment.centerLeft,
-              child: Text(
-                labelBuilder == null ? item.toString() : labelBuilder!(item),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-          )
-          .toList(growable: false),
-      onChanged: onChanged,
     );
   }
 }
@@ -1506,6 +1527,10 @@ class _FinanceTableRowState extends State<_FinanceTableRow> {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final rowContentWidth = widget.cells.fold<double>(
+      _FinanzasCatalogPageState._kFinanceActionsW,
+      (sum, cell) => sum + cell.width,
+    );
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -1520,89 +1545,106 @@ class _FinanceTableRowState extends State<_FinanceTableRow> {
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final cell in widget.cells)
-                  SizedBox(
-                    width: cell.width,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 10),
-                      child: cell.child,
-                    ),
-                  ),
-                SizedBox(
-                  width: _FinanzasCatalogPageState._kFinanceActionsW,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SizedBox(
+                width: constraints.maxWidth,
+                child: ContractGridScaledRow(
                   child: Align(
-                    alignment: Alignment.centerRight,
-                    child: PopupMenuButton<_FinanceRowMenuAction>(
-                      tooltip: 'Acciones',
-                      padding: EdgeInsets.zero,
-                      color: finanzasAreaTokens.surfaceTint.withValues(
-                        alpha: 0.98,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(
-                          color: Colors.white.withValues(alpha: 0.70),
-                        ),
-                      ),
-                      onSelected: (item) => item.onTap(),
-                      itemBuilder: (context) => [
-                        for (final item in widget.menuItems)
-                          PopupMenuItem<_FinanceRowMenuAction>(
-                            value: item,
-                            child: Row(
-                              children: [
-                                Icon(
-                                  item.icon,
-                                  color: finanzasAreaTokens.primaryStrong,
-                                  size: 18,
+                    alignment: Alignment.topCenter,
+                    child: SizedBox(
+                      width: rowContentWidth,
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final cell in widget.cells)
+                            SizedBox(
+                              width: cell.width,
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: cell.child,
+                              ),
+                            ),
+                          AnchoredActionSlot(
+                            width: _FinanzasCatalogPageState._kFinanceActionsW,
+                            trailingWidth: 36,
+                            leading: const SizedBox.shrink(),
+                            trailing: PopupMenuButton<_FinanceRowMenuAction>(
+                              tooltip: 'Acciones',
+                              padding: EdgeInsets.zero,
+                              color: finanzasAreaTokens.surfaceTint.withValues(
+                                alpha: 0.98,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(16),
+                                side: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.70),
                                 ),
-                                const SizedBox(width: 10),
-                                Text(
-                                  item.label,
-                                  style: const TextStyle(
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w700,
-                                    color: kFinanzasInk,
+                              ),
+                              onSelected: (item) => item.onTap(),
+                              itemBuilder: (context) => [
+                                for (final item in widget.menuItems)
+                                  PopupMenuItem<_FinanceRowMenuAction>(
+                                    value: item,
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          item.icon,
+                                          color:
+                                              finanzasAreaTokens.primaryStrong,
+                                          size: 18,
+                                        ),
+                                        const SizedBox(width: 10),
+                                        Text(
+                                          item.label,
+                                          style: const TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: kFinanzasInk,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                              ],
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: Colors.white.withValues(alpha: 0.88),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: tokens.border.withValues(
+                                      alpha: 0.82,
+                                    ),
+                                  ),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      blurRadius: 10,
+                                      offset: const Offset(0, 4),
+                                      color: Colors.black.withValues(
+                                        alpha: 0.06,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.more_horiz_rounded,
+                                    color: tokens.primaryStrong,
+                                    size: 20,
                                   ),
                                 ),
-                              ],
+                              ),
                             ),
                           ),
-                      ],
-                      child: Container(
-                        width: 36,
-                        height: 36,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.88),
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: tokens.border.withValues(alpha: 0.82),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              blurRadius: 10,
-                              offset: const Offset(0, 4),
-                              color: Colors.black.withValues(alpha: 0.06),
-                            ),
-                          ],
-                        ),
-                        child: Center(
-                          child: Icon(
-                            Icons.more_horiz_rounded,
-                            color: tokens.primaryStrong,
-                            size: 20,
-                          ),
-                        ),
+                        ],
                       ),
                     ),
                   ),
                 ),
-              ],
-            ),
+              );
+            },
           ),
         ),
       ),
@@ -1631,6 +1673,261 @@ class _FinanceRowChip extends StatelessWidget {
           fontSize: 11,
           fontWeight: FontWeight.w800,
           color: tone,
+        ),
+      ),
+    );
+  }
+}
+
+class _FinancePickerOption<T> {
+  final T value;
+  final String label;
+
+  const _FinancePickerOption({required this.value, required this.label});
+}
+
+Future<T?> _showFinanceSingleSelectDialog<T>(
+  BuildContext context, {
+  required String title,
+  required List<_FinancePickerOption<T>> options,
+  T? initialValue,
+}) {
+  final normalizedOptions = options.toList(growable: false)
+    ..sort((a, b) => compareMayoreoAlpha(a.label, b.label));
+  return showDialog<T>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) {
+      final searchC = TextEditingController();
+      final searchFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
+      final itemFocusNodes = <FocusNode>[];
+      String query = '';
+      int? focusedIndex;
+
+      void syncNodes(int count) {
+        while (itemFocusNodes.length < count) {
+          itemFocusNodes.add(FocusNode());
+        }
+        while (itemFocusNodes.length > count) {
+          itemFocusNodes.removeLast().dispose();
+        }
+      }
+
+      return StatefulBuilder(
+        builder: (context, setLocalState) {
+          final filtered = normalizedOptions
+              .where(
+                (option) =>
+                    option.label.toLowerCase().contains(query.toLowerCase()),
+              )
+              .toList(growable: false);
+          syncNodes(filtered.length);
+          return AreaThemeScope(
+            tokens: finanzasAreaTokens,
+            child: Focus(
+              autofocus: true,
+              onKeyEvent: (_, event) {
+                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                if (event.logicalKey == LogicalKeyboardKey.escape) {
+                  Navigator.of(dialogContext).pop();
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.enter ||
+                    event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                  if (filtered.isEmpty) return KeyEventResult.handled;
+                  final index = (focusedIndex ?? 0).clamp(
+                    0,
+                    filtered.length - 1,
+                  );
+                  Navigator.of(dialogContext).pop(filtered[index].value);
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: Dialog(
+                backgroundColor: Colors.transparent,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 440,
+                    maxHeight: 560,
+                  ),
+                  child: ContractGlassCard(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: finanzasAreaTokens.primaryStrong,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Focus(
+                          onKeyEvent: (_, event) {
+                            if (event is! KeyDownEvent) {
+                              return KeyEventResult.ignored;
+                            }
+                            if (event.logicalKey ==
+                                    LogicalKeyboardKey.arrowDown &&
+                                itemFocusNodes.isNotEmpty) {
+                              itemFocusNodes.first.requestFocus();
+                              return KeyEventResult.handled;
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          child: TextField(
+                            controller: searchC,
+                            focusNode: searchFocus,
+                            autofocus: true,
+                            decoration: contractGlassFieldDecoration(
+                              context,
+                              hintText: 'Buscar',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                            ),
+                            onChanged: (value) =>
+                                setLocalState(() => query = value),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Expanded(
+                          child: filtered.isEmpty
+                              ? const Center(child: Text('Sin resultados'))
+                              : ListView.builder(
+                                  itemCount: filtered.length,
+                                  itemBuilder: (_, i) {
+                                    final option = filtered[i];
+                                    final selected =
+                                        option.value == initialValue;
+                                    final highlighted = focusedIndex == i;
+                                    return Focus(
+                                      focusNode: itemFocusNodes[i],
+                                      onFocusChange: (hasFocus) {
+                                        if (hasFocus) {
+                                          setLocalState(() => focusedIndex = i);
+                                        } else if (focusedIndex == i) {
+                                          setLocalState(
+                                            () => focusedIndex = null,
+                                          );
+                                        }
+                                      },
+                                      onKeyEvent: (_, event) {
+                                        if (event is! KeyDownEvent) {
+                                          return KeyEventResult.ignored;
+                                        }
+                                        if (event.logicalKey ==
+                                            LogicalKeyboardKey.arrowUp) {
+                                          if (i == 0) {
+                                            searchFocus.requestFocus();
+                                          } else {
+                                            itemFocusNodes[i - 1]
+                                                .requestFocus();
+                                          }
+                                          return KeyEventResult.handled;
+                                        }
+                                        if (event.logicalKey ==
+                                                LogicalKeyboardKey.arrowDown &&
+                                            i < itemFocusNodes.length - 1) {
+                                          itemFocusNodes[i + 1].requestFocus();
+                                          return KeyEventResult.handled;
+                                        }
+                                        if (event.logicalKey ==
+                                                LogicalKeyboardKey.enter ||
+                                            event.logicalKey ==
+                                                LogicalKeyboardKey
+                                                    .numpadEnter ||
+                                            event.logicalKey ==
+                                                LogicalKeyboardKey.space) {
+                                          Navigator.of(
+                                            dialogContext,
+                                          ).pop(option.value);
+                                          return KeyEventResult.handled;
+                                        }
+                                        return KeyEventResult.ignored;
+                                      },
+                                      child: _FinancePickerOptionTile(
+                                        label: option.label,
+                                        selected: selected,
+                                        highlighted: highlighted,
+                                        onTap: () => Navigator.of(
+                                          dialogContext,
+                                        ).pop(option.value),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+class _FinancePickerOptionTile extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final bool highlighted;
+  final VoidCallback onTap;
+
+  const _FinancePickerOptionTile({
+    required this.label,
+    required this.selected,
+    required this.highlighted,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final background = selected
+        ? finanzasAreaTokens.badgeBackground.withValues(alpha: 0.90)
+        : highlighted
+        ? finanzasAreaTokens.surfaceTint.withValues(alpha: 0.66)
+        : Colors.white.withValues(alpha: 0.44);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: kFinanzasInk,
+                    ),
+                  ),
+                ),
+                if (selected)
+                  Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: finanzasAreaTokens.primaryStrong,
+                  ),
+              ],
+            ),
+          ),
         ),
       ),
     );
