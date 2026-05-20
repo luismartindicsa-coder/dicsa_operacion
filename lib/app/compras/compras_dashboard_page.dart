@@ -38,6 +38,7 @@ class ComprasDashboardPage extends StatelessWidget {
       config: EmptyAreaDashboardConfig(
         dashboardLabel: 'Dashboard Compras Mayoreo',
         sidePanelLabel: 'Compras Mayoreo',
+        headerTitleColor: const Color(0xFFE6DBD8),
         heroEyebrow: 'COMPRAS MAYOREO',
         heroTitle:
             'Base homologada para compras, tickets y seguimiento operativo.',
@@ -58,14 +59,14 @@ class ComprasDashboardPage extends StatelessWidget {
         panelGradient: kComprasPanelGradient,
         accentGradient: kComprasAccentGradient,
         backgroundGradientColors: const [
-          Color(0xFF090606),
-          Color(0xFF120909),
-          Color(0xFF241111),
+          Color(0xFF181010),
+          Color(0xFF241515),
+          Color(0xFF3A2020),
         ],
-        topLeftBlobColors: const [Color(0xFF1E1111), Color(0xFF090606)],
-        topRightBlobColors: const [Color(0xFF8F201A), Color(0x26150A0A)],
+        topLeftBlobColors: const [Color(0xFF332020), Color(0xFF181010)],
+        topRightBlobColors: const [Color(0xFF9C211B), Color(0x33261515)],
         bottomLeftBlobColors: const [Color(0x338F201A), Color(0xFFF0E4E2)],
-        pillarGradientColors: const [Color(0xFF9C211B), Color(0xFF171010)],
+        pillarGradientColors: const [Color(0xFFAA2A23), Color(0xFF261818)],
         areaItems: [
           DashboardNavAction(
             title: 'Dashboard Compras',
@@ -80,6 +81,8 @@ class ComprasDashboardPage extends StatelessWidget {
             icon: Icons.price_check_rounded,
             onTap: () => _openCatalog(context),
           ),
+        ],
+        accessItems: [
           DashboardNavAction(
             title: 'Dashboard Finanzas',
             subtitle: 'Pagos, liquidez y compromisos',
@@ -92,11 +95,6 @@ class ComprasDashboardPage extends StatelessWidget {
             label: 'Catálogo',
             icon: Icons.price_check_rounded,
             onTap: () => _openCatalog(context),
-          ),
-          DashboardHeaderAction(
-            label: 'Finanzas',
-            icon: Icons.account_balance_wallet_outlined,
-            onTap: () => _openFinanzas(context),
           ),
         ],
       ),

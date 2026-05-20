@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../ui_contract_core/theme/area_theme_scope.dart';
+
 const Color kAppActionPanelBg = Color(0x55FFFFFF);
 const Color kAppActionPanelBorder = Color(0xA6FFFFFF);
 const Color kAppMetricAccent = Color(0xFF4F8E8C);
@@ -163,6 +165,16 @@ class AppFolderTabs extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final inheritedTokens = context
+        .dependOnInheritedWidgetOfExactType<AreaThemeScope>()
+        ?.tokens;
+    final tabInk = inheritedTokens == null
+        ? Colors.white.withValues(alpha: 0.90)
+        : Colors.white.withValues(alpha: 0.92);
+    final tabMutedInk = inheritedTokens == null
+        ? Colors.white.withValues(alpha: 0.72)
+        : Colors.white.withValues(alpha: 0.78);
+
     Widget tabItem(int index, AppFolderTabItem item) {
       final selected = controller.index == index;
       final railFill = Colors.white.withValues(alpha: 0.22);
@@ -204,15 +216,19 @@ class AppFolderTabs extends StatelessWidget {
                           mainAxisAlignment: MainAxisAlignment.center,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(item.icon, color: kAppMetricText, size: 20),
+                            Icon(
+                              item.icon,
+                              color: selected ? tabInk : tabMutedInk,
+                              size: 20,
+                            ),
                             const SizedBox(height: 2),
                             Text(
                               item.label,
-                              style: const TextStyle(
+                              style: TextStyle(
                                 fontSize: 12,
                                 fontWeight: FontWeight.w800,
                                 height: 1.0,
-                                color: kAppMetricText,
+                                color: selected ? tabInk : tabMutedInk,
                               ),
                             ),
                           ],

@@ -1159,16 +1159,16 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
     });
   }
 
-  Future<bool> _createTicketsFromDraft() async {
-    if (_creatingTicketDraft) return false;
+  Future<List<Map<String, dynamic>>?> _createTicketsFromDraft() async {
+    if (_creatingTicketDraft) return null;
     final baseTicket = _ticketC.text.trim();
     if (baseTicket.isEmpty) {
       _toast('El ticket es obligatorio');
-      return false;
+      return null;
     }
     if (_selectedProvider.trim().isEmpty) {
       _toast('Selecciona un ${_counterpartyLabel.toLowerCase()}');
-      return false;
+      return null;
     }
     if (_splitEnabled) {
       _syncSplitDrafts();
@@ -1183,7 +1183,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
           priceAtEntry == null ||
           selectedPriceRow == null) {
         _toast('Completa el ticket principal para generar $baseTicket-A');
-        return false;
+        return null;
       }
       createdRows.add(
         _buildTicketInsertRow(
@@ -1206,7 +1206,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
           _toast(
             'Selecciona material para $baseTicket-${String.fromCharCode(66 + index)}',
           );
-          return false;
+          return null;
         }
         final selectedPriceRow = _selectedCatalogPriceRowFor(material);
         final priceAtEntry = selectedPriceRow == null
@@ -1214,7 +1214,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
             : ((selectedPriceRow['final_price'] ?? 0) as num).toDouble();
         if (priceAtEntry == null || selectedPriceRow == null) {
           _toast('No hay precio vigente para $material');
-          return false;
+          return null;
         }
         createdRows.add(
           _buildTicketInsertRow(
@@ -1242,7 +1242,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
         _toast(
           'Selecciona ${_counterpartyLabel.toLowerCase()} y material con precio vigente',
         );
-        return false;
+        return null;
       }
       createdRows.add(
         _buildTicketInsertRow(
@@ -1287,22 +1287,28 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
               ? 'Ya existe el ticket ${duplicates.first}'
               : 'Ya existen los tickets ${duplicates.join(', ')}',
         );
-        return false;
+        return null;
       }
     } on PostgrestException catch (e) {
       _toast('No se pudo validar el número de ticket: ${e.message}');
-      return false;
+      return null;
     }
     setState(() => _creatingTicketDraft = true);
     try {
-      await _supa.from('men_tickets').insert(createdRows);
+      final inserted = await _supa
+          .from('men_tickets')
+          .insert(createdRows)
+          .select();
+      final normalizedRows = (inserted as List)
+          .map((row) => _normalizeTicketRow(Map<String, dynamic>.from(row)))
+          .toList(growable: false);
       await _loadTickets();
       _toast(
         _splitEnabled
             ? 'Se crearon ${createdRows.length} tickets del split'
             : 'Ticket creado',
       );
-      return true;
+      return normalizedRows;
     } on PostgrestException catch (e) {
       if (_isDuplicateTicketError(e)) {
         _toast(
@@ -1311,7 +1317,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       } else {
         _toast('No se pudo crear el ticket: ${e.message}');
       }
-      return false;
+      return null;
     } finally {
       if (mounted) {
         setState(() => _creatingTicketDraft = false);
@@ -1623,6 +1629,8 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
 
   Future<void> _showNewTicketDialog() async {
     setState(_resetDraft);
+    var draftPersisted = false;
+    List<Map<String, dynamic>> persistedRows = <Map<String, dynamic>>[];
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
@@ -1725,12 +1733,41 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                           },
                           loadingCatalogPrice: _loadingCatalogPrices,
                           creatingTicketDraft: _creatingTicketDraft,
+                          draftPersisted: draftPersisted,
                           hasCatalogPrice: _catalogPriceForSelection() != null,
                           onCreateTicket: () async {
-                            final created = await _createTicketsFromDraft();
-                            if (created && dialogContext.mounted) {
-                              Navigator.of(dialogContext).pop();
+                            if (draftPersisted) {
+                              if (dialogContext.mounted) {
+                                Navigator.of(dialogContext).pop();
+                              }
+                              return;
                             }
+                            final createdRows = await _createTicketsFromDraft();
+                            if (createdRows == null || createdRows.isEmpty) {
+                              return;
+                            }
+                            persistedRows = createdRows;
+                            draftPersisted = true;
+                            setDialogState(() {});
+                          },
+                          onPrintTicket: () async {
+                            if (_splitEnabled || _selectedStatus != 'PAGADO') {
+                              return;
+                            }
+                            if (!draftPersisted) {
+                              final createdRows =
+                                  await _createTicketsFromDraft();
+                              if (createdRows == null || createdRows.isEmpty) {
+                                return;
+                              }
+                              persistedRows = createdRows;
+                              draftPersisted = true;
+                              setDialogState(() {});
+                            }
+                            if (persistedRows.isEmpty) return;
+                            await _openTicketPdfForDraft(
+                              row: persistedRows.first,
+                            );
                           },
                         ),
                       ],
@@ -1743,6 +1780,35 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
         );
       },
     );
+  }
+
+  Future<void> _openTicketPdfForDraft({
+    required Map<String, dynamic> row,
+  }) async {
+    try {
+      final pdfBytes = await _buildTicketPrintPdfBytes(
+        row: row,
+        humidity: _numFrom(_humedadC),
+        trash: _numFrom(_basuraC),
+        premium: _numFrom(_sobreprecioC),
+        exitOrderNumber: _exitOrderNumberC.text.trim(),
+        status: _selectedStatus,
+        comment: _comentarioC.text.trim(),
+      );
+      final safeTicket = (row['ticket'] ?? 'ticket').toString().replaceAll(
+        RegExp(r'[^A-Za-z0-9_-]+'),
+        '_',
+      );
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final file = File(
+        '${Directory.systemTemp.path}/menudeo_ticket_${safeTicket}_$stamp.pdf',
+      );
+      await file.writeAsBytes(pdfBytes, flush: true);
+      await _openPdfFile(file.path);
+      _toast('Ticket enviado a impresión');
+    } catch (e) {
+      _toast('No se pudo generar el ticket: $e');
+    }
   }
 
   Future<void> _showTicketDetailDialog(int initialIndex) async {
@@ -3211,6 +3277,7 @@ class _NewTicketCard extends StatelessWidget {
   final double? Function(String material) catalogPriceForMaterial;
   final bool loadingCatalogPrice;
   final bool creatingTicketDraft;
+  final bool draftPersisted;
   final bool hasCatalogPrice;
   final ValueChanged<String> onProviderChanged;
   final ValueChanged<String> onMaterialChanged;
@@ -3219,6 +3286,7 @@ class _NewTicketCard extends StatelessWidget {
   final ValueChanged<int> onSplitCountChanged;
   final void Function(int index, String value) onSplitMaterialChanged;
   final VoidCallback onCreateTicket;
+  final Future<void> Function() onPrintTicket;
 
   const _NewTicketCard({
     required this.counterpartyLabel,
@@ -3246,6 +3314,7 @@ class _NewTicketCard extends StatelessWidget {
     required this.catalogPriceForMaterial,
     required this.loadingCatalogPrice,
     required this.creatingTicketDraft,
+    required this.draftPersisted,
     required this.hasCatalogPrice,
     required this.onProviderChanged,
     required this.onMaterialChanged,
@@ -3254,6 +3323,7 @@ class _NewTicketCard extends StatelessWidget {
     required this.onSplitCountChanged,
     required this.onSplitMaterialChanged,
     required this.onCreateTicket,
+    required this.onPrintTicket,
   });
 
   @override
@@ -3624,10 +3694,29 @@ class _NewTicketCard extends StatelessWidget {
                         spacing: 10,
                         runSpacing: 10,
                         children: [
+                          if (selectedStatus == 'PAGADO' && !splitEnabled)
+                            FilledButton.icon(
+                              style: contractSecondaryButtonStyle(context),
+                              onPressed: creatingTicketDraft
+                                  ? null
+                                  : hasCatalogPrice
+                                  ? () => unawaited(onPrintTicket())
+                                  : null,
+                              icon: const Icon(Icons.print_rounded),
+                              label: Text(
+                                creatingTicketDraft
+                                    ? 'Guardando...'
+                                    : draftPersisted
+                                    ? 'Imprimir ticket'
+                                    : 'Guardar e imprimir',
+                              ),
+                            ),
                           FilledButton.icon(
                             style: contractPrimaryButtonStyle(context),
                             onPressed: creatingTicketDraft
                                 ? null
+                                : draftPersisted
+                                ? onCreateTicket
                                 : splitEnabled
                                 ? onCreateTicket
                                 : hasCatalogPrice
@@ -3646,6 +3735,8 @@ class _NewTicketCard extends StatelessWidget {
                             label: Text(
                               creatingTicketDraft
                                   ? 'Guardando...'
+                                  : draftPersisted
+                                  ? 'Guardar y cerrar'
                                   : splitEnabled
                                   ? 'Crear split'
                                   : 'Crear ticket',

@@ -551,7 +551,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         if (_menuOpen) setState(() => _menuOpen = false);
         unawaited(_openAccounts());
         return;
-      case 'Catálogo':
+      case 'Catálogo Compras':
         if (_menuOpen) setState(() => _menuOpen = false);
         return;
       default:
@@ -4623,9 +4623,9 @@ class _MayoreoCatalogBackground extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                const Color(0xFF0A0606),
-                const Color(0xFF140A0A),
-                tokens.accent.withValues(alpha: 0.42),
+                const Color(0xFF181010),
+                const Color(0xFF241515),
+                tokens.accent.withValues(alpha: 0.38),
               ],
             ),
           ),
@@ -4638,8 +4638,8 @@ class _MayoreoCatalogBackground extends StatelessWidget {
             760,
             LinearGradient(
               colors: [
-                const Color(0xFF2A1818).withValues(alpha: 0.92),
-                const Color(0xFF0A0606),
+                const Color(0xFF3A2323).withValues(alpha: 0.94),
+                const Color(0xFF181010),
               ],
             ),
           ),
@@ -4652,7 +4652,7 @@ class _MayoreoCatalogBackground extends StatelessWidget {
             LinearGradient(
               colors: [
                 const Color(0xFF9C211B).withValues(alpha: 0.70),
-                const Color(0xFF1B0D0D).withValues(alpha: 0.20),
+                const Color(0xFF2A1616).withValues(alpha: 0.24),
               ],
             ),
           ),
@@ -4684,7 +4684,7 @@ class _MayoreoCatalogBackground extends StatelessWidget {
                   end: Alignment.bottomCenter,
                   colors: [
                     const Color(0xFF7C1712).withValues(alpha: 0.88),
-                    const Color(0xFF150B0B).withValues(alpha: 0.92),
+                    const Color(0xFF261616).withValues(alpha: 0.92),
                   ],
                 ),
               ),
@@ -4760,7 +4760,7 @@ class _MayoreoCatalogHeaderBrand extends StatelessWidget {
             fontWeight: FontWeight.w900,
             letterSpacing: 0.25,
             height: 1.0,
-            color: tokens.primaryStrong,
+            color: const Color(0xFFE6DBD8),
           ),
         ),
       ],
@@ -4790,7 +4790,7 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Compras',
+                'Compras Mayoreo',
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
@@ -4806,7 +4806,7 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
               ],
-              const _MayoreoCatalogSectionHeader(label: 'MENU'),
+              const _MayoreoCatalogSectionHeader(label: 'AREA'),
               const SizedBox(height: 8),
               Container(
                 padding: const EdgeInsets.all(10),
@@ -4822,20 +4822,13 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
                     _MayoreoCatalogNavItem(
                       icon: Icons.shopping_cart_checkout_rounded,
                       title: 'Dashboard Compras',
-                      subtitle: 'Vista general del área',
+                      subtitle: 'Tickets y operación de compra',
                       onTap: () async => onNavigate('Dashboard Compras'),
                     ),
                     const SizedBox(height: 8),
                     _MayoreoCatalogNavItem(
-                      icon: Icons.account_balance_wallet_outlined,
-                      title: 'Dashboard Finanzas',
-                      subtitle: 'Pagos, liquidez y compromisos',
-                      onTap: () async => onNavigate('Dashboard Finanzas'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MayoreoCatalogNavItem(
                       icon: Icons.price_check_rounded,
-                      title: 'Catálogo',
+                      title: 'Catálogo Compras',
                       subtitle: 'Proveedores, materiales y precios',
                       accented: true,
                       onTap: () async {},
@@ -4856,10 +4849,10 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
                 const SizedBox(height: 8),
               ],
               _MayoreoCatalogNavItem(
-                icon: Icons.space_dashboard_rounded,
-                title: 'Dashboard Compras',
-                subtitle: 'Vista general del área',
-                onTap: () async => onNavigate('Dashboard Compras'),
+                icon: Icons.account_balance_wallet_outlined,
+                title: 'Dashboard Finanzas',
+                subtitle: 'Pagos, liquidez y compromisos',
+                onTap: () async => onNavigate('Dashboard Finanzas'),
               ),
             ],
           ),

@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 
-import '../compras/compras_catalog_page.dart';
 import '../compras/compras_dashboard_page.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
 import 'finanzas_catalog_page.dart';
+import 'finanzas_company_directory_page.dart';
 import 'finanzas_theme.dart';
 
 class FinanzasDashboardPage extends StatelessWidget {
@@ -22,20 +22,20 @@ class FinanzasDashboardPage extends StatelessWidget {
     );
   }
 
-  Future<void> _openComprasCatalog(BuildContext context) async {
+  Future<void> _openCatalog(BuildContext context) async {
     await Navigator.of(context).push(
       appPageRoute(
-        page: const ComprasCatalogPage(instantOpen: true),
+        page: const FinanzasCatalogPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
     );
   }
 
-  Future<void> _openCatalog(BuildContext context) async {
+  Future<void> _openDirectory(BuildContext context) async {
     await Navigator.of(context).push(
       appPageRoute(
-        page: const FinanzasCatalogPage(instantOpen: true),
+        page: const FinanzasCompanyDirectoryPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -91,16 +91,18 @@ class FinanzasDashboardPage extends StatelessWidget {
             onTap: () => _openCatalog(context),
           ),
           DashboardNavAction(
+            title: 'Directorio Empresas',
+            subtitle: 'Crédito, contacto y operación',
+            icon: Icons.account_balance_rounded,
+            onTap: () => _openDirectory(context),
+          ),
+        ],
+        accessItems: [
+          DashboardNavAction(
             title: 'Dashboard Compras',
             subtitle: 'Tickets y operación de compra',
             icon: Icons.shopping_cart_checkout_rounded,
             onTap: () => _openCompras(context),
-          ),
-          DashboardNavAction(
-            title: 'Catálogo Compras',
-            subtitle: 'Proveedores, materiales y precios',
-            icon: Icons.storefront_rounded,
-            onTap: () => _openComprasCatalog(context),
           ),
         ],
         headerActions: [
@@ -110,9 +112,9 @@ class FinanzasDashboardPage extends StatelessWidget {
             onTap: () => _openCatalog(context),
           ),
           DashboardHeaderAction(
-            label: 'Compras',
-            icon: Icons.shopping_cart_checkout_rounded,
-            onTap: () => _openCompras(context),
+            label: 'Directorio',
+            icon: Icons.account_balance_rounded,
+            onTap: () => _openDirectory(context),
           ),
         ],
       ),

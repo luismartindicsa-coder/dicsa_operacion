@@ -48,6 +48,7 @@ const Map<String, String> _kPurchaseOrderStatusLabel = <String, String>{
   'draft': 'Borrador',
   'pending_direction': 'Pendiente dirección',
   'authorized': 'Autorizada',
+  'purchased': 'Comprada',
   'rejected': 'Rechazada',
 };
 
@@ -62,6 +63,8 @@ const double _kPoDateColW = 96;
 const double _kPoTargetColW = 142;
 const double _kPoVendorColW = 250;
 const double _kPoStatusColW = 156;
+const double _kPoCashColW = 126;
+const double _kPoPurchaseColW = 126;
 const double _kPoTotalColW = 116;
 const double _kPoActionsColW = 172;
 
@@ -296,6 +299,9 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   int _countByStatus(String status) =>
       _orders.where((order) => order['status'] == status).length;
 
+  bool _isSentToCash(Map<String, dynamic> order) =>
+      _dateFromAny(order['sent_to_cash_at']) != null;
+
   bool get _hasActiveFilters => _columnValueFilters.isNotEmpty;
 
   int get _activeFiltersCount => _columnValueFilters.length;
@@ -318,6 +324,11 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
       case 'estatus':
         final status = (order['status'] ?? 'draft').toString();
         return _kPurchaseOrderStatusLabel[status] ?? status;
+      case 'caja':
+        if ((order['status'] ?? '').toString() == 'purchased') {
+          return 'Atendida';
+        }
+        return _isSentToCash(order) ? 'Mandada a caja' : 'Pendiente';
       default:
         return '';
     }
@@ -915,9 +926,23 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
         .fold<double>(0, (sum, row) => sum + _lineTotal(row));
   }
 
-  double _authorizedTotal() {
+  int _countSentToCashPending() {
     return _orders
-        .where((order) => order['status'] == 'authorized')
+        .where(
+          (order) =>
+              order['status'] == 'authorized' &&
+              _dateFromAny(order['sent_to_cash_at']) != null,
+        )
+        .length;
+  }
+
+  double _sentToCashPendingTotal() {
+    return _orders
+        .where(
+          (order) =>
+              order['status'] == 'authorized' &&
+              _dateFromAny(order['sent_to_cash_at']) != null,
+        )
         .fold<double>(
           0,
           (sum, order) => sum + _orderTotal(order['id']?.toString() ?? ''),
@@ -937,8 +962,9 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   }
 
   Future<void> _editOrder(Map<String, dynamic> order) async {
-    if ((order['status'] ?? '') == 'authorized') {
-      _toast('Las órdenes autorizadas ya no se editan.');
+    final status = (order['status'] ?? '').toString();
+    if (status == 'authorized' || status == 'purchased') {
+      _toast('Las órdenes autorizadas o compradas ya no se editan.');
       return;
     }
     await _showOrderDialog(initial: order);
@@ -1075,6 +1101,11 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     await _updateStatus(
       order,
       status: 'pending_direction',
+      extra: const <String, dynamic>{
+        'sent_to_cash_by': null,
+        'sent_to_cash_by_name': null,
+        'sent_to_cash_at': null,
+      },
       toast: 'Orden enviada a Dirección',
     );
   }
@@ -1114,8 +1145,64 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
       extra: <String, dynamic>{
         'direction_rejected_at': DateTime.now().toIso8601String(),
         'direction_comment': comment.isEmpty ? null : comment,
+        'sent_to_cash_by': null,
+        'sent_to_cash_by_name': null,
+        'sent_to_cash_at': null,
       },
       toast: 'Orden rechazada',
+    );
+  }
+
+  Future<void> _sendToCash(Map<String, dynamic> order) async {
+    await _updateStatus(
+      order,
+      status: 'authorized',
+      extra: <String, dynamic>{
+        'sent_to_cash_by': _supa.auth.currentUser?.id,
+        'sent_to_cash_by_name':
+            _profile?.email ?? _supa.auth.currentUser?.email,
+        'sent_to_cash_at': DateTime.now().toIso8601String(),
+      },
+      toast: 'Orden enviada a caja',
+    );
+  }
+
+  Future<void> _removeFromCash(Map<String, dynamic> order) async {
+    await _updateStatus(
+      order,
+      status: 'authorized',
+      extra: const <String, dynamic>{
+        'sent_to_cash_by': null,
+        'sent_to_cash_by_name': null,
+        'sent_to_cash_at': null,
+      },
+      toast: 'Orden retirada de caja',
+    );
+  }
+
+  Future<void> _markAsPurchased(Map<String, dynamic> order) async {
+    await _updateStatus(
+      order,
+      status: 'purchased',
+      extra: <String, dynamic>{
+        'purchased_by': _supa.auth.currentUser?.id,
+        'purchased_by_name': _profile?.email ?? _supa.auth.currentUser?.email,
+        'purchased_at': DateTime.now().toIso8601String(),
+      },
+      toast: 'Orden marcada como comprada',
+    );
+  }
+
+  Future<void> _reopenPurchasedOrder(Map<String, dynamic> order) async {
+    await _updateStatus(
+      order,
+      status: 'authorized',
+      extra: <String, dynamic>{
+        'purchased_by': null,
+        'purchased_by_name': null,
+        'purchased_at': null,
+      },
+      toast: 'Orden regresada a pendiente de compra',
     );
   }
 
@@ -1129,10 +1216,17 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     _selectOrder(orderId, requestFocus: true, ensureVisible: false);
 
     final status = (order['status'] ?? 'draft').toString();
-    final canEdit = status != 'authorized';
+    final canEdit = status != 'authorized' && status != 'purchased';
     final canSend = status == 'draft' || status == 'rejected';
-    final canAuthorize = _isDirection && status != 'authorized';
-    final canReject = _isDirection && status != 'rejected';
+    final canAuthorize =
+        _isDirection && status != 'authorized' && status != 'purchased';
+    final canReject =
+        _isDirection && status != 'rejected' && status != 'purchased';
+    final sentToCash = _dateFromAny(order['sent_to_cash_at']) != null;
+    final canSendToCash = status == 'authorized' && !sentToCash;
+    final canRemoveFromCash = status == 'authorized' && sentToCash;
+    final canMarkPurchased = status == 'authorized';
+    final canReopenPurchase = status == 'purchased';
     final canDelete = _canDeleteOrder(order);
     final overlay = Overlay.of(context).context.findRenderObject();
     RelativeRect position = const RelativeRect.fromLTRB(0, 0, 0, 0);
@@ -1195,6 +1289,42 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
               subtitle: 'Liberar la orden para OT',
             ),
           ),
+        if (canSendToCash)
+          const PopupMenuItem<String>(
+            value: 'send_to_cash',
+            child: _PurchaseOrderActionMenuLabel(
+              icon: Icons.point_of_sale_rounded,
+              title: 'Mandar a caja',
+              subtitle: 'Avisar a caja que ya puede entregar efectivo',
+            ),
+          ),
+        if (canRemoveFromCash)
+          const PopupMenuItem<String>(
+            value: 'remove_from_cash',
+            child: _PurchaseOrderActionMenuLabel(
+              icon: Icons.remove_shopping_cart_rounded,
+              title: 'Quitar de caja',
+              subtitle: 'Regresar la orden a autorización sin caja',
+            ),
+          ),
+        if (canMarkPurchased)
+          const PopupMenuItem<String>(
+            value: 'purchase',
+            child: _PurchaseOrderActionMenuLabel(
+              icon: Icons.shopping_cart_checkout_rounded,
+              title: 'Marcar como comprada',
+              subtitle: 'Confirmar compra física realizada',
+            ),
+          ),
+        if (canReopenPurchase)
+          const PopupMenuItem<String>(
+            value: 'reopen_purchase',
+            child: _PurchaseOrderActionMenuLabel(
+              icon: Icons.undo_rounded,
+              title: 'Regresar a autorizada',
+              subtitle: 'Volver a pendiente de compra',
+            ),
+          ),
         if (canReject)
           const PopupMenuItem<String>(
             value: 'reject',
@@ -1226,8 +1356,20 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
       case 'authorize':
         await _authorizeOrder(order);
         break;
+      case 'send_to_cash':
+        await _sendToCash(order);
+        break;
+      case 'remove_from_cash':
+        await _removeFromCash(order);
+        break;
       case 'reject':
         await _rejectOrder(order);
+        break;
+      case 'purchase':
+        await _markAsPurchased(order);
+        break;
+      case 'reopen_purchase':
+        await _reopenPurchasedOrder(order);
         break;
       case 'delete':
         await _deleteOrder(order);
@@ -1257,6 +1399,14 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
       await _loadOrders();
       _toast(toast);
     } catch (e) {
+      if (e is PostgrestException &&
+          _isMissingPurchasedPurchaseOrderSchemaError(e)) {
+        setState(() {
+          _purchaseOrdersSchemaReady = false;
+          _purchaseOrdersSchemaMessage =
+              'Compras OT necesita aplicar la migración de compra física / caja en Supabase. Aplica `supabase db push` y vuelve a cargar.';
+        });
+      }
       _toast('No se pudo actualizar la orden: $e');
     } finally {
       if (mounted) setState(() => _runningAction = false);
@@ -1777,14 +1927,26 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
         ),
         const SizedBox(width: 8),
         _metricCard(
-          'Autorizadas',
+          'Pend. compra',
           '${_countByStatus('authorized')}',
           Icons.verified_rounded,
         ),
         const SizedBox(width: 8),
         _metricCard(
-          'Monto autorizado',
-          _fmtMoney(_authorizedTotal()),
+          'En caja',
+          '${_countSentToCashPending()}',
+          Icons.point_of_sale_rounded,
+        ),
+        const SizedBox(width: 8),
+        _metricCard(
+          'Compradas',
+          '${_countByStatus('purchased')}',
+          Icons.shopping_cart_checkout_rounded,
+        ),
+        const SizedBox(width: 8),
+        _metricCard(
+          'Monto en caja',
+          _fmtMoney(_sentToCashPendingTotal()),
           Icons.attach_money_rounded,
         ),
       ],
@@ -1882,6 +2044,19 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                                   'estatus',
                                   'ESTATUS',
                                 ),
+                              ),
+                              const _PurchaseOrderGridColumnDivider(),
+                              _PurchaseOrderHeaderCell(
+                                label: 'CAJA',
+                                width: _kPoCashColW,
+                                active: _hasColumnFilter('caja'),
+                                onFilter: () =>
+                                    _openColumnFilterDialog('caja', 'CAJA'),
+                              ),
+                              const _PurchaseOrderGridColumnDivider(),
+                              const _OrderHeaderCell(
+                                label: 'COMPRA',
+                                width: _kPoPurchaseColW,
                               ),
                               const _PurchaseOrderGridColumnDivider(),
                               const _OrderHeaderCell(
@@ -2508,7 +2683,8 @@ class _PurchaseOrderRowCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final status = (order['status'] ?? 'draft').toString();
     final requestLabel = switch (status) {
-      'authorized' => 'Bloqueada para edición',
+      'authorized' => 'Pendiente de compra física',
+      'purchased' => 'Compra verificada',
       'pending_direction' => 'Pendiente de Dirección',
       'rejected' => 'Requiere corrección',
       _ => 'Lista para captura',
@@ -2635,6 +2811,100 @@ class _PurchaseOrderRowCard extends StatelessWidget {
                         ),
                       ),
                     ],
+                  ),
+                ),
+                const _PurchaseOrderGridColumnDivider(),
+                SizedBox(
+                  width: _kPoCashColW,
+                  child: Builder(
+                    builder: (_) {
+                      final sentToCashAt = _dateFromAny(
+                        order['sent_to_cash_at'],
+                      );
+                      final purchased = status == 'purchased';
+                      final sentToCash = sentToCashAt != null;
+                      final label = purchased
+                          ? 'Atendida'
+                          : sentToCash
+                          ? _fmtDateLabel(sentToCashAt)
+                          : 'Pendiente';
+                      final color = purchased
+                          ? const Color(0xFF1F4C8F)
+                          : sentToCash
+                          ? const Color(0xFF146356)
+                          : const Color(0xFF7C5A00);
+                      final subtitle = purchased
+                          ? 'Compra ya registrada'
+                          : sentToCash
+                          ? 'Mandada a caja'
+                          : 'Sin pasar a caja';
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: color,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            subtitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF5A7287),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
+                ),
+                const _PurchaseOrderGridColumnDivider(),
+                SizedBox(
+                  width: _kPoPurchaseColW,
+                  child: Builder(
+                    builder: (_) {
+                      final purchasedAt = _dateFromAny(order['purchased_at']);
+                      final purchased = status == 'purchased';
+                      final label = purchased
+                          ? (purchasedAt == null
+                                ? 'Comprada'
+                                : _fmtDateLabel(purchasedAt))
+                          : 'Pendiente';
+                      final color = purchased
+                          ? const Color(0xFF1F4C8F)
+                          : const Color(0xFF7C5A00);
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: color,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            purchased ? 'Compra física hecha' : 'Por comprar',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: Color(0xFF5A7287),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
                   ),
                 ),
                 const _PurchaseOrderGridColumnDivider(),
@@ -3889,6 +4159,10 @@ class _StatusPill extends StatelessWidget {
         background = const Color(0xFFDDF4EC);
         foreground = const Color(0xFF0D5C46);
         break;
+      case 'Comprada':
+        background = const Color(0xFFDDEBFF);
+        foreground = const Color(0xFF1F4C8F);
+        break;
       case 'Pendiente dirección':
         background = const Color(0xFFFFF0C7);
         foreground = const Color(0xFF7C5A00);
@@ -4010,6 +4284,18 @@ bool _isMissingPurchaseOrdersSchemaError(PostgrestException error) {
   final message = error.message.toLowerCase();
   return message.contains('maintenance_purchase_orders') ||
       message.contains('maintenance_purchase_order_lines');
+}
+
+bool _isMissingPurchasedPurchaseOrderSchemaError(PostgrestException error) {
+  final message = error.message.toLowerCase();
+  return message.contains('purchased_at') ||
+      message.contains('purchased_by') ||
+      message.contains('purchased_by_name') ||
+      message.contains('sent_to_cash_at') ||
+      message.contains('sent_to_cash_by') ||
+      message.contains('sent_to_cash_by_name') ||
+      (message.contains('invalid input value for enum') &&
+          message.contains('purchased'));
 }
 
 bool _isMissingOperationDirectoryContactsError(PostgrestException error) {

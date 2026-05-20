@@ -2,12 +2,16 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'auth_access.dart';
 import 'auth_navigation.dart';
+import '../direction/direction_operations_repository.dart';
+import '../direction/direction_purchase_orders_page.dart';
 import 'login_page.dart';
 import 'role_router.dart';
 import '../shared/app_error_reporter.dart';
+import '../shared/page_routes.dart';
 import '../shared/session_expiry_service.dart';
 import '../update/app_update_prompt.dart';
 import '../update/app_update_service.dart';
@@ -29,14 +33,21 @@ class _AuthGateState extends State<AuthGate>
 
   late final StreamSubscription<AuthState> _authSub;
   late final AnimationController _switchFx;
+  final DirectionOperationsRepository _directionOperationsRepository =
+      DirectionOperationsRepository();
   Timer? _appUpdateTimer;
+  Timer? _directionPurchaseOrderTimer;
+  RealtimeChannel? _directionPurchaseOrderChannel;
   bool _expiring = false;
   bool _hasSession = false;
   bool _transitionToSession = false;
   bool _transitioning = false;
+  bool _watchingDirectionPurchaseOrders = false;
+  bool _showingDirectionPurchaseDialog = false;
   bool? _queuedSessionState;
   bool _checkingAppUpdate = false;
   String? _lastPromptedUpdateVersion;
+  String? _lastDirectionPurchaseSignature;
 
   @override
   void initState() {
@@ -54,10 +65,16 @@ class _AuthGateState extends State<AuthGate>
       if (state.event == AuthChangeEvent.signedIn) {
         await SessionExpiryService.instance.markSessionStarted();
         await _scheduleSessionExpiry();
+        unawaited(_refreshDirectionPurchaseOrderAlerts());
       }
       if (state.event == AuthChangeEvent.signedOut) {
         await SessionExpiryService.instance.clearSessionStart();
         _expiring = false;
+        _stopDirectionPurchaseOrderAlerts();
+      }
+      if (state.event == AuthChangeEvent.tokenRefreshed ||
+          state.event == AuthChangeEvent.userUpdated) {
+        unawaited(_refreshDirectionPurchaseOrderAlerts());
       }
 
       final nextHasSession =
@@ -70,6 +87,7 @@ class _AuthGateState extends State<AuthGate>
     final session = Supabase.instance.client.auth.currentSession;
     if (session != null) {
       unawaited(_handleSessionResumed());
+      unawaited(_refreshDirectionPurchaseOrderAlerts());
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -85,6 +103,7 @@ class _AuthGateState extends State<AuthGate>
     if (state == AppLifecycleState.resumed) {
       unawaited(_handleSessionResumed());
       unawaited(_checkForAppUpdate());
+      unawaited(_refreshDirectionPurchaseOrderAlerts());
     }
   }
 
@@ -92,6 +111,7 @@ class _AuthGateState extends State<AuthGate>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _appUpdateTimer?.cancel();
+    _stopDirectionPurchaseOrderAlerts();
     _authSub.cancel();
     _switchFx.dispose();
     super.dispose();
@@ -115,6 +135,246 @@ class _AuthGateState extends State<AuthGate>
 
   Future<void> _scheduleSessionExpiry() async {
     await SessionExpiryService.instance.schedule(onExpired: _expireSession);
+  }
+
+  Future<void> _refreshDirectionPurchaseOrderAlerts() async {
+    final profile = await AuthAccess.resolveCurrentProfile();
+    if (!mounted) return;
+    if (!AuthAccess.isDirectionRole(profile)) {
+      _stopDirectionPurchaseOrderAlerts();
+      return;
+    }
+    _startDirectionPurchaseOrderAlerts();
+  }
+
+  void _startDirectionPurchaseOrderAlerts() {
+    if (_watchingDirectionPurchaseOrders) return;
+    _watchingDirectionPurchaseOrders = true;
+    unawaited(_checkDirectionPurchaseOrders());
+    _directionPurchaseOrderTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => unawaited(_checkDirectionPurchaseOrders()),
+    );
+    _directionPurchaseOrderChannel = Supabase.instance.client
+        .channel('global-direction-purchase-orders-alerts')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_purchase_orders',
+          callback: (_) => unawaited(_checkDirectionPurchaseOrders()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_purchase_order_lines',
+          callback: (_) => unawaited(_checkDirectionPurchaseOrders()),
+        )
+        .subscribe();
+  }
+
+  void _stopDirectionPurchaseOrderAlerts() {
+    _watchingDirectionPurchaseOrders = false;
+    _directionPurchaseOrderTimer?.cancel();
+    _directionPurchaseOrderTimer = null;
+    _directionPurchaseOrderChannel?.unsubscribe();
+    _directionPurchaseOrderChannel = null;
+    _lastDirectionPurchaseSignature = null;
+  }
+
+  Future<void> _checkDirectionPurchaseOrders() async {
+    if (!_watchingDirectionPurchaseOrders) return;
+    try {
+      final summary = await _directionOperationsRepository
+          .loadPurchaseOrdersSummary();
+      if (!mounted || !_watchingDirectionPurchaseOrders) return;
+      _handleDirectionPurchaseOrdersSummary(summary);
+    } catch (_) {
+      // Ignora errores temporales para no bloquear la sesión.
+    }
+  }
+
+  void _handleDirectionPurchaseOrdersSummary(
+    DirectionPurchaseOrdersSummary summary,
+  ) {
+    if (summary.pendingCount <= 0) return;
+    final signature = summary.pendingItems
+        .map(
+          (item) =>
+              '${item.id}:${item.updatedAt?.toIso8601String() ?? item.createdAt?.toIso8601String() ?? ''}',
+        )
+        .join('|');
+    if (signature.isEmpty ||
+        signature == _lastDirectionPurchaseSignature ||
+        _showingDirectionPurchaseDialog) {
+      return;
+    }
+    _lastDirectionPurchaseSignature = signature;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted || _showingDirectionPurchaseDialog) return;
+      final navigator = appNavigatorKey.currentState;
+      if (navigator == null) return;
+      _showingDirectionPurchaseDialog = true;
+      await SystemSound.play(SystemSoundType.alert);
+      if (!mounted || !navigator.mounted) {
+        _showingDirectionPurchaseDialog = false;
+        return;
+      }
+      await showDialog<void>(
+        context: navigator.context,
+        barrierDismissible: true,
+        builder: (context) {
+          final accent = summary.criticalCount > 0
+              ? const Color(0xFFFF6B7A)
+              : const Color(0xFFFFB45E);
+          final top = summary.pendingItems.isNotEmpty
+              ? summary.pendingItems.first
+              : null;
+          return AlertDialog(
+            backgroundColor: const Color(0xFF091731),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(26),
+              side: BorderSide(color: accent.withValues(alpha: 0.42)),
+            ),
+            titlePadding: const EdgeInsets.fromLTRB(22, 20, 22, 8),
+            contentPadding: const EdgeInsets.fromLTRB(22, 6, 22, 8),
+            actionsPadding: const EdgeInsets.fromLTRB(18, 0, 18, 18),
+            title: Row(
+              children: [
+                Container(
+                  width: 46,
+                  height: 46,
+                  decoration: BoxDecoration(
+                    color: accent.withValues(alpha: 0.18),
+                    shape: BoxShape.circle,
+                    border: Border.all(color: accent.withValues(alpha: 0.54)),
+                  ),
+                  child: Icon(
+                    Icons.notifications_active_rounded,
+                    color: accent,
+                    size: 26,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                const Expanded(
+                  child: Text(
+                    'Compras OT requieren Dirección',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 20,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            content: SizedBox(
+              width: 500,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    summary.criticalCount > 0
+                        ? 'Hay ${summary.pendingCount} órdenes pendientes y ${summary.criticalCount} ya están en nivel crítico.'
+                        : 'Hay ${summary.pendingCount} órdenes de compra esperando validación ejecutiva.',
+                    style: const TextStyle(
+                      color: Color(0xFFD0E4FF),
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _DirectionPurchasePopupBadge(
+                        label: 'Pendientes',
+                        value: '${summary.pendingCount}',
+                      ),
+                      _DirectionPurchasePopupBadge(
+                        label: 'Críticas',
+                        value: '${summary.criticalCount}',
+                      ),
+                      _DirectionPurchasePopupBadge(
+                        label: 'Monto',
+                        value: _formatDirectionPopupMoney(
+                          summary.pendingAmount,
+                        ),
+                      ),
+                    ],
+                  ),
+                  if (top != null) ...[
+                    const SizedBox(height: 14),
+                    Container(
+                      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.05),
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.12),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Orden más urgente: ${top.folio}',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${top.targetLabel} · ${top.vendorName.isEmpty ? 'Sin proveedor' : top.vendorName}',
+                            style: const TextStyle(
+                              color: Color(0xFFD0E4FF),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '${top.ageHours.round()} h · ${_formatDirectionPopupMoney(top.total)}',
+                            style: const TextStyle(
+                              color: Color(0xFFD0E4FF),
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              OutlinedButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Después'),
+              ),
+              FilledButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  navigator.push(
+                    appPageRoute(
+                      page: const DirectionPurchaseOrdersPage(
+                        instantOpen: true,
+                      ),
+                      duration: const Duration(milliseconds: 300),
+                      reverseDuration: const Duration(milliseconds: 220),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.open_in_new_rounded),
+                label: const Text('Abrir Compras OT'),
+              ),
+            ],
+          );
+        },
+      );
+      _showingDirectionPurchaseDialog = false;
+    });
   }
 
   Future<void> _expireSession() async {
@@ -321,6 +581,52 @@ class _AuthGateState extends State<AuthGate>
       width: size,
       height: size,
       decoration: BoxDecoration(shape: BoxShape.circle, gradient: gradient),
+    );
+  }
+}
+
+String _formatDirectionPopupMoney(num value) {
+  final abs = value.abs();
+  final text = abs.toStringAsFixed(2);
+  final parts = text.split('.');
+  final whole = parts.first;
+  final decimal = parts.last;
+  final buffer = StringBuffer();
+  for (var i = 0; i < whole.length; i++) {
+    final position = whole.length - i;
+    buffer.write(whole[i]);
+    if (position > 1 && position % 3 == 1) {
+      buffer.write(',');
+    }
+  }
+  return '${value < 0 ? '-' : ''}\$${buffer.toString()}.$decimal';
+}
+
+class _DirectionPurchasePopupBadge extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DirectionPurchasePopupBadge({
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Text(
+        '$label: $value',
+        style: const TextStyle(
+          color: Colors.white,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
     );
   }
 }

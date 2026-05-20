@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
 
 const ContractAreaTokens comprasAreaTokens = ContractAreaTokens(
-  primary: Color(0xFF191010),
-  primaryStrong: Color(0xFF0C0707),
+  primary: Color(0xFF241515),
+  primaryStrong: Color(0xFF1A0F0F),
   primarySoft: Color(0xFFF0E4E2),
   accent: Color(0xFFB52A23),
   surfaceTint: Color(0xFFF1E9E8),
@@ -17,7 +17,7 @@ const ContractAreaTokens comprasAreaTokens = ContractAreaTokens(
 const LinearGradient kComprasHeroGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  colors: [Color(0xFF120B0B), Color(0xFF261212), Color(0xFFB52A23)],
+  colors: [Color(0xFF221313), Color(0xFF382020), Color(0xFFB52A23)],
 );
 
 const LinearGradient kComprasPanelGradient = LinearGradient(

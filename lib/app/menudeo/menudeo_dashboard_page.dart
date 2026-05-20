@@ -52,6 +52,9 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
   double _expensesToday = 0;
   int _salesCount = 0;
   int _purchasesCount = 0;
+  List<_CashReadyPurchaseOrder> _cashReadyPurchaseOrders =
+      const <_CashReadyPurchaseOrder>[];
+  double _cashReadyPurchaseTotal = 0;
   List<_DashboardWeightRow> _purchaseMaterialRows =
       const <_DashboardWeightRow>[];
   List<_DashboardWeightRow> _purchaseProviderRows =
@@ -110,12 +113,15 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
             .eq('is_verified', false)
             .order('created_at'),
         _loadDashboardPriceRows(),
+        _loadCashReadyPurchaseOrders(),
       ]);
 
       final ticketRows = (results[0] as List).cast<Map<String, dynamic>>();
       final voucherRows = (results[1] as List).cast<Map<String, dynamic>>();
       final pendingRows = (results[2] as List).cast<Map<String, dynamic>>();
       final priceRows = (results[3] as List).cast<Map<String, dynamic>>();
+      final cashReadyPurchaseOrders =
+          results[4] as List<_CashReadyPurchaseOrder>;
 
       double sales = 0;
       double purchases = 0;
@@ -163,6 +169,10 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         labelField: 'counterparty_name_snapshot',
       );
       final priceReferenceRows = _buildPriceReferenceRows(priceRows);
+      final cashReadyPurchaseTotal = cashReadyPurchaseOrders.fold<double>(
+        0,
+        (sum, row) => sum + row.total,
+      );
       setState(() {
         _salesToday = sales;
         _purchasesToday = purchases;
@@ -179,6 +189,8 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         _pendingChecks = pendingRows
             .map(_PendingCashCheck.fromMap)
             .toList(growable: false);
+        _cashReadyPurchaseOrders = cashReadyPurchaseOrders;
+        _cashReadyPurchaseTotal = cashReadyPurchaseTotal;
         _purchaseMaterialRows = purchaseMaterialRows;
         _purchaseProviderRows = purchaseProviderRows;
         _priceReferenceRows = priceReferenceRows;
@@ -193,6 +205,8 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         _expensesToday = 0;
         _salesCount = 0;
         _purchasesCount = 0;
+        _cashReadyPurchaseOrders = const <_CashReadyPurchaseOrder>[];
+        _cashReadyPurchaseTotal = 0;
         _purchaseMaterialRows = const <_DashboardWeightRow>[];
         _purchaseProviderRows = const <_DashboardWeightRow>[];
         _priceReferenceRows = const <_DashboardPriceReferenceRow>[];
@@ -230,6 +244,32 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       } catch (_) {
         return const <Map<String, dynamic>>[];
       }
+    }
+  }
+
+  Future<List<_CashReadyPurchaseOrder>> _loadCashReadyPurchaseOrders() async {
+    try {
+      final rows = await _supa
+          .from('maintenance_purchase_orders')
+          .select(
+            'id,folio,order_date,target_label,quote_vendor_name,sent_to_cash_at,maintenance_purchase_order_lines(line_total,qty,amount)',
+          )
+          .eq('status', 'authorized')
+          .not('sent_to_cash_at', 'is', null)
+          .order('sent_to_cash_at', ascending: false)
+          .order('order_date', ascending: false);
+      return (rows as List)
+          .cast<Map<String, dynamic>>()
+          .map(_CashReadyPurchaseOrder.fromMap)
+          .toList(growable: false);
+    } on PostgrestException catch (error) {
+      final message = error.message.toLowerCase();
+      if (message.contains('sent_to_cash_at') ||
+          message.contains('sent_to_cash_by') ||
+          message.contains('sent_to_cash_by_name')) {
+        return const <_CashReadyPurchaseOrder>[];
+      }
+      rethrow;
     }
   }
 
@@ -1122,6 +1162,17 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     );
   }
 
+  Future<void> _openCashReadyPurchaseOrdersDialog() async {
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.24),
+      builder: (context) => _CashReadyPurchaseOrdersDialog(
+        orders: _cashReadyPurchaseOrders,
+        total: _cashReadyPurchaseTotal,
+      ),
+    );
+  }
+
   Future<void> _markPendingChecksAsVerified(List<String> checkIds) async {
     final ids = checkIds
         .map((id) => id.trim())
@@ -1401,6 +1452,8 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
                 purchasesCount: _purchasesCount,
                 depositsToday: _depositsToday,
                 expensesToday: _expensesToday,
+                cashReadyPurchaseOrders: _cashReadyPurchaseOrders,
+                cashReadyPurchaseTotal: _cashReadyPurchaseTotal,
                 purchaseMaterialRows: _purchaseMaterialRows,
                 purchaseProviderRows: _purchaseProviderRows,
                 priceReferenceRows: _priceReferenceRows,
@@ -1410,6 +1463,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
                 onOpenSales: _openSalesPage,
                 onOpenDepositsExpenses: _openDepositsExpensesPage,
                 onOpenCatalog: _openCatalogPage,
+                onOpenCashReadyPurchases: _openCashReadyPurchaseOrdersDialog,
                 onOpenOpening: () => _openCashCutDialog(openingOnly: true),
                 onOpenCut: () => _openCashCutDialog(openingOnly: false),
               ),
@@ -1462,6 +1516,8 @@ class _MenudeoBody extends StatelessWidget {
   final int purchasesCount;
   final double depositsToday;
   final double expensesToday;
+  final List<_CashReadyPurchaseOrder> cashReadyPurchaseOrders;
+  final double cashReadyPurchaseTotal;
   final List<_DashboardWeightRow> purchaseMaterialRows;
   final List<_DashboardWeightRow> purchaseProviderRows;
   final List<_DashboardPriceReferenceRow> priceReferenceRows;
@@ -1471,6 +1527,7 @@ class _MenudeoBody extends StatelessWidget {
   final Future<void> Function() onOpenSales;
   final Future<void> Function() onOpenDepositsExpenses;
   final Future<void> Function() onOpenCatalog;
+  final Future<void> Function() onOpenCashReadyPurchases;
   final Future<void> Function() onOpenOpening;
   final Future<void> Function() onOpenCut;
 
@@ -1482,6 +1539,8 @@ class _MenudeoBody extends StatelessWidget {
     required this.purchasesCount,
     required this.depositsToday,
     required this.expensesToday,
+    required this.cashReadyPurchaseOrders,
+    required this.cashReadyPurchaseTotal,
     required this.purchaseMaterialRows,
     required this.purchaseProviderRows,
     required this.priceReferenceRows,
@@ -1491,6 +1550,7 @@ class _MenudeoBody extends StatelessWidget {
     required this.onOpenSales,
     required this.onOpenDepositsExpenses,
     required this.onOpenCatalog,
+    required this.onOpenCashReadyPurchases,
     required this.onOpenOpening,
     required this.onOpenCut,
   });
@@ -1583,6 +1643,15 @@ class _MenudeoBody extends StatelessWidget {
                     ],
                   );
                 },
+              ),
+              const SizedBox(height: 16),
+              _CashReadyPurchaseOrdersSummaryCard(
+                loading: loadingDashboard,
+                orders: cashReadyPurchaseOrders,
+                total: cashReadyPurchaseTotal,
+                onTap: cashReadyPurchaseOrders.isEmpty
+                    ? null
+                    : onOpenCashReadyPurchases,
               ),
               const SizedBox(height: 16),
               _MenudeoInsightGrid(
@@ -3034,6 +3103,564 @@ class _PendingCashCheck {
       default:
         return sourceType;
     }
+  }
+}
+
+class _CashReadyPurchaseOrder {
+  final String id;
+  final String folio;
+  final DateTime? orderDate;
+  final String targetLabel;
+  final String vendorName;
+  final DateTime? sentToCashAt;
+  final double total;
+
+  const _CashReadyPurchaseOrder({
+    required this.id,
+    required this.folio,
+    required this.orderDate,
+    required this.targetLabel,
+    required this.vendorName,
+    required this.sentToCashAt,
+    required this.total,
+  });
+
+  factory _CashReadyPurchaseOrder.fromMap(Map<String, dynamic> row) {
+    final lines =
+        (row['maintenance_purchase_order_lines'] as List?)
+            ?.cast<Map<String, dynamic>>() ??
+        const <Map<String, dynamic>>[];
+    final total = lines.fold<double>(0, (sum, line) {
+      final explicit =
+          double.tryParse((line['line_total'] ?? '').toString()) ?? 0;
+      if (explicit > 0) return sum + explicit;
+      final qty = double.tryParse((line['qty'] ?? '').toString()) ?? 0;
+      final amount = double.tryParse((line['amount'] ?? '').toString()) ?? 0;
+      return sum + (qty * amount);
+    });
+    return _CashReadyPurchaseOrder(
+      id: (row['id'] ?? '').toString(),
+      folio: (row['folio'] ?? '').toString(),
+      orderDate: DateTime.tryParse((row['order_date'] ?? '').toString()),
+      targetLabel: (row['target_label'] ?? '').toString(),
+      vendorName: (row['quote_vendor_name'] ?? '').toString(),
+      sentToCashAt: DateTime.tryParse(
+        (row['sent_to_cash_at'] ?? '').toString(),
+      ),
+      total: total,
+    );
+  }
+}
+
+class _CashReadyPurchaseOrdersDialog extends StatelessWidget {
+  final List<_CashReadyPurchaseOrder> orders;
+  final double total;
+
+  const _CashReadyPurchaseOrdersDialog({
+    required this.orders,
+    required this.total,
+  });
+
+  String _fmtDate(DateTime? value) {
+    if (value == null) return 'Sin fecha';
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final year = value.year.toString();
+    return '$day/$month/$year';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
+      child: AreaThemeScope(
+        tokens: menudeoAreaTokens,
+        child: ContractPopupSurface(
+          constraints: const BoxConstraints(
+            minWidth: 640,
+            maxWidth: 920,
+            maxHeight: 720,
+          ),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      'Compras OT enviadas a caja',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                orders.isEmpty
+                    ? 'No hay compras OT autorizadas pendientes de efectivo.'
+                    : '${orders.length} orden(es) autorizada(s) ya mandadas a caja. Cuando en Compras OT se marquen como compradas, desaparecerán de esta lista.',
+                style: const TextStyle(
+                  fontSize: 13.5,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _CashReadySummaryPill(
+                    icon: Icons.receipt_long_rounded,
+                    label: 'Órdenes',
+                    value: '${orders.length}',
+                  ),
+                  _CashReadySummaryPill(
+                    icon: Icons.attach_money_rounded,
+                    label: 'Total',
+                    value: formatMoney(total),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: orders.isEmpty
+                    ? Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          borderRadius: BorderRadius.circular(18),
+                          border: Border.all(
+                            color: const Color(
+                              0xFFCC8A67,
+                            ).withValues(alpha: 0.16),
+                          ),
+                        ),
+                        child: const Center(
+                          child: Text(
+                            'Sin órdenes listas para caja.',
+                            style: TextStyle(fontWeight: FontWeight.w800),
+                          ),
+                        ),
+                      )
+                    : ListView.separated(
+                        itemCount: orders.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final order = orders[index];
+                          return Container(
+                            padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.76),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color: const Color(0xFFD8E6F1),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        order.folio.isEmpty
+                                            ? 'Sin folio'
+                                            : order.folio,
+                                        style: const TextStyle(
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        [
+                                          if (order.vendorName
+                                              .trim()
+                                              .isNotEmpty)
+                                            order.vendorName.trim(),
+                                          if (order.targetLabel
+                                              .trim()
+                                              .isNotEmpty)
+                                            order.targetLabel.trim(),
+                                        ].join(' · '),
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          color: kMenudeoMutedText,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Column(
+                                  crossAxisAlignment: CrossAxisAlignment.end,
+                                  children: [
+                                    Text(
+                                      formatMoney(order.total),
+                                      style: const TextStyle(
+                                        fontSize: 16,
+                                        fontWeight: FontWeight.w900,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      'Mandada ${_fmtDate(order.sentToCashAt)}',
+                                      style: const TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: kMenudeoMutedText,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ],
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CashReadyPurchaseOrdersSummaryCard extends StatelessWidget {
+  final bool loading;
+  final List<_CashReadyPurchaseOrder> orders;
+  final double total;
+  final Future<void> Function()? onTap;
+
+  const _CashReadyPurchaseOrdersSummaryCard({
+    required this.loading,
+    required this.orders,
+    required this.total,
+    this.onTap,
+  });
+
+  String _fmtDate(DateTime? value) {
+    if (value == null) return 'Sin fecha';
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final year = value.year.toString();
+    return '$day/$month/$year';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final preview = orders.take(5).toList(growable: false);
+    return Material(
+      color: Colors.transparent,
+      borderRadius: BorderRadius.circular(22),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(22),
+        onTap: onTap == null ? null : () => onTap!(),
+        child: Container(
+          width: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.56),
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.60)),
+          ),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Text(
+                          'Compras OT Enviadas a Caja',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF0B2B2B),
+                          ),
+                        ),
+                        SizedBox(height: 4),
+                        Text(
+                          'Órdenes aprobadas listas para entrega de efectivo',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w600,
+                            color: Color(0xFF2A4B49),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  if (orders.isNotEmpty) ...[
+                    const SizedBox(width: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.44),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Text(
+                            formatMoney(total),
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w900,
+                              color: Color(0xFF0B2B2B),
+                            ),
+                          ),
+                          Text(
+                            '${orders.length} orden${orders.length == 1 ? '' : 'es'}',
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF4B6A68),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(height: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.42),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Row(
+                  children: [
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        'FOLIO',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 4,
+                      child: Text(
+                        'PROVEEDOR / ÁREA',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 2,
+                      child: Text(
+                        'IMPORTE',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 4),
+              if (loading)
+                const SizedBox(
+                  height: 120,
+                  child: Center(child: CircularProgressIndicator()),
+                )
+              else if (orders.isEmpty)
+                const SizedBox(
+                  height: 120,
+                  child: Center(
+                    child: Text(
+                      'No hay compras OT mandadas a caja.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF2A4B49),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                Column(
+                  children: preview
+                      .map(
+                        (order) => Padding(
+                          padding: const EdgeInsets.only(bottom: 5),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 8,
+                            ),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.72),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.72),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                Expanded(
+                                  flex: 2,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        order.folio.isEmpty
+                                            ? 'Sin folio'
+                                            : order.folio,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        _fmtDate(order.sentToCashAt),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF4B6A68),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 4,
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        order.vendorName.trim().isEmpty
+                                            ? 'Sin proveedor'
+                                            : order.vendorName.trim(),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        order.targetLabel.trim().isEmpty
+                                            ? 'Sin área'
+                                            : order.targetLabel.trim(),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 11,
+                                          fontWeight: FontWeight.w600,
+                                          color: Color(0xFF4B6A68),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                Expanded(
+                                  flex: 2,
+                                  child: Text(
+                                    formatMoney(order.total),
+                                    textAlign: TextAlign.right,
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      )
+                      .toList(),
+                ),
+              if (!loading && orders.length > preview.length) ...[
+                const SizedBox(height: 6),
+                Text(
+                  'Mostrando ${preview.length} de ${orders.length}. Toca para ver el resto.',
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF4B6A68),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CashReadySummaryPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String value;
+
+  const _CashReadySummaryPill({
+    required this.icon,
+    required this.label,
+    required this.value,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD6E4EF)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 18, color: const Color(0xFF214F7C)),
+          const SizedBox(width: 8),
+          Text(
+            '$label: $value',
+            style: const TextStyle(fontWeight: FontWeight.w900),
+          ),
+        ],
+      ),
+    );
   }
 }
 

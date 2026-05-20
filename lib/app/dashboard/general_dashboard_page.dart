@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -382,35 +383,93 @@ class _DirectionPurchaseOrdersEntryCard extends StatefulWidget {
 
 class _DirectionPurchaseOrdersEntryCardState
     extends State<_DirectionPurchaseOrdersEntryCard> {
-  late final Future<DirectionPurchaseOrdersSummary> _summary =
-      DirectionOperationsRepository().loadPurchaseOrdersSummary();
+  final DirectionOperationsRepository _repo = DirectionOperationsRepository();
+  DirectionPurchaseOrdersSummary? _summary;
+  bool _loading = true;
+  Timer? _refreshTimer;
+  RealtimeChannel? _channel;
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_load());
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (_) => unawaited(_load(silent: true)),
+    );
+    _channel = Supabase.instance.client
+        .channel('direction-dashboard-purchase-orders-alerts')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_purchase_orders',
+          callback: (_) => unawaited(_load(silent: true)),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_purchase_order_lines',
+          callback: (_) => unawaited(_load(silent: true)),
+        )
+        .subscribe();
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _channel?.unsubscribe();
+    super.dispose();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (!silent && mounted) {
+      setState(() => _loading = true);
+    }
+    try {
+      final summary = await _repo.loadPurchaseOrdersSummary();
+      if (!mounted) return;
+      setState(() {
+        _summary = summary;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<DirectionPurchaseOrdersSummary>(
-      future: _summary,
-      builder: (context, snapshot) {
-        final summary = snapshot.data;
-        final badge = summary == null
-            ? 'Cargando...'
-            : summary.criticalCount > 0
-            ? '${summary.criticalCount} críticas'
-            : summary.pendingCount > 0
-            ? '${summary.pendingCount} pendientes'
-            : 'Al día';
-        final subtitle = summary == null
-            ? 'Autorizaciones y rechazos ejecutivos.'
-            : summary.pendingCount == 0
-            ? 'No hay compras pendientes de Dirección.'
-            : '${summary.pendingCount} por resolver · ${formatMoney(summary.pendingAmount)} pendientes';
-        return _DirectionAnalysisEntryCard(
-          title: 'Compras OT',
-          subtitle: subtitle,
-          badge: badge,
-          icon: Icons.shopping_cart_checkout_rounded,
-          onTap: widget.onTap,
-        );
-      },
+    final summary = _summary;
+    final badge = _loading && summary == null
+        ? 'Cargando...'
+        : summary == null
+        ? 'Sin lectura'
+        : summary.criticalCount > 0
+        ? '${summary.criticalCount} críticas'
+        : summary.pendingCount > 0
+        ? '${summary.pendingCount} pendientes'
+        : 'Al día';
+    final subtitle = summary == null
+        ? 'Autorizaciones y rechazos ejecutivos.'
+        : summary.pendingCount == 0
+        ? 'No hay compras pendientes de Dirección.'
+        : '${summary.pendingCount} por resolver · ${formatMoney(summary.pendingAmount)} pendientes';
+    final alertCount = summary != null && summary.pendingCount > 0
+        ? summary.pendingCount
+        : null;
+    final alertAccent = summary != null && summary.criticalCount > 0
+        ? const Color(0xFFFF6B7A)
+        : const Color(0xFFFFB45E);
+    return _DirectionAnalysisEntryCard(
+      title: 'Compras OT',
+      subtitle: subtitle,
+      badge: badge,
+      icon: Icons.shopping_cart_checkout_rounded,
+      onTap: widget.onTap,
+      badgeAccent: alertCount != null ? alertAccent : null,
+      alertCount: alertCount,
+      emphasizeAlert: alertCount != null,
     );
   }
 }
@@ -466,6 +525,9 @@ class _DirectionAnalysisEntryCard extends StatefulWidget {
   final String badge;
   final IconData icon;
   final Future<void> Function() onTap;
+  final Color? badgeAccent;
+  final int? alertCount;
+  final bool emphasizeAlert;
 
   const _DirectionAnalysisEntryCard({
     required this.title,
@@ -473,6 +535,9 @@ class _DirectionAnalysisEntryCard extends StatefulWidget {
     required this.badge,
     required this.icon,
     required this.onTap,
+    this.badgeAccent,
+    this.alertCount,
+    this.emphasizeAlert = false,
   });
 
   @override
@@ -486,6 +551,7 @@ class _DirectionAnalysisEntryCardState
 
   @override
   Widget build(BuildContext context) {
+    final badgeAccent = widget.badgeAccent ?? const Color(0xFFBFE7FF);
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -497,94 +563,153 @@ class _DirectionAnalysisEntryCardState
           duration: const Duration(milliseconds: 180),
           curve: Curves.easeOutCubic,
           scale: _hovering ? 1.01 : 1.0,
-          child: _DirectionGlassPanel(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-            borderRadius: BorderRadius.circular(26),
-            blurSigma: 30,
-            fillColor: const Color(0xFF173A78).withValues(alpha: 0.22),
-            borderColor: Colors.white.withValues(alpha: 0.26),
-            shadowColor: Colors.black.withValues(alpha: 0.10),
-            edgeHighlightColor: Colors.white.withValues(alpha: 0.66),
-            bevelShadowColor: Colors.black.withValues(alpha: 0.16),
-            glowColor: const Color(
-              0xFF66D5FF,
-            ).withValues(alpha: _hovering ? 0.14 : 0.08),
-            child: Material(
-              color: Colors.transparent,
-              child: InkWell(
-                borderRadius: BorderRadius.circular(22),
-                onTap: () async => widget.onTap(),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 52,
-                      height: 52,
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(16),
-                        color: const Color(0xFF66D5FF).withValues(alpha: 0.14),
-                        border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.24),
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              _DirectionGlassPanel(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                borderRadius: BorderRadius.circular(26),
+                blurSigma: 30,
+                fillColor: const Color(0xFF173A78).withValues(alpha: 0.22),
+                borderColor: Colors.white.withValues(alpha: 0.26),
+                shadowColor: Colors.black.withValues(alpha: 0.10),
+                edgeHighlightColor: Colors.white.withValues(alpha: 0.66),
+                bevelShadowColor: Colors.black.withValues(alpha: 0.16),
+                glowColor:
+                    (widget.emphasizeAlert
+                            ? badgeAccent
+                            : const Color(0xFF66D5FF))
+                        .withValues(alpha: _hovering ? 0.16 : 0.10),
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(22),
+                    onTap: () async => widget.onTap(),
+                    child: Row(
+                      children: [
+                        Container(
+                          width: 52,
+                          height: 52,
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(16),
+                            color:
+                                (widget.emphasizeAlert
+                                        ? badgeAccent
+                                        : const Color(0xFF66D5FF))
+                                    .withValues(alpha: 0.16),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.24),
+                            ),
+                          ),
+                          child: Icon(
+                            widget.icon,
+                            color: Colors.white,
+                            size: 24,
+                          ),
                         ),
-                      ),
-                      child: Icon(widget.icon, color: Colors.white, size: 24),
-                    ),
-                    const SizedBox(width: 14),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(999),
-                              color: Colors.white.withValues(alpha: 0.10),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.18),
+                        const SizedBox(width: 14),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 10,
+                                  vertical: 6,
+                                ),
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(999),
+                                  color: badgeAccent.withValues(
+                                    alpha: widget.emphasizeAlert ? 0.16 : 0.10,
+                                  ),
+                                  border: Border.all(
+                                    color: badgeAccent.withValues(alpha: 0.34),
+                                  ),
+                                ),
+                                child: Text(
+                                  widget.badge,
+                                  style: TextStyle(
+                                    color: widget.emphasizeAlert
+                                        ? Colors.white
+                                        : badgeAccent,
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
                               ),
-                            ),
-                            child: Text(
-                              widget.badge,
-                              style: const TextStyle(
-                                color: Color(0xFFBFE7FF),
-                                fontSize: 11,
-                                fontWeight: FontWeight.w800,
+                              const SizedBox(height: 10),
+                              Text(
+                                widget.title,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                ),
                               ),
-                            ),
+                              const SizedBox(height: 6),
+                              Text(
+                                widget.subtitle,
+                                style: const TextStyle(
+                                  color: Color(0xFFD0E4FF),
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(height: 10),
-                          Text(
-                            widget.title,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            widget.subtitle,
-                            style: const TextStyle(
-                              color: Color(0xFFD0E4FF),
-                              fontSize: 13,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
+                        ),
+                        const SizedBox(width: 12),
+                        const Icon(
+                          Icons.arrow_outward_rounded,
+                          color: Color(0xFF92E9FF),
+                          size: 22,
+                        ),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    const Icon(
-                      Icons.arrow_outward_rounded,
-                      color: Color(0xFF92E9FF),
-                      size: 22,
-                    ),
-                  ],
+                  ),
                 ),
               ),
-            ),
+              if (widget.alertCount != null && widget.alertCount! > 0)
+                Positioned(
+                  top: -10,
+                  right: -8,
+                  child: Container(
+                    constraints: const BoxConstraints(
+                      minWidth: 34,
+                      minHeight: 34,
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 9,
+                      vertical: 7,
+                    ),
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: badgeAccent,
+                      boxShadow: [
+                        BoxShadow(
+                          blurRadius: 24,
+                          spreadRadius: 2,
+                          color: badgeAccent.withValues(alpha: 0.38),
+                        ),
+                      ],
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.92),
+                        width: 1.4,
+                      ),
+                    ),
+                    child: Center(
+                      child: Text(
+                        '${widget.alertCount}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w900,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
         ),
       ),

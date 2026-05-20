@@ -359,6 +359,10 @@ class _DirectionPurchaseOrdersPageState
               ),
             ],
           ),
+          if (summary.pendingCount > 0) ...[
+            const SizedBox(height: 14),
+            _DirectionImmediateAttentionBanner(summary: summary),
+          ],
           const SizedBox(height: 14),
           DirectionToolbarPanel(
             child: Row(
@@ -539,6 +543,81 @@ class _DirectionAlertsCard extends StatelessWidget {
               ),
             );
           }),
+        ],
+      ),
+    );
+  }
+}
+
+class _DirectionImmediateAttentionBanner extends StatelessWidget {
+  final DirectionPurchaseOrdersSummary summary;
+
+  const _DirectionImmediateAttentionBanner({required this.summary});
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = summary.criticalCount > 0
+        ? const Color(0xFFFF6B7A)
+        : const Color(0xFFFFB45E);
+    final top = summary.pendingItems.isNotEmpty
+        ? summary.pendingItems.first
+        : null;
+    return DirectionGlassPanel(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      borderRadius: BorderRadius.circular(24),
+      fillColor: accent.withValues(alpha: 0.14),
+      borderColor: accent.withValues(alpha: 0.42),
+      glowColor: accent.withValues(alpha: 0.18),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 52,
+            height: 52,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: accent.withValues(alpha: 0.20),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.38)),
+            ),
+            child: Icon(Icons.priority_high_rounded, color: accent, size: 28),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Atención inmediata de Dirección',
+                  style: TextStyle(
+                    color: kDirectionSurfaceText,
+                    fontWeight: FontWeight.w900,
+                    fontSize: 18,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  summary.criticalCount > 0
+                      ? 'Hay ${summary.pendingCount} compras pendientes y ${summary.criticalCount} ya superaron el umbral crítico.'
+                      : 'Hay ${summary.pendingCount} compras OT esperando resolución ejecutiva en este momento.',
+                  style: const TextStyle(
+                    color: kDirectionMutedText,
+                    fontWeight: FontWeight.w700,
+                    height: 1.35,
+                  ),
+                ),
+                if (top != null) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'Más urgente: ${top.folio} · ${top.ageHours.round()} h · ${_fmtDirectionPurchaseMoney(top.total)}',
+                    style: const TextStyle(
+                      color: kDirectionSurfaceText,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );

@@ -171,6 +171,7 @@ class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
 class EmptyAreaDashboardConfig {
   final String dashboardLabel;
   final String sidePanelLabel;
+  final Color? headerTitleColor;
   final String heroEyebrow;
   final String heroTitle;
   final String heroSubtitle;
@@ -197,6 +198,7 @@ class EmptyAreaDashboardConfig {
   const EmptyAreaDashboardConfig({
     required this.dashboardLabel,
     required this.sidePanelLabel,
+    this.headerTitleColor,
     required this.heroEyebrow,
     required this.heroTitle,
     required this.heroSubtitle,
@@ -361,7 +363,7 @@ class _AreaHeaderBrand extends StatelessWidget {
           style: TextStyle(
             fontSize: 24,
             fontWeight: FontWeight.w900,
-            color: config.ink,
+            color: config.headerTitleColor ?? config.ink,
             height: 1,
           ),
         ),
