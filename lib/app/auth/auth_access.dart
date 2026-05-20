@@ -22,6 +22,7 @@ class AuthAccess {
   static const String _directionEmail = 'direccion@dicsamx.com';
   static const String _operationsEmail = 'operacion@dicsamx.com';
   static const String _accountingEmail = 'contabilidad@dicsamx.com';
+  static const String _financeEmail = 'finanzas@dicsamx.com';
   static const String _menudeoEmail = 'menudeo@dicsamx.com';
   static const String _mayoreoEmail = 'mayoreo@dicsamx.com';
 
@@ -56,6 +57,10 @@ class AuthAccess {
 
   static bool _isAccountingEmailValue(String? email) {
     return (email ?? '').toLowerCase().trim() == _accountingEmail;
+  }
+
+  static bool _isFinanceEmailValue(String? email) {
+    return (email ?? '').toLowerCase().trim() == _financeEmail;
   }
 
   static bool _isMenudeoRoleValue(String role) {
@@ -110,8 +115,29 @@ class AuthAccess {
   static bool hasAccountingOperationsAccess(AuthResolvedProfile? profile) {
     if (profile == null || !profile.isActive) return false;
     if (isDirectionRole(profile)) return true;
-    if (_isAccountingEmailValue(profile.email)) return true;
+    if (_isAccountingEmailValue(profile.email) ||
+        _isFinanceEmailValue(profile.email)) {
+      return true;
+    }
     return _roleIn(profile, {'accounting', 'contabilidad', 'finanzas'});
+  }
+
+  static bool canAccessFinanzasArea(AuthResolvedProfile? profile) {
+    if (profile == null || !profile.isActive) return false;
+    if (isDirectionRole(profile)) return true;
+    if (_isAccountingEmailValue(profile.email) ||
+        _isFinanceEmailValue(profile.email)) {
+      return true;
+    }
+    return _roleIn(profile, {'accounting', 'contabilidad', 'finanzas'});
+  }
+
+  static bool canAccessComprasArea(AuthResolvedProfile? profile) {
+    if (profile == null || !profile.isActive) return false;
+    if (isDirectionRole(profile)) return true;
+    if (_isAccountingEmailValue(profile.email)) return true;
+    if (_isFinanceEmailValue(profile.email)) return true;
+    return _roleIn(profile, {'finanzas_compras', 'compras_finanzas'});
   }
 
   static bool isDirectionRole(AuthResolvedProfile? profile) {
@@ -213,6 +239,8 @@ class AuthAccess {
   static String routeKeyForProfile(AuthResolvedProfile? profile) {
     if (profile == null || !profile.isActive) return 'blocked';
     if (isDirectionRole(profile)) return 'dashboard_general';
+    if (_isAccountingEmailValue(profile.email)) return 'purchase_orders';
+    if (canAccessFinanzasArea(profile)) return 'finanzas_dashboard';
     if (hasMenudeoAccess(profile)) return 'menudeo_dashboard';
     if (hasMayoreoAccess(profile)) return 'mayoreo_dashboard';
 
@@ -223,8 +251,9 @@ class AuthAccess {
         return 'services';
       case 'accounting':
       case 'contabilidad':
-      case 'finanzas':
         return 'purchase_orders';
+      case 'finanzas':
+        return 'finanzas_dashboard';
       case 'maintenance':
         return 'maintenance';
       case 'ops_manager':
@@ -233,7 +262,10 @@ class AuthAccess {
       case 'admin':
         return 'dashboard';
       default:
-        if (_isAccountingEmailValue(profile.email)) return 'purchase_orders';
+        if (_isAccountingEmailValue(profile.email) ||
+            _isFinanceEmailValue(profile.email)) {
+          return 'finanzas_dashboard';
+        }
         if (_isOperationsEmailValue(profile.email)) return 'dashboard';
         return 'dashboard';
     }

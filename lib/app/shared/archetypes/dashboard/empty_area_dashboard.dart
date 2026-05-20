@@ -28,6 +28,7 @@ class EmptyAreaDashboardPage extends StatefulWidget {
 class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
+  AuthResolvedProfile? _profile;
 
   EmptyAreaDashboardConfig get _config => widget.config;
 
@@ -41,6 +42,7 @@ class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
     final profile = await AuthAccess.resolveCurrentProfile();
     if (!mounted) return;
     setState(() {
+      _profile = profile;
       _canReturnToDirection = AuthAccess.isDirectionRole(profile);
     });
   }
@@ -66,7 +68,9 @@ class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
   @override
   Widget build(BuildContext context) {
     final headerActions = <DashboardHeaderAction>[
-      ..._config.headerActions,
+      ..._config.headerActions.where(
+        (action) => action.isVisible?.call(_profile) ?? true,
+      ),
       DashboardHeaderAction(
         label: 'Cerrar sesión',
         icon: Icons.logout_rounded,
@@ -82,8 +86,14 @@ class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
           icon: Icons.assessment_outlined,
           onTap: _openDirectionDashboard,
         ),
-      ..._config.accessItems,
+      ..._config.accessItems.where(
+        (action) => action.isVisible?.call(_profile) ?? true,
+      ),
     ];
+
+    final areaItems = _config.areaItems.where(
+      (action) => action.isVisible?.call(_profile) ?? true,
+    );
 
     return AreaThemeScope(
       tokens: _config.tokens,
@@ -154,7 +164,9 @@ class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
                 child: IgnorePointer(
                   ignoring: !_menuOpen,
                   child: _AreaSidePanel(
-                    config: _config,
+                    config: _config.copyWith(
+                      areaItems: areaItems.toList(growable: false),
+                    ),
                     canReturnToDirection: _canReturnToDirection,
                     accessItems: accessItems,
                   ),
@@ -222,6 +234,40 @@ class EmptyAreaDashboardConfig {
     this.accessItems = const <DashboardNavAction>[],
     this.headerActions = const <DashboardHeaderAction>[],
   });
+
+  EmptyAreaDashboardConfig copyWith({
+    List<DashboardNavAction>? areaItems,
+    List<DashboardNavAction>? accessItems,
+    List<DashboardHeaderAction>? headerActions,
+  }) {
+    return EmptyAreaDashboardConfig(
+      dashboardLabel: dashboardLabel,
+      sidePanelLabel: sidePanelLabel,
+      headerTitleColor: headerTitleColor,
+      heroEyebrow: heroEyebrow,
+      heroTitle: heroTitle,
+      heroSubtitle: heroSubtitle,
+      emptyTitle: emptyTitle,
+      emptySubtitle: emptySubtitle,
+      contractTitle: contractTitle,
+      contractSubtitle: contractSubtitle,
+      contractFootnote: contractFootnote,
+      tokens: tokens,
+      ink: ink,
+      mutedInk: mutedInk,
+      heroGradient: heroGradient,
+      panelGradient: panelGradient,
+      accentGradient: accentGradient,
+      backgroundGradientColors: backgroundGradientColors,
+      topLeftBlobColors: topLeftBlobColors,
+      topRightBlobColors: topRightBlobColors,
+      bottomLeftBlobColors: bottomLeftBlobColors,
+      pillarGradientColors: pillarGradientColors,
+      areaItems: areaItems ?? this.areaItems,
+      accessItems: accessItems ?? this.accessItems,
+      headerActions: headerActions ?? this.headerActions,
+    );
+  }
 }
 
 class DashboardNavAction {
@@ -230,6 +276,7 @@ class DashboardNavAction {
   final IconData icon;
   final Future<void> Function() onTap;
   final bool current;
+  final bool Function(AuthResolvedProfile? profile)? isVisible;
 
   const DashboardNavAction({
     required this.title,
@@ -237,6 +284,7 @@ class DashboardNavAction {
     required this.icon,
     required this.onTap,
     this.current = false,
+    this.isVisible,
   });
 }
 
@@ -245,12 +293,14 @@ class DashboardHeaderAction {
   final IconData icon;
   final Future<void> Function() onTap;
   final bool compact;
+  final bool Function(AuthResolvedProfile? profile)? isVisible;
 
   const DashboardHeaderAction({
     required this.label,
     required this.icon,
     required this.onTap,
     this.compact = false,
+    this.isVisible,
   });
 }
 

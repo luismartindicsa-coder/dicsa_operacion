@@ -65,7 +65,8 @@ const double _kPoVendorColW = 250;
 const double _kPoStatusColW = 156;
 const double _kPoCashColW = 126;
 const double _kPoPurchaseColW = 126;
-const double _kPoTotalColW = 116;
+const double _kPoEstimatedTotalColW = 116;
+const double _kPoActualTotalColW = 116;
 const double _kPoActionsColW = 172;
 
 class PurchaseOrdersPage extends StatefulWidget {
@@ -957,6 +958,18 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     return qty * amount;
   }
 
+  double _estimatedOrderTotal(Map<String, dynamic> order) {
+    final explicit = _toDouble(order['estimated_total']);
+    if (explicit != null && explicit > 0) return explicit;
+    return _orderTotal(order['id']?.toString() ?? '');
+  }
+
+  double? _actualOrderTotal(Map<String, dynamic> order) {
+    final explicit = _toDouble(order['actual_total']);
+    if (explicit == null || explicit <= 0) return null;
+    return explicit;
+  }
+
   Future<void> _createOrder() async {
     await _showOrderDialog();
   }
@@ -964,10 +977,36 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   Future<void> _editOrder(Map<String, dynamic> order) async {
     final status = (order['status'] ?? '').toString();
     if (status == 'authorized' || status == 'purchased') {
-      _toast('Las órdenes autorizadas o compradas ya no se editan.');
+      await _editActualTotal(order);
       return;
     }
     await _showOrderDialog(initial: order);
+  }
+
+  Future<void> _editActualTotal(Map<String, dynamic> order) async {
+    final actualTotal = await _showPurchaseOrdersDialog<double?>(
+      context: context,
+      builder: (dialogContext) {
+        return _PurchaseOrderActualTotalDialog(
+          folio: (order['folio'] ?? '').toString(),
+          estimatedTotal: _estimatedOrderTotal(order),
+          initialActualTotal: _actualOrderTotal(order),
+        );
+      },
+    );
+    if (actualTotal == null) return;
+    await _updateStatus(
+      order,
+      status: (order['status'] ?? 'authorized').toString(),
+      extra: <String, dynamic>{
+        'actual_total': actualTotal,
+        'actual_total_by': _supa.auth.currentUser?.id,
+        'actual_total_by_name':
+            _profile?.email ?? _supa.auth.currentUser?.email,
+        'actual_total_at': DateTime.now().toIso8601String(),
+      },
+      toast: 'Total real actualizado',
+    );
   }
 
   Future<void> _showOrderDialog({Map<String, dynamic>? initial}) async {
@@ -1041,6 +1080,26 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
         'quote_vendor_type': providerType,
         'quote_contact': contact.isEmpty ? null : contact,
         'notes': notes.isEmpty ? null : notes,
+        'estimated_total': lines.fold<double>(
+          0,
+          (sum, line) => sum + _lineTotal(line),
+        ),
+        if (initial == null ||
+            ((initial['status'] ?? '').toString() != 'authorized' &&
+                (initial['status'] ?? '').toString() != 'purchased'))
+          'actual_total': null,
+        if (initial == null ||
+            ((initial['status'] ?? '').toString() != 'authorized' &&
+                (initial['status'] ?? '').toString() != 'purchased'))
+          'actual_total_by': null,
+        if (initial == null ||
+            ((initial['status'] ?? '').toString() != 'authorized' &&
+                (initial['status'] ?? '').toString() != 'purchased'))
+          'actual_total_by_name': null,
+        if (initial == null ||
+            ((initial['status'] ?? '').toString() != 'authorized' &&
+                (initial['status'] ?? '').toString() != 'purchased'))
+          'actual_total_at': null,
         if (initial == null) 'requested_by': _supa.auth.currentUser?.id,
         if (initial == null)
           'requested_by_name': _profile?.email ?? _supa.auth.currentUser?.email,
@@ -1181,6 +1240,21 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   }
 
   Future<void> _markAsPurchased(Map<String, dynamic> order) async {
+    if (_actualOrderTotal(order) == null) {
+      await _editActualTotal(order);
+      final refreshed = _orders
+          .where(
+            (row) =>
+                (row['id'] ?? '').toString() == (order['id'] ?? '').toString(),
+          )
+          .cast<Map<String, dynamic>?>()
+          .firstWhere((row) => row != null, orElse: () => null);
+      if (refreshed == null || _actualOrderTotal(refreshed) == null) {
+        _toast('Captura el total real antes de marcar como comprada.');
+        return;
+      }
+      order = refreshed;
+    }
     await _updateStatus(
       order,
       status: 'purchased',
@@ -1188,6 +1262,9 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
         'purchased_by': _supa.auth.currentUser?.id,
         'purchased_by_name': _profile?.email ?? _supa.auth.currentUser?.email,
         'purchased_at': DateTime.now().toIso8601String(),
+        'sent_to_cash_by': null,
+        'sent_to_cash_by_name': null,
+        'sent_to_cash_at': null,
       },
       toast: 'Orden marcada como comprada',
     );
@@ -1216,7 +1293,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     _selectOrder(orderId, requestFocus: true, ensureVisible: false);
 
     final status = (order['status'] ?? 'draft').toString();
-    final canEdit = status != 'authorized' && status != 'purchased';
+    final canEdit = true;
     final canSend = status == 'draft' || status == 'rejected';
     final canAuthorize =
         _isDirection && status != 'authorized' && status != 'purchased';
@@ -1263,12 +1340,18 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
       ),
       items: [
         if (canEdit)
-          const PopupMenuItem<String>(
+          PopupMenuItem<String>(
             value: 'edit',
             child: _PurchaseOrderActionMenuLabel(
-              icon: Icons.edit_outlined,
-              title: 'Editar',
-              subtitle: 'Abrir la captura de la orden',
+              icon: status == 'authorized' || status == 'purchased'
+                  ? Icons.attach_money_rounded
+                  : Icons.edit_outlined,
+              title: status == 'authorized' || status == 'purchased'
+                  ? 'Capturar total real'
+                  : 'Editar',
+              subtitle: status == 'authorized' || status == 'purchased'
+                  ? 'Registrar el gasto real de la compra'
+                  : 'Abrir la captura de la orden',
             ),
           ),
         if (canSend)
@@ -2060,8 +2143,13 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                               ),
                               const _PurchaseOrderGridColumnDivider(),
                               const _OrderHeaderCell(
-                                label: 'TOTAL',
-                                width: _kPoTotalColW,
+                                label: 'TOTAL EST.',
+                                width: _kPoEstimatedTotalColW,
+                              ),
+                              const _PurchaseOrderGridColumnDivider(),
+                              const _OrderHeaderCell(
+                                label: 'TOTAL REAL',
+                                width: _kPoActualTotalColW,
                               ),
                               const _PurchaseOrderGridColumnDivider(),
                               const _OrderHeaderCell(
@@ -2130,7 +2218,11 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                                                 ? ValueKey(index)
                                                 : _rowKeyFor(orderId),
                                             order: order,
-                                            total: _orderTotal(orderId ?? ''),
+                                            estimatedTotal:
+                                                _estimatedOrderTotal(order),
+                                            actualTotal: _actualOrderTotal(
+                                              order,
+                                            ),
                                             selected: isSelected,
                                             onTap: () {
                                               final normalized =
@@ -2661,7 +2753,8 @@ class _PurchaseOrderActionMenuLabel extends StatelessWidget {
 
 class _PurchaseOrderRowCard extends StatelessWidget {
   final Map<String, dynamic> order;
-  final double total;
+  final double estimatedTotal;
+  final double? actualTotal;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onDoubleTap;
@@ -2671,7 +2764,8 @@ class _PurchaseOrderRowCard extends StatelessWidget {
   const _PurchaseOrderRowCard({
     super.key,
     required this.order,
-    required this.total,
+    required this.estimatedTotal,
+    required this.actualTotal,
     required this.selected,
     required this.onTap,
     required this.onDoubleTap,
@@ -2909,9 +3003,20 @@ class _PurchaseOrderRowCard extends StatelessWidget {
                 ),
                 const _PurchaseOrderGridColumnDivider(),
                 SizedBox(
-                  width: _kPoTotalColW,
+                  width: _kPoEstimatedTotalColW,
                   child: Text(
-                    _fmtMoney(total),
+                    _fmtMoney(estimatedTotal),
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF17324A),
+                    ),
+                  ),
+                ),
+                const _PurchaseOrderGridColumnDivider(),
+                SizedBox(
+                  width: _kPoActualTotalColW,
+                  child: Text(
+                    actualTotal == null ? 'Pendiente' : _fmtMoney(actualTotal!),
                     style: const TextStyle(
                       fontWeight: FontWeight.w900,
                       color: Color(0xFF17324A),
@@ -3839,6 +3944,124 @@ class _PurchaseOrderDialogSection extends StatelessWidget {
   }
 }
 
+class _PurchaseOrderActualTotalDialog extends StatefulWidget {
+  final String folio;
+  final double estimatedTotal;
+  final double? initialActualTotal;
+
+  const _PurchaseOrderActualTotalDialog({
+    required this.folio,
+    required this.estimatedTotal,
+    required this.initialActualTotal,
+  });
+
+  @override
+  State<_PurchaseOrderActualTotalDialog> createState() =>
+      _PurchaseOrderActualTotalDialogState();
+}
+
+class _PurchaseOrderActualTotalDialogState
+    extends State<_PurchaseOrderActualTotalDialog> {
+  late final TextEditingController _actualTotalC;
+
+  @override
+  void initState() {
+    super.initState();
+    _actualTotalC = TextEditingController(
+      text: widget.initialActualTotal?.toStringAsFixed(2) ?? '',
+    );
+  }
+
+  @override
+  void dispose() {
+    _actualTotalC.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final value = _toDouble(_actualTotalC.text);
+    if (value == null || value <= 0) return;
+    Navigator.of(context).pop(value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ContractDialogShell(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 460),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Capturar total real',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF17324A),
+                ),
+              ),
+              const SizedBox(height: 10),
+              if (widget.folio.trim().isNotEmpty)
+                Text(
+                  widget.folio,
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF35526A),
+                  ),
+                ),
+              const SizedBox(height: 10),
+              Text(
+                'Total estimado: ${_fmtMoney(widget.estimatedTotal)}',
+                style: const TextStyle(
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF35526A),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: _actualTotalC,
+                autofocus: true,
+                keyboardType: const TextInputType.numberWithOptions(
+                  decimal: true,
+                ),
+                decoration: _poInputDecoration(labelText: 'Total real'),
+                onSubmitted: (_) => _submit(),
+              ),
+              const SizedBox(height: 10),
+              const Text(
+                'Este total real será el gasto final de la compra, sin reabrir la cotización autorizada.',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF5A7287),
+                ),
+              ),
+              const SizedBox(height: 14),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cancelar'),
+                  ),
+                  const SizedBox(width: 10),
+                  FilledButton(
+                    onPressed: _submit,
+                    child: const Text('Guardar'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _PurchaseOrderCommentDialog extends StatefulWidget {
   final String title;
   final String label;
@@ -4291,6 +4514,10 @@ bool _isMissingPurchasedPurchaseOrderSchemaError(PostgrestException error) {
   return message.contains('purchased_at') ||
       message.contains('purchased_by') ||
       message.contains('purchased_by_name') ||
+      message.contains('actual_total') ||
+      message.contains('actual_total_by') ||
+      message.contains('actual_total_by_name') ||
+      message.contains('actual_total_at') ||
       message.contains('sent_to_cash_at') ||
       message.contains('sent_to_cash_by') ||
       message.contains('sent_to_cash_by_name') ||

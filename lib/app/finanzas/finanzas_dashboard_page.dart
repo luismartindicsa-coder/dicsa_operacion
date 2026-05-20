@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../auth/auth_access.dart';
 import '../compras/compras_dashboard_page.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
@@ -103,6 +104,7 @@ class FinanzasDashboardPage extends StatelessWidget {
             subtitle: 'Tickets y operación de compra',
             icon: Icons.shopping_cart_checkout_rounded,
             onTap: () => _openCompras(context),
+            isVisible: AuthAccess.canAccessComprasArea,
           ),
         ],
         headerActions: [

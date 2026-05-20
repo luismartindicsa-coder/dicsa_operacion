@@ -98,6 +98,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
 
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
+  bool _canAccessComprasArea = false;
   int _activeTabIndex = 0;
   final ScrollController _companyRowsScrollController = ScrollController();
   final ScrollController _conceptRowsScrollController = ScrollController();
@@ -186,6 +187,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
     if (!mounted) return;
     setState(() {
       _canReturnToDirection = AuthAccess.isDirectionRole(profile);
+      _canAccessComprasArea = AuthAccess.canAccessComprasArea(profile);
     });
   }
 
@@ -1478,6 +1480,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
                   ignoring: !_menuOpen,
                   child: _FinanzasCatalogSidePanel(
                     canReturnToDirection: _canReturnToDirection,
+                    canAccessComprasArea: _canAccessComprasArea,
                     onNavigate: _handleNavigationAction,
                   ),
                 ),
@@ -4302,10 +4305,12 @@ class _FinanzasCatalogHeaderBrand extends StatelessWidget {
 
 class _FinanzasCatalogSidePanel extends StatelessWidget {
   final bool canReturnToDirection;
+  final bool canAccessComprasArea;
   final ValueChanged<String> onNavigate;
 
   const _FinanzasCatalogSidePanel({
     required this.canReturnToDirection,
+    required this.canAccessComprasArea,
     required this.onNavigate,
   });
 
@@ -4387,12 +4392,13 @@ class _FinanzasCatalogSidePanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
               ],
-              _FinanzasCatalogNavItem(
-                icon: Icons.shopping_cart_checkout_rounded,
-                title: 'Dashboard Compras',
-                subtitle: 'Tickets y operación de compra',
-                onTap: () async => onNavigate('Dashboard Compras'),
-              ),
+              if (canAccessComprasArea)
+                _FinanzasCatalogNavItem(
+                  icon: Icons.shopping_cart_checkout_rounded,
+                  title: 'Dashboard Compras',
+                  subtitle: 'Tickets y operación de compra',
+                  onTap: () async => onNavigate('Dashboard Compras'),
+                ),
             ],
           ),
         ),

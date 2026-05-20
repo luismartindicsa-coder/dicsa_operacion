@@ -44,6 +44,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
   bool _menuOpen = false;
   bool _loadingDashboard = true;
   bool _canReturnToDirection = false;
+  bool _cashReadyNotificationsArmed = false;
   _MenudeoCashCutDraft? _todayCut;
   List<_PendingCashCheck> _pendingChecks = const <_PendingCashCheck>[];
   double _salesToday = 0;
@@ -61,12 +62,34 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       const <_DashboardWeightRow>[];
   List<_DashboardPriceReferenceRow> _priceReferenceRows =
       const <_DashboardPriceReferenceRow>[];
+  RealtimeChannel? _purchaseOrdersRealtimeChannel;
 
   @override
   void initState() {
     super.initState();
     unawaited(_resolveNavigationAccess());
     unawaited(_loadDashboardData());
+    _purchaseOrdersRealtimeChannel = _supa
+        .channel('menudeo-dashboard-purchase-orders')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_purchase_orders',
+          callback: (_) => unawaited(_refreshCashReadyPurchaseOrders()),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'maintenance_purchase_order_lines',
+          callback: (_) => unawaited(_refreshCashReadyPurchaseOrders()),
+        )
+        .subscribe();
+  }
+
+  @override
+  void dispose() {
+    _purchaseOrdersRealtimeChannel?.unsubscribe();
+    super.dispose();
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -77,8 +100,10 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
     });
   }
 
-  Future<void> _loadDashboardData() async {
-    setState(() => _loadingDashboard = true);
+  Future<void> _loadDashboardData({bool silent = false}) async {
+    if (!silent) {
+      setState(() => _loadingDashboard = true);
+    }
     try {
       final openCutRows = await _supa
           .from('vw_men_cash_cuts_grid')
@@ -173,6 +198,15 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         0,
         (sum, row) => sum + row.total,
       );
+      final previousCashReadyIds = _cashReadyPurchaseOrders
+          .map((row) => row.id)
+          .where((id) => id.trim().isNotEmpty)
+          .toSet();
+      final justArrived = _cashReadyNotificationsArmed
+          ? cashReadyPurchaseOrders
+                .where((row) => !previousCashReadyIds.contains(row.id))
+                .toList(growable: false)
+          : const <_CashReadyPurchaseOrder>[];
       setState(() {
         _salesToday = sales;
         _purchasesToday = purchases;
@@ -195,7 +229,31 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         _purchaseProviderRows = purchaseProviderRows;
         _priceReferenceRows = priceReferenceRows;
         _loadingDashboard = false;
+        _cashReadyNotificationsArmed = true;
       });
+      if (justArrived.isNotEmpty && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _toast(
+            justArrived.length == 1
+                ? 'Nueva compra OT enviada a caja.'
+                : '${justArrived.length} compras OT nuevas enviadas a caja.',
+          );
+          unawaited(
+            showDialog<void>(
+              context: context,
+              barrierColor: Colors.black.withValues(alpha: 0.24),
+              builder: (context) => _CashReadyPurchaseOrdersDialog(
+                orders: justArrived,
+                total: justArrived.fold<double>(
+                  0,
+                  (sum, row) => sum + row.total,
+                ),
+              ),
+            ),
+          );
+        });
+      }
     } catch (error) {
       if (!mounted) return;
       setState(() {
@@ -221,6 +279,13 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
         ),
       );
     }
+  }
+
+  void _toast(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
   }
 
   Future<List<Map<String, dynamic>>> _loadDashboardPriceRows() async {
@@ -271,6 +336,54 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       }
       rethrow;
     }
+  }
+
+  Future<void> _refreshCashReadyPurchaseOrders() async {
+    try {
+      final cashReadyPurchaseOrders = await _loadCashReadyPurchaseOrders();
+      final cashReadyPurchaseTotal = cashReadyPurchaseOrders.fold<double>(
+        0,
+        (sum, row) => sum + row.total,
+      );
+      final previousCashReadyIds = _cashReadyPurchaseOrders
+          .map((row) => row.id)
+          .where((id) => id.trim().isNotEmpty)
+          .toSet();
+      final justArrived = _cashReadyNotificationsArmed
+          ? cashReadyPurchaseOrders
+                .where((row) => !previousCashReadyIds.contains(row.id))
+                .toList(growable: false)
+          : const <_CashReadyPurchaseOrder>[];
+      if (!mounted) return;
+      setState(() {
+        _cashReadyPurchaseOrders = cashReadyPurchaseOrders;
+        _cashReadyPurchaseTotal = cashReadyPurchaseTotal;
+        _cashReadyNotificationsArmed = true;
+      });
+      if (justArrived.isNotEmpty && mounted) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          _toast(
+            justArrived.length == 1
+                ? 'Nueva compra OT enviada a caja.'
+                : '${justArrived.length} compras OT nuevas enviadas a caja.',
+          );
+          unawaited(
+            showDialog<void>(
+              context: context,
+              barrierColor: Colors.black.withValues(alpha: 0.24),
+              builder: (context) => _CashReadyPurchaseOrdersDialog(
+                orders: justArrived,
+                total: justArrived.fold<double>(
+                  0,
+                  (sum, row) => sum + row.total,
+                ),
+              ),
+            ),
+          );
+        });
+      }
+    } catch (_) {}
   }
 
   List<_DashboardWeightRow> _buildTopWeightRows({

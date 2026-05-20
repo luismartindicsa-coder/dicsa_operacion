@@ -92,6 +92,7 @@ class FinanzasCompanyDirectoryPage extends StatefulWidget {
 class _FinanzasCompanyDirectoryPageState
     extends State<FinanzasCompanyDirectoryPage> {
   bool _canReturnToDirection = false;
+  bool _canAccessComprasArea = false;
   bool _menuOpen = false;
   bool _loading = true;
   bool _exportingCsv = false;
@@ -146,6 +147,7 @@ class _FinanzasCompanyDirectoryPageState
     if (!mounted) return;
     setState(() {
       _canReturnToDirection = AuthAccess.isDirectionRole(profile);
+      _canAccessComprasArea = AuthAccess.canAccessComprasArea(profile);
     });
   }
 
@@ -1004,6 +1006,7 @@ class _FinanzasCompanyDirectoryPageState
                   ignoring: !_menuOpen,
                   child: _FinDirectorySidePanel(
                     canReturnToDirection: _canReturnToDirection,
+                    canAccessComprasArea: _canAccessComprasArea,
                     onNavigate: _handleNavigationAction,
                   ),
                 ),
@@ -2643,9 +2646,11 @@ class _FinDirectoryHeaderBrand extends StatelessWidget {
 
 class _FinDirectorySidePanel extends StatelessWidget {
   final bool canReturnToDirection;
+  final bool canAccessComprasArea;
   final ValueChanged<String> onNavigate;
   const _FinDirectorySidePanel({
     required this.canReturnToDirection,
+    required this.canAccessComprasArea,
     required this.onNavigate,
   });
 
@@ -2727,12 +2732,13 @@ class _FinDirectorySidePanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
               ],
-              _FinDirectoryNavItem(
-                icon: Icons.shopping_cart_checkout_rounded,
-                title: 'Dashboard Compras',
-                subtitle: 'Tickets y operación de compra',
-                onTap: () async => onNavigate('Dashboard Compras'),
-              ),
+              if (canAccessComprasArea)
+                _FinDirectoryNavItem(
+                  icon: Icons.shopping_cart_checkout_rounded,
+                  title: 'Dashboard Compras',
+                  subtitle: 'Tickets y operación de compra',
+                  onTap: () async => onNavigate('Dashboard Compras'),
+                ),
             ],
           ),
         ),

@@ -62,11 +62,9 @@ enum _VoucherType { deposit, expense }
 enum _VoucherGridMenuAction { open, deleteSelection }
 
 class _VoucherDialogResult {
-  final _VoucherRecord? record;
   final int navigateDelta;
 
-  const _VoucherDialogResult.save(this.record) : navigateDelta = 0;
-  const _VoucherDialogResult.navigate(this.navigateDelta) : record = null;
+  const _VoucherDialogResult.navigate(this.navigateDelta);
 }
 
 final Object _kVoucherSelectionTapRegionGroup = Object();
@@ -206,6 +204,284 @@ class _VoucherRecord {
   String get selectionKey => id ?? '$folio|$date|${type.name}';
 }
 
+String _formatVoucherUiDate(DateTime value) {
+  final day = value.day.toString().padLeft(2, '0');
+  final month = value.month.toString().padLeft(2, '0');
+  final year = value.year.toString();
+  return '$day/$month/$year';
+}
+
+DateTime _parseVoucherUiDateOrNow(String raw) {
+  final parts = raw.trim().split('/');
+  if (parts.length == 3) {
+    final day = int.tryParse(parts[0]);
+    final month = int.tryParse(parts[1]);
+    final year = int.tryParse(parts[2]);
+    if (day != null && month != null && year != null) {
+      return DateTime(year, month, day);
+    }
+  }
+  return DateTime.now();
+}
+
+Future<Uint8List> _buildVoucherPrintPdfBytes({
+  required _VoucherRecord record,
+}) async {
+  const voucherPrintWidthMm = 78.0;
+  const voucherPrintHeightMm = 133.0;
+  final doc = pw.Document();
+  pw.MemoryImage? logoImage;
+  try {
+    final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+    logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+  } catch (_) {}
+
+  final printableLines = record.lines
+      .where(
+        (line) =>
+            line.concept.trim().isNotEmpty || line.amount.trim().isNotEmpty,
+      )
+      .toList(growable: false);
+  final printedAt = DateTime.now();
+  final printedTime =
+      '${printedAt.hour.toString().padLeft(2, '0')}:${printedAt.minute.toString().padLeft(2, '0')}';
+  final ticketPageFormat = PdfPageFormat(
+    voucherPrintWidthMm * PdfPageFormat.mm,
+    voucherPrintHeightMm * PdfPageFormat.mm,
+    marginLeft: 2.5 * PdfPageFormat.mm,
+    marginRight: 2.5 * PdfPageFormat.mm,
+    marginTop: 3 * PdfPageFormat.mm,
+    marginBottom: 3.5 * PdfPageFormat.mm,
+  );
+
+  pw.Widget buildRow(
+    String label,
+    String value, {
+    bool emphasized = false,
+    double labelWidth = 36,
+  }) {
+    return pw.Padding(
+      padding: const pw.EdgeInsets.only(bottom: 4),
+      child: pw.Row(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        children: [
+          pw.SizedBox(
+            width: labelWidth,
+            child: pw.Text(
+              label,
+              style: pw.TextStyle(
+                fontSize: emphasized ? 9.4 : 8.2,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+          ),
+          pw.SizedBox(width: 4),
+          pw.Expanded(
+            child: pw.Text(
+              value.isEmpty ? ' ' : value,
+              textAlign: emphasized ? pw.TextAlign.right : pw.TextAlign.left,
+              style: pw.TextStyle(
+                fontSize: emphasized ? 14.8 : 8.6,
+                fontWeight: emphasized
+                    ? pw.FontWeight.bold
+                    : pw.FontWeight.normal,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  pw.Widget divider({double spacing = 5}) {
+    return pw.Padding(
+      padding: pw.EdgeInsets.symmetric(vertical: spacing),
+      child: pw.Container(
+        width: double.infinity,
+        height: 1,
+        color: PdfColors.grey500,
+      ),
+    );
+  }
+
+  doc.addPage(
+    pw.Page(
+      pageFormat: ticketPageFormat,
+      margin: const pw.EdgeInsets.fromLTRB(4, 5, 4, 6),
+      build: (_) {
+        return pw.Container(
+          decoration: pw.BoxDecoration(
+            color: PdfColors.white,
+            border: pw.Border.all(color: PdfColors.grey600, width: 1),
+          ),
+          padding: const pw.EdgeInsets.fromLTRB(8, 8, 8, 9),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Spacer(),
+                  if (logoImage != null)
+                    pw.SizedBox(
+                      width: 38,
+                      height: 18,
+                      child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                    ),
+                  if (logoImage != null) pw.SizedBox(width: 4),
+                  pw.Text(
+                    'DICSA',
+                    style: pw.TextStyle(
+                      fontSize: 12.8,
+                      fontWeight: pw.FontWeight.bold,
+                    ),
+                  ),
+                  pw.Spacer(),
+                ],
+              ),
+              pw.SizedBox(height: 5),
+              pw.Center(
+                child: pw.Text(
+                  'COMPROBANTE DE ${record.type == _VoucherType.deposit ? 'DEPOSITO' : 'GASTO'}',
+                  style: pw.TextStyle(
+                    fontSize: 8.8,
+                    fontWeight: pw.FontWeight.bold,
+                    letterSpacing: 0.6,
+                  ),
+                ),
+              ),
+              divider(),
+              buildRow('Fecha', record.date.trim(), labelWidth: 30),
+              buildRow('Hora', printedTime, labelWidth: 30),
+              buildRow('Folio', record.folio.trim(), labelWidth: 30),
+              buildRow('Rubro', record.rubric.trim(), labelWidth: 34),
+              buildRow(
+                record.type == _VoucherType.deposit ? 'Recibe' : 'Entrega',
+                record.person.trim(),
+                labelWidth: 38,
+              ),
+              divider(spacing: 4),
+              if (printableLines.isNotEmpty)
+                ...printableLines
+                    .take(5)
+                    .map(
+                      (line) => buildRow(
+                        line.concept.trim().isEmpty ? 'Concepto' : line.concept,
+                        formatMoney(double.tryParse(line.amount) ?? 0),
+                        labelWidth: 42,
+                      ),
+                    ),
+              if (record.comment.trim().isNotEmpty) ...[
+                divider(spacing: 4),
+                buildRow('Desc.', record.comment.trim(), labelWidth: 30),
+              ],
+              divider(spacing: 4),
+              pw.Container(
+                width: double.infinity,
+                padding: const pw.EdgeInsets.fromLTRB(7, 7, 7, 8),
+                decoration: pw.BoxDecoration(
+                  color: PdfColors.grey100,
+                  border: pw.Border.all(color: PdfColors.grey500, width: 1),
+                  borderRadius: pw.BorderRadius.circular(4),
+                ),
+                child: buildRow(
+                  'Total',
+                  formatMoney(record.total),
+                  emphasized: true,
+                  labelWidth: 36,
+                ),
+              ),
+              pw.Spacer(),
+              pw.Row(
+                children: [
+                  pw.Expanded(
+                    child: pw.Column(
+                      children: [
+                        pw.Container(
+                          height: 10,
+                          decoration: const pw.BoxDecoration(
+                            border: pw.Border(
+                              bottom: pw.BorderSide(
+                                color: PdfColors.black,
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                        pw.SizedBox(height: 3),
+                        pw.Text(
+                          record.type == _VoucherType.deposit
+                              ? 'ENTREGO'
+                              : 'AUTORIZO',
+                          style: const pw.TextStyle(fontSize: 7.2),
+                        ),
+                      ],
+                    ),
+                  ),
+                  pw.SizedBox(width: 12),
+                  pw.Expanded(
+                    child: pw.Column(
+                      children: [
+                        pw.Container(
+                          height: 10,
+                          decoration: const pw.BoxDecoration(
+                            border: pw.Border(
+                              bottom: pw.BorderSide(
+                                color: PdfColors.black,
+                                width: 1,
+                              ),
+                            ),
+                          ),
+                        ),
+                        pw.SizedBox(height: 3),
+                        pw.Text(
+                          record.type == _VoucherType.deposit
+                              ? 'RECIBIO'
+                              : 'RECIBE',
+                          style: const pw.TextStyle(fontSize: 7.2),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+  return doc.save();
+}
+
+Future<void> _openVoucherPdfFile(String path) async {
+  ProcessResult result;
+  if (Platform.isMacOS) {
+    result = await Process.run('open', [path]);
+  } else if (Platform.isWindows) {
+    result = await Process.run('cmd', ['/c', 'start', '', path]);
+  } else {
+    result = await Process.run('xdg-open', [path]);
+  }
+  if (result.exitCode != 0) {
+    throw Exception(
+      (result.stderr as Object?)?.toString() ?? 'No se pudo abrir el archivo',
+    );
+  }
+}
+
+Future<void> _openVoucherPdfForRecord({required _VoucherRecord record}) async {
+  final pdfBytes = await _buildVoucherPrintPdfBytes(record: record);
+  final stamp = DateTime.now().millisecondsSinceEpoch;
+  final folio = record.folio.trim().isEmpty ? 'voucher' : record.folio.trim();
+  final safeFolio = folio.replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+  final file = File(
+    '${Directory.systemTemp.path}/menudeo_${record.type.name}_${safeFolio}_$stamp.pdf',
+  );
+  await file.writeAsBytes(pdfBytes, flush: true);
+  await _openVoucherPdfFile(file.path);
+}
+
 class _LineItemDraft {
   String concept = '';
   String unit = '';
@@ -328,7 +604,8 @@ class _MenudeoDepositsExpensesPageState
   bool _exportingCsv = false;
   int _currentPage = 0;
   int _pageSize = 40;
-  int _folioSequence = 18420;
+  int _expenseFolioSequence = 18420;
+  int _depositFolioSequence = 250;
   List<String> _unitOptions = <String>[];
   List<String> _companyOptions = <String>[];
   List<String> _driverOptions = <String>[];
@@ -475,15 +752,28 @@ class _MenudeoDepositsExpensesPageState
         }
       }
 
-      int nextSequence = _folioSequence;
+      var nextExpenseSequence = _expenseFolioSequence;
+      var nextDepositSequence = math.max(_depositFolioSequence, 250);
       final mappedRows = vouchers
           .map((row) {
             final folio = (row['folio'] ?? '').toString();
+            final type = ((row['voucher_type'] ?? '').toString() == 'deposit')
+                ? _VoucherType.deposit
+                : _VoucherType.expense;
             final numericFolio = int.tryParse(
               folio.replaceAll(RegExp(r'[^0-9]'), ''),
             );
-            if (numericFolio != null && numericFolio > nextSequence) {
-              nextSequence = numericFolio;
+            if (numericFolio != null) {
+              if (type == _VoucherType.deposit) {
+                if (numericFolio >= 250 && numericFolio < 1000) {
+                  nextDepositSequence = math.max(
+                    nextDepositSequence,
+                    numericFolio,
+                  );
+                }
+              } else if (numericFolio > nextExpenseSequence) {
+                nextExpenseSequence = numericFolio;
+              }
             }
             final rawDate = DateTime.tryParse(
               (row['voucher_date'] ?? '').toString(),
@@ -491,9 +781,6 @@ class _MenudeoDepositsExpensesPageState
             final date = rawDate == null
                 ? (row['voucher_date'] ?? '').toString()
                 : '${rawDate.day.toString().padLeft(2, '0')}/${rawDate.month.toString().padLeft(2, '0')}/${rawDate.year}';
-            final type = ((row['voucher_type'] ?? '').toString() == 'deposit')
-                ? _VoucherType.deposit
-                : _VoucherType.expense;
             final id = (row['id'] ?? '').toString();
             return _VoucherRecord(
               id: id.isEmpty ? null : id,
@@ -513,7 +800,8 @@ class _MenudeoDepositsExpensesPageState
         _rows
           ..clear()
           ..addAll(mappedRows);
-        _folioSequence = nextSequence;
+        _expenseFolioSequence = nextExpenseSequence;
+        _depositFolioSequence = nextDepositSequence;
         _loadingRows = false;
       });
       _scheduleInitialVoucherOpen();
@@ -1200,7 +1488,7 @@ class _MenudeoDepositsExpensesPageState
     return '${parsed.year.toString().padLeft(4, '0')}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
   }
 
-  Future<void> _persistVoucher(_VoucherRecord record) async {
+  Future<_VoucherRecord> _persistVoucher(_VoucherRecord record) async {
     final payload = <String, dynamic>{
       'voucher_date': _uiDateToIso(record.date),
       'folio': record.folio,
@@ -1250,11 +1538,20 @@ class _MenudeoDepositsExpensesPageState
       }
       await _supa.from('men_cash_voucher_lines').insert(linesPayload);
     }
+    return _VoucherRecord(
+      id: voucherId,
+      folio: record.folio,
+      date: record.date,
+      type: record.type,
+      person: record.person,
+      rubric: record.rubric,
+      comment: record.comment,
+      lines: record.lines,
+    );
   }
 
   Future<void> _openVoucherDialog({_VoucherRecord? initial, int? index}) async {
     final pageContext = context;
-    final messenger = ScaffoldMessenger.of(pageContext);
     final editableEntries = <({int index, _VoucherRecord row})>[
       if (initial != null && index != null)
         ...((_selectedVoucherKeys.length > 1 &&
@@ -1285,8 +1582,11 @@ class _MenudeoDepositsExpensesPageState
         builder: (dialogContext) {
           return _VoucherEditorDialog(
             initial: currentInitial,
-            suggestedFolio:
-                currentInitial?.folio ?? (_folioSequence + 1).toString(),
+            suggestedExpenseFolio:
+                currentInitial?.folio ?? (_expenseFolioSequence + 1).toString(),
+            suggestedDepositFolio:
+                currentInitial?.folio ??
+                math.max(_depositFolioSequence + 1, 251).toString(),
             unitOptions: _unitOptions,
             companyOptions: _companyOptions,
             driverOptions: _driverOptions,
@@ -1302,6 +1602,11 @@ class _MenudeoDepositsExpensesPageState
             positionLabel: index != null
                 ? '${currentPosition + 1} de ${editableEntries.length}'
                 : null,
+            onPersistRecord: (record) async {
+              final saved = await _persistVoucher(record);
+              await _loadVouchers();
+              return saved;
+            },
           );
         },
       );
@@ -1312,20 +1617,6 @@ class _MenudeoDepositsExpensesPageState
           editableEntries.length - 1,
         );
         continue;
-      }
-      final saved = result.record;
-      if (saved == null) return;
-      try {
-        await _persistVoucher(saved);
-        await _loadVouchers();
-      } catch (error) {
-        if (!mounted) return;
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('No se pudo guardar el voucher: $error'),
-            behavior: SnackBarBehavior.floating,
-          ),
-        );
       }
       return;
     }
@@ -2995,7 +3286,8 @@ ButtonStyle _vouchersGlassToolbarActionStyle() {
 
 class _VoucherEditorDialog extends StatefulWidget {
   final _VoucherRecord? initial;
-  final String suggestedFolio;
+  final String suggestedExpenseFolio;
+  final String suggestedDepositFolio;
   final List<String> unitOptions;
   final List<String> companyOptions;
   final List<String> driverOptions;
@@ -3004,15 +3296,18 @@ class _VoucherEditorDialog extends StatefulWidget {
   final bool canGoPrevious;
   final bool canGoNext;
   final String? positionLabel;
+  final Future<_VoucherRecord> Function(_VoucherRecord record) onPersistRecord;
 
   const _VoucherEditorDialog({
     required this.initial,
-    required this.suggestedFolio,
+    required this.suggestedExpenseFolio,
+    required this.suggestedDepositFolio,
     required this.unitOptions,
     required this.companyOptions,
     required this.driverOptions,
     required this.depositPeopleOptions,
     required this.expensePeopleOptions,
+    required this.onPersistRecord,
     this.canGoPrevious = false,
     this.canGoNext = false,
     this.positionLabel,
@@ -3023,14 +3318,15 @@ class _VoucherEditorDialog extends StatefulWidget {
 }
 
 class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
-  static const double _kVoucherPrintWidthMm = 78;
-  static const double _kVoucherPrintHeightMm = 133;
   late _VoucherType _type;
   late final TextEditingController _folioC;
   late final TextEditingController _dateC;
   late String _person;
   late final TextEditingController _generalCommentC;
   String _rubric = '';
+  String? _persistedVoucherId;
+  bool _draftPersisted = false;
+  bool _saving = false;
   final List<_LineItemDraft> _lines = <_LineItemDraft>[];
 
   @override
@@ -3038,11 +3334,14 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
     super.initState();
     final initial = widget.initial;
     _type = initial?.type ?? _VoucherType.expense;
+    _persistedVoucherId = initial?.id;
+    _draftPersisted =
+        _persistedVoucherId != null && _persistedVoucherId!.isNotEmpty;
     _folioC = TextEditingController(
-      text: initial?.folio ?? widget.suggestedFolio,
+      text: initial?.folio ?? _suggestedFolioForType(_type),
     );
     _dateC = TextEditingController(
-      text: initial?.date ?? _formatDate(DateTime.now()),
+      text: initial?.date ?? _formatVoucherUiDate(DateTime.now()),
     );
     final availablePeople = _peopleOptionsForType(_type);
     final availableRubrics = _rubricOptionsForType(_type);
@@ -3078,37 +3377,52 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
     super.dispose();
   }
 
-  static String _formatDate(DateTime value) {
-    final day = value.day.toString().padLeft(2, '0');
-    final month = value.month.toString().padLeft(2, '0');
-    final year = value.year.toString();
-    return '$day/$month/$year';
+  String _suggestedFolioForType(_VoucherType type) {
+    return type == _VoucherType.deposit
+        ? widget.suggestedDepositFolio
+        : widget.suggestedExpenseFolio;
   }
 
-  DateTime _parseDateOrNow(String raw) {
-    final parts = raw.trim().split('/');
-    if (parts.length == 3) {
-      final day = int.tryParse(parts[0]);
-      final month = int.tryParse(parts[1]);
-      final year = int.tryParse(parts[2]);
-      if (day != null && month != null && year != null) {
-        return DateTime(year, month, day);
-      }
+  bool get _canPrint => _draftPersisted && !_saving;
+
+  _VoucherRecord? _buildDraftRecord() {
+    final cleanLines = _lines
+        .where((line) {
+          return line.concept.trim().isNotEmpty &&
+              line.amountC.text.trim().isNotEmpty;
+        })
+        .toList(growable: false);
+    if (_folioC.text.trim().isEmpty ||
+        _person.trim().isEmpty ||
+        _rubric.trim().isEmpty ||
+        cleanLines.isEmpty) {
+      return null;
     }
-    return DateTime.now();
+    return _VoucherRecord(
+      id: (_persistedVoucherId?.isNotEmpty ?? false)
+          ? _persistedVoucherId
+          : widget.initial?.id,
+      folio: _folioC.text.trim(),
+      date: _dateC.text.trim(),
+      type: _type,
+      person: _person.trim().toUpperCase(),
+      rubric: _rubric,
+      comment: _generalCommentC.text.trim(),
+      lines: cleanLines.map((line) => line.toRecord()).toList(growable: false),
+    );
   }
 
   Future<void> _pickVoucherDate() async {
     final picked = await showContractDatePickerSurface(
       context,
-      initialDate: _parseDateOrNow(_dateC.text),
+      initialDate: _parseVoucherUiDateOrNow(_dateC.text),
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
       title: 'Selecciona fecha del voucher',
     );
     if (picked == null || !mounted) return;
     setState(() {
-      _dateC.text = _formatDate(picked);
+      _dateC.text = _formatVoucherUiDate(picked);
     });
   }
 
@@ -3157,252 +3471,22 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
     }
   }
 
-  Future<Uint8List> _buildVoucherPrintPdfBytes() async {
-    final doc = pw.Document();
-    pw.MemoryImage? logoImage;
+  Future<void> _printSavedVoucher() async {
+    final record = _buildDraftRecord();
+    if (record == null || !_draftPersisted) return;
     try {
-      final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
-      logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
-    } catch (_) {}
-
-    final printableLines = _lines
-        .map((line) => line.toRecord())
-        .where(
-          (line) =>
-              line.concept.trim().isNotEmpty || line.amount.trim().isNotEmpty,
-        )
-        .toList(growable: false);
-    final printedAt = DateTime.now();
-    final printedTime =
-        '${printedAt.hour.toString().padLeft(2, '0')}:${printedAt.minute.toString().padLeft(2, '0')}';
-    final total = _total;
-    final ticketPageFormat = PdfPageFormat(
-      _kVoucherPrintWidthMm * PdfPageFormat.mm,
-      _kVoucherPrintHeightMm * PdfPageFormat.mm,
-      marginLeft: 2.5 * PdfPageFormat.mm,
-      marginRight: 2.5 * PdfPageFormat.mm,
-      marginTop: 3 * PdfPageFormat.mm,
-      marginBottom: 3.5 * PdfPageFormat.mm,
-    );
-
-    pw.Widget buildRow(
-      String label,
-      String value, {
-      bool emphasized = false,
-      double labelWidth = 36,
-    }) {
-      return pw.Padding(
-        padding: const pw.EdgeInsets.only(bottom: 4),
-        child: pw.Row(
-          crossAxisAlignment: pw.CrossAxisAlignment.start,
-          children: [
-            pw.SizedBox(
-              width: labelWidth,
-              child: pw.Text(
-                label,
-                style: pw.TextStyle(
-                  fontSize: emphasized ? 9.4 : 8.2,
-                  fontWeight: pw.FontWeight.bold,
-                ),
-              ),
-            ),
-            pw.SizedBox(width: 4),
-            pw.Expanded(
-              child: pw.Text(
-                value.isEmpty ? ' ' : value,
-                textAlign: emphasized ? pw.TextAlign.right : pw.TextAlign.left,
-                style: pw.TextStyle(
-                  fontSize: emphasized ? 14.8 : 8.6,
-                  fontWeight: emphasized
-                      ? pw.FontWeight.bold
-                      : pw.FontWeight.normal,
-                ),
-              ),
-            ),
-          ],
+      await _openVoucherPdfForRecord(
+        record: _VoucherRecord(
+          id: _persistedVoucherId,
+          folio: record.folio,
+          date: record.date,
+          type: record.type,
+          person: record.person,
+          rubric: record.rubric,
+          comment: record.comment,
+          lines: record.lines,
         ),
       );
-    }
-
-    pw.Widget divider({double spacing = 5}) {
-      return pw.Padding(
-        padding: pw.EdgeInsets.symmetric(vertical: spacing),
-        child: pw.Container(
-          width: double.infinity,
-          height: 1,
-          color: PdfColors.grey500,
-        ),
-      );
-    }
-
-    doc.addPage(
-      pw.Page(
-        pageFormat: ticketPageFormat,
-        margin: const pw.EdgeInsets.fromLTRB(4, 5, 4, 6),
-        build: (_) {
-          return pw.Container(
-            decoration: pw.BoxDecoration(
-              color: PdfColors.white,
-              border: pw.Border.all(color: PdfColors.grey600, width: 1),
-            ),
-            padding: const pw.EdgeInsets.fromLTRB(8, 8, 8, 9),
-            child: pw.Column(
-              crossAxisAlignment: pw.CrossAxisAlignment.start,
-              children: [
-                pw.Row(
-                  crossAxisAlignment: pw.CrossAxisAlignment.center,
-                  children: [
-                    pw.Spacer(),
-                    if (logoImage != null)
-                      pw.SizedBox(
-                        width: 38,
-                        height: 18,
-                        child: pw.Image(logoImage, fit: pw.BoxFit.contain),
-                      ),
-                    if (logoImage != null) pw.SizedBox(width: 4),
-                    pw.Text(
-                      'DICSA',
-                      style: pw.TextStyle(
-                        fontSize: 12.8,
-                        fontWeight: pw.FontWeight.bold,
-                      ),
-                    ),
-                    pw.Spacer(),
-                  ],
-                ),
-                pw.SizedBox(height: 5),
-                pw.Center(
-                  child: pw.Text(
-                    'COMPROBANTE DE ${_type == _VoucherType.deposit ? 'DEPOSITO' : 'GASTO'}',
-                    style: pw.TextStyle(
-                      fontSize: 8.8,
-                      fontWeight: pw.FontWeight.bold,
-                      letterSpacing: 0.6,
-                    ),
-                  ),
-                ),
-                divider(),
-                buildRow('Fecha', _dateC.text.trim(), labelWidth: 30),
-                buildRow('Hora', printedTime, labelWidth: 30),
-                buildRow('Folio', _folioC.text.trim(), labelWidth: 30),
-                buildRow('Rubro', _rubric.trim(), labelWidth: 34),
-                buildRow(
-                  _type == _VoucherType.deposit ? 'Recibe' : 'Entrega',
-                  _person.trim(),
-                  labelWidth: 38,
-                ),
-                divider(spacing: 4),
-                if (printableLines.isNotEmpty)
-                  ...printableLines
-                      .take(5)
-                      .map(
-                        (line) => buildRow(
-                          line.concept.trim().isEmpty
-                              ? 'Concepto'
-                              : line.concept,
-                          formatMoney(double.tryParse(line.amount) ?? 0),
-                          labelWidth: 42,
-                        ),
-                      ),
-                if (_generalCommentC.text.trim().isNotEmpty) ...[
-                  divider(spacing: 4),
-                  buildRow(
-                    'Desc.',
-                    _generalCommentC.text.trim(),
-                    labelWidth: 30,
-                  ),
-                ],
-                divider(spacing: 4),
-                pw.Container(
-                  width: double.infinity,
-                  padding: const pw.EdgeInsets.fromLTRB(7, 7, 7, 8),
-                  decoration: pw.BoxDecoration(
-                    color: PdfColors.grey100,
-                    border: pw.Border.all(color: PdfColors.grey500, width: 1),
-                    borderRadius: pw.BorderRadius.circular(4),
-                  ),
-                  child: buildRow(
-                    'Total',
-                    formatMoney(total),
-                    emphasized: true,
-                    labelWidth: 36,
-                  ),
-                ),
-                pw.Spacer(),
-                pw.Row(
-                  children: [
-                    pw.Expanded(
-                      child: pw.Column(
-                        children: [
-                          pw.Container(
-                            height: 10,
-                            decoration: const pw.BoxDecoration(
-                              border: pw.Border(
-                                bottom: pw.BorderSide(
-                                  color: PdfColors.black,
-                                  width: 1,
-                                ),
-                              ),
-                            ),
-                          ),
-                          pw.SizedBox(height: 3),
-                          pw.Text(
-                            _type == _VoucherType.deposit
-                                ? 'ENTREGO'
-                                : 'AUTORIZO',
-                            style: const pw.TextStyle(fontSize: 7.2),
-                          ),
-                        ],
-                      ),
-                    ),
-                    pw.SizedBox(width: 12),
-                    pw.Expanded(
-                      child: pw.Column(
-                        children: [
-                          pw.Container(
-                            height: 10,
-                            decoration: const pw.BoxDecoration(
-                              border: pw.Border(
-                                bottom: pw.BorderSide(
-                                  color: PdfColors.black,
-                                  width: 1,
-                                ),
-                              ),
-                            ),
-                          ),
-                          pw.SizedBox(height: 3),
-                          pw.Text(
-                            _type == _VoucherType.deposit
-                                ? 'RECIBIO'
-                                : 'RECIBE',
-                            style: const pw.TextStyle(fontSize: 7.2),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-    return doc.save();
-  }
-
-  Future<void> _openVoucherPdf() async {
-    try {
-      final pdfBytes = await _buildVoucherPrintPdfBytes();
-      final stamp = DateTime.now().millisecondsSinceEpoch;
-      final folio = _folioC.text.trim().isEmpty
-          ? 'voucher'
-          : _folioC.text.trim();
-      final file = File(
-        '${Directory.systemTemp.path}/menudeo_${_type.name}_${folio}_$stamp.pdf',
-      );
-      await file.writeAsBytes(pdfBytes, flush: true);
-      await _openPdfFile(file.path);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
@@ -3414,33 +3498,12 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
     }
   }
 
-  Future<void> _openPdfFile(String path) async {
-    ProcessResult result;
-    if (Platform.isMacOS) {
-      result = await Process.run('open', [path]);
-    } else if (Platform.isWindows) {
-      result = await Process.run('cmd', ['/c', 'start', '', path]);
-    } else {
-      result = await Process.run('xdg-open', [path]);
-    }
-    if (result.exitCode != 0) {
-      throw Exception(
-        (result.stderr as Object?)?.toString() ?? 'No se pudo abrir el archivo',
-      );
-    }
-  }
-
-  void _save() {
-    final cleanLines = _lines
-        .where((line) {
-          return line.concept.trim().isNotEmpty &&
-              line.amountC.text.trim().isNotEmpty;
-        })
-        .toList(growable: false);
-    if (_folioC.text.trim().isEmpty ||
-        _person.trim().isEmpty ||
-        _rubric.trim().isEmpty ||
-        cleanLines.isEmpty) {
+  Future<void> _save({
+    required bool closeAfterSave,
+    required bool printAfterSave,
+  }) async {
+    final draft = _buildDraftRecord();
+    if (draft == null) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -3451,22 +3514,45 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
       );
       return;
     }
-    Navigator.of(context).pop(
-      _VoucherDialogResult.save(
-        _VoucherRecord(
-          id: widget.initial?.id,
-          folio: _folioC.text.trim(),
-          date: _dateC.text.trim(),
-          type: _type,
-          person: _person.trim().toUpperCase(),
-          rubric: _rubric,
-          comment: _generalCommentC.text.trim(),
-          lines: cleanLines
-              .map((line) => line.toRecord())
-              .toList(growable: false),
+    setState(() => _saving = true);
+    try {
+      final saved = await widget.onPersistRecord(draft);
+      if (!mounted) return;
+      setState(() {
+        _persistedVoucherId = saved.id;
+        _draftPersisted = true;
+      });
+      if (printAfterSave) {
+        await _openVoucherPdfForRecord(record: saved);
+      }
+      if (!mounted) return;
+      if (closeAfterSave) {
+        Navigator.of(context).pop();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              printAfterSave
+                  ? 'Voucher guardado y enviado a impresión.'
+                  : 'Voucher guardado.',
+            ),
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('No se pudo guardar el voucher: $error'),
+          behavior: SnackBarBehavior.floating,
         ),
-      ),
-    );
+      );
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
   }
 
   @override
@@ -3574,7 +3660,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   _VoucherDialogHeader(
-                    onPrint: _openVoucherPdf,
+                    onPrint: _canPrint ? _printSavedVoucher : null,
                     canGoPrevious: widget.canGoPrevious,
                     canGoNext: widget.canGoNext,
                     positionLabel: widget.positionLabel,
@@ -3703,6 +3789,13 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                                           onSelectionChanged: (value) {
                                             setState(() {
                                               _type = value.first;
+                                              if (widget.initial == null &&
+                                                  !_draftPersisted) {
+                                                _folioC.text =
+                                                    _suggestedFolioForType(
+                                                      _type,
+                                                    );
+                                              }
                                               final availablePeople =
                                                   _peopleOptionsForType(_type);
                                               final availableRubrics =
@@ -3849,15 +3942,42 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                     children: [
                       OutlinedButton(
                         style: _voucherSecondaryButtonStyle(tokens),
-                        onPressed: () => Navigator.of(context).pop(),
+                        onPressed: _saving
+                            ? null
+                            : () => Navigator.of(context).pop(),
                         child: const Text('Cancelar'),
                       ),
                       const SizedBox(width: 10),
                       FilledButton.icon(
                         style: _voucherPrimaryButtonStyle(tokens),
-                        onPressed: _save,
+                        onPressed: _saving
+                            ? null
+                            : () => _save(
+                                closeAfterSave: false,
+                                printAfterSave: true,
+                              ),
+                        icon: const Icon(Icons.print_rounded),
+                        label: Text(
+                          _draftPersisted
+                              ? 'Imprimir voucher'
+                              : 'Guardar e imprimir',
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton.icon(
+                        style: _voucherPrimaryButtonStyle(tokens),
+                        onPressed: _saving
+                            ? null
+                            : () => _save(
+                                closeAfterSave: _draftPersisted,
+                                printAfterSave: false,
+                              ),
                         icon: const Icon(Icons.save_rounded),
-                        label: const Text('Guardar voucher'),
+                        label: Text(
+                          _draftPersisted
+                              ? 'Guardar y cerrar'
+                              : 'Guardar voucher',
+                        ),
                       ),
                     ],
                   ),

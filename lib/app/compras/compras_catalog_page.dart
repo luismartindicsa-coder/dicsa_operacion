@@ -166,6 +166,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
   static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
   static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
   bool _canReturnToDirection = false;
+  bool _canAccessFinanzasArea = false;
   bool _menuOpen = false;
   int _activeTabIndex = 0;
   String? _editingRowKey;
@@ -380,6 +381,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     if (!mounted) return;
     setState(() {
       _canReturnToDirection = AuthAccess.isDirectionRole(profile);
+      _canAccessFinanzasArea = AuthAccess.canAccessFinanzasArea(profile);
     });
   }
 
@@ -1972,6 +1974,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
                   ignoring: !_menuOpen,
                   child: _MayoreoCatalogSidePanel(
                     canReturnToDirection: _canReturnToDirection,
+                    canAccessFinanzasArea: _canAccessFinanzasArea,
                     onNavigate: _handleNavigationAction,
                   ),
                 ),
@@ -4770,10 +4773,12 @@ class _MayoreoCatalogHeaderBrand extends StatelessWidget {
 
 class _MayoreoCatalogSidePanel extends StatelessWidget {
   final bool canReturnToDirection;
+  final bool canAccessFinanzasArea;
   final ValueChanged<String> onNavigate;
 
   const _MayoreoCatalogSidePanel({
     required this.canReturnToDirection,
+    required this.canAccessFinanzasArea,
     required this.onNavigate,
   });
 
@@ -4848,12 +4853,13 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
               ],
-              _MayoreoCatalogNavItem(
-                icon: Icons.account_balance_wallet_outlined,
-                title: 'Dashboard Finanzas',
-                subtitle: 'Pagos, liquidez y compromisos',
-                onTap: () async => onNavigate('Dashboard Finanzas'),
-              ),
+              if (canAccessFinanzasArea)
+                _MayoreoCatalogNavItem(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Dashboard Finanzas',
+                  subtitle: 'Pagos, liquidez y compromisos',
+                  onTap: () async => onNavigate('Dashboard Finanzas'),
+                ),
             ],
           ),
         ),

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../auth/auth_access.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
@@ -88,6 +89,7 @@ class ComprasDashboardPage extends StatelessWidget {
             subtitle: 'Pagos, liquidez y compromisos',
             icon: Icons.account_balance_wallet_outlined,
             onTap: () => _openFinanzas(context),
+            isVisible: AuthAccess.canAccessFinanzasArea,
           ),
         ],
         headerActions: [
