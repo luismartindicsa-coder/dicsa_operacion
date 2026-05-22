@@ -306,7 +306,29 @@ class ComprasDataStore {
 
   static Future<void> savePriceHistory(
     List<ComprasPriceHistoryRecord> rows,
-  ) async {}
+  ) async {
+    if (rows.isEmpty) return;
+    await Supabase.instance.client
+        .from(_kComprasPriceHistoryTable)
+        .upsert(
+          rows
+              .map(
+                (row) => <String, dynamic>{
+                  'id': row.id,
+                  'company_id': row.companyId,
+                  'company_name_snapshot': row.companyName,
+                  'material_id': row.materialId,
+                  'material_name_snapshot': row.materialName,
+                  'previous_price': row.previousPrice,
+                  'new_price': row.newPrice,
+                  'reason': row.reason,
+                  'created_at': row.createdAt.toIso8601String(),
+                },
+              )
+              .toList(growable: false),
+          onConflict: 'id',
+        );
+  }
 }
 
 const List<String> _kMayoreoCanonicalGeneralCategories = <String>[

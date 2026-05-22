@@ -1,3 +1,5 @@
+// ignore_for_file: unused_element, unused_element_parameter
+
 import 'dart:async';
 
 import 'package:flutter/gestures.dart';
@@ -6,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
+import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
@@ -20,8 +23,12 @@ import '../shared/utils/csv_file_save.dart';
 import '../services/inventory_movements_grid.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
 import '../mayoreo/mayoreo_sorting.dart';
+import 'compras_area_chrome.dart';
 import 'compras_dashboard_page.dart';
 import 'compras_data_store.dart';
+import 'compras_price_adjustments_page.dart';
+import 'compras_provider_directory_page.dart';
+import 'compras_tickets_page.dart';
 import 'compras_theme.dart';
 
 const double _kCatalogActionsW = 86;
@@ -530,6 +537,31 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     );
   }
 
+  Future<void> _openTickets() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const ComprasTicketsPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _logout() async {
+    await signOutAndRouteToLogin(context);
+  }
+
+  Future<void> _openPriceAdjustments() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const ComprasPriceAdjustmentsPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openProviderDirectory() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const ComprasProviderDirectoryPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _openDirectionDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -555,6 +587,18 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         return;
       case 'Catálogo Compras':
         if (_menuOpen) setState(() => _menuOpen = false);
+        return;
+      case 'Ajuste de precios':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openPriceAdjustments());
+        return;
+      case 'Directorio Proveedores':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openProviderDirectory());
+        return;
+      case 'Tickets Compras':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openTickets());
         return;
       default:
         if (_menuOpen) setState(() => _menuOpen = false);
@@ -1933,16 +1977,16 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           animateBody: !widget.instantOpen,
           headerBodySpacing: 8,
           padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
-          leadingBuilder: (_, _) => _MayoreoHeaderButton(
+          leadingBuilder: (_, _) => ComprasAreaHeaderButton(
             label: _menuOpen ? 'Cerrar panel' : 'Navegación',
             icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
             onTapSync: () => setState(() => _menuOpen = !_menuOpen),
           ),
           centerBuilder: (_, _) => const _MayoreoCatalogHeaderBrand(),
-          trailingBuilder: (_, _) => _MayoreoHeaderButton(
+          trailingBuilder: (_, _) => ComprasAreaHeaderButton(
             label: 'Cerrar sesión',
             icon: Icons.logout_rounded,
-            onTap: () async {},
+            onTap: _logout,
           ),
           child: Stack(
             children: [
@@ -1972,10 +2016,63 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
                 width: 320,
                 child: IgnorePointer(
                   ignoring: !_menuOpen,
-                  child: _MayoreoCatalogSidePanel(
+                  child: ComprasAreaSidePanel(
+                    label: 'Compras Mayoreo',
                     canReturnToDirection: _canReturnToDirection,
-                    canAccessFinanzasArea: _canAccessFinanzasArea,
-                    onNavigate: _handleNavigationAction,
+                    areaItems: [
+                      ComprasAreaNavEntry(
+                        icon: Icons.shopping_cart_checkout_rounded,
+                        title: 'Dashboard Compras',
+                        subtitle: 'Tickets y operación de compra',
+                        onTap: () async =>
+                            _handleNavigationAction('Dashboard Compras'),
+                      ),
+                      const ComprasAreaNavEntry(
+                        icon: Icons.price_check_rounded,
+                        title: 'Catálogo Compras',
+                        subtitle: 'Proveedores, materiales y precios',
+                        accented: true,
+                      ),
+                      ComprasAreaNavEntry(
+                        icon: Icons.confirmation_number_outlined,
+                        title: 'Tickets Compras',
+                        subtitle: 'Captura y seguimiento operativo',
+                        onTap: () async =>
+                            _handleNavigationAction('Tickets Compras'),
+                      ),
+                      ComprasAreaNavEntry(
+                        icon: Icons.tune_rounded,
+                        title: 'Ajuste de precios',
+                        subtitle: 'Vigentes e historial operativo',
+                        onTap: () async =>
+                            _handleNavigationAction('Ajuste de precios'),
+                      ),
+                      ComprasAreaNavEntry(
+                        icon: Icons.badge_rounded,
+                        title: 'Directorio Proveedores',
+                        subtitle: 'Crédito, contacto y operación',
+                        onTap: () async =>
+                            _handleNavigationAction('Directorio Proveedores'),
+                      ),
+                    ],
+                    accessItems: [
+                      if (_canReturnToDirection)
+                        ComprasAreaNavEntry(
+                          icon: Icons.assessment_outlined,
+                          title: 'Dashboard Dirección',
+                          subtitle: 'Vista ejecutiva multiarea',
+                          onTap: () async =>
+                              _handleNavigationAction('Dashboard Dirección'),
+                        ),
+                      if (_canAccessFinanzasArea)
+                        ComprasAreaNavEntry(
+                          icon: Icons.account_balance_wallet_outlined,
+                          title: 'Dashboard Finanzas',
+                          subtitle: 'Pagos, liquidez y compromisos',
+                          onTap: () async =>
+                              _handleNavigationAction('Dashboard Finanzas'),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -4837,6 +4934,27 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
                       subtitle: 'Proveedores, materiales y precios',
                       accented: true,
                       onTap: () async {},
+                    ),
+                    const SizedBox(height: 8),
+                    _MayoreoCatalogNavItem(
+                      icon: Icons.confirmation_number_outlined,
+                      title: 'Tickets Compras',
+                      subtitle: 'Captura y seguimiento operativo',
+                      onTap: () async => onNavigate('Tickets Compras'),
+                    ),
+                    const SizedBox(height: 8),
+                    _MayoreoCatalogNavItem(
+                      icon: Icons.tune_rounded,
+                      title: 'Ajuste de precios',
+                      subtitle: 'Vigentes e historial',
+                      onTap: () async => onNavigate('Ajuste de precios'),
+                    ),
+                    const SizedBox(height: 8),
+                    _MayoreoCatalogNavItem(
+                      icon: Icons.badge_rounded,
+                      title: 'Directorio Proveedores',
+                      subtitle: 'Crédito, contacto y operación',
+                      onTap: () async => onNavigate('Directorio Proveedores'),
                     ),
                   ],
                 ),

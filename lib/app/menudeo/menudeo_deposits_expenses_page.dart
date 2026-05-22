@@ -567,6 +567,7 @@ _voucherConfigFromCatalog() {
 const List<String> _voucherDestinations = <String>[
   'De Acero',
   'Grupak',
+  'Papelera el Nevado',
   'San Pablo',
   'San Luis',
   'Jaime Velázquez',
@@ -676,13 +677,12 @@ class _MenudeoDepositsExpensesPageState
                 .toSet()
                 .toList()
               ..sort();
-        _driverOptions =
-            ((results[1] as List).cast<Map<String, dynamic>>())
-                .map((row) => (row['full_name'] ?? '').toString().trim())
-                .where((value) => value.isNotEmpty)
-                .toSet()
-                .toList()
-              ..sort();
+        _driverOptions = <String>{
+          ...((results[1] as List).cast<Map<String, dynamic>>())
+              .map((row) => (row['full_name'] ?? '').toString().trim())
+              .where((value) => value.isNotEmpty),
+          'Ernesto Mendoza',
+        }.toList()..sort();
         _unitOptions =
             ((results[2] as List).cast<Map<String, dynamic>>())
                 .map((row) => (row['code'] ?? '').toString().trim())

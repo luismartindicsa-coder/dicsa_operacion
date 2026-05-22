@@ -1,3 +1,5 @@
+// ignore_for_file: unused_element, unused_element_parameter
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -16,9 +18,12 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import 'compras_area_chrome.dart';
 import 'compras_catalog_page.dart';
 import 'compras_dashboard_page.dart';
+import 'compras_price_adjustments_page.dart';
 import 'compras_provider_directory_store.dart';
+import 'compras_tickets_page.dart';
 import 'compras_theme.dart';
 
 const double _kDirActionsW = 96;
@@ -90,6 +95,7 @@ class ComprasProviderDirectoryPage extends StatefulWidget {
 class _ComprasProviderDirectoryPageState
     extends State<ComprasProviderDirectoryPage> {
   bool _canReturnToDirection = false;
+  bool _canAccessFinanzasArea = false;
   bool _menuOpen = false;
   bool _loading = true;
   bool _exportingCsv = false;
@@ -121,6 +127,7 @@ class _ComprasProviderDirectoryPageState
     if (!mounted) return;
     setState(() {
       _canReturnToDirection = AuthAccess.isDirectionRole(profile);
+      _canAccessFinanzasArea = AuthAccess.canAccessFinanzasArea(profile);
     });
   }
 
@@ -153,6 +160,20 @@ class _ComprasProviderDirectoryPageState
     );
   }
 
+  Future<void> _openPriceAdjustments() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const ComprasPriceAdjustmentsPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openTickets() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const ComprasTicketsPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _openFinanzas() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -177,6 +198,12 @@ class _ComprasProviderDirectoryPageState
         return;
       case 'Catálogo Compras':
         unawaited(_openCatalog());
+        return;
+      case 'Ajuste de precios':
+        unawaited(_openPriceAdjustments());
+        return;
+      case 'Tickets Compras':
+        unawaited(_openTickets());
         return;
       case 'Dashboard Finanzas':
         unawaited(_openFinanzas());
@@ -332,27 +359,16 @@ class _ComprasProviderDirectoryPageState
           animateBody: !widget.instantOpen,
           headerBodySpacing: 8,
           padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
-          leadingBuilder: (_, _) => _DirectoryHeaderButton(
+          leadingBuilder: (_, _) => ComprasAreaHeaderButton(
             label: _menuOpen ? 'Cerrar panel' : 'Navegación',
             icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
             onTapSync: () => setState(() => _menuOpen = !_menuOpen),
           ),
           centerBuilder: (_, _) => const _ComprasDirectoryHeaderBrand(),
-          trailingBuilder: (_, _) => Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _DirectoryHeaderButton(
-                label: 'Catálogo',
-                icon: Icons.price_check_rounded,
-                onTap: _openCatalog,
-              ),
-              const SizedBox(width: 10),
-              _DirectoryHeaderButton(
-                label: 'Cerrar sesión',
-                icon: Icons.logout_rounded,
-                onTap: _logout,
-              ),
-            ],
+          trailingBuilder: (_, _) => ComprasAreaHeaderButton(
+            label: 'Cerrar sesión',
+            icon: Icons.logout_rounded,
+            onTap: _logout,
           ),
           child: Stack(
             children: [
@@ -382,9 +398,63 @@ class _ComprasProviderDirectoryPageState
                 width: 320,
                 child: IgnorePointer(
                   ignoring: !_menuOpen,
-                  child: _ComprasDirectorySidePanel(
+                  child: ComprasAreaSidePanel(
+                    label: 'Compras Mayoreo',
                     canReturnToDirection: _canReturnToDirection,
-                    onNavigate: _handleNavigationAction,
+                    areaItems: [
+                      ComprasAreaNavEntry(
+                        icon: Icons.shopping_cart_checkout_rounded,
+                        title: 'Dashboard Compras',
+                        subtitle: 'Tickets y operación de compra',
+                        onTap: () async =>
+                            _handleNavigationAction('Dashboard Compras'),
+                      ),
+                      ComprasAreaNavEntry(
+                        icon: Icons.price_check_rounded,
+                        title: 'Catálogo Compras',
+                        subtitle: 'Proveedores, materiales y precios',
+                        onTap: () async =>
+                            _handleNavigationAction('Catálogo Compras'),
+                      ),
+                      ComprasAreaNavEntry(
+                        icon: Icons.confirmation_number_outlined,
+                        title: 'Tickets Compras',
+                        subtitle: 'Captura y seguimiento operativo',
+                        onTap: () async =>
+                            _handleNavigationAction('Tickets Compras'),
+                      ),
+                      ComprasAreaNavEntry(
+                        icon: Icons.tune_rounded,
+                        title: 'Ajuste de precios',
+                        subtitle: 'Vigentes e historial operativo',
+                        onTap: () async =>
+                            _handleNavigationAction('Ajuste de precios'),
+                      ),
+                      const ComprasAreaNavEntry(
+                        icon: Icons.badge_rounded,
+                        title: 'Directorio Proveedores',
+                        subtitle: 'Crédito, contacto y operación',
+                        accented: true,
+                      ),
+                    ],
+                    accessItems: [
+                      if (_canReturnToDirection)
+                        ComprasAreaNavEntry(
+                          icon: Icons.assessment_outlined,
+                          title: 'Dashboard Dirección',
+                          subtitle: 'Vista ejecutiva multiarea',
+                          onTap: () async =>
+                              _handleNavigationAction('Dashboard Dirección'),
+                        ),
+                      if (_canAccessFinanzasArea)
+                        ComprasAreaNavEntry(
+                          icon: Icons.account_balance_wallet_outlined,
+                          title: 'Dashboard Finanzas',
+                          subtitle: 'Pagos, liquidez y compromisos',
+                          onTap: () async =>
+                              _handleNavigationAction('Dashboard Finanzas'),
+                        ),
+                    ],
                   ),
                 ),
               ),
@@ -1483,10 +1553,12 @@ class _ComprasDirectoryHeaderBrand extends StatelessWidget {
 
 class _ComprasDirectorySidePanel extends StatelessWidget {
   final bool canReturnToDirection;
+  final bool canAccessFinanzasArea;
   final ValueChanged<String> onNavigate;
 
   const _ComprasDirectorySidePanel({
     required this.canReturnToDirection,
+    required this.canAccessFinanzasArea,
     required this.onNavigate,
   });
 
@@ -1547,6 +1619,20 @@ class _ComprasDirectorySidePanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     _DirectorySideNavItem(
+                      icon: Icons.confirmation_number_outlined,
+                      title: 'Tickets Compras',
+                      subtitle: 'Captura y seguimiento operativo',
+                      onTap: () async => onNavigate('Tickets Compras'),
+                    ),
+                    const SizedBox(height: 8),
+                    _DirectorySideNavItem(
+                      icon: Icons.tune_rounded,
+                      title: 'Ajuste de precios',
+                      subtitle: 'Vigentes e historial',
+                      onTap: () async => onNavigate('Ajuste de precios'),
+                    ),
+                    const SizedBox(height: 8),
+                    _DirectorySideNavItem(
                       icon: Icons.badge_rounded,
                       title: 'Directorio Proveedores',
                       subtitle: 'Crédito, contacto y operación',
@@ -1568,12 +1654,13 @@ class _ComprasDirectorySidePanel extends StatelessWidget {
                 ),
                 const SizedBox(height: 8),
               ],
-              _DirectorySideNavItem(
-                icon: Icons.account_balance_wallet_outlined,
-                title: 'Dashboard Finanzas',
-                subtitle: 'Pagos, liquidez y compromisos',
-                onTap: () async => onNavigate('Dashboard Finanzas'),
-              ),
+              if (canAccessFinanzasArea)
+                _DirectorySideNavItem(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Dashboard Finanzas',
+                  subtitle: 'Pagos, liquidez y compromisos',
+                  onTap: () async => onNavigate('Dashboard Finanzas'),
+                ),
             ],
           ),
         ),

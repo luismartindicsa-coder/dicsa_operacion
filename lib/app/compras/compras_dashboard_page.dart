@@ -4,7 +4,11 @@ import '../auth/auth_access.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
+import 'compras_area_chrome.dart';
 import 'compras_catalog_page.dart';
+import 'compras_price_adjustments_page.dart';
+import 'compras_provider_directory_page.dart';
+import 'compras_tickets_page.dart';
 import 'compras_theme.dart';
 
 class ComprasDashboardPage extends StatelessWidget {
@@ -26,6 +30,36 @@ class ComprasDashboardPage extends StatelessWidget {
     await Navigator.of(context).push(
       appPageRoute(
         page: const ComprasCatalogPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openTickets(BuildContext context) async {
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const ComprasTicketsPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openPriceAdjustments(BuildContext context) async {
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const ComprasPriceAdjustmentsPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openDirectory(BuildContext context) async {
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const ComprasProviderDirectoryPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -82,6 +116,24 @@ class ComprasDashboardPage extends StatelessWidget {
             icon: Icons.price_check_rounded,
             onTap: () => _openCatalog(context),
           ),
+          DashboardNavAction(
+            title: 'Tickets Compras',
+            subtitle: 'Captura y seguimiento operativo',
+            icon: Icons.confirmation_number_outlined,
+            onTap: () => _openTickets(context),
+          ),
+          DashboardNavAction(
+            title: 'Ajuste de precios',
+            subtitle: 'Vigentes e historial operativo',
+            icon: Icons.tune_rounded,
+            onTap: () => _openPriceAdjustments(context),
+          ),
+          DashboardNavAction(
+            title: 'Directorio Proveedores',
+            subtitle: 'Crédito, contacto y operación',
+            icon: Icons.badge_rounded,
+            onTap: () => _openDirectory(context),
+          ),
         ],
         accessItems: [
           DashboardNavAction(
@@ -94,9 +146,14 @@ class ComprasDashboardPage extends StatelessWidget {
         ],
         headerActions: [
           DashboardHeaderAction(
-            label: 'Catálogo',
-            icon: Icons.price_check_rounded,
-            onTap: () => _openCatalog(context),
+            label: 'Pendientes',
+            icon: Icons.pending_actions_rounded,
+            onTap: () async {},
+          ),
+          DashboardHeaderAction(
+            label: 'Correo',
+            icon: Icons.mail_outline_rounded,
+            onTap: () => openComprasMailHostinger(context),
           ),
         ],
       ),

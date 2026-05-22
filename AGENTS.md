@@ -37,6 +37,49 @@ Regla explícita:
 - Cualquier desviación visual, estructural o de comportamiento respecto a `Menudeo` debe asumirse incorrecta hasta demostrar que responde a una diferencia real del módulo o a una obligación contractual del grid.
 - Si hay conflicto entre “verse como Menudeo” y “comportarse como grid homologado”, domina `Entradas y Salidas` en interacción, pero domina `Menudeo` en composición, secuencia comercial y descubribilidad.
 
+### Regla declarada: Compras Mayoreo
+
+Para páginas del área `Compras Mayoreo`:
+
+1. El contrato visual del área debe copiarse de `Catálogo Compras Mayoreo`.
+2. El contrato del menú de navegación debe copiarse de `Dashboard Compras Mayoreo`.
+3. La página de referencia externa manda solo en:
+   - funcionamiento
+   - layout
+   - interacción
+   - jerarquía operativa
+4. El contexto de negocio debe venir del área `Compras`:
+   - proveedores
+   - materiales
+   - precios
+   - tickets
+   - directorio
+5. No se permite vestir una página nueva de `Compras` con la identidad visual de otra área aunque su funcionamiento venga clonado de ella.
+
+### Regla de Clonado Máximo: Compras Mayoreo
+
+Cuando se pida:
+
+`copia una página de referencia pero con contexto y contrato de compras`
+
+el orden obligatorio es:
+
+1. Copiar de la referencia:
+   - layout
+   - flujo
+   - interacción
+   - ubicación de acciones
+   - comportamiento de mouse/teclado/foco/hover
+2. Aplicar el diseño del área desde `Catálogo Compras Mayoreo`.
+3. Aplicar el menú de navegación desde `Dashboard Compras Mayoreo`.
+4. Sustituir entidades y relaciones por las de `Compras`.
+
+Regla explícita:
+
+- `Catálogo Compras` es la fuente de verdad visual del área.
+- `Dashboard Compras` es la fuente de verdad de navegación del área.
+- La referencia externa no puede arrastrar su propia paleta, header o side panel a `Compras`.
+
 ## Comportamientos que deben clonarse 1:1 antes de personalizar
 - Foco y edición:
   - Click simple en `TextField` debe permitir escribir al primer click (sin perder caret).
