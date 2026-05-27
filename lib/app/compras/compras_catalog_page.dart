@@ -369,10 +369,19 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _persistingCatalogSnapshot = true;
       await ComprasDataStore.saveCatalogSnapshot(snapshot);
     } catch (e) {
+      final code = e is PostgrestException ? e.code?.toString() : null;
+      final details = e is PostgrestException ? e.details?.toString() : null;
+      final detail = switch (e) {
+        PostgrestException() => [
+          if (code != null && code.trim().isNotEmpty) 'code $code',
+          e.message,
+          if (details != null && details.trim().isNotEmpty) details,
+        ].join(' · '),
+        _ => e.toString(),
+      };
+      debugPrint('ComprasCatalog save failed: $detail');
       if (mounted) {
-        _toast(
-          'No se pudo guardar Catálogo Compras. Se restauró el estado remoto.',
-        );
+        _toast('No se pudo guardar Catálogo Compras. $detail');
         await _loadCatalogSnapshot();
       }
     } finally {
@@ -692,20 +701,42 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _toast('Proveedor, material y precio son obligatorios');
       return;
     }
+    final existing = _findPriceByCompanyMaterial(
+      companyId: companyId,
+      materialId: materialId,
+    );
     setState(() {
-      final price = _MayoreoPrice(
-        id: 'pr_${DateTime.now().microsecondsSinceEpoch}',
-        companyId: companyId,
-        materialId: materialId,
-        amount: amount,
-        notes: _priceNotesC.text.trim(),
-        updatedAt: DateTime.now(),
-      );
-      _prices = [price, ..._prices];
-      _selectedRowKey = 'pr:${price.id}';
+      if (existing != null) {
+        final updated = existing.copyWith(
+          amount: amount,
+          notes: _priceNotesC.text.trim(),
+          active: true,
+          updatedAt: DateTime.now(),
+        );
+        _prices = [
+          updated,
+          for (final item in _prices)
+            if (item.id != existing.id) item,
+        ];
+        _selectedRowKey = 'pr:${updated.id}';
+      } else {
+        final price = _MayoreoPrice(
+          id: 'pr_${DateTime.now().microsecondsSinceEpoch}',
+          companyId: companyId,
+          materialId: materialId,
+          amount: amount,
+          notes: _priceNotesC.text.trim(),
+          updatedAt: DateTime.now(),
+        );
+        _prices = [price, ..._prices];
+        _selectedRowKey = 'pr:${price.id}';
+      }
       _resetPriceDraft();
     });
     unawaited(_persistCatalogSnapshot());
+    if (existing != null) {
+      _toast('Se actualizó el precio existente para ese proveedor y material');
+    }
     _priceCompanyFocus.requestFocus();
   }
 
@@ -1726,6 +1757,15 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _toast('Proveedor, material y precio son obligatorios');
       return;
     }
+    final existing = _findPriceByCompanyMaterial(
+      companyId: companyId,
+      materialId: materialId,
+      excludingId: row.id,
+    );
+    if (existing != null) {
+      _toast('Ya existe un precio para ese proveedor y material');
+      return;
+    }
     setState(() {
       _prices = _prices
           .map(
@@ -1746,6 +1786,21 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     });
     unawaited(_persistCatalogSnapshot());
     _focusGridRows();
+  }
+
+  _MayoreoPrice? _findPriceByCompanyMaterial({
+    required String companyId,
+    required String materialId,
+    String? excludingId,
+  }) {
+    for (final row in _prices) {
+      if (row.companyId == companyId &&
+          row.materialId == materialId &&
+          row.id != excludingId) {
+        return row;
+      }
+    }
+    return null;
   }
 
   void _deleteSelectedRows() {
@@ -4714,104 +4769,7 @@ class _MayoreoCatalogBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Stack(
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFF181010),
-                const Color(0xFF241515),
-                tokens.accent.withValues(alpha: 0.38),
-              ],
-            ),
-          ),
-          child: const SizedBox.expand(),
-        ),
-        Positioned(
-          left: -260,
-          top: -130,
-          child: _backgroundCircle(
-            760,
-            LinearGradient(
-              colors: [
-                const Color(0xFF3A2323).withValues(alpha: 0.94),
-                const Color(0xFF181010),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          right: -180,
-          top: -70,
-          child: _backgroundCircle(
-            580,
-            LinearGradient(
-              colors: [
-                const Color(0xFF9C211B).withValues(alpha: 0.70),
-                const Color(0xFF2A1616).withValues(alpha: 0.24),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          left: 20,
-          bottom: -260,
-          child: _backgroundCircle(
-            640,
-            LinearGradient(
-              colors: [
-                const Color(0xFF8F201A).withValues(alpha: 0.18),
-                tokens.primarySoft.withValues(alpha: 0.88),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          right: -105,
-          bottom: -120,
-          child: IgnorePointer(
-            child: Container(
-              width: 320,
-              height: 500,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(220),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    const Color(0xFF7C1712).withValues(alpha: 0.88),
-                    const Color(0xFF261616).withValues(alpha: 0.92),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _backgroundCircle(double diameter, Gradient gradient) {
-    return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: gradient,
-          boxShadow: [
-            BoxShadow(
-              blurRadius: diameter * 0.10,
-              spreadRadius: diameter * 0.015,
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
-          ],
-        ),
-        child: SizedBox(width: diameter, height: diameter),
-      ),
-    );
+    return const ComprasAreaBackground();
   }
 }
 

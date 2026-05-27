@@ -14,8 +14,11 @@ import '../services/inventory_movements_grid.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
+import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
+import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import 'compras_area_chrome.dart';
@@ -27,32 +30,28 @@ import 'compras_provider_directory_page.dart';
 import 'compras_theme.dart';
 import 'compras_tickets_store.dart';
 
-const double _kTicketActionsW = 96;
+const double _kTicketActionsW = 86;
+final DateTimeRange _kClearedTicketDateRange = DateTimeRange(
+  start: DateTime(1900),
+  end: DateTime(1900),
+);
 const double _kTicketDateW = 120;
 const double _kTicketNumberW = 110;
 const double _kTicketProviderW = 220;
 const double _kTicketMaterialW = 170;
-const double _kTicketGrossW = 90;
-const double _kTicketTareW = 90;
-const double _kTicketNetW = 90;
-const double _kTicketHumidityW = 95;
-const double _kTicketTrashW = 95;
 const double _kTicketWeightW = 90;
 const double _kTicketPriceW = 100;
 const double _kTicketPremiumW = 105;
 const double _kTicketAmountW = 120;
 const double _kTicketFacturaW = 160;
 const double _kTicketPagoW = 160;
+const double _kTicketDialogFieldW = 220;
+const double _kTicketDialogWideFieldW = 300;
 const double _kTicketContentW =
     _kTicketDateW +
     _kTicketNumberW +
     _kTicketProviderW +
     _kTicketMaterialW +
-    _kTicketGrossW +
-    _kTicketTareW +
-    _kTicketNetW +
-    _kTicketHumidityW +
-    _kTicketTrashW +
     _kTicketWeightW +
     _kTicketPriceW +
     _kTicketPremiumW +
@@ -90,7 +89,7 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
   List<ComprasCatalogMaterialRecord> _materials =
       <ComprasCatalogMaterialRecord>[];
   List<ComprasCatalogPriceRecord> _prices = <ComprasCatalogPriceRecord>[];
-  Set<String> _dateFilters = <String>{};
+  DateTimeRange? _dateRangeFilter;
   Set<String> _ticketFilters = <String>{};
   Set<String> _providerFilters = <String>{};
   Set<String> _materialFilters = <String>{};
@@ -152,8 +151,8 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
   List<ComprasTicketRecord> get _visibleRows {
     return _rows
         .where((row) {
-          if (_dateFilters.isNotEmpty &&
-              !_dateFilters.contains(_dateLabel(row.date))) {
+          if (_dateRangeFilter != null &&
+              !_matchesDateRange(row.date, _dateRangeFilter!)) {
             return false;
           }
           if (_ticketFilters.isNotEmpty &&
@@ -191,9 +190,51 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
   String _dateLabel(DateTime date) =>
       '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
 
-  String _weight(double value) => value.toStringAsFixed(2);
+  String _formatNumber(double value, {int decimals = 2}) {
+    final negative = value < 0;
+    final absolute = value.abs();
+    final fixed = absolute.toStringAsFixed(decimals);
+    final parts = fixed.split('.');
+    final whole = parts.first;
+    final fraction = parts.length > 1 ? parts[1] : '';
+    final buffer = StringBuffer();
+    for (var i = 0; i < whole.length; i++) {
+      final reverseIndex = whole.length - i;
+      buffer.write(whole[i]);
+      if (reverseIndex > 1 && reverseIndex % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+    final prefix = negative ? '-' : '';
+    return decimals > 0
+        ? '$prefix${buffer.toString()}.$fraction'
+        : '$prefix${buffer.toString()}';
+  }
 
-  String _money(double value) => '\$${value.toStringAsFixed(2)}';
+  bool _matchesDateRange(DateTime date, DateTimeRange range) {
+    final start = DateTime(
+      range.start.year,
+      range.start.month,
+      range.start.day,
+    );
+    final end = DateTime(
+      range.end.year,
+      range.end.month,
+      range.end.day,
+      23,
+      59,
+      59,
+      999,
+    );
+    return !date.isBefore(start) && !date.isAfter(end);
+  }
+
+  String _dateRangeLabel(DateTimeRange range) =>
+      '${_dateLabel(range.start)} - ${_dateLabel(range.end)}';
+
+  String _weight(double value) => '${_formatNumber(value)} kg';
+
+  String _money(double value) => '\$${_formatNumber(value)}';
 
   ComprasTicketRecord? _rowByKey(String rowKey) {
     final id = rowKey.split(':').last;
@@ -508,7 +549,7 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
     if (key == LogicalKeyboardKey.delete ||
         key == LogicalKeyboardKey.backspace) {
       if (_bulkSelectedRowKeys.isEmpty) return KeyEventResult.ignored;
-      unawaited(_deleteSelectedRows());
+      unawaited(_confirmDeleteSelection());
       return KeyEventResult.handled;
     }
     if (visibleKeys.isEmpty) return KeyEventResult.ignored;
@@ -607,11 +648,10 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
     await _saveRow(saved);
   }
 
-  Future<void> _deleteSelectedRows() async {
-    if (_bulkSelectedRowKeys.isEmpty || _deletingSelection) return;
+  Future<void> _deleteRows(Set<String> ids) async {
+    if (ids.isEmpty || _deletingSelection) return;
     setState(() => _deletingSelection = true);
     final previous = _rows;
-    final ids = _bulkSelectedRowKeys.map((key) => key.split(':').last).toSet();
     setState(() {
       _rows = _rows
           .where((row) => !ids.contains(row.id))
@@ -633,6 +673,31 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
     } finally {
       if (mounted) setState(() => _deletingSelection = false);
     }
+  }
+
+  Future<void> _confirmDeleteSelection() async {
+    if (_bulkSelectedRowKeys.isEmpty || _deletingSelection) return;
+    final confirmed = await _showTicketDeleteConfirmDialog(
+      context,
+      count: _bulkSelectedRowKeys.length,
+      subject: _bulkSelectedRowKeys.length == 1
+          ? 'ticket seleccionado'
+          : 'tickets seleccionados',
+    );
+    if (confirmed != true || !mounted) return;
+    final ids = _bulkSelectedRowKeys.map((key) => key.split(':').last).toSet();
+    await _deleteRows(ids);
+  }
+
+  Future<void> _confirmDeleteRow(ComprasTicketRecord row) async {
+    final confirmed = await _showTicketDeleteConfirmDialog(
+      context,
+      count: 1,
+      subject: 'ticket ${row.ticket}',
+    );
+    if (confirmed != true || !mounted) return;
+    setState(() => _setSingleSelection(_rowKey(row)));
+    await _deleteRows({row.id});
   }
 
   Future<void> _exportCsv() async {
@@ -688,11 +753,41 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
     setState(() => onSelected(result));
   }
 
-  Future<void> _pickDateFilter() => _pickMultiFilter(
-    title: 'Filtrar fecha',
-    options: _rows.map((row) => _dateLabel(row.date)).toSet().toList()..sort(),
-    initialValues: _dateFilters,
-    onSelected: (value) => _dateFilters = value,
+  Future<void> _pickDateFilter() async {
+    final availableDates =
+        _rows
+            .map((row) => DateUtils.dateOnly(row.date))
+            .toSet()
+            .toList(growable: false)
+          ..sort();
+    final picked = await _showTicketDateRangeDialog(
+      context,
+      initialRange: _dateRangeFilter,
+      firstDate: availableDates.isNotEmpty
+          ? availableDates.first
+          : DateTime(2024),
+      lastDate: availableDates.isNotEmpty
+          ? availableDates.last
+          : DateTime(2035),
+    );
+    if (picked == null || !mounted) return;
+    if (picked == _kClearedTicketDateRange) {
+      setState(() => _dateRangeFilter = null);
+      return;
+    }
+    setState(() => _dateRangeFilter = picked);
+  }
+
+  Future<DateTime?> _showThemedDatePicker({
+    required BuildContext context,
+    required DateTime initialDate,
+    required DateTime firstDate,
+    required DateTime lastDate,
+  }) => _showComprasThemedDatePicker(
+    context: context,
+    initialDate: initialDate,
+    firstDate: firstDate,
+    lastDate: lastDate,
   );
 
   Future<void> _pickTicketFilter() => _pickMultiFilter(
@@ -733,7 +828,8 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
   );
 
   List<String> get _activeFilterLabels => <String>[
-    for (final value in _dateFilters) 'Fecha: $value',
+    if (_dateRangeFilter != null)
+      'Fecha: ${_dateRangeLabel(_dateRangeFilter!)}',
     for (final value in _ticketFilters) 'Ticket: $value',
     for (final value in _providerFilters) 'Proveedor: $value',
     for (final value in _materialFilters) 'Material: $value',
@@ -743,7 +839,7 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
 
   void _clearAllFilters() {
     setState(() {
-      _dateFilters.clear();
+      _dateRangeFilter = null;
       _ticketFilters.clear();
       _providerFilters.clear();
       _materialFilters.clear();
@@ -909,7 +1005,7 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                                   selectedCount: _bulkSelectedRowKeys.length,
                                   activeCellLabel: selectedRow?.ticket,
                                   onExportCsv: _exportCsv,
-                                  onDeleteSelection: _deleteSelectedRows,
+                                  onDeleteSelection: _confirmDeleteSelection,
                                 ),
                               ),
                             ),
@@ -937,6 +1033,7 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                                         ),
                                         const SizedBox(width: 12),
                                         FilledButton.icon(
+                                          style: _comprasRedFilledButtonStyle(),
                                           onPressed: _createRow,
                                           icon: const Icon(Icons.add_rounded),
                                           label: const Text('Nuevo ticket'),
@@ -964,8 +1061,9 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                                                       'FECHA',
                                                       _kTicketDateW,
                                                       onFilter: _pickDateFilter,
-                                                      active: _dateFilters
-                                                          .isNotEmpty,
+                                                      active:
+                                                          _dateRangeFilter !=
+                                                          null,
                                                     ),
                                                     _ComprasTicketsHeaderColumn(
                                                       'TICKET',
@@ -990,26 +1088,6 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                                                           _pickMaterialFilter,
                                                       active: _materialFilters
                                                           .isNotEmpty,
-                                                    ),
-                                                    const _ComprasTicketsHeaderColumn(
-                                                      'BRUTO',
-                                                      _kTicketGrossW,
-                                                    ),
-                                                    const _ComprasTicketsHeaderColumn(
-                                                      'TARA',
-                                                      _kTicketTareW,
-                                                    ),
-                                                    const _ComprasTicketsHeaderColumn(
-                                                      'NETO',
-                                                      _kTicketNetW,
-                                                    ),
-                                                    const _ComprasTicketsHeaderColumn(
-                                                      'HUMEDAD',
-                                                      _kTicketHumidityW,
-                                                    ),
-                                                    const _ComprasTicketsHeaderColumn(
-                                                      'BASURA',
-                                                      _kTicketTrashW,
                                                     ),
                                                     const _ComprasTicketsHeaderColumn(
                                                       'PESO',
@@ -1115,6 +1193,10 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                                                                 ),
                                                             onEdit: () =>
                                                                 _editRow(row),
+                                                            onDelete: () =>
+                                                                _confirmDeleteRow(
+                                                                  row,
+                                                                ),
                                                           ),
                                                         );
                                                       },
@@ -1261,6 +1343,11 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
   late final String? _initialProviderId;
   late final String? _initialMaterialId;
 
+  void _refreshPreview() {
+    if (!mounted) return;
+    setState(() {});
+  }
+
   @override
   void initState() {
     super.initState();
@@ -1290,6 +1377,13 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
     _initialProviderId = row?.providerId;
     _initialMaterialId = row?.materialId;
     _facturaStatus = row?.facturaStatus ?? 'PENDIENTE_DE_FACTURAR';
+    _ticketC.addListener(_refreshPreview);
+    _grossC.addListener(_refreshPreview);
+    _tareC.addListener(_refreshPreview);
+    _humidityC.addListener(_refreshPreview);
+    _trashC.addListener(_refreshPreview);
+    _priceC.addListener(_refreshPreview);
+    _premiumC.addListener(_refreshPreview);
     if (row == null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -1300,6 +1394,13 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
 
   @override
   void dispose() {
+    _ticketC.removeListener(_refreshPreview);
+    _grossC.removeListener(_refreshPreview);
+    _tareC.removeListener(_refreshPreview);
+    _humidityC.removeListener(_refreshPreview);
+    _trashC.removeListener(_refreshPreview);
+    _priceC.removeListener(_refreshPreview);
+    _premiumC.removeListener(_refreshPreview);
     _ticketC.dispose();
     _grossC.dispose();
     _tareC.dispose();
@@ -1311,7 +1412,7 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
   }
 
   Future<void> _pickDate() async {
-    final picked = await showDatePicker(
+    final picked = await _showComprasThemedDatePicker(
       context: context,
       initialDate: _date,
       firstDate: DateTime(2020),
@@ -1464,12 +1565,14 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
                   ],
                 ),
                 const SizedBox(height: 18),
-                Wrap(
-                  spacing: 16,
-                  runSpacing: 16,
+                _TicketFormSection(
+                  step: '1',
+                  title: 'Identificación',
+                  subtitle:
+                      'Primero define fecha, ticket, proveedor, material y estatus base.',
                   children: [
                     _TicketDialogField(
-                      width: 200,
+                      width: _kTicketDialogFieldW,
                       label: 'Fecha',
                       icon: Icons.calendar_month_outlined,
                       value:
@@ -1479,14 +1582,14 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
                       readOnly: true,
                     ),
                     _TicketDialogField(
-                      width: 260,
+                      width: _kTicketDialogFieldW,
                       label: 'Ticket',
                       icon: Icons.confirmation_number_outlined,
                       controller: _ticketC,
                       hintText: 'Escribe el ticket',
                     ),
                     _TicketPickerField<ComprasCatalogProviderRecord>(
-                      width: 320,
+                      width: _kTicketDialogWideFieldW,
                       label: 'Proveedor',
                       icon: Icons.storefront_outlined,
                       value: provider,
@@ -1499,7 +1602,7 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
                       }),
                     ),
                     _TicketPickerField<ComprasCatalogMaterialRecord>(
-                      width: 320,
+                      width: _kTicketDialogWideFieldW,
                       label: 'Material',
                       icon: Icons.precision_manufacturing_outlined,
                       value: material,
@@ -1511,61 +1614,8 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
                         _syncPriceFromSelection();
                       }),
                     ),
-                    _TicketDialogField(
-                      width: 160,
-                      label: 'Precio',
-                      icon: Icons.attach_money_rounded,
-                      controller: _priceC,
-                      hintText: 'Vigente por proveedor y material',
-                      readOnly: true,
-                    ),
-                    _TicketDialogField(
-                      width: 170,
-                      label: 'Sobreprecio',
-                      icon: Icons.trending_up_rounded,
-                      controller: _premiumC,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                    ),
-                    _TicketDialogField(
-                      width: 150,
-                      label: 'Bruto',
-                      icon: Icons.scale_outlined,
-                      controller: _grossC,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                    ),
-                    _TicketDialogField(
-                      width: 150,
-                      label: 'Tara',
-                      icon: Icons.line_weight_rounded,
-                      controller: _tareC,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                    ),
-                    _TicketDialogField(
-                      width: 150,
-                      label: 'Humedad %',
-                      icon: Icons.water_drop_outlined,
-                      controller: _humidityC,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                    ),
-                    _TicketDialogField(
-                      width: 150,
-                      label: 'Basura %',
-                      icon: Icons.delete_sweep_outlined,
-                      controller: _trashC,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
-                      ),
-                    ),
                     _TicketPickerField<String>(
-                      width: 240,
+                      width: _kTicketDialogFieldW,
                       label: 'Factura',
                       icon: Icons.receipt_long_outlined,
                       value: _facturaStatus,
@@ -1577,7 +1627,7 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
                       ),
                     ),
                     _TicketDialogField(
-                      width: 240,
+                      width: _kTicketDialogFieldW,
                       label: 'Pago',
                       icon: Icons.account_balance_wallet_outlined,
                       value: comprasPagoStatusLabel(
@@ -1587,18 +1637,120 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 22),
-                _TicketPreviewCard(preview: preview),
+                const SizedBox(height: 16),
+                _TicketFormSection(
+                  step: '2',
+                  title: 'Precio',
+                  subtitle:
+                      'Después valida el precio vigente y captura solo el sobreprecio necesario.',
+                  children: [
+                    _TicketDialogField(
+                      width: _kTicketDialogFieldW,
+                      label: 'Precio vigente',
+                      icon: Icons.attach_money_rounded,
+                      controller: _priceC,
+                      hintText: 'Vigente por proveedor y material',
+                      readOnly: true,
+                    ),
+                    _TicketDialogField(
+                      width: _kTicketDialogFieldW,
+                      label: 'Sobreprecio',
+                      icon: Icons.trending_up_rounded,
+                      controller: _premiumC,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    _TicketDialogField(
+                      width: _kTicketDialogFieldW,
+                      label: 'Tarifa final',
+                      icon: Icons.price_change_outlined,
+                      value:
+                          '\$${(preview.price + preview.premium).toStringAsFixed(2)}',
+                      readOnly: true,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                _TicketFormSection(
+                  step: '3',
+                  title: 'Pesos y cálculo',
+                  subtitle:
+                      'Por último captura pesos y mermas; el sistema calcula neto, peso pagable e importe.',
+                  children: [
+                    _TicketDialogField(
+                      width: _kTicketDialogFieldW,
+                      label: 'Bruto',
+                      icon: Icons.scale_outlined,
+                      controller: _grossC,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    _TicketDialogField(
+                      width: _kTicketDialogFieldW,
+                      label: 'Tara',
+                      icon: Icons.line_weight_rounded,
+                      controller: _tareC,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    _TicketDialogField(
+                      width: _kTicketDialogFieldW,
+                      label: 'Humedad %',
+                      icon: Icons.water_drop_outlined,
+                      controller: _humidityC,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    _TicketDialogField(
+                      width: _kTicketDialogFieldW,
+                      label: 'Basura %',
+                      icon: Icons.delete_sweep_outlined,
+                      controller: _trashC,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                    ),
+                    _TicketDialogField(
+                      width: _kTicketDialogFieldW,
+                      label: 'Neto',
+                      icon: Icons.straighten_rounded,
+                      value: preview.netWeight.toStringAsFixed(2),
+                      readOnly: true,
+                    ),
+                    _TicketDialogField(
+                      width: _kTicketDialogFieldW,
+                      label: 'Peso pagable',
+                      icon: Icons.scale_rounded,
+                      value: preview.payableWeight.toStringAsFixed(2),
+                      readOnly: true,
+                    ),
+                    _TicketDialogField(
+                      width: _kTicketDialogFieldW,
+                      label: 'Importe',
+                      icon: Icons.payments_outlined,
+                      value: '\$${preview.amount.toStringAsFixed(2)}',
+                      readOnly: true,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                _TicketInlinePreviewCard(preview: preview),
                 const SizedBox(height: 22),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     OutlinedButton(
+                      style: _comprasRedOutlinedButtonStyle(),
                       onPressed: () => Navigator.of(context).pop(),
                       child: const Text('Cancelar'),
                     ),
                     const SizedBox(width: 10),
                     FilledButton.icon(
+                      style: _comprasRedFilledButtonStyle(),
                       onPressed: _save,
                       icon: const Icon(Icons.save_outlined),
                       label: const Text('Guardar'),
@@ -1913,6 +2065,7 @@ class _ComprasTicketDataRow extends StatefulWidget {
   final VoidCallback? onPointerEnd;
   final VoidCallback? onSecondarySelection;
   final Future<void> Function() onEdit;
+  final Future<void> Function() onDelete;
 
   const _ComprasTicketDataRow({
     required this.row,
@@ -1926,6 +2079,7 @@ class _ComprasTicketDataRow extends StatefulWidget {
     this.onPointerEnd,
     this.onSecondarySelection,
     required this.onEdit,
+    required this.onDelete,
   });
 
   @override
@@ -1934,15 +2088,210 @@ class _ComprasTicketDataRow extends StatefulWidget {
 
 class _ComprasTicketDataRowState extends State<_ComprasTicketDataRow> {
   bool _hovering = false;
+  int? _hoveredEmphasisColumn;
+
+  Future<void> _openContextMenuAt(Offset globalPosition) async {
+    widget.onSecondarySelection?.call();
+    final action = await showMenu<_TicketRowMenuAction>(
+      context: context,
+      color: comprasAreaTokens.surfaceTint.withValues(alpha: 0.98),
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        globalPosition.dx,
+        globalPosition.dy,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.70)),
+      ),
+      items:
+          [
+                _TicketRowMenuAction(
+                  label: 'Editar',
+                  icon: Icons.edit_rounded,
+                  onTap: () => unawaited(widget.onEdit()),
+                ),
+                _TicketRowMenuAction(
+                  label: 'Eliminar',
+                  icon: Icons.delete_outline_rounded,
+                  onTap: () => unawaited(widget.onDelete()),
+                ),
+              ]
+              .map((item) {
+                return PopupMenuItem<_TicketRowMenuAction>(
+                  value: item,
+                  child: Row(
+                    children: [
+                      Icon(
+                        item.icon,
+                        color: comprasAreaTokens.primaryStrong,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 10),
+                      Text(
+                        item.label,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w700,
+                          color: kComprasInk,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              })
+              .toList(growable: false),
+    );
+    action?.onTap();
+  }
 
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final softenDividers = _hoveredEmphasisColumn != null;
     final fill = widget.selected
-        ? tokens.primarySoft.withValues(alpha: 0.92)
+        ? tokens.badgeBackground.withValues(alpha: 0.94)
         : _hovering
         ? Colors.white.withValues(alpha: 0.84)
-        : Colors.white.withValues(alpha: 0.86);
+        : Colors.white.withValues(alpha: 0.66);
+
+    Widget buildCell(int index, _TicketCellData cell) {
+      final hoveredEmphasis = cell.emphasize && _hoveredEmphasisColumn == index;
+      final cellChild = SizedBox(
+        width: cell.width,
+        child: Stack(
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: ContractEditableHoverCapsule(
+                hovered: hoveredEmphasis,
+                selectedContext: widget.selected,
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 6,
+                ),
+                child: cell.child,
+              ),
+            ),
+            Positioned(
+              right: 4,
+              top: 2,
+              bottom: 2,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 110),
+                opacity: softenDividers ? 0.0 : 1.0,
+                child: Container(
+                  width: 1,
+                  decoration: BoxDecoration(
+                    color: tokens.border.withValues(alpha: 0.90),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+      if (!cell.emphasize) return cellChild;
+      return MouseRegion(
+        cursor: SystemMouseCursors.click,
+        onEnter: (_) => setState(() => _hoveredEmphasisColumn = index),
+        onExit: (_) {
+          if (_hoveredEmphasisColumn == index) {
+            setState(() => _hoveredEmphasisColumn = null);
+          }
+        },
+        child: cellChild,
+      );
+    }
+
+    final cells = <_TicketCellData>[
+      _TicketCellData(
+        width: _kTicketDateW,
+        child: _TicketCell(width: _kTicketDateW, text: widget.dateLabel),
+      ),
+      _TicketCellData(
+        width: _kTicketNumberW,
+        child: _TicketCell(
+          width: _kTicketNumberW,
+          text: widget.row.ticket,
+          bold: true,
+        ),
+        emphasize: true,
+      ),
+      _TicketCellData(
+        width: _kTicketProviderW,
+        child: _TicketCell(
+          width: _kTicketProviderW,
+          text: widget.row.providerNameSnapshot,
+        ),
+        emphasize: true,
+      ),
+      _TicketCellData(
+        width: _kTicketMaterialW,
+        child: _TicketCell(
+          width: _kTicketMaterialW,
+          text: widget.row.materialNameSnapshot,
+        ),
+        emphasize: true,
+      ),
+      _TicketCellData(
+        width: _kTicketWeightW,
+        child: _TicketCell(
+          width: _kTicketWeightW,
+          text: widget.weightFormatter(widget.row.payableWeight),
+          alignEnd: true,
+        ),
+      ),
+      _TicketCellData(
+        width: _kTicketPriceW,
+        child: _TicketCell(
+          width: _kTicketPriceW,
+          text: widget.moneyFormatter(widget.row.price),
+          alignEnd: true,
+        ),
+      ),
+      _TicketCellData(
+        width: _kTicketPremiumW,
+        child: _TicketCell(
+          width: _kTicketPremiumW,
+          text: widget.moneyFormatter(widget.row.premium),
+          alignEnd: true,
+        ),
+      ),
+      _TicketCellData(
+        width: _kTicketAmountW,
+        child: _TicketCell(
+          width: _kTicketAmountW,
+          text: widget.moneyFormatter(widget.row.amount),
+          alignEnd: true,
+          bold: true,
+        ),
+      ),
+      _TicketCellData(
+        width: _kTicketFacturaW,
+        child: _TicketCell(
+          width: _kTicketFacturaW,
+          child: _TicketBadge(
+            label: comprasFacturaStatusLabel(widget.row.facturaStatus),
+            tone: _facturaTone(widget.row.facturaStatus),
+          ),
+        ),
+        emphasize: true,
+      ),
+      _TicketCellData(
+        width: _kTicketPagoW,
+        child: _TicketCell(
+          width: _kTicketPagoW,
+          child: _TicketBadge(
+            label: comprasPagoStatusLabel(widget.row.pagoStatus),
+            tone: _pagoTone(widget.row.pagoStatus),
+          ),
+        ),
+        emphasize: true,
+      ),
+    ];
     return MouseRegion(
       onEnter: (_) {
         setState(() => _hovering = true);
@@ -1957,180 +2306,192 @@ class _ComprasTicketDataRowState extends State<_ComprasTicketDataRow> {
         },
         onPointerUp: (_) => widget.onPointerEnd?.call(),
         onPointerCancel: (_) => widget.onPointerEnd?.call(),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(16),
-            onTap: widget.onTap,
-            onDoubleTap: () => unawaited(widget.onEdit()),
-            child: Ink(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-              decoration: BoxDecoration(
-                color: fill,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: widget.selected
-                      ? tokens.primaryStrong.withValues(alpha: 0.30)
-                      : Colors.white.withValues(alpha: 0.72),
-                ),
-              ),
-              child: ContractGridScaledRow(
-                child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
-                  onSecondaryTapDown: (_) =>
-                      widget.onSecondarySelection?.call(),
-                  child: SizedBox(
-                    width: _kTicketContentW + _kTicketActionsW,
-                    child: Row(
-                      children: [
-                        _TicketCell(
-                          width: _kTicketDateW,
-                          text: widget.dateLabel,
-                        ),
-                        _TicketCell(
-                          width: _kTicketNumberW,
-                          text: widget.row.ticket,
-                          bold: true,
-                        ),
-                        _TicketCell(
-                          width: _kTicketProviderW,
-                          text: widget.row.providerNameSnapshot,
-                        ),
-                        _TicketCell(
-                          width: _kTicketMaterialW,
-                          text: widget.row.materialNameSnapshot,
-                        ),
-                        _TicketCell(
-                          width: _kTicketGrossW,
-                          text: widget.weightFormatter(widget.row.grossWeight),
-                          alignEnd: true,
-                        ),
-                        _TicketCell(
-                          width: _kTicketTareW,
-                          text: widget.weightFormatter(widget.row.tareWeight),
-                          alignEnd: true,
-                        ),
-                        _TicketCell(
-                          width: _kTicketNetW,
-                          text: widget.weightFormatter(widget.row.netWeight),
-                          alignEnd: true,
-                        ),
-                        _TicketCell(
-                          width: _kTicketHumidityW,
-                          text:
-                              '${widget.row.humidityPercent.toStringAsFixed(2)}%',
-                          alignEnd: true,
-                        ),
-                        _TicketCell(
-                          width: _kTicketTrashW,
-                          text:
-                              '${widget.row.trashPercent.toStringAsFixed(2)}%',
-                          alignEnd: true,
-                        ),
-                        _TicketCell(
-                          width: _kTicketWeightW,
-                          text: widget.weightFormatter(
-                            widget.row.payableWeight,
-                          ),
-                          alignEnd: true,
-                        ),
-                        _TicketCell(
-                          width: _kTicketPriceW,
-                          text: widget.moneyFormatter(widget.row.price),
-                          alignEnd: true,
-                        ),
-                        _TicketCell(
-                          width: _kTicketPremiumW,
-                          text: widget.moneyFormatter(widget.row.premium),
-                          alignEnd: true,
-                        ),
-                        _TicketCell(
-                          width: _kTicketAmountW,
-                          text: widget.moneyFormatter(widget.row.amount),
-                          alignEnd: true,
-                          bold: true,
-                        ),
-                        _TicketCell(
-                          width: _kTicketFacturaW,
-                          child: _TicketBadge(
-                            label: comprasFacturaStatusLabel(
-                              widget.row.facturaStatus,
-                            ),
-                            tone: _facturaTone(widget.row.facturaStatus),
-                          ),
-                        ),
-                        _TicketCell(
-                          width: _kTicketPagoW,
-                          child: _TicketBadge(
-                            label: comprasPagoStatusLabel(
-                              widget.row.pagoStatus,
-                            ),
-                            tone: _pagoTone(widget.row.pagoStatus),
-                          ),
-                        ),
-                        SizedBox(
-                          width: _kTicketActionsW,
+        child: Card(
+          elevation: 0,
+          color: fill,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+            side: BorderSide(
+              color: widget.selected
+                  ? tokens.primaryStrong.withValues(alpha: 0.52)
+                  : tokens.border.withValues(alpha: 0.72),
+            ),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SizedBox(
+                  width: constraints.maxWidth,
+                  child: ContractGridScaledRow(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.translucent,
+                      onSecondaryTapDown: (details) {
+                        unawaited(_openContextMenuAt(details.globalPosition));
+                      },
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: widget.onTap,
+                          onDoubleTap: () => unawaited(widget.onEdit()),
                           child: Align(
-                            alignment: Alignment.centerRight,
-                            child: PopupMenuButton<String>(
-                              tooltip: 'Acciones',
-                              padding: EdgeInsets.zero,
-                              onOpened: widget.onSecondarySelection,
-                              onSelected: (value) {
-                                if (value == 'edit') unawaited(widget.onEdit());
-                              },
-                              itemBuilder: (context) => const [
-                                PopupMenuItem<String>(
-                                  value: 'edit',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.edit_rounded, size: 18),
-                                      SizedBox(width: 10),
-                                      Text('Editar'),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                              child: Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: widget.selected
-                                      ? tokens.primarySoft.withValues(
-                                          alpha: 0.42,
-                                        )
-                                      : Colors.white.withValues(alpha: 0.88),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: widget.selected
-                                        ? tokens.primaryStrong.withValues(
-                                            alpha: 0.36,
-                                          )
-                                        : comprasAreaTokens.border.withValues(
-                                            alpha: 0.82,
+                            alignment: Alignment.topCenter,
+                            child: SizedBox(
+                              width: _kTicketContentW + _kTicketActionsW,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (var i = 0; i < cells.length; i++)
+                                    buildCell(i, cells[i]),
+                                  AnchoredActionSlot(
+                                    width: _kTicketActionsW,
+                                    trailingWidth: 36,
+                                    leading: const SizedBox.shrink(),
+                                    trailing:
+                                        PopupMenuButton<_TicketRowMenuAction>(
+                                          tooltip: 'Acciones',
+                                          padding: EdgeInsets.zero,
+                                          color: comprasAreaTokens.surfaceTint
+                                              .withValues(alpha: 0.98),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(
+                                              16,
+                                            ),
+                                            side: BorderSide(
+                                              color: Colors.white.withValues(
+                                                alpha: 0.70,
+                                              ),
+                                            ),
                                           ),
+                                          onOpened: widget.onSecondarySelection,
+                                          onSelected: (item) => item.onTap(),
+                                          itemBuilder: (context) => [
+                                            PopupMenuItem<_TicketRowMenuAction>(
+                                              value: _TicketRowMenuAction(
+                                                label: 'Editar',
+                                                icon: Icons.edit_rounded,
+                                                onTap: () =>
+                                                    unawaited(widget.onEdit()),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons.edit_rounded,
+                                                    size: 18,
+                                                    color: comprasAreaTokens
+                                                        .primaryStrong,
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  const Text('Editar'),
+                                                ],
+                                              ),
+                                            ),
+                                            PopupMenuItem<_TicketRowMenuAction>(
+                                              value: _TicketRowMenuAction(
+                                                label: 'Eliminar',
+                                                icon: Icons
+                                                    .delete_outline_rounded,
+                                                onTap: () => unawaited(
+                                                  widget.onDelete(),
+                                                ),
+                                              ),
+                                              child: Row(
+                                                children: [
+                                                  Icon(
+                                                    Icons
+                                                        .delete_outline_rounded,
+                                                    size: 18,
+                                                    color: comprasAreaTokens
+                                                        .primaryStrong,
+                                                  ),
+                                                  const SizedBox(width: 10),
+                                                  const Text('Eliminar'),
+                                                ],
+                                              ),
+                                            ),
+                                          ],
+                                          child: Container(
+                                            width: 36,
+                                            height: 36,
+                                            decoration: BoxDecoration(
+                                              color: widget.selected
+                                                  ? tokens.primarySoft
+                                                        .withValues(alpha: 0.42)
+                                                  : Colors.white.withValues(
+                                                      alpha: 0.88,
+                                                    ),
+                                              borderRadius:
+                                                  BorderRadius.circular(12),
+                                              border: Border.all(
+                                                color: widget.selected
+                                                    ? tokens.primaryStrong
+                                                          .withValues(
+                                                            alpha: 0.36,
+                                                          )
+                                                    : tokens.border.withValues(
+                                                        alpha: 0.82,
+                                                      ),
+                                              ),
+                                              boxShadow: [
+                                                BoxShadow(
+                                                  blurRadius: 10,
+                                                  offset: const Offset(0, 4),
+                                                  color: Colors.black
+                                                      .withValues(alpha: 0.06),
+                                                ),
+                                              ],
+                                            ),
+                                            child: Center(
+                                              child: Icon(
+                                                Icons.more_horiz_rounded,
+                                                size: 20,
+                                                color: tokens.primaryStrong,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                   ),
-                                ),
-                                child: const Icon(
-                                  Icons.more_horiz_rounded,
-                                  size: 18,
-                                  color: kComprasInk,
-                                ),
+                                ],
                               ),
                             ),
                           ),
                         ),
-                      ],
+                      ),
                     ),
                   ),
-                ),
-              ),
+                );
+              },
             ),
           ),
         ),
       ),
     );
   }
+}
+
+class _TicketCellData {
+  final double width;
+  final Widget child;
+  final bool emphasize;
+
+  const _TicketCellData({
+    required this.width,
+    required this.child,
+    this.emphasize = false,
+  });
+}
+
+class _TicketRowMenuAction {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _TicketRowMenuAction({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
 }
 
 Color _facturaTone(String status) {
@@ -2237,6 +2598,7 @@ class _TicketDialogField extends StatelessWidget {
   final String? hintText;
   final TextInputType? keyboardType;
   final VoidCallback? onTap;
+  final ValueChanged<String>? onChanged;
 
   const _TicketDialogField({
     required this.width,
@@ -2249,6 +2611,7 @@ class _TicketDialogField extends StatelessWidget {
     this.hintText,
     this.keyboardType,
     this.onTap,
+    this.onChanged,
   });
 
   @override
@@ -2266,6 +2629,7 @@ class _TicketDialogField extends StatelessWidget {
               controller: controller,
               readOnly: readOnly || onTap != null,
               onTap: onTap,
+              onChanged: onChanged,
               keyboardType: keyboardType,
               decoration: decoration,
             )
@@ -2367,6 +2731,534 @@ InputDecoration _ticketDialogFieldDecoration({
   );
 }
 
+ButtonStyle _comprasRedFilledButtonStyle() {
+  return FilledButton.styleFrom(
+    backgroundColor: const Color(0xFFB12720),
+    foregroundColor: Colors.white,
+    disabledBackgroundColor: const Color(0xFFB12720).withValues(alpha: 0.42),
+    disabledForegroundColor: Colors.white.withValues(alpha: 0.72),
+    elevation: 0,
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+    textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+  );
+}
+
+ButtonStyle _comprasRedOutlinedButtonStyle() {
+  return OutlinedButton.styleFrom(
+    foregroundColor: const Color(0xFF8C241D),
+    side: const BorderSide(color: Color(0xFFCF9E98), width: 1.4),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+    textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+  );
+}
+
+Future<bool?> _showTicketDeleteConfirmDialog(
+  BuildContext context, {
+  required int count,
+  required String subject,
+}) {
+  final plural = count == 1 ? 'este registro' : 'estos registros';
+  return showDialog<bool>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) {
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 460),
+          child: ContractGlassCard(
+            padding: const EdgeInsets.fromLTRB(22, 20, 22, 18),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      width: 42,
+                      height: 42,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFB12720).withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Icon(
+                        Icons.delete_outline_rounded,
+                        color: Color(0xFFB12720),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    const Expanded(
+                      child: Text(
+                        'Confirmar eliminación',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: kComprasInk,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Vas a eliminar $subject. Esta acción quitará ${count == 1 ? plural : '$count tickets'} del grid y del backend.',
+                  style: TextStyle(
+                    fontSize: 14.5,
+                    height: 1.4,
+                    fontWeight: FontWeight.w700,
+                    color: kComprasMutedInk.withValues(alpha: 0.92),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      style: _comprasRedOutlinedButtonStyle(),
+                      onPressed: () => Navigator.of(dialogContext).pop(false),
+                      child: const Text('Cancelar'),
+                    ),
+                    const SizedBox(width: 10),
+                    FilledButton.icon(
+                      style: _comprasRedFilledButtonStyle(),
+                      onPressed: () => Navigator.of(dialogContext).pop(true),
+                      icon: const Icon(Icons.delete_outline_rounded),
+                      label: const Text('Eliminar'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    },
+  );
+}
+
+Future<DateTime?> _showComprasThemedDatePicker({
+  required BuildContext context,
+  required DateTime initialDate,
+  required DateTime firstDate,
+  required DateTime lastDate,
+}) {
+  return showDatePicker(
+    context: context,
+    initialDate: initialDate,
+    firstDate: firstDate,
+    lastDate: lastDate,
+    builder: (context, child) {
+      final theme = Theme.of(context);
+      const primary = Color(0xFFB12720);
+      const onPrimary = Colors.white;
+      const surface = Color(0xFFF6EFED);
+      const onSurface = Color(0xFF2A1615);
+      final colorScheme = theme.colorScheme.copyWith(
+        primary: primary,
+        onPrimary: onPrimary,
+        surface: surface,
+        onSurface: onSurface,
+      );
+      return Theme(
+        data: theme.copyWith(
+          colorScheme: colorScheme,
+          datePickerTheme: DatePickerThemeData(
+            backgroundColor: surface,
+            surfaceTintColor: Colors.transparent,
+            headerBackgroundColor: primary,
+            headerForegroundColor: onPrimary,
+            rangeSelectionBackgroundColor: primary.withValues(alpha: 0.16),
+            rangeSelectionOverlayColor: WidgetStateProperty.all(
+              primary.withValues(alpha: 0.08),
+            ),
+            dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) return onPrimary;
+              return onSurface;
+            }),
+            dayBackgroundColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.selected)) return primary;
+              return null;
+            }),
+            todayForegroundColor: WidgetStateProperty.all(primary),
+            todayBorder: const BorderSide(color: primary, width: 1.4),
+            confirmButtonStyle: TextButton.styleFrom(
+              foregroundColor: primary,
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+            cancelButtonStyle: TextButton.styleFrom(
+              foregroundColor: const Color(0xFF8C241D),
+              textStyle: const TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
+        ),
+        child: child ?? const SizedBox.shrink(),
+      );
+    },
+  );
+}
+
+String _formatTicketFilterDate(DateTime value) =>
+    '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+
+String _comprasTicketMonthNameEs(int month) {
+  const names = <String>[
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
+  ];
+  return names[(month - 1).clamp(0, 11)];
+}
+
+Future<DateTimeRange?> _showTicketDateRangeDialog(
+  BuildContext context, {
+  DateTimeRange? initialRange,
+  required DateTime firstDate,
+  required DateTime lastDate,
+}) {
+  return showDialog<DateTimeRange?>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) {
+      DateTime displayMonth = DateTime(
+        (initialRange?.start ?? firstDate).year,
+        (initialRange?.start ?? firstDate).month,
+      );
+      DateTime? start = initialRange?.start;
+      DateTime? end = initialRange?.end;
+      DateTime? hover;
+
+      bool isSameDay(DateTime a, DateTime b) =>
+          a.year == b.year && a.month == b.month && a.day == b.day;
+      DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+      return AreaThemeScope(
+        tokens: comprasAreaTokens,
+        child: StatefulBuilder(
+          builder: (context, setLocalState) {
+            final tokens = AreaThemeScope.of(context);
+            final theme = Theme.of(context);
+            final monthFirst = DateTime(
+              displayMonth.year,
+              displayMonth.month,
+              1,
+            );
+            final leading = (monthFirst.weekday + 6) % 7;
+            final gridStart = monthFirst.subtract(Duration(days: leading));
+            final previewEnd = end ?? hover;
+
+            bool withinBounds(DateTime day) {
+              final d = dateOnly(day);
+              return !d.isBefore(dateOnly(firstDate)) &&
+                  !d.isAfter(dateOnly(lastDate));
+            }
+
+            bool inPreviewRange(DateTime day) {
+              if (start == null || previewEnd == null) return false;
+              final a = dateOnly(start!);
+              final b = dateOnly(previewEnd);
+              final from = a.isBefore(b) ? a : b;
+              final to = a.isBefore(b) ? b : a;
+              final d = dateOnly(day);
+              return !d.isBefore(from) && !d.isAfter(to);
+            }
+
+            DateTimeRange? buildResult() {
+              if (start == null) return null;
+              final s = dateOnly(start!);
+              final e = dateOnly(end ?? start!);
+              final from = s.isBefore(e) ? s : e;
+              final to = s.isBefore(e) ? e : s;
+              return DateTimeRange(start: from, end: to);
+            }
+
+            final colorScheme = theme.colorScheme.copyWith(
+              primary: tokens.primaryStrong,
+              secondary: tokens.primary,
+              surface: tokens.surfaceTint,
+              onSurface: tokens.badgeText,
+            );
+
+            return Theme(
+              data: theme.copyWith(
+                colorScheme: colorScheme,
+                splashColor: tokens.primaryStrong.withValues(alpha: 0.12),
+                highlightColor: tokens.primaryStrong.withValues(alpha: 0.08),
+                hoverColor: tokens.primarySoft.withValues(alpha: 0.12),
+                focusColor: tokens.primarySoft.withValues(alpha: 0.16),
+                iconTheme: IconThemeData(color: tokens.primaryStrong),
+                iconButtonTheme: IconButtonThemeData(
+                  style: IconButton.styleFrom(
+                    foregroundColor: tokens.primaryStrong,
+                    hoverColor: tokens.primarySoft.withValues(alpha: 0.12),
+                    highlightColor: tokens.primaryStrong.withValues(
+                      alpha: 0.08,
+                    ),
+                  ),
+                ),
+                textButtonTheme: TextButtonThemeData(
+                  style: TextButton.styleFrom(
+                    foregroundColor: tokens.primaryStrong,
+                    overlayColor: tokens.primaryStrong.withValues(alpha: 0.08),
+                  ),
+                ),
+                outlinedButtonTheme: OutlinedButtonThemeData(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: tokens.primaryStrong,
+                    overlayColor: tokens.primaryStrong.withValues(alpha: 0.08),
+                  ),
+                ),
+                filledButtonTheme: FilledButtonThemeData(
+                  style: FilledButton.styleFrom(
+                    overlayColor: Colors.white.withValues(alpha: 0.10),
+                  ),
+                ),
+              ),
+              child: Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 24,
+                ),
+                child: ContractPopupSurface(
+                  constraints: const BoxConstraints(
+                    maxWidth: 420,
+                    maxHeight: 516,
+                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Filtrar fecha',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: tokens.primaryStrong,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            color: tokens.primaryStrong,
+                            onPressed: () => setLocalState(
+                              () => displayMonth = DateTime(
+                                displayMonth.year,
+                                displayMonth.month - 1,
+                              ),
+                            ),
+                            icon: const Icon(Icons.chevron_left_rounded),
+                          ),
+                          Expanded(
+                            child: Center(
+                              child: Text(
+                                '${_comprasTicketMonthNameEs(monthFirst.month)} ${monthFirst.year}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: tokens.badgeText,
+                                ),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            color: tokens.primaryStrong,
+                            onPressed: () => setLocalState(
+                              () => displayMonth = DateTime(
+                                displayMonth.year,
+                                displayMonth.month + 1,
+                              ),
+                            ),
+                            icon: const Icon(Icons.chevron_right_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          for (final dayLabel in const [
+                            'L',
+                            'M',
+                            'M',
+                            'J',
+                            'V',
+                            'S',
+                            'D',
+                          ])
+                            Expanded(
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: Text(
+                                    dayLabel,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: tokens.badgeText,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: 42,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 7,
+                              mainAxisSpacing: 4,
+                              crossAxisSpacing: 4,
+                              childAspectRatio: 1.08,
+                            ),
+                        itemBuilder: (_, index) {
+                          final day = gridStart.add(Duration(days: index));
+                          final inMonth = day.month == monthFirst.month;
+                          final allowed = withinBounds(day);
+                          final active =
+                              (start != null && isSameDay(day, start!)) ||
+                              (end != null && isSameDay(day, end!));
+                          final inRange = inPreviewRange(day) && allowed;
+                          return MouseRegion(
+                            onEnter: (_) {
+                              if (start != null && end == null && allowed) {
+                                setLocalState(() => hover = dateOnly(day));
+                              }
+                            },
+                            child: GestureDetector(
+                              onTap: !allowed
+                                  ? null
+                                  : () {
+                                      final picked = dateOnly(day);
+                                      setLocalState(() {
+                                        if (start == null || end != null) {
+                                          start = picked;
+                                          end = null;
+                                          hover = null;
+                                        } else {
+                                          end = picked;
+                                          hover = null;
+                                        }
+                                      });
+                                    },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 120),
+                                decoration: BoxDecoration(
+                                  color: active
+                                      ? tokens.primaryStrong.withValues(
+                                          alpha: 0.18,
+                                        )
+                                      : inRange
+                                      ? tokens.primarySoft.withValues(
+                                          alpha: 0.24,
+                                        )
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: active
+                                        ? tokens.primaryStrong.withValues(
+                                            alpha: 0.46,
+                                          )
+                                        : Colors.transparent,
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${day.day}',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: active
+                                          ? FontWeight.w900
+                                          : FontWeight.w700,
+                                      color: !allowed
+                                          ? tokens.badgeText.withValues(
+                                              alpha: 0.28,
+                                            )
+                                          : inMonth
+                                          ? tokens.primaryStrong
+                                          : tokens.badgeText.withValues(
+                                              alpha: 0.55,
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        start == null
+                            ? 'Selecciona fecha inicial'
+                            : end == null
+                            ? 'Selecciona fecha final'
+                            : '${_formatTicketFilterDate(start!)} - ${_formatTicketFilterDate(end!)}',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: tokens.badgeText,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            style: _comprasRedOutlinedButtonStyle(),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            style: _comprasRedOutlinedButtonStyle(),
+                            onPressed: () => Navigator.of(
+                              dialogContext,
+                            ).pop(_kClearedTicketDateRange),
+                            child: const Text('Limpiar'),
+                          ),
+                          const SizedBox(width: 10),
+                          FilledButton(
+                            style: _comprasRedFilledButtonStyle(),
+                            onPressed: start == null
+                                ? null
+                                : () => Navigator.of(
+                                    dialogContext,
+                                  ).pop(buildResult()),
+                            child: const Text('Aplicar'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    },
+  );
+}
+
 class _TicketPreviewCard extends StatelessWidget {
   final ComprasTicketRecord preview;
 
@@ -2408,6 +3300,135 @@ class _TicketPreviewCard extends StatelessWidget {
           _PreviewMetric(
             label: 'Pago',
             value: comprasPagoStatusLabel(preview.pagoStatus),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _TicketFormSection extends StatelessWidget {
+  final String step;
+  final String title;
+  final String subtitle;
+  final List<Widget> children;
+
+  const _TicketFormSection({
+    required this.step,
+    required this.title,
+    required this.subtitle,
+    required this.children,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.34),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(
+          color: const Color(0xFFD8B1AB).withValues(alpha: 0.48),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFB12720),
+                  borderRadius: BorderRadius.circular(999),
+                ),
+                child: Center(
+                  child: Text(
+                    step,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF7A1914),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: kComprasMutedInk.withValues(alpha: 0.86),
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(spacing: 16, runSpacing: 16, children: children),
+        ],
+      ),
+    );
+  }
+}
+
+class _TicketInlinePreviewCard extends StatelessWidget {
+  final ComprasTicketRecord preview;
+
+  const _TicketInlinePreviewCard({required this.preview});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFFF7E6E3),
+            const Color(0xFFF1D6D1).withValues(alpha: 0.88),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: const Color(0xFFD8B1AB).withValues(alpha: 0.66),
+        ),
+      ),
+      child: Wrap(
+        spacing: 18,
+        runSpacing: 12,
+        children: [
+          _PreviewMetric(
+            label: 'Tarifa final',
+            value: '\$${(preview.price + preview.premium).toStringAsFixed(2)}',
+          ),
+          _PreviewMetric(
+            label: 'Neto',
+            value: preview.netWeight.toStringAsFixed(2),
+          ),
+          _PreviewMetric(
+            label: 'Peso pagable',
+            value: preview.payableWeight.toStringAsFixed(2),
+          ),
+          _PreviewMetric(
+            label: 'Importe',
+            value: '\$${preview.amount.toStringAsFixed(2)}',
           ),
         ],
       ),
@@ -2491,6 +3512,7 @@ class _ComprasTicketsEmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             FilledButton.icon(
+              style: _comprasRedFilledButtonStyle(),
               onPressed: () => unawaited(onCreate()),
               icon: const Icon(Icons.add_rounded),
               label: const Text('Nuevo ticket'),
@@ -2716,20 +3738,7 @@ class _ComprasTicketsBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        DecoratedBox(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF181010), Color(0xFF241515), Color(0xFF3A2020)],
-            ),
-          ),
-          child: const SizedBox.expand(),
-        ),
-      ],
-    );
+    return const ComprasAreaBackground();
   }
 }
 
@@ -2738,6 +3747,63 @@ class _TicketsPickerOption<T> {
   final String label;
 
   const _TicketsPickerOption({required this.value, required this.label});
+}
+
+class _TicketsPickerOptionTile extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final bool highlighted;
+  final VoidCallback onTap;
+
+  const _TicketsPickerOptionTile({
+    required this.label,
+    required this.selected,
+    required this.highlighted,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final background = selected
+        ? comprasAreaTokens.badgeBackground.withValues(alpha: 0.90)
+        : highlighted
+        ? comprasAreaTokens.surfaceTint.withValues(alpha: 0.66)
+        : Colors.white.withValues(alpha: 0.44);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: kComprasInk,
+                    ),
+                  ),
+                ),
+                if (selected)
+                  Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: comprasAreaTokens.primaryStrong,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 Future<T?> _showTicketsSingleSelectDialog<T>(
@@ -2750,44 +3816,172 @@ Future<T?> _showTicketsSingleSelectDialog<T>(
   return showDialog<T>(
     context: context,
     builder: (dialogContext) {
-      return Dialog(
-        child: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360, maxHeight: 420),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(dialogContext).textTheme.titleLarge,
+      final searchC = TextEditingController();
+      final searchFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
+      final itemFocusNodes = <FocusNode>[];
+      String query = '';
+      int? focusedIndex;
+
+      return StatefulBuilder(
+        builder: (context, setLocalState) {
+          final filtered = options
+              .where((option) {
+                final normalizedQuery = query.trim().toUpperCase();
+                if (normalizedQuery.isEmpty) return true;
+                return option.label.toUpperCase().contains(normalizedQuery);
+              })
+              .toList(growable: false);
+
+          while (itemFocusNodes.length < filtered.length) {
+            itemFocusNodes.add(FocusNode());
+          }
+          while (itemFocusNodes.length > filtered.length) {
+            itemFocusNodes.removeLast().dispose();
+          }
+
+          return Focus(
+            autofocus: true,
+            onKeyEvent: (_, event) {
+              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+              if (event.logicalKey == LogicalKeyboardKey.escape) {
+                Navigator.of(dialogContext).pop();
+                return KeyEventResult.handled;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+                  filtered.isNotEmpty) {
+                itemFocusNodes.first.requestFocus();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: Dialog(
+              backgroundColor: Colors.transparent,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: 420,
+                  maxHeight: 560,
                 ),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: ListView(
+                child: ContractGlassCard(
+                  padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      if (allowClear)
-                        ListTile(
-                          title: const Text('Limpiar filtro'),
-                          onTap: () => Navigator.of(dialogContext).pop(null),
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFF7A1914),
                         ),
-                      for (final option in options)
-                        ListTile(
-                          title: Text(option.label),
-                          trailing: option.value == initialValue
-                              ? const Icon(Icons.check_rounded)
-                              : null,
-                          onTap: () =>
-                              Navigator.of(dialogContext).pop(option.value),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: searchC,
+                        focusNode: searchFocus,
+                        autofocus: true,
+                        decoration: contractGlassFieldDecoration(
+                          context,
+                          hintText: 'Buscar',
+                          prefixIcon: const Icon(Icons.search_rounded),
                         ),
+                        onChanged: (value) =>
+                            setLocalState(() => query = value),
+                      ),
+                      if (allowClear) ...[
+                        const SizedBox(height: 4),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: TextButton(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(null),
+                            style: TextButton.styleFrom(
+                              foregroundColor: const Color(0xFF8C241D),
+                              textStyle: const TextStyle(
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            child: const Text('Limpiar selección'),
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      Expanded(
+                        child: filtered.isEmpty
+                            ? const Center(child: Text('Sin resultados'))
+                            : ListView.builder(
+                                itemCount: filtered.length,
+                                itemBuilder: (_, i) {
+                                  final option = filtered[i];
+                                  final selected = option.value == initialValue;
+                                  final highlighted = focusedIndex == i;
+                                  return Focus(
+                                    focusNode: itemFocusNodes[i],
+                                    onFocusChange: (hasFocus) {
+                                      if (hasFocus) {
+                                        setLocalState(() => focusedIndex = i);
+                                      } else if (focusedIndex == i) {
+                                        setLocalState(
+                                          () => focusedIndex = null,
+                                        );
+                                      }
+                                    },
+                                    onKeyEvent: (_, event) {
+                                      if (event is! KeyDownEvent) {
+                                        return KeyEventResult.ignored;
+                                      }
+                                      if (event.logicalKey ==
+                                          LogicalKeyboardKey.arrowUp) {
+                                        if (i == 0) {
+                                          searchFocus.requestFocus();
+                                        } else {
+                                          itemFocusNodes[i - 1].requestFocus();
+                                        }
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (event.logicalKey ==
+                                              LogicalKeyboardKey.arrowDown &&
+                                          i < itemFocusNodes.length - 1) {
+                                        itemFocusNodes[i + 1].requestFocus();
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (event.logicalKey ==
+                                              LogicalKeyboardKey.enter ||
+                                          event.logicalKey ==
+                                              LogicalKeyboardKey.numpadEnter ||
+                                          event.logicalKey ==
+                                              LogicalKeyboardKey.space) {
+                                        Navigator.of(
+                                          dialogContext,
+                                        ).pop(option.value);
+                                        return KeyEventResult.handled;
+                                      }
+                                      return KeyEventResult.ignored;
+                                    },
+                                    child: _TicketsPickerOptionTile(
+                                      label: option.label,
+                                      selected: selected,
+                                      highlighted: highlighted,
+                                      onTap: () => Navigator.of(
+                                        dialogContext,
+                                      ).pop(option.value),
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
                     ],
                   ),
                 ),
-              ],
+              ),
             ),
-          ),
-        ),
+          );
+        },
       );
     },
   );
@@ -2806,26 +4000,42 @@ Future<Set<T>?> _showTicketsMultiSelectDialog<T>(
       return StatefulBuilder(
         builder: (context, setDialogState) {
           return Dialog(
+            backgroundColor: Colors.transparent,
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420, maxHeight: 460),
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(24, 20, 24, 16),
+              constraints: const BoxConstraints(maxWidth: 440, maxHeight: 500),
+              child: ContractGlassCard(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
                       title,
-                      style: Theme.of(dialogContext).textTheme.titleLarge,
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF7A1914),
+                      ),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 14),
                     Expanded(
                       child: ListView(
                         children: [
                           for (final option in options)
                             CheckboxListTile(
+                              activeColor: const Color(0xFFB12720),
+                              checkColor: Colors.white,
                               value: selected.contains(option),
-                              title: Text(option.toString()),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              title: Text(
+                                option.toString(),
+                                style: const TextStyle(
+                                  fontSize: 13.5,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
                               onChanged: (checked) {
                                 setDialogState(() {
                                   if (checked == true) {
@@ -2843,18 +4053,27 @@ Future<Set<T>?> _showTicketsMultiSelectDialog<T>(
                     Row(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
-                        TextButton(
+                        OutlinedButton(
+                          style: _comprasRedOutlinedButtonStyle(),
                           onPressed: () =>
                               Navigator.of(dialogContext).pop(null),
                           child: const Text('Cancelar'),
                         ),
+                        const SizedBox(width: 8),
                         TextButton(
                           onPressed: () =>
                               setDialogState(() => selected.clear()),
+                          style: TextButton.styleFrom(
+                            foregroundColor: const Color(0xFF8C241D),
+                            textStyle: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
                           child: const Text('Limpiar'),
                         ),
                         const SizedBox(width: 8),
                         FilledButton(
+                          style: _comprasRedFilledButtonStyle(),
                           onPressed: () =>
                               Navigator.of(dialogContext).pop(selected),
                           child: const Text('Aplicar'),

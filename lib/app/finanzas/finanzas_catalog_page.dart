@@ -18,9 +18,11 @@ import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../mayoreo/mayoreo_sorting.dart';
 import '../services/inventory_movements_grid.dart';
+import 'finanzas_bank_accounts_page.dart';
 import 'finanzas_data_store.dart';
 import 'finanzas_dashboard_page.dart';
 import 'finanzas_company_directory_page.dart';
+import 'finanzas_provider_accounts_page.dart';
 import 'finanzas_theme.dart';
 
 class FinanzasCatalogPage extends StatefulWidget {
@@ -227,6 +229,20 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
     );
   }
 
+  Future<void> _openProviderAccounts() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const FinanzasProviderAccountsPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openBankAccounts() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const FinanzasBankAccountsPage(instantOpen: true)),
+    );
+  }
+
   void _handleNavigationAction(String label) {
     switch (label) {
       case 'Dashboard Dirección':
@@ -245,6 +261,14 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
       case 'Directorio Empresas':
         if (_menuOpen) setState(() => _menuOpen = false);
         unawaited(_openFinanzasDirectory());
+        return;
+      case 'Cuentas por Proveedor':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openProviderAccounts());
+        return;
+      case 'Cuentas Bancarias':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openBankAccounts());
         return;
     }
   }
@@ -4376,6 +4400,20 @@ class _FinanzasCatalogSidePanel extends StatelessWidget {
                       title: 'Directorio Empresas',
                       subtitle: 'Crédito, contacto y operación',
                       onTap: () async => onNavigate('Directorio Empresas'),
+                    ),
+                    const SizedBox(height: 8),
+                    _FinanzasCatalogNavItem(
+                      icon: Icons.view_list_rounded,
+                      title: 'Cuentas por Proveedor',
+                      subtitle: 'Saldo vivo, tickets y seguimiento',
+                      onTap: () async => onNavigate('Cuentas por Proveedor'),
+                    ),
+                    const SizedBox(height: 8),
+                    _FinanzasCatalogNavItem(
+                      icon: Icons.account_balance_outlined,
+                      title: 'Cuentas Bancarias',
+                      subtitle: 'Entradas, salidas y bancos',
+                      onTap: () async => onNavigate('Cuentas Bancarias'),
                     ),
                   ],
                 ),

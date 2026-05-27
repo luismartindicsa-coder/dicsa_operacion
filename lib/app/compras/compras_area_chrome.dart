@@ -21,6 +21,100 @@ class ComprasAreaNavEntry {
   });
 }
 
+class ComprasAreaBackground extends StatelessWidget {
+  const ComprasAreaBackground({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        DecoratedBox(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF181010), Color(0xFF241515), Color(0xFF3A2020)],
+            ),
+          ),
+          child: const SizedBox.expand(),
+        ),
+        Positioned(
+          left: -260,
+          top: -130,
+          child: _ComprasBackgroundCircle(
+            diameter: 760,
+            colors: [Color(0xFF332020), Color(0xFF181010)],
+          ),
+        ),
+        Positioned(
+          right: -180,
+          top: -70,
+          child: _ComprasBackgroundCircle(
+            diameter: 580,
+            colors: [Color(0xFF9C211B), Color(0x33261515)],
+          ),
+        ),
+        Positioned(
+          left: 20,
+          bottom: -260,
+          child: _ComprasBackgroundCircle(
+            diameter: 640,
+            colors: [Color(0x338F201A), Color(0xFFF0E4E2)],
+          ),
+        ),
+        Positioned(
+          right: -105,
+          bottom: -120,
+          child: IgnorePointer(
+            child: Container(
+              width: 320,
+              height: 500,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(220),
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Color(0xFFAA2A23), Color(0xFF261818)],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ComprasBackgroundCircle extends StatelessWidget {
+  final double diameter;
+  final List<Color> colors;
+
+  const _ComprasBackgroundCircle({
+    required this.diameter,
+    required this.colors,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          gradient: LinearGradient(colors: colors),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: diameter * 0.10,
+              spreadRadius: diameter * 0.015,
+              color: Colors.white.withValues(alpha: 0.08),
+            ),
+          ],
+        ),
+        child: SizedBox(width: diameter, height: diameter),
+      ),
+    );
+  }
+}
+
 Future<void> openComprasMailHostinger(BuildContext context) async {
   const url = 'https://mail.hostinger.com/';
   final opened = await launchUrlString(

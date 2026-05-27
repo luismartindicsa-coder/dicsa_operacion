@@ -1476,25 +1476,7 @@ class _ComprasDirectoryBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Stack(
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFF181010),
-                const Color(0xFF241515),
-                tokens.accent.withValues(alpha: 0.38),
-              ],
-            ),
-          ),
-          child: const SizedBox.expand(),
-        ),
-      ],
-    );
+    return const ComprasAreaBackground();
   }
 }
 

@@ -236,6 +236,23 @@ class ComprasProviderMovementRecord {
     'reference': reference.isEmpty ? null : reference,
     'notes': notes.isEmpty ? null : notes,
   };
+
+  factory ComprasProviderMovementRecord.fromRemoteRow(
+    Map<String, dynamic> row,
+  ) {
+    return ComprasProviderMovementRecord(
+      id: (row['id'] ?? '').toString(),
+      providerId: (row['provider_id'] ?? '').toString(),
+      date:
+          _tryParseDateTime(row['movement_date'] as String?) ?? DateTime.now(),
+      type: (row['movement_type'] ?? 'ABONO').toString(),
+      source: (row['source_type'] ?? 'EFECTIVO').toString(),
+      amount: ((row['amount'] as num?) ?? 0).toDouble(),
+      reference: (row['reference'] ?? '').toString(),
+      notes: (row['notes'] ?? '').toString(),
+      createdAt: _tryParseDateTime(row['created_at'] as String?),
+    );
+  }
 }
 
 class ComprasTicketPaymentApplicationRecord {
@@ -260,6 +277,19 @@ class ComprasTicketPaymentApplicationRecord {
     'applied_amount': appliedAmount,
     'applied_at': appliedAt.toIso8601String(),
   };
+
+  factory ComprasTicketPaymentApplicationRecord.fromRemoteRow(
+    Map<String, dynamic> row,
+  ) {
+    return ComprasTicketPaymentApplicationRecord(
+      id: (row['id'] ?? '').toString(),
+      ticketId: (row['ticket_id'] ?? '').toString(),
+      providerMovementId: (row['provider_movement_id'] ?? '').toString(),
+      appliedAmount: ((row['applied_amount'] as num?) ?? 0).toDouble(),
+      appliedAt:
+          _tryParseDateTime(row['applied_at'] as String?) ?? DateTime.now(),
+    );
+  }
 }
 
 class ComprasTicketsReferenceData {
@@ -366,6 +396,189 @@ class ComprasTicketsStore {
           rows.map((row) => row.toUpsertJson()).toList(growable: false),
           onConflict: 'id',
         );
+  }
+
+  static Future<List<ComprasProviderMovementRecord>>
+  loadProviderMovements() async {
+    try {
+      final rows = await Supabase.instance.client
+          .from(_kComprasProviderMovementsTable)
+          .select()
+          .order('movement_date', ascending: false)
+          .order('created_at', ascending: false);
+      return (rows as List)
+          .map(
+            (row) => ComprasProviderMovementRecord.fromRemoteRow(
+              Map<String, dynamic>.from(row as Map),
+            ),
+          )
+          .toList(growable: false);
+    } catch (_) {
+      return const <ComprasProviderMovementRecord>[];
+    }
+  }
+
+  static Future<List<ComprasTicketPaymentApplicationRecord>>
+  loadTicketPaymentApplications() async {
+    try {
+      final rows = await Supabase.instance.client
+          .from(_kComprasTicketPaymentApplicationsTable)
+          .select()
+          .order('applied_at', ascending: false)
+          .order('created_at', ascending: false);
+      return (rows as List)
+          .map(
+            (row) => ComprasTicketPaymentApplicationRecord.fromRemoteRow(
+              Map<String, dynamic>.from(row as Map),
+            ),
+          )
+          .toList(growable: false);
+    } catch (_) {
+      return const <ComprasTicketPaymentApplicationRecord>[];
+    }
+  }
+
+  static Future<void> createProviderMovementAndAutoApply({
+    required ComprasProviderMovementRecord movement,
+  }) async {
+    await _saveProviderMovementAndRebuildApplications(movement);
+  }
+
+  static Future<void> updateProviderMovementAndAutoApply({
+    required ComprasProviderMovementRecord movement,
+  }) async {
+    await _saveProviderMovementAndRebuildApplications(movement);
+  }
+
+  static Future<void> deleteProviderMovementAndRebuildApplications({
+    required ComprasProviderMovementRecord movement,
+  }) async {
+    await Supabase.instance.client
+        .from(_kComprasProviderMovementsTable)
+        .delete()
+        .eq('id', movement.id);
+    await _rebuildProviderMovementApplications(movement.providerId);
+  }
+}
+
+Future<void> _saveProviderMovementAndRebuildApplications(
+  ComprasProviderMovementRecord movement,
+) async {
+  await ComprasTicketsStore.saveProviderMovement(movement);
+  await _rebuildProviderMovementApplications(movement.providerId);
+}
+
+Future<void> _rebuildProviderMovementApplications(String providerId) async {
+  final tickets = await ComprasTicketsStore.loadTickets();
+  final providerTickets =
+      tickets
+          .where((ticket) => ticket.providerId == providerId)
+          .toList(growable: false)
+        ..sort((a, b) => a.date.compareTo(b.date));
+  if (providerTickets.isEmpty) return;
+
+  final providerTicketIds = providerTickets
+      .map((ticket) => ticket.id)
+      .toList(growable: false);
+  final providerMovements =
+      (await ComprasTicketsStore.loadProviderMovements())
+          .where((row) => row.providerId == providerId)
+          .toList(growable: false)
+        ..sort((a, b) {
+          final dateCompare = a.date.compareTo(b.date);
+          if (dateCompare != 0) return dateCompare;
+          return a.id.compareTo(b.id);
+        });
+  final existingApplications =
+      await ComprasTicketsStore.loadTicketPaymentApplications();
+  final providerApplications = existingApplications
+      .where((row) => providerTicketIds.contains(row.ticketId))
+      .toList(growable: false);
+
+  final externallySettledTicketIds = <String>{};
+  final existingAppliedByTicketId = <String, double>{};
+  for (final application in providerApplications) {
+    existingAppliedByTicketId.update(
+      application.ticketId,
+      (value) => value + application.appliedAmount,
+      ifAbsent: () => application.appliedAmount,
+    );
+  }
+  for (final ticket in providerTickets) {
+    final existingApplied = existingAppliedByTicketId[ticket.id] ?? 0;
+    if (existingApplied <= 0.009 &&
+        ticket.pagoStatus == 'PAGADO' &&
+        ticket.coverageStatus == 'CUBIERTO') {
+      externallySettledTicketIds.add(ticket.id);
+    }
+  }
+
+  await Supabase.instance.client
+      .from(_kComprasTicketPaymentApplicationsTable)
+      .delete()
+      .inFilter('ticket_id', providerTicketIds);
+
+  final appliedByTicketId = <String, double>{};
+  final newApplications = <ComprasTicketPaymentApplicationRecord>[];
+  final eligibleMovements = providerMovements.where(
+    (row) => row.type == 'ABONO' || row.type == 'PAGO',
+  );
+  for (final providerMovement in eligibleMovements) {
+    var remaining = providerMovement.amount;
+    for (final ticket in providerTickets) {
+      if (remaining <= 0) break;
+      if (externallySettledTicketIds.contains(ticket.id)) continue;
+      final alreadyApplied = appliedByTicketId[ticket.id] ?? 0;
+      final pending = (ticket.amount - alreadyApplied)
+          .clamp(0, double.infinity)
+          .toDouble();
+      if (pending <= 0) continue;
+      final applied = remaining > pending ? pending : remaining;
+      if (applied <= 0) continue;
+      newApplications.add(
+        ComprasTicketPaymentApplicationRecord(
+          id: 'compras-ticket-app-${providerMovement.id}-${ticket.id}-${newApplications.length}',
+          ticketId: ticket.id,
+          providerMovementId: providerMovement.id,
+          appliedAmount: applied,
+          appliedAt: providerMovement.date,
+        ),
+      );
+      appliedByTicketId[ticket.id] = alreadyApplied + applied;
+      remaining -= applied;
+    }
+  }
+  if (newApplications.isNotEmpty) {
+    await ComprasTicketsStore.saveTicketPaymentApplications(newApplications);
+  }
+
+  final updatedTickets = providerTickets
+      .map((ticket) {
+        if (externallySettledTicketIds.contains(ticket.id)) {
+          return ticket;
+        }
+        final applied = (appliedByTicketId[ticket.id] ?? 0).clamp(
+          0,
+          double.infinity,
+        );
+        final coverageStatus = applied >= ticket.amount - 0.009
+            ? 'CUBIERTO'
+            : applied > 0
+            ? 'PARCIAL'
+            : 'SIN_CUBRIR';
+        final pagoStatus = applied >= ticket.amount - 0.009
+            ? 'PAGADO'
+            : applied > 0
+            ? 'ABONO'
+            : 'PENDIENTE_DE_PAGO';
+        return ticket.copyWith(
+          coverageStatus: coverageStatus,
+          pagoStatus: pagoStatus,
+        );
+      })
+      .toList(growable: false);
+  if (updatedTickets.isNotEmpty) {
+    await ComprasTicketsStore.saveTickets(updatedTickets);
   }
 }
 

@@ -27,6 +27,7 @@ import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/number_formatters.dart';
+import '../finanzas/finanzas_bank_accounts_store.dart';
 import 'mayoreo_catalog_page.dart';
 import 'mayoreo_dashboard_preview_page.dart';
 import 'mayoreo_el_palomar_page.dart';
@@ -132,6 +133,8 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
   String _lastQueuedRowsSignature = '';
 
   late List<_MayoreoAccountRow> _rows;
+  List<FinanzasBankMovementRecord> _bankMovements =
+      const <FinanzasBankMovementRecord>[];
 
   @override
   void initState() {
@@ -270,9 +273,14 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
   Future<void> _loadAccounts() async {
     final sourceRows = await _loadSourceReports();
     final persistedRows = <String, _MayoreoAccountRow>{};
+    List<FinanzasBankMovementRecord> bankMovements =
+        const <FinanzasBankMovementRecord>[];
 
     try {
       persistedRows.addAll(await _loadRemotePersistedAccounts());
+    } catch (_) {}
+    try {
+      bankMovements = await FinanzasBankAccountsStore.loadMovements();
     } catch (_) {}
 
     final rows = sourceRows
@@ -288,6 +296,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     final signature = _rowsSignature(rows);
     setState(() {
       _rows = rows;
+      _bankMovements = bankMovements;
       if (_selectedRowId == null && rows.isNotEmpty) {
         _selectedRowId = rows.first.id;
       }
@@ -438,6 +447,13 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
         .where((row) => !_isSeedAccountSourceId(row.id))
         .toList(growable: false);
     return <String, _MayoreoAccountRow>{for (final row in rows) row.id: row};
+  }
+
+  FinanzasBankMovementRecord? _findLinkedBankMovement(String accountId) {
+    for (final row in _bankMovements) {
+      if (row.linkedExternalRef == accountId) return row;
+    }
+    return null;
   }
 
   Future<void> _persistRowsToSupabase(
@@ -991,7 +1007,10 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
         barrierDismissible: true,
         builder: (dialogContext) => Theme(
           data: _mayoreoMaterialTheme(dialogContext),
-          child: _AccountDetailDialog(row: row),
+          child: _AccountDetailDialog(
+            row: row,
+            linkedBankMovement: _findLinkedBankMovement(row.id),
+          ),
         ),
       ),
     );
@@ -3220,8 +3239,12 @@ class _AccountsStatusChip extends StatelessWidget {
 
 class _AccountDetailDialog extends StatefulWidget {
   final _MayoreoAccountRow row;
+  final FinanzasBankMovementRecord? linkedBankMovement;
 
-  const _AccountDetailDialog({required this.row});
+  const _AccountDetailDialog({
+    required this.row,
+    required this.linkedBankMovement,
+  });
 
   @override
   State<_AccountDetailDialog> createState() => _AccountDetailDialogState();
@@ -3578,6 +3601,14 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                                     ),
                                   ),
                                   const SizedBox(height: 10),
+                                  if (widget.linkedBankMovement != null) ...[
+                                    _ReadOnlyField(
+                                      label: 'MOVIMIENTO BANCARIO',
+                                      value:
+                                          '${_formatDate(widget.linkedBankMovement!.date)} · ${widget.linkedBankMovement!.company} ${widget.linkedBankMovement!.branch} · ${formatMoney(widget.linkedBankMovement!.creditAmount > 0 ? widget.linkedBankMovement!.creditAmount : widget.linkedBankMovement!.debitAmount)} · ${widget.linkedBankMovement!.reference.isEmpty ? 'sin referencia' : widget.linkedBankMovement!.reference}',
+                                    ),
+                                    const SizedBox(height: 10),
+                                  ],
                                   Align(
                                     alignment: Alignment.centerLeft,
                                     child: _AccountsStatusChip(

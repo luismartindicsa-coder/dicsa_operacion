@@ -1287,69 +1287,7 @@ class _MayoreoPriceAdjustmentsBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        DecoratedBox(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF181010), Color(0xFF241515), Color(0xFF3A2020)],
-            ),
-          ),
-          child: const SizedBox.expand(),
-        ),
-        Positioned(
-          left: -220,
-          top: -110,
-          child: _backgroundCircle(
-            700,
-            LinearGradient(
-              colors: [const Color(0x33F0E4E2), const Color(0x00181010)],
-            ),
-          ),
-        ),
-        Positioned(
-          right: -160,
-          top: -60,
-          child: _backgroundCircle(
-            540,
-            LinearGradient(
-              colors: [const Color(0x66B52A23), const Color(0x1A241515)],
-            ),
-          ),
-        ),
-        Positioned(
-          left: -120,
-          bottom: -180,
-          child: _backgroundCircle(
-            460,
-            LinearGradient(
-              colors: [const Color(0x1AB52A23), const Color(0x00F0E4E2)],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _backgroundCircle(double diameter, Gradient gradient) {
-    return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: gradient,
-          boxShadow: [
-            BoxShadow(
-              blurRadius: diameter * 0.10,
-              spreadRadius: diameter * 0.015,
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
-          ],
-        ),
-        child: SizedBox(width: diameter, height: diameter),
-      ),
-    );
+    return const ComprasAreaBackground();
   }
 }
 

@@ -4,8 +4,10 @@ import '../auth/auth_access.dart';
 import '../compras/compras_dashboard_page.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
+import 'finanzas_bank_accounts_page.dart';
 import 'finanzas_catalog_page.dart';
 import 'finanzas_company_directory_page.dart';
+import 'finanzas_provider_accounts_page.dart';
 import 'finanzas_theme.dart';
 
 class FinanzasDashboardPage extends StatelessWidget {
@@ -37,6 +39,26 @@ class FinanzasDashboardPage extends StatelessWidget {
     await Navigator.of(context).push(
       appPageRoute(
         page: const FinanzasCompanyDirectoryPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openProviderAccounts(BuildContext context) async {
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const FinanzasProviderAccountsPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openBankAccounts(BuildContext context) async {
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const FinanzasBankAccountsPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -97,6 +119,18 @@ class FinanzasDashboardPage extends StatelessWidget {
             icon: Icons.account_balance_rounded,
             onTap: () => _openDirectory(context),
           ),
+          DashboardNavAction(
+            title: 'Cuentas por Proveedor',
+            subtitle: 'Saldo vivo, tickets y seguimiento',
+            icon: Icons.view_list_rounded,
+            onTap: () => _openProviderAccounts(context),
+          ),
+          DashboardNavAction(
+            title: 'Cuentas Bancarias',
+            subtitle: 'Entradas, salidas y bancos',
+            icon: Icons.account_balance_outlined,
+            onTap: () => _openBankAccounts(context),
+          ),
         ],
         accessItems: [
           DashboardNavAction(
@@ -117,6 +151,16 @@ class FinanzasDashboardPage extends StatelessWidget {
             label: 'Directorio',
             icon: Icons.account_balance_rounded,
             onTap: () => _openDirectory(context),
+          ),
+          DashboardHeaderAction(
+            label: 'Cuentas',
+            icon: Icons.view_list_rounded,
+            onTap: () => _openProviderAccounts(context),
+          ),
+          DashboardHeaderAction(
+            label: 'Bancos',
+            icon: Icons.account_balance_outlined,
+            onTap: () => _openBankAccounts(context),
           ),
         ],
       ),

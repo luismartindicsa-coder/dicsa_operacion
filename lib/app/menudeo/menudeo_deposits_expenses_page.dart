@@ -178,6 +178,7 @@ class _VoucherRecord {
   final String rubric;
   final String comment;
   final List<_LineItemRecord> lines;
+  final bool hasPendingCashCheck;
 
   const _VoucherRecord({
     this.id,
@@ -188,6 +189,7 @@ class _VoucherRecord {
     required this.rubric,
     required this.comment,
     required this.lines,
+    this.hasPendingCashCheck = false,
   });
 
   double get total => lines.fold<double>(
@@ -683,13 +685,12 @@ class _MenudeoDepositsExpensesPageState
               .where((value) => value.isNotEmpty),
           'Ernesto Mendoza',
         }.toList()..sort();
-        _unitOptions =
-            ((results[2] as List).cast<Map<String, dynamic>>())
-                .map((row) => (row['code'] ?? '').toString().trim())
-                .where((value) => value.isNotEmpty)
-                .toSet()
-                .toList()
-              ..sort();
+        _unitOptions = <String>{
+          ...((results[2] as List).cast<Map<String, dynamic>>())
+              .map((row) => (row['code'] ?? '').toString().trim())
+              .where((value) => value.isNotEmpty),
+          'Volvo',
+        }.toList()..sort();
       });
     } catch (error) {
       if (!mounted) return;
@@ -714,7 +715,18 @@ class _MenudeoDepositsExpensesPageState
           .order('folio_sort', ascending: true)
           .order('folio', ascending: true);
 
+      final pendingExpenseRows = await _supa
+          .from('men_cash_cut_checks')
+          .select('source_id')
+          .eq('is_verified', false)
+          .eq('source_type', 'expense_voucher');
+
       final vouchers = (voucherRows as List).cast<Map<String, dynamic>>();
+      final pendingExpenseIds = (pendingExpenseRows as List)
+          .cast<Map<String, dynamic>>()
+          .map((row) => (row['source_id'] ?? '').toString())
+          .where((value) => value.isNotEmpty)
+          .toSet();
       final ids = vouchers
           .map((row) => row['id']?.toString() ?? '')
           .where((id) => id.isNotEmpty)
@@ -791,6 +803,9 @@ class _MenudeoDepositsExpensesPageState
               rubric: (row['rubric'] ?? '').toString(),
               comment: (row['comment'] ?? '').toString(),
               lines: linesByVoucher[id] ?? const <_LineItemRecord>[],
+              hasPendingCashCheck:
+                  type == _VoucherType.expense &&
+                  pendingExpenseIds.contains(id),
             );
           })
           .toList(growable: false);
@@ -1547,6 +1562,7 @@ class _MenudeoDepositsExpensesPageState
       rubric: record.rubric,
       comment: record.comment,
       lines: record.lines,
+      hasPendingCashCheck: record.hasPendingCashCheck,
     );
   }
 
@@ -2821,6 +2837,7 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final selectedContext = widget.selected || widget.highlighted;
+    final pendingExpense = widget.row.hasPendingCashCheck;
     const rowContentWidth = 110 + 110 + 110 + 250 + 180 + 180 + 196;
 
     Widget divider() => Container(
@@ -2869,7 +2886,9 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
               gradient: LinearGradient(
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
-                colors: selectedContext
+                colors: pendingExpense
+                    ? [const Color(0xFFFFECE8), const Color(0xFFFFD9D0)]
+                    : selectedContext
                     ? [
                         tokens.badgeBackground.withValues(alpha: 0.96),
                         tokens.primarySoft.withValues(alpha: 0.92),
@@ -2886,7 +2905,9 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
               ),
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
-                color: selectedContext
+                color: pendingExpense
+                    ? const Color(0xFFD95C4A).withValues(alpha: 0.72)
+                    : selectedContext
                     ? tokens.primaryStrong.withValues(alpha: 0.48)
                     : _hovering
                     ? tokens.primarySoft.withValues(alpha: 0.30)
@@ -2900,7 +2921,9 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                 ),
                 BoxShadow(
                   color: Colors.black.withValues(
-                    alpha: selectedContext
+                    alpha: pendingExpense
+                        ? 0.10
+                        : selectedContext
                         ? 0.12
                         : _hovering
                         ? 0.10
@@ -2941,7 +2964,9 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                                   child: TextButton(
                                     onPressed: widget.onOpen,
                                     style: TextButton.styleFrom(
-                                      foregroundColor: tokens.primaryStrong,
+                                      foregroundColor: pendingExpense
+                                          ? const Color(0xFFB0392E)
+                                          : tokens.primaryStrong,
                                       padding: EdgeInsets.zero,
                                       alignment: Alignment.centerLeft,
                                       minimumSize: Size.zero,
@@ -2951,18 +2976,45 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                                       overflow: TextOverflow.ellipsis,
                                       style: TextStyle(
                                         fontWeight: FontWeight.w900,
-                                        color: tokens.primaryStrong,
+                                        color: pendingExpense
+                                            ? const Color(0xFFB0392E)
+                                            : tokens.primaryStrong,
                                       ),
                                     ),
                                   ),
                                 ),
                                 cell(
                                   width: 110,
-                                  child: Text(
-                                    widget.row.type == _VoucherType.deposit
-                                        ? 'DEPÓSITO'
-                                        : 'GASTO',
-                                  ),
+                                  child: pendingExpense
+                                      ? Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            const Text(
+                                              'GASTO',
+                                              style: TextStyle(
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 2),
+                                            Text(
+                                              'PENDIENTE',
+                                              style: TextStyle(
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.w900,
+                                                color: const Color(0xFFB0392E),
+                                              ),
+                                            ),
+                                          ],
+                                        )
+                                      : Text(
+                                          widget.row.type ==
+                                                  _VoucherType.deposit
+                                              ? 'DEPÓSITO'
+                                              : 'GASTO',
+                                        ),
                                 ),
                                 cell(
                                   width: 250,
@@ -2986,7 +3038,9 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                                       widget.money(widget.row.total),
                                       style: TextStyle(
                                         fontWeight: FontWeight.w900,
-                                        color: tokens.primaryStrong,
+                                        color: pendingExpense
+                                            ? const Color(0xFFB0392E)
+                                            : tokens.primaryStrong,
                                       ),
                                     ),
                                   ),
@@ -3409,6 +3463,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
       rubric: _rubric,
       comment: _generalCommentC.text.trim(),
       lines: cleanLines.map((line) => line.toRecord()).toList(growable: false),
+      hasPendingCashCheck: widget.initial?.hasPendingCashCheck ?? false,
     );
   }
 
@@ -3559,6 +3614,9 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
   Widget build(BuildContext context) {
     final tokens = menudeoAreaTokens;
     final totalLabel = formatMoney(_total);
+    final showPendingExpenseChip =
+        (widget.initial?.hasPendingCashCheck ?? false) &&
+        _type == _VoucherType.expense;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
@@ -3677,15 +3735,25 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                     onClose: () => Navigator.of(context).pop(),
                   ),
                   const SizedBox(height: 14),
-                  Align(
-                    alignment: Alignment.center,
-                    child: _VoucherTopChip(
-                      label: 'Total',
-                      value: totalLabel,
-                      emphasized: true,
-                      centered: true,
-                      minWidth: 340,
-                    ),
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      if (showPendingExpenseChip)
+                        const _VoucherStatusChip(
+                          label: 'Pendiente por comprobar',
+                          value: 'CORTE ABIERTO',
+                        ),
+                      _VoucherTopChip(
+                        label: 'Total',
+                        value: totalLabel,
+                        emphasized: true,
+                        centered: true,
+                        minWidth: 340,
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 14),
                   Expanded(
@@ -4332,6 +4400,68 @@ class _VoucherTopChip extends StatelessWidget {
               fontSize: emphasized ? 18.5 : 15,
               fontWeight: FontWeight.w900,
               color: tokens.primaryStrong,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _VoucherStatusChip extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _VoucherStatusChip({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(minWidth: 220),
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 10),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Color(0xFFFFF1EE), Color(0xFFFFDDD5)],
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: const Color(0xFFD95C4A).withValues(alpha: 0.44),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.42),
+            blurRadius: 10,
+            offset: const Offset(-2, -2),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.08),
+            blurRadius: 14,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          const Text(
+            'Pendiente por comprobar',
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF8F2D22),
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFFB0392E),
             ),
           ),
         ],
