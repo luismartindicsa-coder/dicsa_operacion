@@ -29,18 +29,45 @@ class ContractGlassCard extends StatelessWidget {
         filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
         child: DecoratedBox(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.70),
+            color: tokens.glassSurface,
             borderRadius: borderRadius,
-            border: Border.all(color: tokens.border.withValues(alpha: 0.7)),
+            border: Border.all(
+              color: tokens.darkGlass
+                  ? Colors.white.withValues(alpha: 0.18)
+                  : tokens.border.withValues(alpha: 0.7),
+            ),
             boxShadow: [
               BoxShadow(
-                color: tokens.glow.withValues(alpha: 0.14),
-                blurRadius: elevation,
-                offset: const Offset(0, 10),
+                color: tokens.glow.withValues(
+                  alpha: tokens.darkGlass ? 0.12 : 0.14,
+                ),
+                blurRadius: tokens.darkGlass ? elevation + 8 : elevation,
+                offset: Offset(0, tokens.darkGlass ? 14 : 10),
               ),
+              if (tokens.darkGlass)
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.28),
+                  blurRadius: elevation + 10,
+                  offset: const Offset(0, 18),
+                ),
             ],
           ),
-          child: Padding(padding: padding, child: child),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              borderRadius: borderRadius,
+              gradient: tokens.darkGlass
+                  ? LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.08),
+                        Colors.transparent,
+                      ],
+                    )
+                  : null,
+            ),
+            child: Padding(padding: padding, child: child),
+          ),
         ),
       ),
     );
@@ -55,16 +82,24 @@ InputDecoration contractGlassFieldDecoration(
   final tokens = AreaThemeScope.of(context);
   final border = OutlineInputBorder(
     borderRadius: BorderRadius.circular(18),
-    borderSide: BorderSide(color: tokens.border.withValues(alpha: 0.9)),
+    borderSide: BorderSide(
+      color: tokens.darkGlass
+          ? Colors.white.withValues(alpha: 0.16)
+          : tokens.border.withValues(alpha: 0.9),
+    ),
   );
   return InputDecoration(
     hintText: hintText,
+    hintStyle: TextStyle(color: tokens.onGlass.withValues(alpha: 0.62)),
     prefixIcon: prefixIcon,
     filled: true,
-    fillColor: Colors.white.withValues(alpha: 0.72),
+    fillColor: tokens.fieldSurface,
     enabledBorder: border,
     focusedBorder: border.copyWith(
-      borderSide: BorderSide(color: tokens.primaryStrong, width: 1.4),
+      borderSide: BorderSide(
+        color: tokens.darkGlass ? tokens.primary : tokens.primaryStrong,
+        width: 1.4,
+      ),
     ),
     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
   );

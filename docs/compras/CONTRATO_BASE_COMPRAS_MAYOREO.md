@@ -38,11 +38,12 @@ La página maestra para congelar la identidad visual de `Compras Mayoreo` es:
 Todo módulo nuevo de `Compras Mayoreo` debe heredar de ahí:
 
 - paleta del área
+- familia cromática `negro / plateado / blanco`
 - atmósfera general
 - background
 - composición de header
 - color del título superior
-- glass cards
+- `super glass` oscuro para cards, grids, side panel y botones
 - side panel
 - nav items
 - botones de header
@@ -56,6 +57,7 @@ Todo módulo nuevo de `Compras Mayoreo` debe heredar de ahí:
 Regla explícita:
 
 - Si una página nueva de `Compras` se ve distinta a `Catálogo Compras` en color, header, side panel, botones o superficies, debe asumirse incorrecta hasta demostrar que esa diferencia responde a una necesidad real del módulo.
+- Si una pantalla introduce rojo como color dominante del área, debe asumirse incorrecta salvo que represente un estado puntual y no identidad visual.
 
 ## Contrato de navegación
 
@@ -115,6 +117,16 @@ La página de referencia elegida manda en:
 - ubicación de acciones
 - lógica de filtros
 - forma de presentar historial, selección y vistas previas
+
+En el estado actual de `Compras Mayoreo`, el contrato funcional ya queda validado al 100% para:
+
+- `Catálogo Compras Mayoreo`
+
+Eso significa:
+
+- el catálogo es la fuente de verdad para layout operativo del área
+- cualquier nueva pantalla debe copiar primero ese nivel de claridad y densidad
+- las demás páginas del área se depuran contra ese contrato, no al revés
 
 Ejemplo:
 
@@ -182,6 +194,13 @@ En `Compras Mayoreo`, la referencia es:
 
 - `Dashboard Compras Mayoreo`
 
+Alcance aprobado para `Dashboard Compras Mayoreo`:
+
+- funcionar como hub ejecutivo y de navegación
+- dar acceso rápido a `Catálogo`, `Tickets`, `Ajuste de precios`, `Directorio Proveedores` y cruce con `Finanzas`
+- evitar KPIs o widgets decorativos que todavía no tengan definición operativa real
+- reservar el detalle operativo para cada módulo especializado
+
 ### 3. Contrato de interacción
 
 Es cómo usa la página el usuario.
@@ -238,3 +257,198 @@ Una página nueva de `Compras Mayoreo` no debe considerarse homologada si falla 
 - No mezcla copy de ventas cuando el contexto es compras.
 - No consume entidades ajenas al área si la pantalla es de compras.
 - Si al comparar con `Catálogo Compras` hay diferencias visibles no justificadas en header, panel, botones o superficies, debe corregirse.
+
+## Blueprint: Dashboard Compras Mayoreo
+
+El `Dashboard Compras Mayoreo` no debe comportarse como una pantalla de accesos rápidos ni como una lista de pendientes aislados.
+
+Su función válida es:
+
+- servir como hub de toma de decisiones rápidas
+- resumir la operación de compra en ventanas ejecutivas
+- mostrar concentración por proveedor y material
+- mostrar lectura de costo real contra precio vigente
+- anticipar impacto de pago y desviaciones relevantes
+
+Regla explícita:
+
+- la navegación ya vive en el menú lateral
+- el dashboard no debe repetir esa navegación como protagonista dentro del canvas
+- si el dashboard se siente como una botonera, debe asumirse incorrecto
+
+### Horizonte temporal correcto
+
+`Compras Mayoreo` no se consolida por corte diario como `Menudeo`.
+
+Por eso, la ventana primaria del dashboard debe ser:
+
+- `mes actual`
+
+Y como comparativos secundarios:
+
+- `mes anterior`
+- `últimos 90 días`
+
+Regla explícita:
+
+- no priorizar lectura “de hoy” como centro del dashboard
+- si aparece una métrica diaria, debe ser apoyo puntual y no eje principal
+
+### Estructura recomendada
+
+#### 1. Fila superior: resumen mensual ejecutivo
+
+Cards sugeridas:
+
+- total comprado del mes
+- kilogramos comprados del mes
+- precio promedio ponderado del mes
+- tickets de compra del mes
+- proveedores con compra en el mes
+- materiales comprados en el mes
+
+Cada card debe ayudar a responder:
+
+- cuánto se compró
+- en qué volumen
+- con qué intensidad operativa
+- con qué nivel de costo promedio
+
+#### 2. Bloque central: concentración por material
+
+Debe mostrar:
+
+- top materiales por kilogramos comprados
+- top materiales por importe comprado
+- precio promedio real por material en el mes
+- participación de cada material dentro del total comprado
+
+Preguntas que debe responder:
+
+- qué materiales concentraron más compra
+- cuánto costó realmente cada material
+- qué materiales están jalando el gasto del mes
+
+#### 3. Bloque central: concentración por proveedor
+
+Debe mostrar:
+
+- top proveedores por kilogramos comprados
+- top proveedores por importe comprado
+- precio promedio pagado por proveedor
+- participación del proveedor dentro del total mensual
+
+Preguntas que debe responder:
+
+- a quién se le compró más
+- quién concentra más volumen
+- quién concentra más importe
+- en qué proveedor está más caro o más barato el mes
+
+#### 4. Bloque de lectura de precios
+
+Debe mostrar:
+
+- último precio vigente configurado por material
+- precio promedio real pagado en el mes
+- desviación entre precio vigente y precio realmente pagado
+- materiales con sobreprecio aplicado
+- materiales con mayor cambio vs mes anterior
+
+Preguntas que debe responder:
+
+- si la operación está comprando al precio esperado
+- dónde ya se está pagando por arriba del vigente
+- qué materiales están cambiando de costo y requieren decisión
+
+#### 5. Bloque de alertas ejecutivas
+
+Debe mostrar solo alertas que ayuden a decidir, por ejemplo:
+
+- materiales con mayor subida de costo vs mes anterior
+- proveedores con mayor concentración de compra
+- compras relevantes con sobreprecio
+- proveedores con compra activa y situación de pago delicada
+- volumen importante comprado sin buena cobertura financiera
+
+Regla explícita:
+
+- `tickets pendientes`, `sin factura` o `sin pago` pueden existir como alertas secundarias
+- no deben ser el centro conceptual del dashboard
+
+#### 6. Bloque de cruce con Finanzas
+
+Debe resumir:
+
+- monto pendiente de pago por proveedor
+- concentración de pagos próximos
+- compras del mes que ya comprometen flujo
+- proveedores relevantes con crédito activo o presión de pago
+
+Objetivo:
+
+- conectar compras con decisión financiera
+- no obligar al usuario a saltar de inmediato a otra pantalla para entender el riesgo
+
+### Comparativos válidos
+
+Los comparativos más útiles para `Compras Mayoreo` son:
+
+- mes actual vs mes anterior en importe
+- mes actual vs mes anterior en kilogramos
+- mes actual vs mes anterior en precio promedio ponderado
+- cambio de participación por proveedor
+- cambio de participación por material
+
+### Información que no debe dominar el dashboard
+
+No conviene que el dashboard se centre en:
+
+- navegación repetida a módulos
+- botonera superior extensa
+- métricas decorativas sin decisión asociada
+- lectura diaria tipo corte
+- widgets genéricos de “pendientes” sin contexto de costo, volumen o concentración
+
+### Traducción práctica a layout
+
+Layout recomendado:
+
+1. fila superior con `6 KPI cards mensuales`
+2. segunda fila con `compras por material` y `compras por proveedor`
+3. tercera fila con `precio promedio real vs vigente` y `alertas ejecutivas`
+4. bloque final con `cruce con finanzas`
+
+### Fuente de verdad operativa
+
+El dashboard debe construirse con datos reales derivados de:
+
+- `Tickets Compras`
+- `Catálogo Compras`
+- `Ajuste de precios`
+- `Directorio Proveedores`
+- relaciones con `Finanzas`
+
+Eso implica que los cálculos más valiosos saldrán de:
+
+- proveedor
+- material
+- precio
+- sobreprecio
+- peso pagable
+- importe
+- factura
+- pago
+- situación de pago del proveedor
+
+### Criterio final de validación
+
+El `Dashboard Compras Mayoreo` queda bien resuelto si permite responder rápido:
+
+- cuánto se compró este mes
+- qué material concentró más compra
+- con qué proveedor se compró más
+- a qué precio real se compró
+- dónde estamos pagando arriba del vigente
+- qué combinación proveedor/material está empujando el costo
+- qué parte de esa compra ya compromete flujo o pago

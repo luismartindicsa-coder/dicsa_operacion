@@ -6350,9 +6350,9 @@ class _DashboardBarBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final maxWeight = rows.isEmpty
-        ? 1.0
-        : rows.map((row) => row.weight).reduce((a, b) => a > b ? a : b);
+    final tokens = AreaThemeScope.of(context);
+    final lead = rows.isEmpty ? null : rows.first;
+    final totalWeight = rows.fold<double>(0, (sum, row) => sum + row.weight);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -6383,52 +6383,316 @@ class _DashboardBarBlock extends StatelessWidget {
               color: Color(0xFF7A7773),
             ),
           )
-        else
-          ...rows.map(
-            (row) => Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+        else ...[
+          _DashboardWeightHeroRow(
+            row: lead!,
+            accent: accent,
+            totalWeight: totalWeight <= 0 ? 1 : totalWeight,
+            surfaceColor: Colors.white.withValues(alpha: 0.56),
+            borderColor: const Color(0xFFD8C8BE).withValues(alpha: 0.42),
+            bodyTextColor: const Color(0xFF202629),
+            mutedTextColor: const Color(0xFF666461),
+          ),
+          if (rows.length > 1) ...[
+            const SizedBox(height: 12),
+            for (final row in rows.skip(1).take(4))
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: _DashboardWeightMiniRow(
+                  row: row,
+                  accent: accent,
+                  totalWeight: totalWeight <= 0 ? 1 : totalWeight,
+                  surfaceColor: Colors.white.withValues(alpha: 0.44),
+                  borderColor: const Color(0xFFD8C8BE).withValues(alpha: 0.34),
+                  bodyTextColor: const Color(0xFF2C3133),
+                  mutedTextColor: tokens.badgeText,
+                ),
+              ),
+          ],
+        ],
+      ],
+    );
+  }
+}
+
+class _DashboardWeightHeroRow extends StatelessWidget {
+  final _DashboardWeightRow row;
+  final Color accent;
+  final double totalWeight;
+  final Color surfaceColor;
+  final Color borderColor;
+  final Color bodyTextColor;
+  final Color mutedTextColor;
+
+  const _DashboardWeightHeroRow({
+    required this.row,
+    required this.accent,
+    required this.totalWeight,
+    required this.surfaceColor,
+    required this.borderColor,
+    required this.bodyTextColor,
+    required this.mutedTextColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final share = totalWeight <= 0 ? 0.0 : (row.weight / totalWeight) * 100;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: borderColor),
+      ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 520;
+          final ring = _DashboardWeightRing(share: share, accent: accent);
+          final details = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          row.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF2C3133),
-                          ),
-                        ),
+                  Expanded(
+                    child: Text(
+                      row.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: bodyTextColor,
                       ),
-                      const SizedBox(width: 10),
-                      Text(
-                        '${row.weight.toStringAsFixed(0)} kg',
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w900,
-                          color: accent,
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
-                  const SizedBox(height: 6),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(99),
-                    child: LinearProgressIndicator(
-                      value: row.weight / maxWeight,
-                      minHeight: 10,
-                      backgroundColor: accent.withValues(alpha: 0.12),
-                      valueColor: AlwaysStoppedAnimation<Color>(accent),
+                  const SizedBox(width: 12),
+                  Text(
+                    '${share.toStringAsFixed(1)}% del total',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: bodyTextColor,
                     ),
                   ),
                 ],
               ),
+              const SizedBox(height: 14),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  minHeight: 11,
+                  value: (share / 100).clamp(0.0, 1.0),
+                  backgroundColor: accent.withValues(alpha: 0.12),
+                  valueColor: AlwaysStoppedAnimation<Color>(accent),
+                ),
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 28,
+                runSpacing: 12,
+                children: [
+                  _DashboardWeightStat(
+                    label: 'Peso',
+                    value: '${row.weight.toStringAsFixed(0)} kg',
+                    bodyTextColor: bodyTextColor,
+                    mutedTextColor: mutedTextColor,
+                  ),
+                  _DashboardWeightStat(
+                    label: 'Participación',
+                    value: '${share.toStringAsFixed(1)}%',
+                    bodyTextColor: bodyTextColor,
+                    mutedTextColor: mutedTextColor,
+                  ),
+                ],
+              ),
+            ],
+          );
+          if (compact) {
+            return Column(
+              children: [ring, const SizedBox(height: 18), details],
+            );
+          }
+          return Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              ring,
+              const SizedBox(width: 24),
+              Expanded(child: details),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DashboardWeightMiniRow extends StatelessWidget {
+  final _DashboardWeightRow row;
+  final Color accent;
+  final double totalWeight;
+  final Color surfaceColor;
+  final Color borderColor;
+  final Color bodyTextColor;
+  final Color mutedTextColor;
+
+  const _DashboardWeightMiniRow({
+    required this.row,
+    required this.accent,
+    required this.totalWeight,
+    required this.surfaceColor,
+    required this.borderColor,
+    required this.bodyTextColor,
+    required this.mutedTextColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final share = totalWeight <= 0 ? 0.0 : (row.weight / totalWeight) * 100;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: surfaceColor,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: borderColor),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              row.label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                color: bodyTextColor,
+              ),
             ),
           ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 120,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(999),
+              child: LinearProgressIndicator(
+                minHeight: 7,
+                value: (share / 100).clamp(0.0, 1.0),
+                backgroundColor: accent.withValues(alpha: 0.12),
+                valueColor: AlwaysStoppedAnimation<Color>(accent),
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Text(
+            '${share.toStringAsFixed(1)}%',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              color: mutedTextColor,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardWeightRing extends StatelessWidget {
+  final double share;
+  final Color accent;
+
+  const _DashboardWeightRing({required this.share, required this.accent});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 152,
+      height: 152,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          SizedBox(
+            width: 152,
+            height: 152,
+            child: CircularProgressIndicator(
+              value: 1,
+              strokeWidth: 16,
+              color: accent.withValues(alpha: 0.12),
+            ),
+          ),
+          SizedBox(
+            width: 152,
+            height: 152,
+            child: CircularProgressIndicator(
+              value: (share / 100).clamp(0.0, 1.0),
+              strokeWidth: 16,
+              color: accent,
+            ),
+          ),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                '${share.toStringAsFixed(1)}%',
+                style: const TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF202629),
+                  height: 1,
+                ),
+              ),
+              const SizedBox(height: 4),
+              const Text(
+                'del total',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF666461),
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DashboardWeightStat extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color bodyTextColor;
+  final Color mutedTextColor;
+
+  const _DashboardWeightStat({
+    required this.label,
+    required this.value,
+    required this.bodyTextColor,
+    required this.mutedTextColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            color: mutedTextColor,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          value,
+          style: TextStyle(
+            fontSize: 17,
+            fontWeight: FontWeight.w900,
+            color: bodyTextColor,
+          ),
+        ),
       ],
     );
   }

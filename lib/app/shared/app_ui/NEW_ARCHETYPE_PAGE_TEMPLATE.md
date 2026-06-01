@@ -56,7 +56,11 @@ const blueprint = AppPageBlueprint.tabbedGrid(
 - filtros header + rango de fechas
 - filtros de columna con popup, búsqueda, checkboxes y `Aplicar/Limpiar/Cancelar`
 - filtros de columna tipo Excel (icono a la izquierda + popup con checkboxes + Esc + Aplicar/Limpiar/Cancelar como `services`)
-- recarga silenciosa (timer + realtime, diferida si hay edición)
+- recarga silenciosa con contrato de egress:
+  - priorizar `realtime + resume`
+  - usar `timer` solo si existe justificación operativa
+  - si existe `timer`, evitar intervalos agresivos y documentar el motivo
+  - diferir refresh si hay edición
 - CSV + edición en cuadrícula
 - picker dropdown con highlight visible (hover + foco)
 - tabla responsive al tamaño del módulo (sin overflow)

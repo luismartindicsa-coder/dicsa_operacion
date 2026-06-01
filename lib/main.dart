@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'app/shared/app_error_reporter.dart';
@@ -12,6 +13,7 @@ void main() async {
   await runZonedGuarded(
     () async {
       WidgetsFlutterBinding.ensureInitialized();
+      unawaited(HardwareKeyboard.instance.syncKeyboardState());
       FlutterError.onError = (details) {
         FlutterError.presentError(details);
         AppErrorReporter.report(
@@ -56,8 +58,34 @@ void main() async {
   );
 }
 
-class DicsaApp extends StatelessWidget {
+class DicsaApp extends StatefulWidget {
   const DicsaApp({super.key});
+
+  @override
+  State<DicsaApp> createState() => _DicsaAppState();
+}
+
+class _DicsaAppState extends State<DicsaApp> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(HardwareKeyboard.instance.syncKeyboardState());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed ||
+        state == AppLifecycleState.inactive) {
+      unawaited(HardwareKeyboard.instance.syncKeyboardState());
+    }
+  }
 
   @override
   Widget build(BuildContext context) {

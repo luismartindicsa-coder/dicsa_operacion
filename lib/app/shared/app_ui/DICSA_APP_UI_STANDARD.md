@@ -259,6 +259,16 @@ Regla adicional para `Direccion`:
 - Debe diferirse si hay edición/captura activa.
 - Debe hacer coalescing entre timer, realtime y reentrada a foreground.
 - No debe robar foco ni tumbar edición inline.
+- `Realtime` debe ser la fuente primaria cuando la vista depende de cambios vivos.
+- `Timer` no es obligatorio por defecto; solo entra como red de seguridad o cuando exista una necesidad operativa documentada.
+- No se permite combinar `timer + realtime` con intervalos agresivos sin justificación explícita.
+- En rutas de auto refresh no usar `select(*)` si la pantalla no muestra todas las columnas.
+- En rutas de auto refresh no recargar tablas completas si basta con un subconjunto visible o paginado.
+- Toda pantalla nueva debe declarar su estrategia de refresh:
+  - `realtime + resume`
+  - `realtime + timer de respaldo`
+  - `timer solamente`
+  - `manual + resume`
 
 ## Arquetipo 1: Grid Editable
 

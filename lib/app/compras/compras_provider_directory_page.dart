@@ -14,7 +14,9 @@ import '../shared/app_shell.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
@@ -74,7 +76,7 @@ Color _paymentStageTone(String stage) {
     case 'ATRASADO':
       return const Color(0xFFB42318);
     case 'CONVENIO':
-      return const Color(0xFF7A1914);
+      return const Color(0xFFB7C0C8);
     case 'PAGO_SEMANAL':
       return const Color(0xFF8B5E00);
     default:
@@ -99,27 +101,23 @@ class _ComprasProviderDirectoryPageState
   bool _menuOpen = false;
   bool _loading = true;
   bool _exportingCsv = false;
-  bool _saving = false;
-  String _searchQuery = '';
   bool? _hasContainersFilter;
+  bool? _hasCreditFilter;
   String? _paymentStageFilter;
+  Set<String> _providerFilters = <String>{};
+  Set<String> _catalogContactFilters = <String>{};
+  Set<String> _operationalContactFilters = <String>{};
+  Set<String> _phoneFilters = <String>{};
+  Set<String> _locationFilters = <String>{};
   String? _selectedProviderId;
-  late final TextEditingController _searchC;
   List<ComprasProviderDirectoryRecord> _rows =
       <ComprasProviderDirectoryRecord>[];
 
   @override
   void initState() {
     super.initState();
-    _searchC = TextEditingController();
     unawaited(_resolveNavigationAccess());
     unawaited(_loadDirectory());
-  }
-
-  @override
-  void dispose() {
-    _searchC.dispose();
-    super.dispose();
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -215,22 +213,33 @@ class _ComprasProviderDirectoryPageState
   }
 
   List<ComprasProviderDirectoryRecord> get _visibleRows {
-    final query = _searchQuery.trim().toUpperCase();
     return _rows
         .where((row) {
-          if (query.isNotEmpty) {
-            final haystack = [
-              row.providerName,
-              row.catalogContact,
-              row.operationalContact,
-              row.phone,
-              row.location,
-              row.paymentNotes,
-            ].join(' ').toUpperCase();
-            if (!haystack.contains(query)) return false;
+          if (_providerFilters.isNotEmpty &&
+              !_providerFilters.contains(row.providerName)) {
+            return false;
+          }
+          if (_catalogContactFilters.isNotEmpty &&
+              !_catalogContactFilters.contains(row.catalogContact)) {
+            return false;
+          }
+          if (_operationalContactFilters.isNotEmpty &&
+              !_operationalContactFilters.contains(row.operationalContact)) {
+            return false;
+          }
+          if (_phoneFilters.isNotEmpty && !_phoneFilters.contains(row.phone)) {
+            return false;
+          }
+          if (_locationFilters.isNotEmpty &&
+              !_locationFilters.contains(row.location)) {
+            return false;
           }
           if (_hasContainersFilter != null &&
               row.hasContainers != _hasContainersFilter) {
+            return false;
+          }
+          if (_hasCreditFilter != null &&
+              (row.creditDays > 0) != _hasCreditFilter) {
             return false;
           }
           if (_paymentStageFilter != null &&
@@ -261,7 +270,6 @@ class _ComprasProviderDirectoryPageState
   }
 
   Future<void> _saveRow(ComprasProviderDirectoryRecord row) async {
-    setState(() => _saving = true);
     final previous = _rows;
     setState(() {
       _rows = [
@@ -282,10 +290,6 @@ class _ComprasProviderDirectoryPageState
           ),
         ),
       );
-    } finally {
-      if (mounted) {
-        setState(() => _saving = false);
-      }
     }
   }
 
@@ -322,20 +326,169 @@ class _ComprasProviderDirectoryPageState
   String _csvCell(String value) =>
       '"${value.replaceAll('"', '""').replaceAll('\n', ' ')}"';
 
-  void _cyclePaymentStageFilter() {
+  void _clearAllFilters() {
     setState(() {
-      if (_paymentStageFilter == null) {
-        _paymentStageFilter = _kPaymentStageOptions.first;
-        return;
-      }
-      final currentIndex = _kPaymentStageOptions.indexOf(_paymentStageFilter!);
-      if (currentIndex == -1 ||
-          currentIndex == _kPaymentStageOptions.length - 1) {
-        _paymentStageFilter = null;
-        return;
-      }
-      _paymentStageFilter = _kPaymentStageOptions[currentIndex + 1];
+      _providerFilters = <String>{};
+      _catalogContactFilters = <String>{};
+      _operationalContactFilters = <String>{};
+      _phoneFilters = <String>{};
+      _locationFilters = <String>{};
+      _hasContainersFilter = null;
+      _hasCreditFilter = null;
+      _paymentStageFilter = null;
     });
+  }
+
+  bool get _hasActiveFilters =>
+      _providerFilters.isNotEmpty ||
+      _catalogContactFilters.isNotEmpty ||
+      _operationalContactFilters.isNotEmpty ||
+      _phoneFilters.isNotEmpty ||
+      _locationFilters.isNotEmpty ||
+      _hasContainersFilter != null ||
+      _hasCreditFilter != null ||
+      _paymentStageFilter != null;
+
+  List<String> _uniqueTextOptions(
+    String Function(ComprasProviderDirectoryRecord row) valueFor,
+  ) {
+    final values =
+        _rows
+            .map(valueFor)
+            .where((value) => value.trim().isNotEmpty)
+            .toSet()
+            .toList(growable: false)
+          ..sort((a, b) => a.toUpperCase().compareTo(b.toUpperCase()));
+    return values;
+  }
+
+  Future<void> _pickProviderFilter() async {
+    final selected = await _showDirectoryMultiSelectDialog<String>(
+      context,
+      title: 'Filtrar proveedor',
+      initialValues: _providerFilters,
+      options: _uniqueTextOptions((row) => row.providerName)
+          .map(
+            (value) =>
+                _DirectoryFilterOption<String>(value: value, label: value),
+          )
+          .toList(growable: false),
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _providerFilters = selected);
+  }
+
+  Future<void> _pickCatalogContactFilter() async {
+    final selected = await _showDirectoryMultiSelectDialog<String>(
+      context,
+      title: 'Filtrar contacto catálogo',
+      initialValues: _catalogContactFilters,
+      options: _uniqueTextOptions((row) => row.catalogContact)
+          .map(
+            (value) =>
+                _DirectoryFilterOption<String>(value: value, label: value),
+          )
+          .toList(growable: false),
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _catalogContactFilters = selected);
+  }
+
+  Future<void> _pickOperationalContactFilter() async {
+    final selected = await _showDirectoryMultiSelectDialog<String>(
+      context,
+      title: 'Filtrar contacto operativo',
+      initialValues: _operationalContactFilters,
+      options: _uniqueTextOptions((row) => row.operationalContact)
+          .map(
+            (value) =>
+                _DirectoryFilterOption<String>(value: value, label: value),
+          )
+          .toList(growable: false),
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _operationalContactFilters = selected);
+  }
+
+  Future<void> _pickPhoneFilter() async {
+    final selected = await _showDirectoryMultiSelectDialog<String>(
+      context,
+      title: 'Filtrar teléfono',
+      initialValues: _phoneFilters,
+      options: _uniqueTextOptions((row) => row.phone)
+          .map(
+            (value) =>
+                _DirectoryFilterOption<String>(value: value, label: value),
+          )
+          .toList(growable: false),
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _phoneFilters = selected);
+  }
+
+  Future<void> _pickLocationFilter() async {
+    final selected = await _showDirectoryMultiSelectDialog<String>(
+      context,
+      title: 'Filtrar ubicación',
+      initialValues: _locationFilters,
+      options: _uniqueTextOptions((row) => row.location)
+          .map(
+            (value) =>
+                _DirectoryFilterOption<String>(value: value, label: value),
+          )
+          .toList(growable: false),
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _locationFilters = selected);
+  }
+
+  Future<void> _pickContainersFilter() async {
+    final selected = await _showDirectorySingleSelectDialog<bool>(
+      context,
+      title: 'Filtrar contenedores',
+      initialValue: _hasContainersFilter,
+      allowClear: true,
+      options: const [
+        _DirectoryFilterOption<bool>(value: true, label: 'Con contenedores'),
+        _DirectoryFilterOption<bool>(value: false, label: 'Sin contenedores'),
+      ],
+    );
+    if (!mounted) return;
+    setState(() => _hasContainersFilter = selected);
+  }
+
+  Future<void> _pickCreditFilter() async {
+    final selected = await _showDirectorySingleSelectDialog<bool>(
+      context,
+      title: 'Filtrar crédito',
+      initialValue: _hasCreditFilter,
+      allowClear: true,
+      options: const [
+        _DirectoryFilterOption<bool>(value: true, label: 'Con crédito'),
+        _DirectoryFilterOption<bool>(value: false, label: 'Sin crédito'),
+      ],
+    );
+    if (!mounted) return;
+    setState(() => _hasCreditFilter = selected);
+  }
+
+  Future<void> _pickPaymentStageFilter() async {
+    final selected = await _showDirectorySingleSelectDialog<String>(
+      context,
+      title: 'Filtrar situación de pago',
+      initialValue: _paymentStageFilter,
+      allowClear: true,
+      options: _kPaymentStageOptions
+          .map(
+            (value) => _DirectoryFilterOption<String>(
+              value: value,
+              label: _paymentStageLabel(value),
+            ),
+          )
+          .toList(growable: false),
+    );
+    if (!mounted) return;
+    setState(() => _paymentStageFilter = selected);
   }
 
   @override
@@ -403,20 +556,6 @@ class _ComprasProviderDirectoryPageState
                     canReturnToDirection: _canReturnToDirection,
                     areaItems: [
                       ComprasAreaNavEntry(
-                        icon: Icons.shopping_cart_checkout_rounded,
-                        title: 'Dashboard Compras',
-                        subtitle: 'Tickets y operación de compra',
-                        onTap: () async =>
-                            _handleNavigationAction('Dashboard Compras'),
-                      ),
-                      ComprasAreaNavEntry(
-                        icon: Icons.price_check_rounded,
-                        title: 'Catálogo Compras',
-                        subtitle: 'Proveedores, materiales y precios',
-                        onTap: () async =>
-                            _handleNavigationAction('Catálogo Compras'),
-                      ),
-                      ComprasAreaNavEntry(
                         icon: Icons.confirmation_number_outlined,
                         title: 'Tickets Compras',
                         subtitle: 'Captura y seguimiento operativo',
@@ -430,6 +569,13 @@ class _ComprasProviderDirectoryPageState
                         onTap: () async =>
                             _handleNavigationAction('Ajuste de precios'),
                       ),
+                      ComprasAreaNavEntry(
+                        icon: Icons.price_check_rounded,
+                        title: 'Catálogo Compras',
+                        subtitle: 'Proveedores, materiales y precios',
+                        onTap: () async =>
+                            _handleNavigationAction('Catálogo Compras'),
+                      ),
                       const ComprasAreaNavEntry(
                         icon: Icons.badge_rounded,
                         title: 'Directorio Proveedores',
@@ -438,14 +584,13 @@ class _ComprasProviderDirectoryPageState
                       ),
                     ],
                     accessItems: [
-                      if (_canReturnToDirection)
-                        ComprasAreaNavEntry(
-                          icon: Icons.assessment_outlined,
-                          title: 'Dashboard Dirección',
-                          subtitle: 'Vista ejecutiva multiarea',
-                          onTap: () async =>
-                              _handleNavigationAction('Dashboard Dirección'),
-                        ),
+                      ComprasAreaNavEntry(
+                        icon: Icons.shopping_cart_checkout_rounded,
+                        title: 'Dashboard Compras',
+                        subtitle: 'Tickets y operación de compra',
+                        onTap: () async =>
+                            _handleNavigationAction('Dashboard Compras'),
+                      ),
                       if (_canAccessFinanzasArea)
                         ComprasAreaNavEntry(
                           icon: Icons.account_balance_wallet_outlined,
@@ -453,6 +598,14 @@ class _ComprasProviderDirectoryPageState
                           subtitle: 'Pagos, liquidez y compromisos',
                           onTap: () async =>
                               _handleNavigationAction('Dashboard Finanzas'),
+                        ),
+                      if (_canReturnToDirection)
+                        ComprasAreaNavEntry(
+                          icon: Icons.assessment_outlined,
+                          title: 'Dashboard Dirección',
+                          subtitle: 'Vista ejecutiva multiarea',
+                          onTap: () async =>
+                              _handleNavigationAction('Dashboard Dirección'),
                         ),
                     ],
                   ),
@@ -521,95 +674,6 @@ class _ComprasProviderDirectoryPageState
                     _DirectorySurface(
                       child: Column(
                         children: [
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              SizedBox(
-                                width: 320,
-                                child: TextField(
-                                  controller: _searchC,
-                                  onChanged: (value) =>
-                                      setState(() => _searchQuery = value),
-                                  decoration:
-                                      _directoryFieldDecoration(
-                                        label:
-                                            'Buscar proveedor, teléfono o nota',
-                                      ).copyWith(
-                                        prefixIcon: const Icon(
-                                          Icons.search_rounded,
-                                        ),
-                                      ),
-                                ),
-                              ),
-                              _DirectoryFilterChip(
-                                label: _hasContainersFilter == true
-                                    ? 'Con contenedores'
-                                    : _hasContainersFilter == false
-                                    ? 'Sin contenedores'
-                                    : 'Contenedores',
-                                active: _hasContainersFilter != null,
-                                onTap: () {
-                                  setState(() {
-                                    _hasContainersFilter =
-                                        _hasContainersFilter == null
-                                        ? true
-                                        : _hasContainersFilter == true
-                                        ? false
-                                        : null;
-                                  });
-                                },
-                              ),
-                              _DirectoryFilterChip(
-                                label: _paymentStageFilter == null
-                                    ? 'Situación pago'
-                                    : _paymentStageLabel(_paymentStageFilter!),
-                                active: _paymentStageFilter != null,
-                                onTap: _cyclePaymentStageFilter,
-                              ),
-                              OutlinedButton.icon(
-                                onPressed: _saving ? null : _loadDirectory,
-                                icon: const Icon(Icons.sync_rounded),
-                                label: const Text('Sincronizar catálogo'),
-                              ),
-                              if (_searchQuery.isNotEmpty ||
-                                  _hasContainersFilter != null ||
-                                  _paymentStageFilter != null)
-                                TextButton.icon(
-                                  onPressed: () {
-                                    setState(() {
-                                      _searchQuery = '';
-                                      _searchC.clear();
-                                      _hasContainersFilter = null;
-                                      _paymentStageFilter = null;
-                                    });
-                                  },
-                                  icon: const Icon(
-                                    Icons.filter_alt_off_rounded,
-                                  ),
-                                  label: const Text('Limpiar'),
-                                ),
-                            ],
-                          ),
-                          const SizedBox(height: 14),
-                          _DirectoryFilterSummary(
-                            labels: [
-                              if (_searchQuery.trim().isNotEmpty)
-                                'Busqueda: ${_searchQuery.trim()}',
-                              if (_hasContainersFilter == true)
-                                'Con contenedores',
-                              if (_hasContainersFilter == false)
-                                'Sin contenedores',
-                              if (_paymentStageFilter != null)
-                                'Situación: ${_paymentStageLabel(_paymentStageFilter!)}',
-                            ],
-                          ),
-                          if (_DirectoryFilterSummary.hasSpacing(
-                            _searchQuery,
-                            _hasContainersFilter,
-                            _paymentStageFilter,
-                          ))
-                            const SizedBox(height: 14),
                           Expanded(
                             child: _loading
                                 ? const Center(
@@ -617,12 +681,43 @@ class _ComprasProviderDirectoryPageState
                                   )
                                 : visibleRows.isEmpty
                                 ? _DirectoryEmptyState(
-                                    searchQuery: _searchQuery,
+                                    hasActiveFilters: _hasActiveFilters,
                                     onReload: _loadDirectory,
+                                    onClearFilters: _hasActiveFilters
+                                        ? _clearAllFilters
+                                        : null,
                                   )
                                 : Column(
                                     children: [
-                                      const _DirectoryHeaderRow(),
+                                      _DirectoryHeaderRow(
+                                        providerActive:
+                                            _providerFilters.isNotEmpty,
+                                        catalogContactActive:
+                                            _catalogContactFilters.isNotEmpty,
+                                        operationalContactActive:
+                                            _operationalContactFilters
+                                                .isNotEmpty,
+                                        phoneActive: _phoneFilters.isNotEmpty,
+                                        locationActive:
+                                            _locationFilters.isNotEmpty,
+                                        hasContainersActive:
+                                            _hasContainersFilter != null,
+                                        creditActive: _hasCreditFilter != null,
+                                        paymentStageActive:
+                                            _paymentStageFilter != null,
+                                        onProviderFilter: _pickProviderFilter,
+                                        onCatalogContactFilter:
+                                            _pickCatalogContactFilter,
+                                        onOperationalContactFilter:
+                                            _pickOperationalContactFilter,
+                                        onPhoneFilter: _pickPhoneFilter,
+                                        onLocationFilter: _pickLocationFilter,
+                                        onContainersFilter:
+                                            _pickContainersFilter,
+                                        onCreditFilter: _pickCreditFilter,
+                                        onPaymentStageFilter:
+                                            _pickPaymentStageFilter,
+                                      ),
                                       const SizedBox(height: 10),
                                       Expanded(
                                         child: ListView.separated(
@@ -693,6 +788,14 @@ class _DirectoryDialogField extends StatelessWidget {
         enabled: enabled,
         keyboardType: keyboardType,
         inputFormatters: inputFormatters,
+        cursorColor: comprasAreaTokens.primaryStrong,
+        style: TextStyle(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w800,
+          color: enabled
+              ? comprasAreaTokens.onGlass
+              : comprasAreaTokens.badgeText.withValues(alpha: 0.72),
+        ),
         decoration: _directoryFieldDecoration(label: label),
       ),
     );
@@ -773,106 +876,77 @@ class _ProviderDirectoryEditDialogState
   @override
   Widget build(BuildContext context) {
     final row = widget.row;
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 760),
-        child: ContractGlassCard(
-          borderRadius: BorderRadius.circular(26),
-          padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  row.providerName,
-                  style: const TextStyle(
-                    fontSize: 22,
-                    fontWeight: FontWeight.w900,
-                    color: kComprasInk,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Ficha operativa para compras y finanzas.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: kComprasMutedInk.withValues(alpha: 0.92),
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Wrap(
-                  spacing: 12,
-                  runSpacing: 12,
-                  children: [
-                    _DirectoryDialogField(
-                      width: 340,
-                      label: 'Contacto catálogo',
-                      readOnly: true,
-                      controller: _catalogContactC,
-                    ),
-                    _DirectoryDialogField(
-                      width: 340,
-                      label: 'Contacto operativo',
-                      controller: _operationalContactC,
-                    ),
-                    _DirectoryDialogField(
-                      width: 340,
-                      label: 'Teléfono',
-                      controller: _phoneC,
-                      keyboardType: TextInputType.phone,
-                    ),
-                    _DirectoryDialogField(
-                      width: 340,
-                      label: 'Ubicación',
-                      controller: _locationC,
-                    ),
-                    _DirectoryDialogField(
-                      width: 164,
-                      label: 'Días de crédito',
-                      controller: _creditDaysC,
-                      keyboardType: TextInputType.number,
-                      inputFormatters: <TextInputFormatter>[
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          SwitchListTile(
-                            value: _hasContainers,
-                            contentPadding: EdgeInsets.zero,
-                            title: const Text(
-                              'Usa contenedores',
-                              style: TextStyle(fontWeight: FontWeight.w800),
-                            ),
-                            subtitle: const Text(
-                              'Activa esto solo si al proveedor se le asignan contenedores.',
-                            ),
-                            onChanged: (value) {
-                              setState(() {
-                                _hasContainers = value;
-                                if (!value) {
-                                  _containerCountC.text = '';
-                                }
-                              });
-                            },
+    return AreaThemeScope(
+      tokens: comprasAreaTokens,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 760),
+          child: ContractGlassCard(
+            borderRadius: BorderRadius.circular(26),
+            padding: EdgeInsets.zero,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                color: comprasAreaTokens.fieldSurface.withValues(alpha: 0.84),
+                borderRadius: BorderRadius.circular(26),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        row.providerName,
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.w900,
+                          color: comprasAreaTokens.onGlass,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'Ficha operativa para compras y finanzas.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: comprasAreaTokens.badgeText.withValues(
+                            alpha: 0.92,
                           ),
-                          const SizedBox(height: 6),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Wrap(
+                        spacing: 12,
+                        runSpacing: 12,
+                        children: [
                           _DirectoryDialogField(
-                            width: 220,
-                            label: 'Cantidad',
-                            controller: _containerCountC,
-                            enabled: _hasContainers,
+                            width: 340,
+                            label: 'Contacto catálogo',
+                            readOnly: true,
+                            controller: _catalogContactC,
+                          ),
+                          _DirectoryDialogField(
+                            width: 340,
+                            label: 'Contacto operativo',
+                            controller: _operationalContactC,
+                          ),
+                          _DirectoryDialogField(
+                            width: 340,
+                            label: 'Teléfono',
+                            controller: _phoneC,
+                            keyboardType: TextInputType.phone,
+                          ),
+                          _DirectoryDialogField(
+                            width: 340,
+                            label: 'Ubicación',
+                            controller: _locationC,
+                          ),
+                          _DirectoryDialogField(
+                            width: 164,
+                            label: 'Días de crédito',
+                            controller: _creditDaysC,
                             keyboardType: TextInputType.number,
                             inputFormatters: <TextInputFormatter>[
                               FilteringTextInputFormatter.digitsOnly,
@@ -880,67 +954,128 @@ class _ProviderDirectoryEditDialogState
                           ),
                         ],
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
+                      const SizedBox(height: 18),
+                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          const Text(
-                            'Situación de pago',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w900,
-                              color: kComprasInk,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              for (final option in _kPaymentStageOptions)
-                                _PaymentStageChoiceChip(
-                                  stage: option,
-                                  label: _paymentStageLabel(option),
-                                  selected: _paymentStage == option,
-                                  onTap: () {
-                                    setState(() => _paymentStage = option);
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                SwitchListTile(
+                                  value: _hasContainers,
+                                  contentPadding: EdgeInsets.zero,
+                                  activeThumbColor:
+                                      comprasAreaTokens.primaryStrong,
+                                  title: Text(
+                                    'Usa contenedores',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w800,
+                                      color: comprasAreaTokens.onGlass,
+                                    ),
+                                  ),
+                                  subtitle: Text(
+                                    'Activa esto solo si al proveedor se le asignan contenedores.',
+                                    style: TextStyle(
+                                      color: comprasAreaTokens.badgeText,
+                                    ),
+                                  ),
+                                  onChanged: (value) {
+                                    setState(() {
+                                      _hasContainers = value;
+                                      if (!value) {
+                                        _containerCountC.text = '';
+                                      }
+                                    });
                                   },
                                 ),
-                            ],
+                                const SizedBox(height: 6),
+                                _DirectoryDialogField(
+                                  width: 220,
+                                  label: 'Cantidad',
+                                  controller: _containerCountC,
+                                  enabled: _hasContainers,
+                                  keyboardType: TextInputType.number,
+                                  inputFormatters: <TextInputFormatter>[
+                                    FilteringTextInputFormatter.digitsOnly,
+                                  ],
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Situación de pago',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w900,
+                                    color: comprasAreaTokens.onGlass,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    for (final option in _kPaymentStageOptions)
+                                      _PaymentStageChoiceChip(
+                                        stage: option,
+                                        label: _paymentStageLabel(option),
+                                        selected: _paymentStage == option,
+                                        onTap: () {
+                                          setState(
+                                            () => _paymentStage = option,
+                                          );
+                                        },
+                                      ),
+                                  ],
+                                ),
+                              ],
+                            ),
                           ),
                         ],
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _paymentNotesC,
-                  minLines: 3,
-                  maxLines: 5,
-                  decoration: _directoryFieldDecoration(
-                    label: 'Notas de pago / convenio / urgencia',
+                      const SizedBox(height: 10),
+                      TextField(
+                        controller: _paymentNotesC,
+                        minLines: 3,
+                        maxLines: 5,
+                        cursorColor: comprasAreaTokens.primaryStrong,
+                        style: TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: comprasAreaTokens.onGlass,
+                        ),
+                        decoration: _directoryFieldDecoration(
+                          label: 'Notas de pago / convenio / urgencia',
+                        ),
+                      ),
+                      const SizedBox(height: 20),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            style: contractSecondaryButtonStyle(context),
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 10),
+                          FilledButton.icon(
+                            style: contractPrimaryButtonStyle(context),
+                            onPressed: _save,
+                            icon: const Icon(Icons.save_outlined),
+                            label: const Text('Guardar'),
+                          ),
+                        ],
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      onPressed: _save,
-                      icon: const Icon(Icons.save_outlined),
-                      label: const Text('Guardar'),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -952,18 +1087,19 @@ class _ProviderDirectoryEditDialogState
 InputDecoration _directoryFieldDecoration({required String label}) {
   return InputDecoration(
     labelText: label,
+    labelStyle: TextStyle(
+      color: comprasAreaTokens.onGlass.withValues(alpha: 0.74),
+    ),
     filled: true,
-    fillColor: Colors.white.withValues(alpha: 0.90),
+    fillColor: comprasAreaTokens.fieldSurface.withValues(alpha: 0.92),
     border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(16),
-      borderSide: BorderSide(
-        color: comprasAreaTokens.border.withValues(alpha: 0.7),
-      ),
+      borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(16),
-      borderSide: const BorderSide(color: Color(0xFF9C211B), width: 1.4),
+      borderSide: BorderSide(color: comprasAreaTokens.primary, width: 1.4),
     ),
   );
 }
@@ -1007,13 +1143,13 @@ class _DirectoryFilterChip extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: BoxDecoration(
             color: active
-                ? tokens.primaryStrong.withValues(alpha: 0.92)
-                : Colors.white.withValues(alpha: 0.84),
+                ? tokens.accent.withValues(alpha: 0.90)
+                : tokens.fieldSurface.withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: active
-                  ? tokens.primaryStrong
-                  : comprasAreaTokens.border.withValues(alpha: 0.72),
+                  ? tokens.primaryStrong.withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.14),
             ),
           ),
           child: Text(
@@ -1021,7 +1157,7 @@ class _DirectoryFilterChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 12.5,
               fontWeight: FontWeight.w800,
-              color: active ? Colors.white : kComprasInk,
+              color: active ? const Color(0xFF0B0E12) : tokens.onGlass,
             ),
           ),
         ),
@@ -1046,6 +1182,7 @@ class _PaymentStageChoiceChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tone = _paymentStageTone(stage);
+    final tokens = AreaThemeScope.of(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1056,12 +1193,12 @@ class _PaymentStageChoiceChip extends StatelessWidget {
           decoration: BoxDecoration(
             color: selected
                 ? tone.withValues(alpha: 0.14)
-                : Colors.white.withValues(alpha: 0.86),
+                : tokens.fieldSurface.withValues(alpha: 0.88),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: selected
                   ? tone.withValues(alpha: 0.48)
-                  : comprasAreaTokens.border.withValues(alpha: 0.72),
+                  : tokens.border.withValues(alpha: 0.78),
             ),
           ),
           child: Text(
@@ -1069,7 +1206,7 @@ class _PaymentStageChoiceChip extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: selected ? tone : kComprasInk,
+              color: selected ? tone : tokens.onGlass,
             ),
           ),
         ),
@@ -1080,8 +1217,9 @@ class _PaymentStageChoiceChip extends StatelessWidget {
 
 class _DirectoryFilterSummary extends StatelessWidget {
   final List<String> labels;
+  final VoidCallback? onClearAll;
 
-  const _DirectoryFilterSummary({required this.labels});
+  const _DirectoryFilterSummary({required this.labels, this.onClearAll});
 
   static bool hasSpacing(
     String searchQuery,
@@ -1112,12 +1250,19 @@ class _DirectoryFilterSummary extends StatelessWidget {
             ),
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w800,
-                color: kComprasInk,
+                color: comprasAreaTokens.onGlass,
               ),
             ),
+          ),
+        if (onClearAll != null)
+          OutlinedButton.icon(
+            style: contractSecondaryButtonStyle(context),
+            onPressed: onClearAll,
+            icon: const Icon(Icons.filter_alt_off_rounded, size: 16),
+            label: const Text('Limpiar filtros'),
           ),
       ],
     );
@@ -1125,22 +1270,96 @@ class _DirectoryFilterSummary extends StatelessWidget {
 }
 
 class _DirectoryHeaderRow extends StatelessWidget {
-  const _DirectoryHeaderRow();
+  final bool providerActive;
+  final bool catalogContactActive;
+  final bool operationalContactActive;
+  final bool phoneActive;
+  final bool locationActive;
+  final bool hasContainersActive;
+  final bool creditActive;
+  final bool paymentStageActive;
+  final Future<void> Function() onProviderFilter;
+  final Future<void> Function() onCatalogContactFilter;
+  final Future<void> Function() onOperationalContactFilter;
+  final Future<void> Function() onPhoneFilter;
+  final Future<void> Function() onLocationFilter;
+  final Future<void> Function() onContainersFilter;
+  final Future<void> Function() onCreditFilter;
+  final Future<void> Function() onPaymentStageFilter;
+
+  const _DirectoryHeaderRow({
+    required this.providerActive,
+    required this.catalogContactActive,
+    required this.operationalContactActive,
+    required this.phoneActive,
+    required this.locationActive,
+    required this.hasContainersActive,
+    required this.creditActive,
+    required this.paymentStageActive,
+    required this.onProviderFilter,
+    required this.onCatalogContactFilter,
+    required this.onOperationalContactFilter,
+    required this.onPhoneFilter,
+    required this.onLocationFilter,
+    required this.onContainersFilter,
+    required this.onCreditFilter,
+    required this.onPaymentStageFilter,
+  });
 
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final columns = const [
-      _DirectoryHeaderColumn('Proveedor', _kDirProviderW),
-      _DirectoryHeaderColumn('Contacto catálogo', _kDirCatalogContactW),
-      _DirectoryHeaderColumn('Contacto operativo', _kDirOperationalContactW),
-      _DirectoryHeaderColumn('Teléfono', _kDirPhoneW),
-      _DirectoryHeaderColumn('Ubicación', _kDirLocationW),
-      _DirectoryHeaderColumn('Contenedores', _kDirContainersW),
-      _DirectoryHeaderColumn('Cantidad', _kDirContainerCountW),
-      _DirectoryHeaderColumn('Crédito', _kDirCreditDaysW),
-      _DirectoryHeaderColumn('Situación pago', _kDirPaymentStageW),
-      _DirectoryHeaderColumn('Notas de pago', _kDirNotesW),
+    final columns = [
+      _DirectoryHeaderColumn(
+        'Proveedor',
+        _kDirProviderW,
+        onFilter: () => unawaited(onProviderFilter()),
+        active: providerActive,
+      ),
+      _DirectoryHeaderColumn(
+        'Contacto catálogo',
+        _kDirCatalogContactW,
+        onFilter: () => unawaited(onCatalogContactFilter()),
+        active: catalogContactActive,
+      ),
+      _DirectoryHeaderColumn(
+        'Contacto operativo',
+        _kDirOperationalContactW,
+        onFilter: () => unawaited(onOperationalContactFilter()),
+        active: operationalContactActive,
+      ),
+      _DirectoryHeaderColumn(
+        'Teléfono',
+        _kDirPhoneW,
+        onFilter: () => unawaited(onPhoneFilter()),
+        active: phoneActive,
+      ),
+      _DirectoryHeaderColumn(
+        'Ubicación',
+        _kDirLocationW,
+        onFilter: () => unawaited(onLocationFilter()),
+        active: locationActive,
+      ),
+      _DirectoryHeaderColumn(
+        'Contenedores',
+        _kDirContainersW,
+        onFilter: () => unawaited(onContainersFilter()),
+        active: hasContainersActive,
+      ),
+      const _DirectoryHeaderColumn('Cantidad', _kDirContainerCountW),
+      _DirectoryHeaderColumn(
+        'Crédito',
+        _kDirCreditDaysW,
+        onFilter: () => unawaited(onCreditFilter()),
+        active: creditActive,
+      ),
+      _DirectoryHeaderColumn(
+        'Situación pago',
+        _kDirPaymentStageW,
+        onFilter: () => unawaited(onPaymentStageFilter()),
+        active: paymentStageActive,
+      ),
+      const _DirectoryHeaderColumn('Notas de pago', _kDirNotesW),
     ];
     return Card(
       elevation: 0,
@@ -1156,17 +1375,55 @@ class _DirectoryHeaderRow extends StatelessWidget {
                 for (final column in columns)
                   SizedBox(
                     width: column.width,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 10),
-                      child: Text(
-                        column.label,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
-                          color: tokens.badgeText,
+                    child: Row(
+                      children: [
+                        if (column.onFilter != null) ...[
+                          InkWell(
+                            borderRadius: BorderRadius.circular(8),
+                            onTap: column.onFilter,
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 140),
+                              curve: Curves.easeOutCubic,
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: column.active
+                                    ? tokens.primary
+                                    : tokens.badgeBackground,
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                  color: column.active
+                                      ? tokens.primaryStrong
+                                      : tokens.border,
+                                ),
+                              ),
+                              child: Icon(
+                                column.active
+                                    ? Icons.filter_alt
+                                    : Icons.filter_alt_outlined,
+                                size: 15,
+                                color: column.active
+                                    ? Colors.white
+                                    : tokens.badgeText,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                        ],
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 10),
+                            child: Text(
+                              column.label,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                color: tokens.badgeText,
+                              ),
+                            ),
+                          ),
                         ),
-                      ),
+                      ],
                     ),
                   ),
                 const SizedBox(width: _kDirActionsW),
@@ -1182,11 +1439,18 @@ class _DirectoryHeaderRow extends StatelessWidget {
 class _DirectoryHeaderColumn {
   final String label;
   final double width;
+  final VoidCallback? onFilter;
+  final bool active;
 
-  const _DirectoryHeaderColumn(this.label, this.width);
+  const _DirectoryHeaderColumn(
+    this.label,
+    this.width, {
+    this.onFilter,
+    this.active = false,
+  });
 }
 
-class _DirectoryDataRow extends StatelessWidget {
+class _DirectoryDataRow extends StatefulWidget {
   final ComprasProviderDirectoryRecord row;
   final bool selected;
   final VoidCallback onTap;
@@ -1200,104 +1464,273 @@ class _DirectoryDataRow extends StatelessWidget {
   });
 
   @override
+  State<_DirectoryDataRow> createState() => _DirectoryDataRowState();
+}
+
+class _DirectoryDataRowState extends State<_DirectoryDataRow> {
+  bool _hovering = false;
+
+  Future<void> _openContextMenuAt(Offset globalPosition) async {
+    final action = await showMenu<_DirectoryRowMenuAction>(
+      context: context,
+      color: comprasAreaTokens.fieldSurface.withValues(alpha: 0.96),
+      position: RelativeRect.fromLTRB(
+        globalPosition.dx,
+        globalPosition.dy,
+        globalPosition.dx,
+        globalPosition.dy,
+      ),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(
+          color: comprasAreaTokens.border.withValues(alpha: 0.78),
+        ),
+      ),
+      items: [
+        PopupMenuItem<_DirectoryRowMenuAction>(
+          value: _DirectoryRowMenuAction(
+            label: 'Editar ficha',
+            icon: Icons.edit_rounded,
+            onTap: () => unawaited(widget.onEdit()),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                Icons.edit_rounded,
+                color: comprasAreaTokens.primaryStrong,
+                size: 18,
+              ),
+              const SizedBox(width: 10),
+              Text(
+                'Editar ficha',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: comprasAreaTokens.onGlass,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+    action?.onTap();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final row = widget.row;
+    final selected = widget.selected;
     final fill = selected
-        ? tokens.primarySoft.withValues(alpha: 0.92)
-        : Colors.white.withValues(alpha: 0.84);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
-        onDoubleTap: () => unawaited(onEdit()),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          decoration: BoxDecoration(
-            color: fill,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(
-              color: selected
-                  ? tokens.primaryStrong.withValues(alpha: 0.30)
-                  : Colors.white.withValues(alpha: 0.72),
-            ),
+        ? tokens.primarySoft.withValues(alpha: 0.82)
+        : _hovering
+        ? tokens.glassSurface.withValues(alpha: 0.90)
+        : tokens.fieldSurface.withValues(alpha: 0.76);
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: Card(
+        elevation: 0,
+        color: fill,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(
+            color: selected
+                ? tokens.primaryStrong.withValues(alpha: 0.40)
+                : tokens.border.withValues(alpha: 0.72),
           ),
-          child: ContractGridScaledRow(
-            child: SizedBox(
-              width: _kDirContentW + _kDirActionsW,
-              child: Row(
-                children: [
-                  _DirectoryCell(
-                    width: _kDirProviderW,
-                    child: _DirectoryProviderBlock(row: row),
-                  ),
-                  _DirectoryCell(
-                    width: _kDirCatalogContactW,
-                    text: row.catalogContact.isEmpty ? '—' : row.catalogContact,
-                  ),
-                  _DirectoryCell(
-                    width: _kDirOperationalContactW,
-                    text: row.operationalContact.isEmpty
-                        ? '—'
-                        : row.operationalContact,
-                  ),
-                  _DirectoryCell(
-                    width: _kDirPhoneW,
-                    text: row.phone.isEmpty ? '—' : row.phone,
-                  ),
-                  _DirectoryCell(
-                    width: _kDirLocationW,
-                    text: row.location.isEmpty ? '—' : row.location,
-                  ),
-                  _DirectoryCell(
-                    width: _kDirContainersW,
-                    child: _DirectoryBadge(
-                      label: row.hasContainers ? 'SI' : 'NO',
-                      active: row.hasContainers,
-                    ),
-                  ),
-                  _DirectoryCell(
-                    width: _kDirContainerCountW,
-                    text: row.hasContainers ? '${row.containerCount}' : '0',
-                    alignEnd: true,
-                  ),
-                  _DirectoryCell(
-                    width: _kDirCreditDaysW,
-                    text: row.creditDays > 0
-                        ? '${row.creditDays} días'
-                        : 'Sin crédito',
-                  ),
-                  _DirectoryCell(
-                    width: _kDirPaymentStageW,
-                    child: _DirectoryBadge(
-                      label: _paymentStageLabel(row.paymentStage),
-                      active: row.paymentStage != 'AL_CORRIENTE',
-                      tone: _paymentStageTone(row.paymentStage),
-                    ),
-                  ),
-                  _DirectoryCell(
-                    width: _kDirNotesW,
-                    text: row.paymentNotes.isEmpty ? '—' : row.paymentNotes,
-                  ),
-                  SizedBox(
-                    width: _kDirActionsW,
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: FilledButton.tonalIcon(
-                        onPressed: () => unawaited(onEdit()),
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        label: const Text('Editar'),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return SizedBox(
+                width: constraints.maxWidth,
+                child: ContractGridScaledRow(
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onSecondaryTapDown: (details) {
+                      unawaited(_openContextMenuAt(details.globalPosition));
+                    },
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        borderRadius: BorderRadius.circular(18),
+                        onTap: widget.onTap,
+                        onDoubleTap: () => unawaited(widget.onEdit()),
+                        child: SizedBox(
+                          width: _kDirContentW + _kDirActionsW,
+                          child: Row(
+                            children: [
+                              _DirectoryCell(
+                                width: _kDirProviderW,
+                                child: _DirectoryProviderBlock(row: row),
+                              ),
+                              _DirectoryCell(
+                                width: _kDirCatalogContactW,
+                                text: row.catalogContact.isEmpty
+                                    ? '—'
+                                    : row.catalogContact,
+                              ),
+                              _DirectoryCell(
+                                width: _kDirOperationalContactW,
+                                text: row.operationalContact.isEmpty
+                                    ? '—'
+                                    : row.operationalContact,
+                              ),
+                              _DirectoryCell(
+                                width: _kDirPhoneW,
+                                text: row.phone.isEmpty ? '—' : row.phone,
+                              ),
+                              _DirectoryCell(
+                                width: _kDirLocationW,
+                                text: row.location.isEmpty ? '—' : row.location,
+                              ),
+                              _DirectoryCell(
+                                width: _kDirContainersW,
+                                child: _DirectoryBadge(
+                                  label: row.hasContainers ? 'SI' : 'NO',
+                                  active: row.hasContainers,
+                                ),
+                              ),
+                              _DirectoryCell(
+                                width: _kDirContainerCountW,
+                                text: row.hasContainers
+                                    ? '${row.containerCount}'
+                                    : '0',
+                                alignEnd: true,
+                              ),
+                              _DirectoryCell(
+                                width: _kDirCreditDaysW,
+                                text: row.creditDays > 0
+                                    ? '${row.creditDays} días'
+                                    : 'Sin crédito',
+                              ),
+                              _DirectoryCell(
+                                width: _kDirPaymentStageW,
+                                child: _DirectoryBadge(
+                                  label: _paymentStageLabel(row.paymentStage),
+                                  active: row.paymentStage != 'AL_CORRIENTE',
+                                  tone: _paymentStageTone(row.paymentStage),
+                                ),
+                              ),
+                              _DirectoryCell(
+                                width: _kDirNotesW,
+                                text: row.paymentNotes.isEmpty
+                                    ? '—'
+                                    : row.paymentNotes,
+                              ),
+                              AnchoredActionSlot(
+                                width: _kDirActionsW,
+                                trailingWidth: 36,
+                                leading: const SizedBox.shrink(),
+                                trailing:
+                                    PopupMenuButton<_DirectoryRowMenuAction>(
+                                      tooltip: 'Acciones',
+                                      padding: EdgeInsets.zero,
+                                      color: comprasAreaTokens.fieldSurface
+                                          .withValues(alpha: 0.98),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(16),
+                                        side: BorderSide(
+                                          color: tokens.border.withValues(
+                                            alpha: 0.78,
+                                          ),
+                                        ),
+                                      ),
+                                      onSelected: (item) => item.onTap(),
+                                      itemBuilder: (context) => [
+                                        PopupMenuItem<_DirectoryRowMenuAction>(
+                                          value: _DirectoryRowMenuAction(
+                                            label: 'Editar ficha',
+                                            icon: Icons.edit_rounded,
+                                            onTap: () =>
+                                                unawaited(widget.onEdit()),
+                                          ),
+                                          child: Row(
+                                            children: [
+                                              Icon(
+                                                Icons.edit_rounded,
+                                                color: comprasAreaTokens
+                                                    .primaryStrong,
+                                                size: 18,
+                                              ),
+                                              const SizedBox(width: 10),
+                                              Text(
+                                                'Editar ficha',
+                                                style: TextStyle(
+                                                  fontSize: 12.5,
+                                                  fontWeight: FontWeight.w700,
+                                                  color:
+                                                      comprasAreaTokens.onGlass,
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ],
+                                      child: Container(
+                                        width: 36,
+                                        height: 36,
+                                        decoration: BoxDecoration(
+                                          color: const Color(
+                                            0xFF171C22,
+                                          ).withValues(alpha: 0.96),
+                                          borderRadius: BorderRadius.circular(
+                                            12,
+                                          ),
+                                          border: Border.all(
+                                            color: tokens.border.withValues(
+                                              alpha: 0.78,
+                                            ),
+                                          ),
+                                          boxShadow: [
+                                            BoxShadow(
+                                              blurRadius: 12,
+                                              offset: const Offset(0, 5),
+                                              color: Colors.black.withValues(
+                                                alpha: 0.16,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                        child: const Center(
+                                          child: Icon(
+                                            Icons.more_horiz_rounded,
+                                            color: Colors.white,
+                                            size: 20,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                              ),
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ],
-              ),
-            ),
+                ),
+              );
+            },
           ),
         ),
       ),
     );
   }
+}
+
+class _DirectoryRowMenuAction {
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _DirectoryRowMenuAction({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
 }
 
 class _DirectoryProviderBlock extends StatelessWidget {
@@ -1316,10 +1749,10 @@ class _DirectoryProviderBlock extends StatelessWidget {
           row.providerName,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 13.5,
             fontWeight: FontWeight.w900,
-            color: kComprasInk,
+            color: tokens.onGlass,
           ),
         ),
         const SizedBox(height: 3),
@@ -1360,10 +1793,10 @@ class _DirectoryCell extends StatelessWidget {
           maxLines: 2,
           overflow: TextOverflow.ellipsis,
           textAlign: alignEnd ? TextAlign.right : TextAlign.left,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 12.5,
             fontWeight: FontWeight.w700,
-            color: kComprasInk,
+            color: comprasAreaTokens.onGlass,
             height: 1.15,
           ),
         );
@@ -1416,13 +1849,497 @@ class _DirectoryBadge extends StatelessWidget {
   }
 }
 
+class _DirectoryFilterOption<T> {
+  final T value;
+  final String label;
+
+  const _DirectoryFilterOption({required this.value, required this.label});
+}
+
+Future<T?> _showDirectorySingleSelectDialog<T>(
+  BuildContext context, {
+  required String title,
+  required List<_DirectoryFilterOption<T>> options,
+  T? initialValue,
+  bool allowClear = false,
+}) {
+  return showDialog<T>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) {
+      final searchC = TextEditingController();
+      final searchFocus = FocusNode();
+      final itemFocusNodes = <FocusNode>[];
+      String query = '';
+      int? focusedIndex;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
+
+      return StatefulBuilder(
+        builder: (context, setLocalState) {
+          final filtered = options
+              .where((option) {
+                final normalizedQuery = query.trim().toUpperCase();
+                if (normalizedQuery.isEmpty) return true;
+                return option.label.toUpperCase().contains(normalizedQuery);
+              })
+              .toList(growable: false);
+
+          while (itemFocusNodes.length < filtered.length) {
+            itemFocusNodes.add(FocusNode());
+          }
+          while (itemFocusNodes.length > filtered.length) {
+            itemFocusNodes.removeLast().dispose();
+          }
+
+          return Focus(
+            autofocus: true,
+            onKeyEvent: (_, event) {
+              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+              if (event.logicalKey == LogicalKeyboardKey.escape) {
+                Navigator.of(dialogContext).pop();
+                return KeyEventResult.handled;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+                  filtered.isNotEmpty) {
+                itemFocusNodes.first.requestFocus();
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: AreaThemeScope(
+              tokens: comprasAreaTokens,
+              child: Dialog(
+                backgroundColor: Colors.transparent,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 420,
+                    maxHeight: 560,
+                  ),
+                  child: ContractGlassCard(
+                    padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: comprasAreaTokens.primaryStrong,
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        Focus(
+                          onKeyEvent: (_, event) {
+                            if (event is! KeyDownEvent) {
+                              return KeyEventResult.ignored;
+                            }
+                            if (event.logicalKey ==
+                                    LogicalKeyboardKey.arrowDown &&
+                                itemFocusNodes.isNotEmpty) {
+                              itemFocusNodes.first.requestFocus();
+                              return KeyEventResult.handled;
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          child: TextField(
+                            controller: searchC,
+                            focusNode: searchFocus,
+                            autofocus: true,
+                            cursorColor: comprasAreaTokens.primaryStrong,
+                            style: TextStyle(
+                              fontWeight: FontWeight.w800,
+                              color: comprasAreaTokens.onGlass,
+                            ),
+                            decoration: contractGlassFieldDecoration(
+                              context,
+                              hintText: 'Buscar',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                            ),
+                            onChanged: (value) =>
+                                setLocalState(() => query = value),
+                          ),
+                        ),
+                        if (allowClear) ...[
+                          const SizedBox(height: 4),
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(null),
+                              style: TextButton.styleFrom(
+                                foregroundColor: comprasAreaTokens.onGlass,
+                                textStyle: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              child: const Text('Limpiar selección'),
+                            ),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        Expanded(
+                          child: filtered.isEmpty
+                              ? Center(
+                                  child: Text(
+                                    'Sin resultados',
+                                    style: TextStyle(
+                                      color: comprasAreaTokens.badgeText,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                )
+                              : ListView.builder(
+                                  itemCount: filtered.length,
+                                  itemBuilder: (_, i) {
+                                    final option = filtered[i];
+                                    final selected =
+                                        option.value == initialValue;
+                                    final highlighted = focusedIndex == i;
+                                    return Focus(
+                                      focusNode: itemFocusNodes[i],
+                                      onFocusChange: (hasFocus) {
+                                        if (hasFocus) {
+                                          setLocalState(() => focusedIndex = i);
+                                        } else if (focusedIndex == i) {
+                                          setLocalState(
+                                            () => focusedIndex = null,
+                                          );
+                                        }
+                                      },
+                                      onKeyEvent: (_, event) {
+                                        if (event is! KeyDownEvent) {
+                                          return KeyEventResult.ignored;
+                                        }
+                                        if (event.logicalKey ==
+                                            LogicalKeyboardKey.arrowUp) {
+                                          if (i == 0) {
+                                            searchFocus.requestFocus();
+                                          } else {
+                                            itemFocusNodes[i - 1]
+                                                .requestFocus();
+                                          }
+                                          return KeyEventResult.handled;
+                                        }
+                                        if (event.logicalKey ==
+                                                LogicalKeyboardKey.arrowDown &&
+                                            i < itemFocusNodes.length - 1) {
+                                          itemFocusNodes[i + 1].requestFocus();
+                                          return KeyEventResult.handled;
+                                        }
+                                        if (event.logicalKey ==
+                                                LogicalKeyboardKey.enter ||
+                                            event.logicalKey ==
+                                                LogicalKeyboardKey
+                                                    .numpadEnter ||
+                                            event.logicalKey ==
+                                                LogicalKeyboardKey.space) {
+                                          Navigator.of(
+                                            dialogContext,
+                                          ).pop(option.value);
+                                          return KeyEventResult.handled;
+                                        }
+                                        return KeyEventResult.ignored;
+                                      },
+                                      child: _DirectoryPickerOptionTile(
+                                        label: option.label,
+                                        selected: selected,
+                                        highlighted: highlighted,
+                                        onTap: () => Navigator.of(
+                                          dialogContext,
+                                        ).pop(option.value),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+Future<Set<T>?> _showDirectoryMultiSelectDialog<T>(
+  BuildContext context, {
+  required String title,
+  required List<_DirectoryFilterOption<T>> options,
+  Set<T> initialValues = const {},
+}) {
+  return showDialog<Set<T>>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) {
+      final searchC = TextEditingController();
+      final searchFocus = FocusNode();
+      final itemFocusNodes = <FocusNode>[];
+      final selected = <T>{...initialValues};
+      String query = '';
+      int? focusedIndex;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
+
+      return StatefulBuilder(
+        builder: (context, setLocalState) {
+          final filtered = options
+              .where(
+                (option) =>
+                    option.label.toLowerCase().contains(query.toLowerCase()),
+              )
+              .toList(growable: false);
+
+          while (itemFocusNodes.length < filtered.length) {
+            itemFocusNodes.add(FocusNode());
+          }
+          while (itemFocusNodes.length > filtered.length) {
+            itemFocusNodes.removeLast().dispose();
+          }
+
+          return AreaThemeScope(
+            tokens: comprasAreaTokens,
+            child: Focus(
+              autofocus: true,
+              onKeyEvent: (_, event) {
+                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                if (event.logicalKey == LogicalKeyboardKey.escape) {
+                  Navigator.of(dialogContext).pop();
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.enter ||
+                    event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                  Navigator.of(dialogContext).pop(selected);
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: Dialog(
+                backgroundColor: Colors.transparent,
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 440,
+                    maxHeight: 560,
+                  ),
+                  child: ContractGlassCard(
+                    padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.w900,
+                            color: comprasAreaTokens.primaryStrong,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Focus(
+                          onKeyEvent: (_, event) {
+                            if (event is! KeyDownEvent) {
+                              return KeyEventResult.ignored;
+                            }
+                            if (event.logicalKey ==
+                                    LogicalKeyboardKey.arrowDown &&
+                                itemFocusNodes.isNotEmpty) {
+                              itemFocusNodes.first.requestFocus();
+                              return KeyEventResult.handled;
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          child: TextField(
+                            controller: searchC,
+                            focusNode: searchFocus,
+                            autofocus: true,
+                            decoration: contractGlassFieldDecoration(
+                              context,
+                              hintText: 'Buscar',
+                              prefixIcon: const Icon(Icons.search_rounded),
+                            ),
+                            onChanged: (value) =>
+                                setLocalState(() => query = value),
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Expanded(
+                          child: filtered.isEmpty
+                              ? const Center(child: Text('Sin resultados'))
+                              : ListView.builder(
+                                  itemCount: filtered.length,
+                                  itemBuilder: (_, i) {
+                                    final option = filtered[i];
+                                    final checked = selected.contains(
+                                      option.value,
+                                    );
+                                    final highlighted = focusedIndex == i;
+                                    return Focus(
+                                      focusNode: itemFocusNodes[i],
+                                      onFocusChange: (hasFocus) {
+                                        if (hasFocus) {
+                                          setLocalState(() => focusedIndex = i);
+                                        } else if (focusedIndex == i) {
+                                          setLocalState(
+                                            () => focusedIndex = null,
+                                          );
+                                        }
+                                      },
+                                      onKeyEvent: (_, event) {
+                                        if (event is! KeyDownEvent) {
+                                          return KeyEventResult.ignored;
+                                        }
+                                        if (event.logicalKey ==
+                                            LogicalKeyboardKey.arrowUp) {
+                                          if (i == 0) {
+                                            searchFocus.requestFocus();
+                                          } else {
+                                            itemFocusNodes[i - 1]
+                                                .requestFocus();
+                                          }
+                                          return KeyEventResult.handled;
+                                        }
+                                        if (event.logicalKey ==
+                                                LogicalKeyboardKey.arrowDown &&
+                                            i < itemFocusNodes.length - 1) {
+                                          itemFocusNodes[i + 1].requestFocus();
+                                          return KeyEventResult.handled;
+                                        }
+                                        if (event.logicalKey ==
+                                                LogicalKeyboardKey.enter ||
+                                            event.logicalKey ==
+                                                LogicalKeyboardKey
+                                                    .numpadEnter ||
+                                            event.logicalKey ==
+                                                LogicalKeyboardKey.space) {
+                                          setLocalState(() {
+                                            if (checked) {
+                                              selected.remove(option.value);
+                                            } else {
+                                              selected.add(option.value);
+                                            }
+                                          });
+                                          return KeyEventResult.handled;
+                                        }
+                                        return KeyEventResult.ignored;
+                                      },
+                                      child: _DirectoryPickerOptionTile(
+                                        label: option.label,
+                                        selected: checked,
+                                        highlighted: highlighted,
+                                        onTap: () => setLocalState(() {
+                                          if (checked) {
+                                            selected.remove(option.value);
+                                          } else {
+                                            selected.add(option.value);
+                                          }
+                                        }),
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                        const SizedBox(height: 8),
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: FilledButton.tonal(
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(selected),
+                            child: const Text('Aplicar'),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+class _DirectoryPickerOptionTile extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final bool highlighted;
+  final VoidCallback onTap;
+
+  const _DirectoryPickerOptionTile({
+    required this.label,
+    required this.selected,
+    required this.highlighted,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final background = selected
+        ? comprasAreaTokens.badgeBackground.withValues(alpha: 0.76)
+        : highlighted
+        ? comprasAreaTokens.glassSurface.withValues(alpha: 0.82)
+        : comprasAreaTokens.fieldSurface.withValues(alpha: 0.72);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Material(
+        color: background,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    label,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                      color: kComprasInk,
+                    ),
+                  ),
+                ),
+                if (selected)
+                  Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                    color: comprasAreaTokens.primaryStrong,
+                  ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _DirectoryEmptyState extends StatelessWidget {
-  final String searchQuery;
+  final bool hasActiveFilters;
   final Future<void> Function() onReload;
+  final VoidCallback? onClearFilters;
 
   const _DirectoryEmptyState({
-    required this.searchQuery,
+    required this.hasActiveFilters,
     required this.onReload,
+    this.onClearFilters,
   });
 
   @override
@@ -1436,9 +2353,9 @@ class _DirectoryEmptyState extends StatelessWidget {
             const Icon(Icons.badge_outlined, size: 44, color: kComprasMutedInk),
             const SizedBox(height: 12),
             Text(
-              searchQuery.trim().isEmpty
-                  ? 'No hay proveedores visibles todavía.'
-                  : 'No hubo coincidencias para tu búsqueda.',
+              hasActiveFilters
+                  ? 'No hubo coincidencias para los filtros activos.'
+                  : 'No hay proveedores visibles todavía.',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 18,
@@ -1448,9 +2365,9 @@ class _DirectoryEmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              searchQuery.trim().isEmpty
-                  ? 'Sincroniza catálogo o agrega proveedores desde Catálogo Compras.'
-                  : 'Prueba con otro nombre, teléfono o limpia los filtros activos.',
+              hasActiveFilters
+                  ? 'Prueba limpiando o ajustando los filtros por columna.'
+                  : 'Sincroniza catálogo o agrega proveedores desde Catálogo Compras.',
               textAlign: TextAlign.center,
               style: const TextStyle(
                 fontSize: 13,
@@ -1458,6 +2375,15 @@ class _DirectoryEmptyState extends StatelessWidget {
                 color: kComprasMutedInk,
               ),
             ),
+            if (onClearFilters != null) ...[
+              const SizedBox(height: 14),
+              OutlinedButton.icon(
+                style: contractSecondaryButtonStyle(context),
+                onPressed: onClearFilters,
+                icon: const Icon(Icons.filter_alt_off_rounded),
+                label: const Text('Limpiar filtros'),
+              ),
+            ],
             const SizedBox(height: 14),
             FilledButton.icon(
               onPressed: () => unawaited(onReload()),
@@ -1587,20 +2513,6 @@ class _ComprasDirectorySidePanel extends StatelessWidget {
                 child: Column(
                   children: [
                     _DirectorySideNavItem(
-                      icon: Icons.shopping_cart_checkout_rounded,
-                      title: 'Dashboard Compras',
-                      subtitle: 'Tickets y operación de compra',
-                      onTap: () async => onNavigate('Dashboard Compras'),
-                    ),
-                    const SizedBox(height: 8),
-                    _DirectorySideNavItem(
-                      icon: Icons.price_check_rounded,
-                      title: 'Catálogo Compras',
-                      subtitle: 'Proveedores, materiales y precios',
-                      onTap: () async => onNavigate('Catálogo Compras'),
-                    ),
-                    const SizedBox(height: 8),
-                    _DirectorySideNavItem(
                       icon: Icons.confirmation_number_outlined,
                       title: 'Tickets Compras',
                       subtitle: 'Captura y seguimiento operativo',
@@ -1612,6 +2524,13 @@ class _ComprasDirectorySidePanel extends StatelessWidget {
                       title: 'Ajuste de precios',
                       subtitle: 'Vigentes e historial',
                       onTap: () async => onNavigate('Ajuste de precios'),
+                    ),
+                    const SizedBox(height: 8),
+                    _DirectorySideNavItem(
+                      icon: Icons.price_check_rounded,
+                      title: 'Catálogo Compras',
+                      subtitle: 'Proveedores, materiales y precios',
+                      onTap: () async => onNavigate('Catálogo Compras'),
                     ),
                     const SizedBox(height: 8),
                     _DirectorySideNavItem(
@@ -1627,21 +2546,27 @@ class _ComprasDirectorySidePanel extends StatelessWidget {
               const SizedBox(height: 14),
               const _DirectorySectionHeader(label: 'ACCESOS'),
               const SizedBox(height: 8),
-              if (canReturnToDirection) ...[
-                _DirectorySideNavItem(
-                  icon: Icons.assessment_outlined,
-                  title: 'Dashboard Dirección',
-                  subtitle: 'Vista ejecutiva multiarea',
-                  onTap: () async => onNavigate('Dashboard Dirección'),
-                ),
-                const SizedBox(height: 8),
-              ],
+              _DirectorySideNavItem(
+                icon: Icons.shopping_cart_checkout_rounded,
+                title: 'Dashboard Compras',
+                subtitle: 'Tickets y operación de compra',
+                onTap: () async => onNavigate('Dashboard Compras'),
+              ),
+              if (canAccessFinanzasArea) const SizedBox(height: 8),
               if (canAccessFinanzasArea)
                 _DirectorySideNavItem(
                   icon: Icons.account_balance_wallet_outlined,
                   title: 'Dashboard Finanzas',
                   subtitle: 'Pagos, liquidez y compromisos',
                   onTap: () async => onNavigate('Dashboard Finanzas'),
+                ),
+              if (canReturnToDirection) const SizedBox(height: 8),
+              if (canReturnToDirection)
+                _DirectorySideNavItem(
+                  icon: Icons.assessment_outlined,
+                  title: 'Dashboard Dirección',
+                  subtitle: 'Vista ejecutiva multiarea',
+                  onTap: () async => onNavigate('Dashboard Dirección'),
                 ),
             ],
           ),

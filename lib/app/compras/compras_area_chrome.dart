@@ -33,7 +33,7 @@ class ComprasAreaBackground extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF181010), Color(0xFF241515), Color(0xFF3A2020)],
+              colors: [Color(0xFF030405), Color(0xFF0D1014), Color(0xFF20252B)],
             ),
           ),
           child: const SizedBox.expand(),
@@ -43,7 +43,7 @@ class ComprasAreaBackground extends StatelessWidget {
           top: -130,
           child: _ComprasBackgroundCircle(
             diameter: 760,
-            colors: [Color(0xFF332020), Color(0xFF181010)],
+            colors: [Color(0xFF1A1F25), Color(0xFF050608)],
           ),
         ),
         Positioned(
@@ -51,7 +51,7 @@ class ComprasAreaBackground extends StatelessWidget {
           top: -70,
           child: _ComprasBackgroundCircle(
             diameter: 580,
-            colors: [Color(0xFF9C211B), Color(0x33261515)],
+            colors: [Color(0xFF6F7881), Color(0x33161B21)],
           ),
         ),
         Positioned(
@@ -59,7 +59,7 @@ class ComprasAreaBackground extends StatelessWidget {
           bottom: -260,
           child: _ComprasBackgroundCircle(
             diameter: 640,
-            colors: [Color(0x338F201A), Color(0xFFF0E4E2)],
+            colors: [Color(0x333D4650), Color(0xFFB0BAC4)],
           ),
         ),
         Positioned(
@@ -74,7 +74,7 @@ class ComprasAreaBackground extends StatelessWidget {
                 gradient: const LinearGradient(
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
-                  colors: [Color(0xFFAA2A23), Color(0xFF261818)],
+                  colors: [Color(0xFFB6BFC8), Color(0xFF151A1F)],
                 ),
               ),
             ),
@@ -204,9 +204,9 @@ class _ComprasAreaHeaderButtonState extends State<ComprasAreaHeaderButton> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.white.withValues(alpha: highlighted ? 0.32 : 0.22),
+                    Colors.white.withValues(alpha: highlighted ? 0.18 : 0.10),
                     tokens.surfaceTint.withValues(
-                      alpha: highlighted ? 0.42 : 0.26,
+                      alpha: highlighted ? 0.22 : 0.14,
                     ),
                   ],
                 ),
@@ -238,7 +238,7 @@ class _ComprasAreaHeaderButtonState extends State<ComprasAreaHeaderButton> {
                     ? MainAxisAlignment.center
                     : MainAxisAlignment.start,
                 children: [
-                  Icon(widget.icon, size: 20, color: tokens.primaryStrong),
+                  Icon(widget.icon, size: 20, color: tokens.onGlass),
                   if (!widget.compact) ...[
                     const SizedBox(width: 10),
                     Expanded(
@@ -250,7 +250,7 @@ class _ComprasAreaHeaderButtonState extends State<ComprasAreaHeaderButton> {
                           maxLines: 1,
                           softWrap: false,
                           style: TextStyle(
-                            color: tokens.primaryStrong,
+                            color: tokens.onGlass,
                             fontSize: 15,
                             fontWeight: FontWeight.w900,
                           ),
@@ -298,7 +298,7 @@ class ComprasAreaSidePanel extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
-                  color: tokens.primaryStrong,
+                  color: tokens.onGlass,
                 ),
               ),
               const SizedBox(height: 16),
@@ -316,10 +316,10 @@ class ComprasAreaSidePanel extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: tokens.primarySoft.withValues(alpha: 0.34),
+                  color: tokens.glassSurface.withValues(alpha: 0.72),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
-                    color: tokens.primaryStrong.withValues(alpha: 0.14),
+                    color: Colors.white.withValues(alpha: 0.10),
                   ),
                 ),
                 child: Column(
@@ -445,7 +445,7 @@ class ComprasAreaNavItem extends StatelessWidget {
               children: [
                 Icon(
                   icon,
-                  color: accented ? Colors.white : tokens.primaryStrong,
+                  color: accented ? Colors.white : tokens.onGlass,
                   size: 22,
                 ),
                 const SizedBox(width: 12),
@@ -458,7 +458,7 @@ class ComprasAreaNavItem extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w900,
-                          color: accented ? Colors.white : tokens.primaryStrong,
+                          color: accented ? Colors.white : tokens.onGlass,
                         ),
                       ),
                       const SizedBox(height: 2),

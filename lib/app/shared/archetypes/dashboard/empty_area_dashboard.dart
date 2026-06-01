@@ -25,6 +25,15 @@ class EmptyAreaDashboardPage extends StatefulWidget {
   State<EmptyAreaDashboardPage> createState() => _EmptyAreaDashboardPageState();
 }
 
+typedef EmptyAreaDashboardSidePanelBuilder =
+    Widget Function(
+      BuildContext context,
+      EmptyAreaDashboardConfig config,
+      bool canReturnToDirection,
+      List<DashboardNavAction> accessItems,
+      List<DashboardNavAction> areaItems,
+    );
+
 class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
@@ -163,13 +172,21 @@ class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
                 width: 320,
                 child: IgnorePointer(
                   ignoring: !_menuOpen,
-                  child: _AreaSidePanel(
-                    config: _config.copyWith(
-                      areaItems: areaItems.toList(growable: false),
-                    ),
-                    canReturnToDirection: _canReturnToDirection,
-                    accessItems: accessItems,
-                  ),
+                  child:
+                      _config.sidePanelBuilder?.call(
+                        context,
+                        _config,
+                        _canReturnToDirection,
+                        accessItems,
+                        areaItems.toList(growable: false),
+                      ) ??
+                      _AreaSidePanel(
+                        config: _config.copyWith(
+                          areaItems: areaItems.toList(growable: false),
+                        ),
+                        canReturnToDirection: _canReturnToDirection,
+                        accessItems: accessItems,
+                      ),
                 ),
               ),
             ],
@@ -206,6 +223,7 @@ class EmptyAreaDashboardConfig {
   final List<DashboardNavAction> areaItems;
   final List<DashboardNavAction> accessItems;
   final List<DashboardHeaderAction> headerActions;
+  final EmptyAreaDashboardSidePanelBuilder? sidePanelBuilder;
 
   const EmptyAreaDashboardConfig({
     required this.dashboardLabel,
@@ -233,6 +251,7 @@ class EmptyAreaDashboardConfig {
     required this.areaItems,
     this.accessItems = const <DashboardNavAction>[],
     this.headerActions = const <DashboardHeaderAction>[],
+    this.sidePanelBuilder,
   });
 
   EmptyAreaDashboardConfig copyWith({
@@ -266,6 +285,7 @@ class EmptyAreaDashboardConfig {
       areaItems: areaItems ?? this.areaItems,
       accessItems: accessItems ?? this.accessItems,
       headerActions: headerActions ?? this.headerActions,
+      sidePanelBuilder: sidePanelBuilder,
     );
   }
 }

@@ -3,34 +3,38 @@ import 'package:flutter/material.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
 
 const ContractAreaTokens comprasAreaTokens = ContractAreaTokens(
-  primary: Color(0xFF241515),
-  primaryStrong: Color(0xFF1A0F0F),
-  primarySoft: Color(0xFFF0E4E2),
-  accent: Color(0xFFB52A23),
-  surfaceTint: Color(0xFFF1E9E8),
-  border: Color(0xFFC9ACAA),
-  badgeBackground: Color(0xFFE9D5D2),
-  badgeText: Color(0xFF731C18),
-  glow: Color(0xFF7E1712),
+  primary: Color(0xFFD9DEE3),
+  primaryStrong: Color(0xFFF8FAFC),
+  primarySoft: Color(0xFF232A31),
+  accent: Color(0xFFB7C0C8),
+  surfaceTint: Color(0xFF8C98A4),
+  border: Color(0xFF5F6B77),
+  badgeBackground: Color(0xFF1D242B),
+  badgeText: Color(0xFFF4F7FA),
+  glow: Color(0xFFD6DDE5),
+  darkGlass: true,
+  glassSurface: Color(0x52303840),
+  fieldSurface: Color(0x7A151A20),
+  onGlass: Color(0xFFF4F7FA),
 );
 
 const LinearGradient kComprasHeroGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  colors: [Color(0xFF221313), Color(0xFF382020), Color(0xFFB52A23)],
+  colors: [Color(0xFF050608), Color(0xFF15191E), Color(0xFF3C434A)],
 );
 
 const LinearGradient kComprasPanelGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  colors: [Color(0xFFF5ECEB), Color(0xFFE7D3D0)],
+  colors: [Color(0xFF14191E), Color(0xFF202730)],
 );
 
 const LinearGradient kComprasAccentGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  colors: [Color(0xFFF0B9B3), Color(0xFF9C211B)],
+  colors: [Color(0xFFF9FBFD), Color(0xFF7E8791)],
 );
 
-const Color kComprasInk = Color(0xFF120808);
-const Color kComprasMutedInk = Color(0xFF5C302D);
+const Color kComprasInk = Color(0xFFF4F7FA);
+const Color kComprasMutedInk = Color(0xFFB2BCC6);

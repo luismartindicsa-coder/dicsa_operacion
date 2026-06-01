@@ -22,6 +22,8 @@ import 'finanzas_bank_accounts_page.dart';
 import 'finanzas_data_store.dart';
 import 'finanzas_dashboard_page.dart';
 import 'finanzas_company_directory_page.dart';
+import 'finanzas_fixed_payments_page.dart';
+import 'finanzas_payment_center_page.dart';
 import 'finanzas_provider_accounts_page.dart';
 import 'finanzas_theme.dart';
 
@@ -243,6 +245,20 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
     );
   }
 
+  Future<void> _openFixedPayments() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const FinanzasFixedPaymentsPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openPaymentCenter() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const FinanzasPaymentCenterPage(instantOpen: true)),
+    );
+  }
+
   void _handleNavigationAction(String label) {
     switch (label) {
       case 'Dashboard Dirección':
@@ -269,6 +285,14 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
       case 'Cuentas Bancarias':
         if (_menuOpen) setState(() => _menuOpen = false);
         unawaited(_openBankAccounts());
+        return;
+      case 'Pagos fijos':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openFixedPayments());
+        return;
+      case 'Centro de pagos':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openPaymentCenter());
         return;
     }
   }
@@ -4173,105 +4197,7 @@ class _FinanzasCatalogBackground extends StatelessWidget {
   const _FinanzasCatalogBackground();
 
   @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFFFFF7F6),
-                const Color(0xFFF7D7D2),
-                const Color(0xFFE9A39B),
-              ],
-            ),
-          ),
-          child: const SizedBox.expand(),
-        ),
-        Positioned(
-          left: -260,
-          top: -130,
-          child: _backgroundCircle(
-            760,
-            LinearGradient(
-              colors: [
-                const Color(0xFFFFFEFE).withValues(alpha: 0.94),
-                const Color(0xFFF5D8D4),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          right: -180,
-          top: -70,
-          child: _backgroundCircle(
-            580,
-            LinearGradient(
-              colors: [
-                const Color(0xFFB12720).withValues(alpha: 0.74),
-                const Color(0xFFF6D8D3).withValues(alpha: 0.28),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          left: 20,
-          bottom: -260,
-          child: _backgroundCircle(
-            640,
-            LinearGradient(
-              colors: [
-                const Color(0xFF8F201A).withValues(alpha: 0.16),
-                Colors.white.withValues(alpha: 0.94),
-              ],
-            ),
-          ),
-        ),
-        Positioned(
-          right: -105,
-          bottom: -120,
-          child: IgnorePointer(
-            child: Container(
-              width: 320,
-              height: 500,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(220),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    const Color(0xFFD1473E).withValues(alpha: 0.82),
-                    const Color(0xFF7A1914).withValues(alpha: 0.78),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _backgroundCircle(double diameter, Gradient gradient) {
-    return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: gradient,
-          boxShadow: [
-            BoxShadow(
-              blurRadius: diameter * 0.10,
-              spreadRadius: diameter * 0.015,
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
-          ],
-        ),
-        child: SizedBox(width: diameter, height: diameter),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const FinanzasAreaBackground();
 }
 
 class _FinanzasCatalogHeaderBrand extends StatelessWidget {
@@ -4301,16 +4227,7 @@ class _FinanzasCatalogHeaderBrand extends StatelessWidget {
           ),
           child: const Center(child: DicsaLogoD(size: 40, progress: 1)),
         ),
-        const SizedBox(width: 10),
-        Container(
-          width: 1.5,
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: tokens.primaryStrong.withValues(alpha: 0.22),
-            borderRadius: BorderRadius.circular(999),
-          ),
-        ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 20),
         Text(
           'Catálogo',
           maxLines: 1,
@@ -4340,214 +4257,11 @@ class _FinanzasCatalogSidePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: ContractGlassCard(
-        borderRadius: BorderRadius.circular(28),
-        padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Finanzas',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: tokens.primaryStrong,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (canReturnToDirection) ...[
-                _FinanzasCatalogNavItem(
-                  icon: Icons.arrow_back_rounded,
-                  title: 'Volver a Dirección',
-                  onTap: () async => onNavigate('Dashboard Dirección'),
-                ),
-                const SizedBox(height: 10),
-              ],
-              const _FinanzasCatalogSectionHeader(label: 'AREA'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: tokens.primarySoft.withValues(alpha: 0.34),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: tokens.primaryStrong.withValues(alpha: 0.14),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    _FinanzasCatalogNavItem(
-                      icon: Icons.account_balance_wallet_outlined,
-                      title: 'Dashboard Finanzas',
-                      subtitle: 'Vista general del área',
-                      onTap: () async => onNavigate('Dashboard Finanzas'),
-                    ),
-                    const SizedBox(height: 8),
-                    _FinanzasCatalogNavItem(
-                      icon: Icons.price_check_rounded,
-                      title: 'Catálogo Finanzas',
-                      subtitle: 'Empresas, conceptos y relaciones',
-                      accented: true,
-                      onTap: () async {},
-                    ),
-                    const SizedBox(height: 8),
-                    _FinanzasCatalogNavItem(
-                      icon: Icons.account_balance_rounded,
-                      title: 'Directorio Empresas',
-                      subtitle: 'Crédito, contacto y operación',
-                      onTap: () async => onNavigate('Directorio Empresas'),
-                    ),
-                    const SizedBox(height: 8),
-                    _FinanzasCatalogNavItem(
-                      icon: Icons.view_list_rounded,
-                      title: 'Cuentas por Proveedor',
-                      subtitle: 'Saldo vivo, tickets y seguimiento',
-                      onTap: () async => onNavigate('Cuentas por Proveedor'),
-                    ),
-                    const SizedBox(height: 8),
-                    _FinanzasCatalogNavItem(
-                      icon: Icons.account_balance_outlined,
-                      title: 'Cuentas Bancarias',
-                      subtitle: 'Entradas, salidas y bancos',
-                      onTap: () async => onNavigate('Cuentas Bancarias'),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 14),
-              const _FinanzasCatalogSectionHeader(label: 'ACCESOS'),
-              const SizedBox(height: 8),
-              if (canReturnToDirection) ...[
-                _FinanzasCatalogNavItem(
-                  icon: Icons.assessment_outlined,
-                  title: 'Dashboard Dirección',
-                  subtitle: 'Vista ejecutiva multiarea',
-                  onTap: () async => onNavigate('Dashboard Dirección'),
-                ),
-                const SizedBox(height: 8),
-              ],
-              if (canAccessComprasArea)
-                _FinanzasCatalogNavItem(
-                  icon: Icons.shopping_cart_checkout_rounded,
-                  title: 'Dashboard Compras',
-                  subtitle: 'Tickets y operación de compra',
-                  onTap: () async => onNavigate('Dashboard Compras'),
-                ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FinanzasCatalogSectionHeader extends StatelessWidget {
-  final String label;
-
-  const _FinanzasCatalogSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Text(
-      label,
-      style: TextStyle(
-        fontSize: 11.5,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 0.4,
-        color: tokens.badgeText,
-      ),
-    );
-  }
-}
-
-class _FinanzasCatalogNavItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final bool accented;
-  final Future<void> Function() onTap;
-
-  const _FinanzasCatalogNavItem({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.accented = false,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: onTap,
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            gradient: accented ? kFinanzasPanelGradient : null,
-            color: accented ? null : Colors.white.withValues(alpha: 0.22),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: accented
-                  ? tokens.primaryStrong.withValues(alpha: 0.16)
-                  : Colors.white.withValues(alpha: 0.26),
-            ),
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 36,
-                height: 36,
-                decoration: BoxDecoration(
-                  color: accented
-                      ? tokens.primaryStrong.withValues(alpha: 0.12)
-                      : Colors.white.withValues(alpha: 0.42),
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: accented
-                        ? tokens.primaryStrong.withValues(alpha: 0.22)
-                        : Colors.white.withValues(alpha: 0.42),
-                  ),
-                ),
-                child: Icon(icon, size: 18, color: tokens.primaryStrong),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontWeight: FontWeight.w800,
-                        color: tokens.primaryStrong,
-                      ),
-                    ),
-                    if (subtitle != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle!,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: tokens.badgeText,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return FinanzasAreaSidePanel(
+      currentLabel: 'Catálogo Finanzas',
+      canReturnToDirection: canReturnToDirection,
+      canAccessComprasArea: canAccessComprasArea,
+      onNavigate: onNavigate,
     );
   }
 }

@@ -1,7 +1,19 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'menudeo_analysis_models.dart';
+
+Iterable<List<T>> _chunkList<T>(List<T> items, int chunkSize) sync* {
+  if (chunkSize <= 0) {
+    throw ArgumentError.value(chunkSize, 'chunkSize', 'Must be greater than 0');
+  }
+  for (var index = 0; index < items.length; index += chunkSize) {
+    final end = math.min(index + chunkSize, items.length);
+    yield items.sublist(index, end);
+  }
+}
 
 class MenudeoAnalysisRepository {
   MenudeoAnalysisRepository({SupabaseClient? client})
@@ -144,18 +156,19 @@ class MenudeoAnalysisRepository {
         .map((row) => _text(row['id']))
         .where((id) => id.isNotEmpty)
         .toList(growable: false);
-    final lineRows = voucherIds.isEmpty
-        ? const <Map<String, dynamic>>[]
-        : await _client
-              .from('men_cash_voucher_lines')
-              .select('voucher_id,concept,subconcept,unit,driver,amount')
-              .inFilter('voucher_id', voucherIds)
-              .order('voucher_id')
-              .then(
-                (rows) => (rows as List)
-                    .map((row) => Map<String, dynamic>.from(row as Map))
-                    .toList(growable: false),
-              );
+    final lineRows = <Map<String, dynamic>>[];
+    for (final voucherBatch in _chunkList(voucherIds, 80)) {
+      final rows = await _client
+          .from('men_cash_voucher_lines')
+          .select('voucher_id,concept,subconcept,unit,driver,amount')
+          .inFilter('voucher_id', voucherBatch)
+          .order('voucher_id');
+      lineRows.addAll(
+        (rows as List)
+            .map((row) => Map<String, dynamic>.from(row as Map))
+            .toList(growable: false),
+      );
+    }
 
     final conceptsByVoucher = <String, List<String>>{};
     for (final row in lineRows) {

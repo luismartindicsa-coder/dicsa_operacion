@@ -579,6 +579,16 @@ const List<String> _voucherDestinations = <String>[
   'Queretania',
 ];
 
+Iterable<List<T>> _chunkList<T>(List<T> items, int chunkSize) sync* {
+  if (chunkSize <= 0) {
+    throw ArgumentError.value(chunkSize, 'chunkSize', 'Must be greater than 0');
+  }
+  for (var index = 0; index < items.length; index += chunkSize) {
+    final end = math.min(index + chunkSize, items.length);
+    yield items.sublist(index, end);
+  }
+}
+
 class _MenudeoDepositsExpensesPageState
     extends State<MenudeoDepositsExpensesPage> {
   final SupabaseClient _supa = Supabase.instance.client;
@@ -735,32 +745,34 @@ class _MenudeoDepositsExpensesPageState
       Map<String, List<_LineItemRecord>> linesByVoucher =
           <String, List<_LineItemRecord>>{};
       if (ids.isNotEmpty) {
-        final lineRows = await _supa
-            .from('men_cash_voucher_lines')
-            .select(
-              'voucher_id,line_order,concept,unit,quantity,company,driver,destination,subconcept,mode,amount,comment',
-            )
-            .inFilter('voucher_id', ids)
-            .order('line_order');
-        for (final raw in (lineRows as List).cast<Map<String, dynamic>>()) {
-          final voucherId = (raw['voucher_id'] ?? '').toString();
-          if (voucherId.isEmpty) continue;
-          linesByVoucher
-              .putIfAbsent(voucherId, () => <_LineItemRecord>[])
-              .add(
-                _LineItemRecord(
-                  concept: (raw['concept'] ?? '').toString(),
-                  unit: (raw['unit'] ?? '').toString(),
-                  quantity: (raw['quantity'] ?? '').toString(),
-                  company: (raw['company'] ?? '').toString(),
-                  driver: (raw['driver'] ?? '').toString(),
-                  destination: (raw['destination'] ?? '').toString(),
-                  subconcept: (raw['subconcept'] ?? '').toString(),
-                  mode: (raw['mode'] ?? '').toString(),
-                  amount: (raw['amount'] ?? '0').toString(),
-                  comment: (raw['comment'] ?? '').toString(),
-                ),
-              );
+        for (final idBatch in _chunkList(ids, 80)) {
+          final lineRows = await _supa
+              .from('men_cash_voucher_lines')
+              .select(
+                'voucher_id,line_order,concept,unit,quantity,company,driver,destination,subconcept,mode,amount,comment',
+              )
+              .inFilter('voucher_id', idBatch)
+              .order('line_order');
+          for (final raw in (lineRows as List).cast<Map<String, dynamic>>()) {
+            final voucherId = (raw['voucher_id'] ?? '').toString();
+            if (voucherId.isEmpty) continue;
+            linesByVoucher
+                .putIfAbsent(voucherId, () => <_LineItemRecord>[])
+                .add(
+                  _LineItemRecord(
+                    concept: (raw['concept'] ?? '').toString(),
+                    unit: (raw['unit'] ?? '').toString(),
+                    quantity: (raw['quantity'] ?? '').toString(),
+                    company: (raw['company'] ?? '').toString(),
+                    driver: (raw['driver'] ?? '').toString(),
+                    destination: (raw['destination'] ?? '').toString(),
+                    subconcept: (raw['subconcept'] ?? '').toString(),
+                    mode: (raw['mode'] ?? '').toString(),
+                    amount: (raw['amount'] ?? '0').toString(),
+                    comment: (raw['comment'] ?? '').toString(),
+                  ),
+                );
+          }
         }
       }
 

@@ -11,6 +11,10 @@ class ContractAreaTokens {
   final Color badgeBackground;
   final Color badgeText;
   final Color glow;
+  final bool darkGlass;
+  final Color glassSurface;
+  final Color fieldSurface;
+  final Color onGlass;
 
   const ContractAreaTokens({
     required this.primary,
@@ -22,6 +26,10 @@ class ContractAreaTokens {
     required this.badgeBackground,
     required this.badgeText,
     required this.glow,
+    this.darkGlass = false,
+    this.glassSurface = const Color(0xB3FFFFFF),
+    this.fieldSurface = const Color(0xB8FFFFFF),
+    this.onGlass = const Color(0xFF18232C),
   });
 
   factory ContractAreaTokens.fallback() {

@@ -1,10 +1,13 @@
 // ignore_for_file: unused_element, unused_element_parameter
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
@@ -236,12 +239,257 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
 
   String _money(double value) => '\$${_formatNumber(value)}';
 
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  List<ComprasTicketRecord> get _selectedReportRows => _rows
+      .where((row) => _bulkSelectedRowKeys.contains(_rowKey(row)))
+      .toList(growable: false);
+
   ComprasTicketRecord? _rowByKey(String rowKey) {
     final id = rowKey.split(':').last;
     for (final row in _rows) {
       if (row.id == id) return row;
     }
     return null;
+  }
+
+  Future<void> _printSelectedReports() async {
+    final selectedRows = _selectedReportRows;
+    if (selectedRows.isEmpty) {
+      _toast('Selecciona al menos un ticket para generar el reporte.');
+      return;
+    }
+    try {
+      final pdfBytes = await _buildSelectedReportsPdfBytes(selectedRows);
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final file = File(
+        '${Directory.systemTemp.path}/compras_tickets_lote_$stamp.pdf',
+      );
+      await file.writeAsBytes(pdfBytes, flush: true);
+      await _openPdfFile(file.path);
+    } catch (error) {
+      _toast('No se pudo abrir el reporte en PDF: $error');
+    }
+  }
+
+  Future<Uint8List> _buildSelectedReportsPdfBytes(
+    List<ComprasTicketRecord> rows,
+  ) async {
+    final doc = pw.Document();
+    final dicsaBlueSoft = PdfColor.fromHex('#E9F0FF');
+    final dicsaBlueDeep = PdfColor.fromHex('#173A7A');
+    final dicsaGreenSoft = PdfColor.fromHex('#EEF9F1');
+    final dicsaInk = PdfColor.fromHex('#16202B');
+    final dicsaMuted = PdfColor.fromHex('#5E6B78');
+    final dicsaBorder = PdfColor.fromHex('#B8C7DD');
+    pw.MemoryImage? logoImage;
+    try {
+      final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+      logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+    } catch (_) {}
+
+    final now = DateTime.now();
+    final printedAt =
+        '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final totalNetWeight = rows.fold<double>(
+      0,
+      (sum, row) => sum + row.netWeight,
+    );
+    final totalAmount = rows.fold<double>(0, (sum, row) => sum + row.amount);
+    final allSameProvider = rows.every(
+      (row) => row.providerId == rows.first.providerId,
+    );
+    final providerLabel = allSameProvider
+        ? rows.first.providerNameSnapshot
+        : 'PROVEEDORES MIXTOS';
+
+    pw.Widget summaryCard(String label, String value) {
+      return pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: pw.BoxDecoration(
+            color: dicsaBlueSoft,
+            borderRadius: pw.BorderRadius.circular(14),
+            border: pw.Border.all(color: dicsaBorder),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                label,
+                style: pw.TextStyle(
+                  fontSize: 9.2,
+                  fontWeight: pw.FontWeight.bold,
+                  color: dicsaBlueDeep,
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Text(
+                value,
+                style: pw.TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: dicsaInk,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 28),
+        build: (_) => [
+          pw.Row(
+            children: [
+              if (logoImage != null)
+                pw.SizedBox(
+                  width: 42,
+                  height: 28,
+                  child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                ),
+              if (logoImage != null) pw.SizedBox(width: 10),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'REPORTE',
+                      style: pw.TextStyle(
+                        fontSize: 17,
+                        fontWeight: pw.FontWeight.bold,
+                        color: dicsaBlueDeep,
+                      ),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      providerLabel,
+                      style: pw.TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: dicsaMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.Text(
+                printedAt,
+                style: pw.TextStyle(fontSize: 9.5, color: dicsaMuted),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.Row(
+            children: [
+              summaryCard(
+                'PESO NETO TOTAL',
+                '${_formatNumber(totalNetWeight)} KG',
+              ),
+              pw.SizedBox(width: 10),
+              summaryCard('IMPORTE TOTAL', _money(totalAmount)),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.Table(
+            border: pw.TableBorder.all(color: dicsaBorder),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(1.0),
+              1: const pw.FlexColumnWidth(1.0),
+              2: const pw.FlexColumnWidth(1.7),
+              3: const pw.FlexColumnWidth(1.55),
+              4: const pw.FlexColumnWidth(1.05),
+              5: const pw.FlexColumnWidth(1.1),
+              6: const pw.FlexColumnWidth(1.0),
+              7: const pw.FlexColumnWidth(1.15),
+            },
+            children: [
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
+                children:
+                    [
+                          'TICKET',
+                          'FECHA',
+                          'PROVEEDOR',
+                          'MATERIAL',
+                          'PESO',
+                          'PRECIO',
+                          'S/PRECIO',
+                          'IMPORTE',
+                        ]
+                        .map(
+                          (label) => pw.Padding(
+                            padding: const pw.EdgeInsets.all(7),
+                            child: pw.Text(
+                              label,
+                              style: pw.TextStyle(
+                                fontSize: 9.4,
+                                fontWeight: pw.FontWeight.bold,
+                                color: dicsaBlueDeep,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+              ),
+              for (final row in rows)
+                pw.TableRow(
+                  children:
+                      [
+                            row.ticket,
+                            _dateLabel(row.date),
+                            row.providerNameSnapshot,
+                            row.materialNameSnapshot,
+                            '${_formatNumber(row.payableWeight)} KG',
+                            _money(row.price),
+                            _money(row.premium),
+                            _money(row.amount),
+                          ]
+                          .map(
+                            (value) => pw.Padding(
+                              padding: const pw.EdgeInsets.all(7),
+                              child: pw.Text(
+                                value,
+                                style: pw.TextStyle(
+                                  fontSize: 9.2,
+                                  color: dicsaInk,
+                                ),
+                              ),
+                            ),
+                          )
+                          .toList(growable: false),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    return doc.save();
+  }
+
+  Future<void> _openPdfFile(String path) async {
+    ProcessResult result;
+    if (Platform.isMacOS) {
+      result = await Process.run('open', [path]);
+    } else if (Platform.isWindows) {
+      result = await Process.run('cmd', ['/c', 'start', '', path]);
+    } else if (Platform.isLinux) {
+      result = await Process.run('xdg-open', [path]);
+    } else {
+      throw UnsupportedError('Plataforma no soportada para abrir PDF');
+    }
+    if (result.exitCode != 0) {
+      throw Exception(result.stderr.toString().trim());
+    }
   }
 
   bool _isCtrlOrCmdPressed() {
@@ -624,10 +872,13 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
   Future<void> _createRow() async {
     final saved = await showDialog<ComprasTicketRecord>(
       context: context,
-      builder: (_) => _ComprasTicketEditDialog(
-        providers: _providers,
-        materials: _materials,
-        prices: _prices,
+      builder: (_) => AreaThemeScope(
+        tokens: comprasAreaTokens,
+        child: _ComprasTicketEditDialog(
+          providers: _providers,
+          materials: _materials,
+          prices: _prices,
+        ),
       ),
     );
     if (saved == null) return;
@@ -637,11 +888,14 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
   Future<void> _editRow(ComprasTicketRecord row) async {
     final saved = await showDialog<ComprasTicketRecord>(
       context: context,
-      builder: (_) => _ComprasTicketEditDialog(
-        row: row,
-        providers: _providers,
-        materials: _materials,
-        prices: _prices,
+      builder: (_) => AreaThemeScope(
+        tokens: comprasAreaTokens,
+        child: _ComprasTicketEditDialog(
+          row: row,
+          providers: _providers,
+          materials: _materials,
+          prices: _prices,
+        ),
       ),
     );
     if (saved == null) return;
@@ -1032,6 +1286,22 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                                           ),
                                         ),
                                         const SizedBox(width: 12),
+                                        OutlinedButton.icon(
+                                          style: _comprasPdfButtonStyle(),
+                                          onPressed:
+                                              _bulkSelectedRowKeys.isEmpty
+                                              ? null
+                                              : _printSelectedReports,
+                                          icon: const Icon(
+                                            Icons.picture_as_pdf_outlined,
+                                          ),
+                                          label: Text(
+                                            _bulkSelectedRowKeys.isEmpty
+                                                ? 'Descargar PDF'
+                                                : 'PDF ${_bulkSelectedRowKeys.length}',
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
                                         FilledButton.icon(
                                           style: _comprasRedFilledButtonStyle(),
                                           onPressed: _createRow,
@@ -1246,20 +1516,6 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                     label: 'Compras Mayoreo',
                     canReturnToDirection: _canReturnToDirection,
                     areaItems: [
-                      ComprasAreaNavEntry(
-                        icon: Icons.shopping_cart_checkout_rounded,
-                        title: 'Dashboard Compras',
-                        subtitle: 'Tickets y operación de compra',
-                        onTap: () async =>
-                            _handleNavigationAction('Dashboard Compras'),
-                      ),
-                      ComprasAreaNavEntry(
-                        icon: Icons.price_check_rounded,
-                        title: 'Catálogo Compras',
-                        subtitle: 'Proveedores, materiales y precios',
-                        onTap: () async =>
-                            _handleNavigationAction('Catálogo Compras'),
-                      ),
                       const ComprasAreaNavEntry(
                         icon: Icons.confirmation_number_outlined,
                         title: 'Tickets Compras',
@@ -1274,6 +1530,13 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                             _handleNavigationAction('Ajuste de precios'),
                       ),
                       ComprasAreaNavEntry(
+                        icon: Icons.price_check_rounded,
+                        title: 'Catálogo Compras',
+                        subtitle: 'Proveedores, materiales y precios',
+                        onTap: () async =>
+                            _handleNavigationAction('Catálogo Compras'),
+                      ),
+                      ComprasAreaNavEntry(
                         icon: Icons.badge_rounded,
                         title: 'Directorio Proveedores',
                         subtitle: 'Crédito, contacto y operación',
@@ -1282,14 +1545,13 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                       ),
                     ],
                     accessItems: [
-                      if (_canReturnToDirection)
-                        ComprasAreaNavEntry(
-                          icon: Icons.assessment_outlined,
-                          title: 'Dashboard Dirección',
-                          subtitle: 'Vista ejecutiva multiarea',
-                          onTap: () async =>
-                              _handleNavigationAction('Dashboard Dirección'),
-                        ),
+                      ComprasAreaNavEntry(
+                        icon: Icons.shopping_cart_checkout_rounded,
+                        title: 'Dashboard Compras',
+                        subtitle: 'Tickets y operación de compra',
+                        onTap: () async =>
+                            _handleNavigationAction('Dashboard Compras'),
+                      ),
                       if (_canAccessFinanzasArea)
                         ComprasAreaNavEntry(
                           icon: Icons.account_balance_wallet_outlined,
@@ -1297,6 +1559,14 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                           subtitle: 'Pagos, liquidez y compromisos',
                           onTap: () async =>
                               _handleNavigationAction('Dashboard Finanzas'),
+                        ),
+                      if (_canReturnToDirection)
+                        ComprasAreaNavEntry(
+                          icon: Icons.assessment_outlined,
+                          title: 'Dashboard Dirección',
+                          subtitle: 'Vista ejecutiva multiarea',
+                          onTap: () async =>
+                              _handleNavigationAction('Dashboard Dirección'),
                         ),
                     ],
                   ),
@@ -1526,238 +1796,244 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
         child: ContractGlassCard(
           borderRadius: BorderRadius.circular(30),
           padding: const EdgeInsets.fromLTRB(26, 24, 26, 22),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.row == null
-                                ? 'Nuevo ticket'
-                                : widget.row!.ticket,
-                            style: const TextStyle(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF7A1914),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: comprasAreaTokens.fieldSurface.withValues(alpha: 0.84),
+              borderRadius: BorderRadius.circular(28),
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.row == null
+                                  ? 'Nuevo ticket'
+                                  : widget.row!.ticket,
+                              style: const TextStyle(
+                                fontSize: 30,
+                                fontWeight: FontWeight.w900,
+                                color: kComprasInk,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'El precio se toma del vigente configurado por proveedor y material, y queda congelado dentro del ticket.',
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: kComprasMutedInk.withValues(alpha: 0.90),
+                            const SizedBox(height: 8),
+                            Text(
+                              'El precio se toma del vigente configurado por proveedor y material, y queda congelado dentro del ticket.',
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: kComprasMutedInk.withValues(alpha: 0.90),
+                              ),
                             ),
-                          ),
-                        ],
+                          ],
+                        ),
                       ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                _TicketFormSection(
-                  step: '1',
-                  title: 'Identificación',
-                  subtitle:
-                      'Primero define fecha, ticket, proveedor, material y estatus base.',
-                  children: [
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Fecha',
-                      icon: Icons.calendar_month_outlined,
-                      value:
-                          '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
-                      trailingIcon: Icons.keyboard_arrow_down_rounded,
-                      onTap: _pickDate,
-                      readOnly: true,
-                    ),
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Ticket',
-                      icon: Icons.confirmation_number_outlined,
-                      controller: _ticketC,
-                      hintText: 'Escribe el ticket',
-                    ),
-                    _TicketPickerField<ComprasCatalogProviderRecord>(
-                      width: _kTicketDialogWideFieldW,
-                      label: 'Proveedor',
-                      icon: Icons.storefront_outlined,
-                      value: provider,
-                      items: widget.providers,
-                      hintText: 'Selecciona proveedor',
-                      labelBuilder: (item) => item.name,
-                      onChanged: (item) => setState(() {
-                        _providerId = item?.id;
-                        _syncPriceFromSelection();
-                      }),
-                    ),
-                    _TicketPickerField<ComprasCatalogMaterialRecord>(
-                      width: _kTicketDialogWideFieldW,
-                      label: 'Material',
-                      icon: Icons.precision_manufacturing_outlined,
-                      value: material,
-                      items: widget.materials,
-                      hintText: 'Selecciona material',
-                      labelBuilder: (item) => item.name,
-                      onChanged: (item) => setState(() {
-                        _materialId = item?.id;
-                        _syncPriceFromSelection();
-                      }),
-                    ),
-                    _TicketPickerField<String>(
-                      width: _kTicketDialogFieldW,
-                      label: 'Factura',
-                      icon: Icons.receipt_long_outlined,
-                      value: _facturaStatus,
-                      items: const ['SIN_FACTURA', 'PENDIENTE_DE_FACTURAR'],
-                      hintText: 'Selecciona estatus',
-                      labelBuilder: comprasFacturaStatusLabel,
-                      onChanged: (item) => setState(
-                        () => _facturaStatus = item ?? _facturaStatus,
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: const Icon(Icons.close_rounded),
                       ),
-                    ),
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Pago',
-                      icon: Icons.account_balance_wallet_outlined,
-                      value: comprasPagoStatusLabel(
-                        widget.row?.pagoStatus ?? 'PENDIENTE_DE_PAGO',
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  _TicketFormSection(
+                    step: '1',
+                    title: 'Identificación',
+                    subtitle:
+                        'Primero define fecha, ticket, proveedor, material y estatus base.',
+                    children: [
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Fecha',
+                        icon: Icons.calendar_month_outlined,
+                        value:
+                            '${_date.day.toString().padLeft(2, '0')}/${_date.month.toString().padLeft(2, '0')}/${_date.year}',
+                        trailingIcon: Icons.keyboard_arrow_down_rounded,
+                        onTap: _pickDate,
+                        readOnly: true,
                       ),
-                      readOnly: true,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _TicketFormSection(
-                  step: '2',
-                  title: 'Precio',
-                  subtitle:
-                      'Después valida el precio vigente y captura solo el sobreprecio necesario.',
-                  children: [
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Precio vigente',
-                      icon: Icons.attach_money_rounded,
-                      controller: _priceC,
-                      hintText: 'Vigente por proveedor y material',
-                      readOnly: true,
-                    ),
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Sobreprecio',
-                      icon: Icons.trending_up_rounded,
-                      controller: _premiumC,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Ticket',
+                        icon: Icons.confirmation_number_outlined,
+                        controller: _ticketC,
+                        hintText: 'Escribe el ticket',
                       ),
-                    ),
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Tarifa final',
-                      icon: Icons.price_change_outlined,
-                      value:
-                          '\$${(preview.price + preview.premium).toStringAsFixed(2)}',
-                      readOnly: true,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                _TicketFormSection(
-                  step: '3',
-                  title: 'Pesos y cálculo',
-                  subtitle:
-                      'Por último captura pesos y mermas; el sistema calcula neto, peso pagable e importe.',
-                  children: [
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Bruto',
-                      icon: Icons.scale_outlined,
-                      controller: _grossC,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                      _TicketPickerField<ComprasCatalogProviderRecord>(
+                        width: _kTicketDialogWideFieldW,
+                        label: 'Proveedor',
+                        icon: Icons.storefront_outlined,
+                        value: provider,
+                        items: widget.providers,
+                        hintText: 'Selecciona proveedor',
+                        labelBuilder: (item) => item.name,
+                        onChanged: (item) => setState(() {
+                          _providerId = item?.id;
+                          _syncPriceFromSelection();
+                        }),
                       ),
-                    ),
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Tara',
-                      icon: Icons.line_weight_rounded,
-                      controller: _tareC,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                      _TicketPickerField<ComprasCatalogMaterialRecord>(
+                        width: _kTicketDialogWideFieldW,
+                        label: 'Material',
+                        icon: Icons.precision_manufacturing_outlined,
+                        value: material,
+                        items: widget.materials,
+                        hintText: 'Selecciona material',
+                        labelBuilder: (item) => item.name,
+                        onChanged: (item) => setState(() {
+                          _materialId = item?.id;
+                          _syncPriceFromSelection();
+                        }),
                       ),
-                    ),
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Humedad %',
-                      icon: Icons.water_drop_outlined,
-                      controller: _humidityC,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                      _TicketPickerField<String>(
+                        width: _kTicketDialogFieldW,
+                        label: 'Factura',
+                        icon: Icons.receipt_long_outlined,
+                        value: _facturaStatus,
+                        items: const ['SIN_FACTURA', 'PENDIENTE_DE_FACTURAR'],
+                        hintText: 'Selecciona estatus',
+                        labelBuilder: comprasFacturaStatusLabel,
+                        onChanged: (item) => setState(
+                          () => _facturaStatus = item ?? _facturaStatus,
+                        ),
                       ),
-                    ),
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Basura %',
-                      icon: Icons.delete_sweep_outlined,
-                      controller: _trashC,
-                      keyboardType: const TextInputType.numberWithOptions(
-                        decimal: true,
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Pago',
+                        icon: Icons.account_balance_wallet_outlined,
+                        value: comprasPagoStatusLabel(
+                          widget.row?.pagoStatus ?? 'PENDIENTE_DE_PAGO',
+                        ),
+                        readOnly: true,
                       ),
-                    ),
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Neto',
-                      icon: Icons.straighten_rounded,
-                      value: preview.netWeight.toStringAsFixed(2),
-                      readOnly: true,
-                    ),
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Peso pagable',
-                      icon: Icons.scale_rounded,
-                      value: preview.payableWeight.toStringAsFixed(2),
-                      readOnly: true,
-                    ),
-                    _TicketDialogField(
-                      width: _kTicketDialogFieldW,
-                      label: 'Importe',
-                      icon: Icons.payments_outlined,
-                      value: '\$${preview.amount.toStringAsFixed(2)}',
-                      readOnly: true,
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                _TicketInlinePreviewCard(preview: preview),
-                const SizedBox(height: 22),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      style: _comprasRedOutlinedButtonStyle(),
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      style: _comprasRedFilledButtonStyle(),
-                      onPressed: _save,
-                      icon: const Icon(Icons.save_outlined),
-                      label: const Text('Guardar'),
-                    ),
-                  ],
-                ),
-              ],
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _TicketFormSection(
+                    step: '2',
+                    title: 'Precio',
+                    subtitle:
+                        'Después valida el precio vigente y captura solo el sobreprecio necesario.',
+                    children: [
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Precio vigente',
+                        icon: Icons.attach_money_rounded,
+                        controller: _priceC,
+                        hintText: 'Vigente por proveedor y material',
+                        readOnly: true,
+                      ),
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Sobreprecio',
+                        icon: Icons.trending_up_rounded,
+                        controller: _premiumC,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      ),
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Tarifa final',
+                        icon: Icons.price_change_outlined,
+                        value:
+                            '\$${(preview.price + preview.premium).toStringAsFixed(2)}',
+                        readOnly: true,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  _TicketFormSection(
+                    step: '3',
+                    title: 'Pesos y cálculo',
+                    subtitle:
+                        'Por último captura pesos y mermas; el sistema calcula neto, peso pagable e importe.',
+                    children: [
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Bruto',
+                        icon: Icons.scale_outlined,
+                        controller: _grossC,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      ),
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Tara',
+                        icon: Icons.line_weight_rounded,
+                        controller: _tareC,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      ),
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Humedad %',
+                        icon: Icons.water_drop_outlined,
+                        controller: _humidityC,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      ),
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Basura %',
+                        icon: Icons.delete_sweep_outlined,
+                        controller: _trashC,
+                        keyboardType: const TextInputType.numberWithOptions(
+                          decimal: true,
+                        ),
+                      ),
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Neto',
+                        icon: Icons.straighten_rounded,
+                        value: preview.netWeight.toStringAsFixed(2),
+                        readOnly: true,
+                      ),
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Peso pagable',
+                        icon: Icons.scale_rounded,
+                        value: preview.payableWeight.toStringAsFixed(2),
+                        readOnly: true,
+                      ),
+                      _TicketDialogField(
+                        width: _kTicketDialogFieldW,
+                        label: 'Importe',
+                        icon: Icons.payments_outlined,
+                        value: '\$${preview.amount.toStringAsFixed(2)}',
+                        readOnly: true,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  _TicketInlinePreviewCard(preview: preview),
+                  const SizedBox(height: 22),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        style: _comprasRedOutlinedButtonStyle(),
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancelar'),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton.icon(
+                        style: _comprasRedFilledButtonStyle(),
+                        onPressed: _save,
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('Guardar'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -2094,7 +2370,7 @@ class _ComprasTicketDataRowState extends State<_ComprasTicketDataRow> {
     widget.onSecondarySelection?.call();
     final action = await showMenu<_TicketRowMenuAction>(
       context: context,
-      color: comprasAreaTokens.surfaceTint.withValues(alpha: 0.98),
+      color: comprasAreaTokens.fieldSurface.withValues(alpha: 0.94),
       position: RelativeRect.fromLTRB(
         globalPosition.dx,
         globalPosition.dy,
@@ -2131,10 +2407,10 @@ class _ComprasTicketDataRowState extends State<_ComprasTicketDataRow> {
                       const SizedBox(width: 10),
                       Text(
                         item.label,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 12.5,
                           fontWeight: FontWeight.w700,
-                          color: kComprasInk,
+                          color: comprasAreaTokens.onGlass,
                         ),
                       ),
                     ],
@@ -2151,10 +2427,10 @@ class _ComprasTicketDataRowState extends State<_ComprasTicketDataRow> {
     final tokens = AreaThemeScope.of(context);
     final softenDividers = _hoveredEmphasisColumn != null;
     final fill = widget.selected
-        ? tokens.badgeBackground.withValues(alpha: 0.94)
+        ? tokens.badgeBackground.withValues(alpha: 0.68)
         : _hovering
-        ? Colors.white.withValues(alpha: 0.84)
-        : Colors.white.withValues(alpha: 0.66);
+        ? tokens.glassSurface.withValues(alpha: 0.92)
+        : tokens.fieldSurface.withValues(alpha: 0.78);
 
     Widget buildCell(int index, _TicketCellData cell) {
       final hoveredEmphasis = cell.emphasize && _hoveredEmphasisColumn == index;
@@ -2352,8 +2628,8 @@ class _ComprasTicketDataRowState extends State<_ComprasTicketDataRow> {
                                         PopupMenuButton<_TicketRowMenuAction>(
                                           tooltip: 'Acciones',
                                           padding: EdgeInsets.zero,
-                                          color: comprasAreaTokens.surfaceTint
-                                              .withValues(alpha: 0.98),
+                                          color: comprasAreaTokens.fieldSurface
+                                              .withValues(alpha: 0.94),
                                           shape: RoundedRectangleBorder(
                                             borderRadius: BorderRadius.circular(
                                               16,
@@ -2383,7 +2659,13 @@ class _ComprasTicketDataRowState extends State<_ComprasTicketDataRow> {
                                                         .primaryStrong,
                                                   ),
                                                   const SizedBox(width: 10),
-                                                  const Text('Editar'),
+                                                  Text(
+                                                    'Editar',
+                                                    style: TextStyle(
+                                                      color: comprasAreaTokens
+                                                          .onGlass,
+                                                    ),
+                                                  ),
                                                 ],
                                               ),
                                             ),
@@ -2406,7 +2688,13 @@ class _ComprasTicketDataRowState extends State<_ComprasTicketDataRow> {
                                                         .primaryStrong,
                                                   ),
                                                   const SizedBox(width: 10),
-                                                  const Text('Eliminar'),
+                                                  Text(
+                                                    'Eliminar',
+                                                    style: TextStyle(
+                                                      color: comprasAreaTokens
+                                                          .onGlass,
+                                                    ),
+                                                  ),
                                                 ],
                                               ),
                                             ),
@@ -2418,9 +2706,10 @@ class _ComprasTicketDataRowState extends State<_ComprasTicketDataRow> {
                                               color: widget.selected
                                                   ? tokens.primarySoft
                                                         .withValues(alpha: 0.42)
-                                                  : Colors.white.withValues(
-                                                      alpha: 0.88,
-                                                    ),
+                                                  : tokens.fieldSurface
+                                                        .withValues(
+                                                          alpha: 0.92,
+                                                        ),
                                               borderRadius:
                                                   BorderRadius.circular(12),
                                               border: Border.all(
@@ -2622,6 +2911,11 @@ class _TicketDialogField extends StatelessWidget {
       trailingIcon: trailingIcon,
       hintText: hintText,
     );
+    final textStyle = TextStyle(
+      fontWeight: FontWeight.w800,
+      color: comprasAreaTokens.onGlass,
+      fontSize: 13.5,
+    );
     return SizedBox(
       width: width,
       child: controller != null
@@ -2631,12 +2925,15 @@ class _TicketDialogField extends StatelessWidget {
               onTap: onTap,
               onChanged: onChanged,
               keyboardType: keyboardType,
+              style: textStyle,
+              cursorColor: comprasAreaTokens.primary,
               decoration: decoration,
             )
           : TextField(
               readOnly: true,
               controller: TextEditingController(text: value ?? ''),
               onTap: onTap,
+              style: textStyle,
               decoration: decoration,
             ),
     );
@@ -2704,14 +3001,24 @@ InputDecoration _ticketDialogFieldDecoration({
 }) {
   return InputDecoration(
     labelText: label,
+    labelStyle: TextStyle(
+      color: comprasAreaTokens.onGlass.withValues(alpha: 0.88),
+    ),
     hintText: hintText,
+    hintStyle: TextStyle(
+      color: comprasAreaTokens.onGlass.withValues(alpha: 0.58),
+    ),
     floatingLabelBehavior: FloatingLabelBehavior.always,
     filled: true,
-    fillColor: Colors.white.withValues(alpha: 0.94),
-    prefixIcon: Icon(icon, color: const Color(0xFFB12720), size: 24),
+    fillColor: comprasAreaTokens.fieldSurface.withValues(alpha: 0.88),
+    prefixIcon: Icon(icon, color: comprasAreaTokens.primary, size: 24),
     suffixIcon: trailingIcon == null
         ? null
-        : Icon(trailingIcon, color: const Color(0xFFB48680), size: 24),
+        : Icon(
+            trailingIcon,
+            color: comprasAreaTokens.onGlass.withValues(alpha: 0.68),
+            size: 24,
+          ),
     contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(20),
@@ -2720,23 +3027,23 @@ InputDecoration _ticketDialogFieldDecoration({
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(20),
       borderSide: BorderSide(
-        color: const Color(0xFFD8B1AB).withValues(alpha: 0.56),
+        color: Colors.white.withValues(alpha: 0.12),
         width: 1.35,
       ),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(20),
-      borderSide: const BorderSide(color: Color(0xFFB12720), width: 1.6),
+      borderSide: BorderSide(color: comprasAreaTokens.primary, width: 1.6),
     ),
   );
 }
 
 ButtonStyle _comprasRedFilledButtonStyle() {
   return FilledButton.styleFrom(
-    backgroundColor: const Color(0xFFB12720),
-    foregroundColor: Colors.white,
-    disabledBackgroundColor: const Color(0xFFB12720).withValues(alpha: 0.42),
-    disabledForegroundColor: Colors.white.withValues(alpha: 0.72),
+    backgroundColor: comprasAreaTokens.accent,
+    foregroundColor: const Color(0xFF0B0E12),
+    disabledBackgroundColor: comprasAreaTokens.accent.withValues(alpha: 0.42),
+    disabledForegroundColor: const Color(0xFF0B0E12).withValues(alpha: 0.56),
     elevation: 0,
     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
     textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
@@ -2746,11 +3053,55 @@ ButtonStyle _comprasRedFilledButtonStyle() {
 
 ButtonStyle _comprasRedOutlinedButtonStyle() {
   return OutlinedButton.styleFrom(
-    foregroundColor: const Color(0xFF8C241D),
-    side: const BorderSide(color: Color(0xFFCF9E98), width: 1.4),
+    foregroundColor: comprasAreaTokens.onGlass,
+    side: BorderSide(color: Colors.white.withValues(alpha: 0.14), width: 1.4),
+    backgroundColor: comprasAreaTokens.fieldSurface.withValues(alpha: 0.68),
     padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
     textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+  );
+}
+
+ButtonStyle _comprasPdfButtonStyle() {
+  const pdfRed = Color(0xFFB42318);
+  const pdfRedGlow = Color(0xFFE14B40);
+  return OutlinedButton.styleFrom(
+    foregroundColor: const Color(0xFFFFE7E4),
+    disabledForegroundColor: const Color(0xFFFFE7E4).withValues(alpha: 0.48),
+    side: BorderSide(color: pdfRedGlow.withValues(alpha: 0.52), width: 1.45),
+    backgroundColor: pdfRed.withValues(alpha: 0.14),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+    textStyle: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    shadowColor: pdfRedGlow.withValues(alpha: 0.34),
+  ).copyWith(
+    overlayColor: WidgetStateProperty.resolveWith(
+      (states) => pdfRedGlow.withValues(
+        alpha: states.contains(WidgetState.hovered) ? 0.12 : 0.06,
+      ),
+    ),
+    backgroundColor: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.disabled)) {
+        return pdfRed.withValues(alpha: 0.08);
+      }
+      if (states.contains(WidgetState.hovered)) {
+        return pdfRed.withValues(alpha: 0.22);
+      }
+      return pdfRed.withValues(alpha: 0.14);
+    }),
+    side: WidgetStateProperty.resolveWith(
+      (states) => BorderSide(
+        color: states.contains(WidgetState.disabled)
+            ? pdfRedGlow.withValues(alpha: 0.20)
+            : pdfRedGlow.withValues(
+                alpha: states.contains(WidgetState.hovered) ? 0.72 : 0.52,
+              ),
+        width: states.contains(WidgetState.hovered) ? 1.7 : 1.45,
+      ),
+    ),
+    elevation: WidgetStateProperty.resolveWith(
+      (states) => states.contains(WidgetState.hovered) ? 2 : 0,
+    ),
   );
 }
 
@@ -2780,12 +3131,12 @@ Future<bool?> _showTicketDeleteConfirmDialog(
                       width: 42,
                       height: 42,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFB12720).withValues(alpha: 0.12),
+                        color: comprasAreaTokens.accent.withValues(alpha: 0.16),
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: const Icon(
+                      child: Icon(
                         Icons.delete_outline_rounded,
-                        color: Color(0xFFB12720),
+                        color: comprasAreaTokens.onGlass,
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -2851,10 +3202,10 @@ Future<DateTime?> _showComprasThemedDatePicker({
     lastDate: lastDate,
     builder: (context, child) {
       final theme = Theme.of(context);
-      const primary = Color(0xFFB12720);
-      const onPrimary = Colors.white;
-      const surface = Color(0xFFF6EFED);
-      const onSurface = Color(0xFF2A1615);
+      final primary = comprasAreaTokens.accent;
+      const onPrimary = Color(0xFF0B0E12);
+      const surface = Color(0xFF12171C);
+      final onSurface = comprasAreaTokens.onGlass;
       final colorScheme = theme.colorScheme.copyWith(
         primary: primary,
         onPrimary: onPrimary,
@@ -2882,13 +3233,13 @@ Future<DateTime?> _showComprasThemedDatePicker({
               return null;
             }),
             todayForegroundColor: WidgetStateProperty.all(primary),
-            todayBorder: const BorderSide(color: primary, width: 1.4),
+            todayBorder: BorderSide(color: primary, width: 1.4),
             confirmButtonStyle: TextButton.styleFrom(
               foregroundColor: primary,
               textStyle: const TextStyle(fontWeight: FontWeight.w900),
             ),
             cancelButtonStyle: TextButton.styleFrom(
-              foregroundColor: const Color(0xFF8C241D),
+              foregroundColor: comprasAreaTokens.onGlass,
               textStyle: const TextStyle(fontWeight: FontWeight.w900),
             ),
           ),
@@ -2985,8 +3336,8 @@ Future<DateTimeRange?> _showTicketDateRangeDialog(
             final colorScheme = theme.colorScheme.copyWith(
               primary: tokens.primaryStrong,
               secondary: tokens.primary,
-              surface: tokens.surfaceTint,
-              onSurface: tokens.badgeText,
+              surface: const Color(0xFF151A20),
+              onSurface: tokens.onGlass,
             );
 
             return Theme(
@@ -3326,11 +3677,9 @@ class _TicketFormSection extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.34),
+        color: comprasAreaTokens.glassSurface.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: const Color(0xFFD8B1AB).withValues(alpha: 0.48),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -3341,7 +3690,7 @@ class _TicketFormSection extends StatelessWidget {
                 width: 32,
                 height: 32,
                 decoration: BoxDecoration(
-                  color: const Color(0xFFB12720),
+                  color: comprasAreaTokens.accent,
                   borderRadius: BorderRadius.circular(999),
                 ),
                 child: Center(
@@ -3359,10 +3708,10 @@ class _TicketFormSection extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
-                    color: Color(0xFF7A1914),
+                    color: comprasAreaTokens.onGlass,
                   ),
                 ),
               ),
@@ -3401,14 +3750,12 @@ class _TicketInlinePreviewCard extends StatelessWidget {
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
           colors: [
-            const Color(0xFFF7E6E3),
-            const Color(0xFFF1D6D1).withValues(alpha: 0.88),
+            comprasAreaTokens.fieldSurface.withValues(alpha: 0.92),
+            comprasAreaTokens.glassSurface.withValues(alpha: 0.88),
           ],
         ),
         borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: const Color(0xFFD8B1AB).withValues(alpha: 0.66),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
       ),
       child: Wrap(
         spacing: 18,
@@ -3578,20 +3925,6 @@ class _ComprasTicketsSidePanel extends StatelessWidget {
                 child: Column(
                   children: [
                     _ComprasTicketsNavItem(
-                      icon: Icons.shopping_cart_checkout_rounded,
-                      title: 'Dashboard Compras',
-                      subtitle: 'Vista general del área',
-                      onTap: () async => onNavigate('Dashboard Compras'),
-                    ),
-                    const SizedBox(height: 8),
-                    _ComprasTicketsNavItem(
-                      icon: Icons.price_check_rounded,
-                      title: 'Catálogo Compras',
-                      subtitle: 'Proveedores, materiales y precios',
-                      onTap: () async => onNavigate('Catálogo Compras'),
-                    ),
-                    const SizedBox(height: 8),
-                    _ComprasTicketsNavItem(
                       icon: Icons.confirmation_number_outlined,
                       title: 'Tickets Compras',
                       subtitle: 'Captura y seguimiento operativo',
@@ -3607,6 +3940,13 @@ class _ComprasTicketsSidePanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     _ComprasTicketsNavItem(
+                      icon: Icons.price_check_rounded,
+                      title: 'Catálogo Compras',
+                      subtitle: 'Proveedores, materiales y precios',
+                      onTap: () async => onNavigate('Catálogo Compras'),
+                    ),
+                    const SizedBox(height: 8),
+                    _ComprasTicketsNavItem(
                       icon: Icons.badge_rounded,
                       title: 'Directorio Proveedores',
                       subtitle: 'Crédito, contacto y operación',
@@ -3618,21 +3958,27 @@ class _ComprasTicketsSidePanel extends StatelessWidget {
               const SizedBox(height: 14),
               const _ComprasTicketsSectionHeader(label: 'ACCESOS'),
               const SizedBox(height: 8),
-              if (canReturnToDirection) ...[
-                _ComprasTicketsNavItem(
-                  icon: Icons.assessment_outlined,
-                  title: 'Dashboard Dirección',
-                  subtitle: 'Vista ejecutiva multiarea',
-                  onTap: () async => onNavigate('Dashboard Dirección'),
-                ),
-                const SizedBox(height: 8),
-              ],
+              _ComprasTicketsNavItem(
+                icon: Icons.shopping_cart_checkout_rounded,
+                title: 'Dashboard Compras',
+                subtitle: 'Vista general del área',
+                onTap: () async => onNavigate('Dashboard Compras'),
+              ),
+              if (canAccessFinanzasArea) const SizedBox(height: 8),
               if (canAccessFinanzasArea)
                 _ComprasTicketsNavItem(
                   icon: Icons.account_balance_wallet_outlined,
                   title: 'Dashboard Finanzas',
                   subtitle: 'Pagos, liquidez y compromisos',
                   onTap: () async => onNavigate('Dashboard Finanzas'),
+                ),
+              if (canReturnToDirection) const SizedBox(height: 8),
+              if (canReturnToDirection)
+                _ComprasTicketsNavItem(
+                  icon: Icons.assessment_outlined,
+                  title: 'Dashboard Dirección',
+                  subtitle: 'Vista ejecutiva multiarea',
+                  onTap: () async => onNavigate('Dashboard Dirección'),
                 ),
             ],
           ),
@@ -3765,10 +4111,10 @@ class _TicketsPickerOptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final background = selected
-        ? comprasAreaTokens.badgeBackground.withValues(alpha: 0.90)
+        ? comprasAreaTokens.badgeBackground.withValues(alpha: 0.76)
         : highlighted
-        ? comprasAreaTokens.surfaceTint.withValues(alpha: 0.66)
-        : Colors.white.withValues(alpha: 0.44);
+        ? comprasAreaTokens.glassSurface.withValues(alpha: 0.82)
+        : comprasAreaTokens.fieldSurface.withValues(alpha: 0.72);
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
@@ -3784,10 +4130,10 @@ class _TicketsPickerOptionTile extends StatelessWidget {
                 Expanded(
                   child: Text(
                     label,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w800,
-                      color: kComprasInk,
+                      color: comprasAreaTokens.onGlass,
                     ),
                   ),
                 ),
@@ -3877,7 +4223,7 @@ Future<T?> _showTicketsSingleSelectDialog<T>(
                         style: const TextStyle(
                           fontSize: 18,
                           fontWeight: FontWeight.w900,
-                          color: Color(0xFF7A1914),
+                          color: kComprasInk,
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -3901,7 +4247,7 @@ Future<T?> _showTicketsSingleSelectDialog<T>(
                             onPressed: () =>
                                 Navigator.of(dialogContext).pop(null),
                             style: TextButton.styleFrom(
-                              foregroundColor: const Color(0xFF8C241D),
+                              foregroundColor: comprasAreaTokens.onGlass,
                               textStyle: const TextStyle(
                                 fontWeight: FontWeight.w900,
                               ),
@@ -4014,7 +4360,7 @@ Future<Set<T>?> _showTicketsMultiSelectDialog<T>(
                       style: const TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w900,
-                        color: Color(0xFF7A1914),
+                        color: kComprasInk,
                       ),
                     ),
                     const SizedBox(height: 14),
@@ -4023,8 +4369,8 @@ Future<Set<T>?> _showTicketsMultiSelectDialog<T>(
                         children: [
                           for (final option in options)
                             CheckboxListTile(
-                              activeColor: const Color(0xFFB12720),
-                              checkColor: Colors.white,
+                              activeColor: comprasAreaTokens.accent,
+                              checkColor: const Color(0xFF0B0E12),
                               value: selected.contains(option),
                               shape: RoundedRectangleBorder(
                                 borderRadius: BorderRadius.circular(14),
@@ -4064,7 +4410,7 @@ Future<Set<T>?> _showTicketsMultiSelectDialog<T>(
                           onPressed: () =>
                               setDialogState(() => selected.clear()),
                           style: TextButton.styleFrom(
-                            foregroundColor: const Color(0xFF8C241D),
+                            foregroundColor: comprasAreaTokens.onGlass,
                             textStyle: const TextStyle(
                               fontWeight: FontWeight.w900,
                             ),

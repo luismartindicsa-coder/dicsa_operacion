@@ -1219,20 +1219,6 @@ class _ComprasPriceAdjustmentsPageState
                     canReturnToDirection: _canReturnToDirection,
                     areaItems: [
                       ComprasAreaNavEntry(
-                        icon: Icons.shopping_cart_checkout_rounded,
-                        title: 'Dashboard Compras',
-                        subtitle: 'Tickets y operación de compra',
-                        onTap: () async =>
-                            _handleNavigationAction('Dashboard Compras'),
-                      ),
-                      ComprasAreaNavEntry(
-                        icon: Icons.price_check_rounded,
-                        title: 'Catálogo Compras',
-                        subtitle: 'Proveedores, materiales y precios',
-                        onTap: () async =>
-                            _handleNavigationAction('Catálogo Compras'),
-                      ),
-                      ComprasAreaNavEntry(
                         icon: Icons.confirmation_number_outlined,
                         title: 'Tickets Compras',
                         subtitle: 'Captura y seguimiento operativo',
@@ -1246,6 +1232,13 @@ class _ComprasPriceAdjustmentsPageState
                         accented: true,
                       ),
                       ComprasAreaNavEntry(
+                        icon: Icons.price_check_rounded,
+                        title: 'Catálogo Compras',
+                        subtitle: 'Proveedores, materiales y precios',
+                        onTap: () async =>
+                            _handleNavigationAction('Catálogo Compras'),
+                      ),
+                      ComprasAreaNavEntry(
                         icon: Icons.badge_rounded,
                         title: 'Directorio Proveedores',
                         subtitle: 'Crédito, contacto y operación',
@@ -1254,14 +1247,13 @@ class _ComprasPriceAdjustmentsPageState
                       ),
                     ],
                     accessItems: [
-                      if (_canReturnToDirection)
-                        ComprasAreaNavEntry(
-                          icon: Icons.assessment_outlined,
-                          title: 'Dashboard Dirección',
-                          subtitle: 'Vista ejecutiva multiarea',
-                          onTap: () async =>
-                              _handleNavigationAction('Dashboard Dirección'),
-                        ),
+                      ComprasAreaNavEntry(
+                        icon: Icons.shopping_cart_checkout_rounded,
+                        title: 'Dashboard Compras',
+                        subtitle: 'Tickets y operación de compra',
+                        onTap: () async =>
+                            _handleNavigationAction('Dashboard Compras'),
+                      ),
                       if (_canAccessFinanzasArea)
                         ComprasAreaNavEntry(
                           icon: Icons.account_balance_wallet_outlined,
@@ -1269,6 +1261,14 @@ class _ComprasPriceAdjustmentsPageState
                           subtitle: 'Pagos, liquidez y compromisos',
                           onTap: () async =>
                               _handleNavigationAction('Dashboard Finanzas'),
+                        ),
+                      if (_canReturnToDirection)
+                        ComprasAreaNavEntry(
+                          icon: Icons.assessment_outlined,
+                          title: 'Dashboard Dirección',
+                          subtitle: 'Vista ejecutiva multiarea',
+                          onTap: () async =>
+                              _handleNavigationAction('Dashboard Dirección'),
                         ),
                     ],
                   ),
@@ -1453,7 +1453,7 @@ class _MayoreoAdjustmentWorkspaceCard extends StatelessWidget {
           Container(
             constraints: const BoxConstraints(maxHeight: 320),
             decoration: BoxDecoration(
-              color: comprasAreaTokens.surfaceTint.withValues(alpha: 0.72),
+              color: comprasAreaTokens.fieldSurface.withValues(alpha: 0.66),
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: comprasAreaTokens.border.withValues(alpha: 0.76),
@@ -1522,6 +1522,11 @@ class _MayoreoAdjustmentWorkspaceCard extends StatelessWidget {
           TextField(
             controller: adjustmentValueC,
             onChanged: (_) => onRefreshPreview(),
+            cursorColor: comprasAreaTokens.primaryStrong,
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: comprasAreaTokens.onGlass,
+            ),
             keyboardType: const TextInputType.numberWithOptions(
               signed: false,
               decimal: true,
@@ -1540,6 +1545,11 @@ class _MayoreoAdjustmentWorkspaceCard extends StatelessWidget {
           TextField(
             controller: reasonC,
             onChanged: (_) => onRefreshPreview(),
+            cursorColor: comprasAreaTokens.primaryStrong,
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: comprasAreaTokens.onGlass,
+            ),
             inputFormatters: [
               TextInputFormatter.withFunction((oldValue, newValue) {
                 final normalized = newValue.text
@@ -1624,6 +1634,11 @@ InputDecoration _adjustmentFieldDecoration(
   ).copyWith(
     isDense: true,
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    fillColor: comprasAreaTokens.fieldSurface.withValues(alpha: 0.90),
+    hintStyle: TextStyle(
+      color: comprasAreaTokens.badgeText.withValues(alpha: 0.76),
+      fontWeight: FontWeight.w700,
+    ),
   );
 }
 
@@ -1666,7 +1681,7 @@ class _AdjustmentTag extends StatelessWidget {
         decoration: BoxDecoration(
           color: selected
               ? comprasAreaTokens.primaryStrong.withValues(alpha: 0.14)
-              : comprasAreaTokens.surfaceTint.withValues(alpha: 0.86),
+              : comprasAreaTokens.fieldSurface.withValues(alpha: 0.72),
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
             color: selected
@@ -1748,7 +1763,7 @@ class _AdjustmentPreviewSurface extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: comprasAreaTokens.surfaceTint.withValues(alpha: 0.82),
+        color: comprasAreaTokens.glassSurface.withValues(alpha: 0.78),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: comprasAreaTokens.border.withValues(alpha: 0.76),
@@ -1821,7 +1836,7 @@ class _AdjustmentPreviewRow extends StatelessWidget {
             fontWeight: FontWeight.w900,
             color: emphasized
                 ? comprasAreaTokens.primaryStrong
-                : const Color(0xFF1F262B),
+                : comprasAreaTokens.onGlass,
           ),
         ),
       ],
@@ -2064,7 +2079,7 @@ class _MayoreoHistoryWorkspaceCard extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.66),
+                color: comprasAreaTokens.glassSurface.withValues(alpha: 0.72),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: comprasAreaTokens.border.withValues(alpha: 0.74),
@@ -2101,7 +2116,7 @@ class _MayoreoHistoryWorkspaceCard extends StatelessWidget {
           Expanded(
             child: Container(
               decoration: BoxDecoration(
-                color: comprasAreaTokens.surfaceTint.withValues(alpha: 0.72),
+                color: comprasAreaTokens.fieldSurface.withValues(alpha: 0.68),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: comprasAreaTokens.border.withValues(alpha: 0.76),
@@ -2139,7 +2154,7 @@ class _MayoreoHistoryRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.76),
+        color: comprasAreaTokens.fieldSurface.withValues(alpha: 0.76),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
           color: comprasAreaTokens.border.withValues(alpha: 0.68),
@@ -2355,7 +2370,7 @@ class _HistoryCompactPickerFieldState
             height: 48,
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.72),
+              color: comprasAreaTokens.fieldSurface.withValues(alpha: 0.82),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: comprasAreaTokens.border.withValues(alpha: 0.78),
@@ -2464,7 +2479,7 @@ class _HistoryTrendStrip extends StatelessWidget {
       height: 138,
       padding: const EdgeInsets.fromLTRB(10, 10, 10, 8),
       decoration: BoxDecoration(
-        color: tokens.surfaceTint.withValues(alpha: 0.72),
+        color: tokens.fieldSurface.withValues(alpha: 0.68),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: tokens.border.withValues(alpha: 0.68)),
       ),
@@ -2745,6 +2760,7 @@ class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
                         controller: searchC,
                         focusNode: searchFocus,
                         autofocus: true,
+                        cursorColor: comprasAreaTokens.primaryStrong,
                         decoration: _adjustmentFieldDecoration(
                           context,
                           hintText: 'Buscar',
@@ -2755,7 +2771,7 @@ class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
                         ),
                         style: TextStyle(
                           fontWeight: FontWeight.w800,
-                          color: comprasAreaTokens.primaryStrong,
+                          color: comprasAreaTokens.onGlass,
                         ),
                         onChanged: (value) => setLocalState(() {
                           query = value.trim().toUpperCase();
@@ -2844,7 +2860,7 @@ class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
             height: 48,
             padding: const EdgeInsets.symmetric(horizontal: 14),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.72),
+              color: comprasAreaTokens.fieldSurface.withValues(alpha: 0.88),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: comprasAreaTokens.border.withValues(alpha: 0.78),
@@ -2867,14 +2883,14 @@ class _AdjustmentFilterFieldState extends State<_AdjustmentFilterField> {
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
                       color: widget.value == null
-                          ? comprasAreaTokens.badgeText.withValues(alpha: 0.72)
-                          : comprasAreaTokens.primaryStrong,
+                          ? comprasAreaTokens.onGlass.withValues(alpha: 0.82)
+                          : comprasAreaTokens.onGlass,
                     ),
                   ),
                 ),
                 Icon(
                   Icons.arrow_drop_down_rounded,
-                  color: comprasAreaTokens.primaryStrong,
+                  color: comprasAreaTokens.onGlass,
                 ),
               ],
             ),
@@ -2920,8 +2936,8 @@ class _AdjustmentPickerOptionState extends State<_AdjustmentPickerOption> {
             decoration: BoxDecoration(
               color: widget.selected
                   ? comprasAreaTokens.primaryStrong.withValues(alpha: 0.12)
-                  : comprasAreaTokens.surfaceTint.withValues(
-                      alpha: _hovered ? 0.9 : 0.76,
+                  : comprasAreaTokens.fieldSurface.withValues(
+                      alpha: _hovered ? 0.84 : 0.72,
                     ),
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
@@ -2997,11 +3013,11 @@ class _MayoreoAdjustmentUniverseRowState
         curve: Curves.easeOutCubic,
         decoration: BoxDecoration(
           color: widget.active
-              ? comprasAreaTokens.primaryStrong.withValues(alpha: 0.14)
-              : widget.selected
               ? comprasAreaTokens.primaryStrong.withValues(alpha: 0.10)
-              : comprasAreaTokens.surfaceTint.withValues(
-                  alpha: _hovered ? 0.90 : 0.76,
+              : widget.selected
+              ? comprasAreaTokens.primaryStrong.withValues(alpha: 0.08)
+              : comprasAreaTokens.fieldSurface.withValues(
+                  alpha: _hovered ? 0.82 : 0.68,
                 ),
           borderRadius: BorderRadius.circular(18),
           border: Border.all(
@@ -3051,8 +3067,8 @@ class _MayoreoAdjustmentUniverseRowState
                           ? comprasAreaTokens.primaryStrong.withValues(
                               alpha: 0.18,
                             )
-                          : comprasAreaTokens.badgeBackground.withValues(
-                              alpha: 0.92,
+                          : comprasAreaTokens.glassSurface.withValues(
+                              alpha: 0.72,
                             ),
                       borderRadius: BorderRadius.circular(18),
                       border: Border.all(
@@ -3187,7 +3203,7 @@ class _AdjustmentPriceChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: highlighted
             ? comprasAreaTokens.primaryStrong.withValues(alpha: 0.14)
-            : Colors.white.withValues(alpha: 0.76),
+            : comprasAreaTokens.glassSurface.withValues(alpha: 0.76),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(
           color: highlighted
@@ -3215,7 +3231,7 @@ class _AdjustmentPriceChip extends StatelessWidget {
               fontWeight: FontWeight.w900,
               color: highlighted
                   ? comprasAreaTokens.primaryStrong
-                  : kComprasInk,
+                  : comprasAreaTokens.onGlass,
             ),
           ),
         ],
@@ -3290,22 +3306,24 @@ class _MayoreoPriceHeaderButtonState extends State<_MayoreoPriceHeaderButton> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.white.withValues(alpha: highlighted ? 0.32 : 0.22),
-                    tokens.surfaceTint.withValues(
-                      alpha: highlighted ? 0.42 : 0.26,
+                    tokens.fieldSurface.withValues(
+                      alpha: highlighted ? 0.96 : 0.88,
+                    ),
+                    tokens.glassSurface.withValues(
+                      alpha: highlighted ? 0.92 : 0.82,
                     ),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
                   color: highlighted
-                      ? Colors.white.withValues(alpha: 0.76)
-                      : Colors.white.withValues(alpha: 0.48),
+                      ? tokens.primaryStrong.withValues(alpha: 0.58)
+                      : tokens.border.withValues(alpha: 0.72),
                 ),
                 boxShadow: [
                   BoxShadow(
                     blurRadius: highlighted ? 28 : 16,
-                    color: Colors.black.withValues(
+                    color: tokens.primaryStrong.withValues(
                       alpha: highlighted ? 0.16 : 0.08,
                     ),
                     offset: Offset(0, highlighted ? 14 : 8),
@@ -3315,12 +3333,19 @@ class _MayoreoPriceHeaderButtonState extends State<_MayoreoPriceHeaderButton> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(widget.icon, color: tokens.primaryStrong),
+                  Icon(
+                    widget.icon,
+                    color: enabled
+                        ? tokens.onGlass
+                        : tokens.badgeText.withValues(alpha: 0.62),
+                  ),
                   const SizedBox(width: 10),
                   Text(
                     widget.label,
                     style: TextStyle(
-                      color: tokens.primaryStrong,
+                      color: enabled
+                          ? tokens.onGlass
+                          : tokens.badgeText.withValues(alpha: 0.62),
                       fontSize: 14,
                       fontWeight: FontWeight.w800,
                     ),
@@ -3389,20 +3414,6 @@ class _MayoreoPriceSidePanel extends StatelessWidget {
                 child: Column(
                   children: [
                     _MayoreoPriceNavItem(
-                      icon: Icons.shopping_cart_checkout_rounded,
-                      title: 'Dashboard Compras',
-                      subtitle: 'Tickets y operación de compra',
-                      onTapSync: () => onNavigate('Dashboard Compras'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MayoreoPriceNavItem(
-                      icon: Icons.price_check_rounded,
-                      title: 'Catálogo Compras',
-                      subtitle: 'Proveedores, materiales y precios',
-                      onTapSync: () => onNavigate('Catálogo Compras'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MayoreoPriceNavItem(
                       icon: Icons.confirmation_number_outlined,
                       title: 'Tickets Compras',
                       subtitle: 'Captura y seguimiento operativo',
@@ -3417,6 +3428,13 @@ class _MayoreoPriceSidePanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     _MayoreoPriceNavItem(
+                      icon: Icons.price_check_rounded,
+                      title: 'Catálogo Compras',
+                      subtitle: 'Proveedores, materiales y precios',
+                      onTapSync: () => onNavigate('Catálogo Compras'),
+                    ),
+                    const SizedBox(height: 8),
+                    _MayoreoPriceNavItem(
                       icon: Icons.badge_rounded,
                       title: 'Directorio Proveedores',
                       subtitle: 'Crédito, contacto y operación',
@@ -3428,21 +3446,27 @@ class _MayoreoPriceSidePanel extends StatelessWidget {
               const SizedBox(height: 14),
               const _MayoreoPriceSectionHeader(label: 'ACCESOS'),
               const SizedBox(height: 8),
-              if (canReturnToDirection) ...[
-                _MayoreoPriceNavItem(
-                  icon: Icons.assessment_outlined,
-                  title: 'Dashboard Dirección',
-                  subtitle: 'Vista ejecutiva multiarea',
-                  onTapSync: () => onNavigate('Dashboard Dirección'),
-                ),
-                const SizedBox(height: 8),
-              ],
+              _MayoreoPriceNavItem(
+                icon: Icons.shopping_cart_checkout_rounded,
+                title: 'Dashboard Compras',
+                subtitle: 'Tickets y operación de compra',
+                onTapSync: () => onNavigate('Dashboard Compras'),
+              ),
+              if (canAccessFinanzasArea) const SizedBox(height: 8),
               if (canAccessFinanzasArea)
                 _MayoreoPriceNavItem(
                   icon: Icons.account_balance_wallet_outlined,
                   title: 'Dashboard Finanzas',
                   subtitle: 'Pagos, liquidez y compromisos',
                   onTapSync: () => onNavigate('Dashboard Finanzas'),
+                ),
+              if (canReturnToDirection) const SizedBox(height: 8),
+              if (canReturnToDirection)
+                _MayoreoPriceNavItem(
+                  icon: Icons.assessment_outlined,
+                  title: 'Dashboard Dirección',
+                  subtitle: 'Vista ejecutiva multiarea',
+                  onTapSync: () => onNavigate('Dashboard Dirección'),
                 ),
             ],
           ),

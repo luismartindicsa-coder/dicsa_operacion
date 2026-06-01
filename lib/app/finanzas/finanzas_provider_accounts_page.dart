@@ -1,7 +1,12 @@
 import 'dart:async';
+import 'dart:io';
+import 'dart:ui';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
@@ -11,6 +16,7 @@ import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/utils/file_download_save.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import 'finanzas_bank_accounts_store.dart';
@@ -19,6 +25,9 @@ import 'finanzas_catalog_page.dart';
 import 'finanzas_company_directory_page.dart';
 import 'finanzas_company_directory_store.dart';
 import 'finanzas_dashboard_page.dart';
+import 'finanzas_evidence_store.dart';
+import 'finanzas_fixed_payments_page.dart';
+import 'finanzas_payment_center_page.dart';
 import 'finanzas_provider_accounts_store.dart';
 import 'finanzas_theme.dart';
 
@@ -92,8 +101,13 @@ class _FinanzasProviderAccountsPageState
       FinanzasProviderAccountsStore.loadInvoiceTickets(),
       FinanzasBankAccountsStore.loadMovements(),
       ComprasTicketsStore.loadProviderMovements(),
+      ComprasTicketsStore.loadTicketPaymentApplications(),
       FinanzasProviderAccountsStore.loadAgreements(),
       FinanzasProviderAccountsStore.loadAgreementInstallments(),
+      FinanzasProviderAccountsStore.loadAgreementInvoices(),
+      FinanzasEvidenceStore.loadByOwnerType(
+        kFinanzasEvidenceOwnerTypeSupplierInvoice,
+      ),
     ]);
     if (!mounted) return;
     final directory = results[0] as List<FinanzasCompanyDirectoryRecord>;
@@ -104,9 +118,14 @@ class _FinanzasProviderAccountsPageState
     final bankMovements = results[4] as List<FinanzasBankMovementRecord>;
     final providerCashMovements =
         results[5] as List<ComprasProviderMovementRecord>;
-    final agreements = results[6] as List<FinanzasSupplierAgreementRecord>;
+    final ticketApplications =
+        results[6] as List<ComprasTicketPaymentApplicationRecord>;
+    final agreements = results[7] as List<FinanzasSupplierAgreementRecord>;
     final agreementInstallments =
-        results[7] as List<FinanzasSupplierAgreementInstallmentRecord>;
+        results[8] as List<FinanzasSupplierAgreementInstallmentRecord>;
+    final agreementInvoices =
+        results[9] as List<FinanzasSupplierAgreementInvoiceRecord>;
+    final invoiceEvidences = results[10] as List<FinanzasEvidenceRecord>;
     final accounts = _buildAccounts(
       directory,
       tickets,
@@ -114,8 +133,11 @@ class _FinanzasProviderAccountsPageState
       invoiceTickets,
       bankMovements,
       providerCashMovements,
+      ticketApplications,
       agreements,
       agreementInstallments,
+      agreementInvoices,
+      invoiceEvidences,
     );
     setState(() {
       _accounts = accounts;
@@ -135,8 +157,11 @@ class _FinanzasProviderAccountsPageState
     List<FinanzasSupplierInvoiceTicketRecord> invoiceTickets,
     List<FinanzasBankMovementRecord> bankMovements,
     List<ComprasProviderMovementRecord> providerCashMovements,
+    List<ComprasTicketPaymentApplicationRecord> ticketApplications,
     List<FinanzasSupplierAgreementRecord> agreements,
     List<FinanzasSupplierAgreementInstallmentRecord> agreementInstallments,
+    List<FinanzasSupplierAgreementInvoiceRecord> agreementInvoices,
+    List<FinanzasEvidenceRecord> invoiceEvidences,
   ) {
     final providerDirectory = directory
         .where(
@@ -196,6 +221,45 @@ class _FinanzasProviderAccountsPageState
             () => <FinanzasSupplierAgreementRecord>[],
           )
           .add(agreement);
+    }
+    final invoicesById = <String, FinanzasSupplierInvoiceRecord>{
+      for (final invoice in invoices) invoice.id: invoice,
+    };
+    final agreementInvoiceLinksByAgreementId =
+        <String, List<FinanzasSupplierAgreementInvoiceRecord>>{};
+    for (final link in agreementInvoices) {
+      agreementInvoiceLinksByAgreementId
+          .putIfAbsent(
+            link.agreementId,
+            () => <FinanzasSupplierAgreementInvoiceRecord>[],
+          )
+          .add(link);
+    }
+    final evidencesByInvoiceId = <String, List<FinanzasEvidenceRecord>>{};
+    for (final evidence in invoiceEvidences) {
+      evidencesByInvoiceId
+          .putIfAbsent(evidence.ownerId, () => <FinanzasEvidenceRecord>[])
+          .add(evidence);
+    }
+    final providerMovementById = <String, ComprasProviderMovementRecord>{
+      for (final row in providerCashMovements) row.id: row,
+    };
+    final ticketApplicationsByTicketId =
+        <String, List<_ProviderTicketApplicationView>>{};
+    for (final application in ticketApplications) {
+      final movement = providerMovementById[application.providerMovementId];
+      if (movement == null) continue;
+      ticketApplicationsByTicketId
+          .putIfAbsent(
+            application.ticketId,
+            () => <_ProviderTicketApplicationView>[],
+          )
+          .add(
+            _ProviderTicketApplicationView(
+              application: application,
+              movement: movement,
+            ),
+          );
     }
 
     final today = DateUtils.dateOnly(DateTime.now());
@@ -257,6 +321,22 @@ class _FinanzasProviderAccountsPageState
                               agreementInstallmentsByAgreementId[agreement.id]
                                   ?.toList(growable: false) ??
                               <FinanzasSupplierAgreementInstallmentRecord>[],
+                          invoiceLinks:
+                              agreementInvoiceLinksByAgreementId[agreement.id]
+                                  ?.map((link) {
+                                    final invoice =
+                                        invoicesById[link.invoiceId];
+                                    if (invoice == null) return null;
+                                    return _ProviderAgreementInvoiceLinkView(
+                                      link: link,
+                                      invoice: invoice,
+                                    );
+                                  })
+                                  .whereType<
+                                    _ProviderAgreementInvoiceLinkView
+                                  >()
+                                  .toList(growable: false) ??
+                              <_ProviderAgreementInvoiceLinkView>[],
                         ),
                       )
                       .toList(growable: false) ??
@@ -265,6 +345,30 @@ class _FinanzasProviderAccountsPageState
                 (a, b) =>
                     b.agreement.startDate.compareTo(a.agreement.startDate),
               );
+              final providerInvoiceViews = providerInvoices
+                  .map(
+                    (invoice) => _ProviderInvoiceView(
+                      invoice: invoice,
+                      bankMovement: bankMovementByInvoiceId[invoice.id],
+                      tickets:
+                          invoiceTicketsByInvoiceId[invoice.id]?.toList(
+                            growable: false,
+                          ) ??
+                          const <ComprasTicketRecord>[],
+                      evidences:
+                          evidencesByInvoiceId[invoice.id]?.toList(
+                            growable: false,
+                          ) ??
+                          const <FinanzasEvidenceRecord>[],
+                    ),
+                  )
+                  .toList(growable: false);
+              final reconciledTicketStatuses = _buildReconciledTicketStatuses(
+                tickets: rows,
+                invoices: providerInvoiceViews,
+                ticketApplicationsByTicketId: ticketApplicationsByTicketId,
+              );
+
               double total = 0;
               double open = 0;
               double facturado = 0;
@@ -275,11 +379,18 @@ class _FinanzasProviderAccountsPageState
               var abiertos = 0;
               DateTime? nextCommitment;
               for (final ticket in rows) {
+                final resolved =
+                    reconciledTicketStatuses[ticket.id] ??
+                    _ProviderTicketStatusView(
+                      appliedAmount: 0,
+                      pagoStatus: ticket.pagoStatus,
+                      coverageStatus: ticket.coverageStatus,
+                    );
                 total += ticket.amount;
                 final dueDate = DateUtils.dateOnly(
                   ticket.date.add(Duration(days: company.creditDays)),
                 );
-                if (ticket.pagoStatus == 'PAGADO') {
+                if (resolved.pagoStatus == 'PAGADO') {
                   pagado += ticket.amount;
                   continue;
                 }
@@ -324,22 +435,12 @@ class _FinanzasProviderAccountsPageState
               return _ProviderAccountView(
                 company: company,
                 tickets: rows,
-                invoices: providerInvoices
-                    .map(
-                      (invoice) => _ProviderInvoiceView(
-                        invoice: invoice,
-                        bankMovement: bankMovementByInvoiceId[invoice.id],
-                        tickets:
-                            invoiceTicketsByInvoiceId[invoice.id]?.toList(
-                              growable: false,
-                            ) ??
-                            const <ComprasTicketRecord>[],
-                      ),
-                    )
-                    .toList(growable: false),
+                reconciledTicketStatuses: reconciledTicketStatuses,
+                invoices: providerInvoiceViews,
                 movements: providerMovements,
                 cashMovements: providerCashMovementRows,
                 agreements: providerAgreements,
+                ticketApplicationsByTicketId: ticketApplicationsByTicketId,
                 totalAmount: total,
                 openAmount: open,
                 facturadoAmount: facturado,
@@ -369,6 +470,17 @@ class _FinanzasProviderAccountsPageState
       return company.companyId.substring('compras_'.length);
     }
     return company.companyId;
+  }
+
+  (String, String) _suggestTargetForProvider(
+    FinanzasCompanyDirectoryRecord company,
+  ) {
+    final raw =
+        '${company.companyName} ${company.linkedName} ${company.location} ${company.paymentNotes}'
+            .toUpperCase();
+    final targetCompany = raw.contains('VH') ? 'VH' : 'DICSA';
+    final targetBranch = raw.contains('MAZATLAN') ? 'MAZATLAN' : 'CELAYA';
+    return (targetCompany, targetBranch);
   }
 
   (String, Color) _buildUrgency({
@@ -448,6 +560,448 @@ class _FinanzasProviderAccountsPageState
     );
   }
 
+  Future<void> _printAccountReportFor(_ProviderAccountView account) async {
+    if (account.tickets.isEmpty &&
+        account.movements.isEmpty &&
+        account.cashMovements.isEmpty) {
+      _toast('Esta cuenta todavía no tiene información para imprimir.');
+      return;
+    }
+    final preset = await _showAccountReportPresetDialog(
+      context,
+      providerName: account.company.companyName,
+    );
+    if (preset == _kDismissedAccountReportPreset) return;
+    try {
+      final pdfBytes = await _buildAccountReportPdfBytes(
+        account,
+        preset: preset,
+      );
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final file = File(
+        '${Directory.systemTemp.path}/finanzas_cuenta_${account.company.companyName.replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_').toLowerCase()}_$stamp.pdf',
+      );
+      await file.writeAsBytes(pdfBytes, flush: true);
+      await _openPdfFile(file.path);
+    } catch (error) {
+      _toast('No se pudo abrir la cuenta en PDF: $error');
+    }
+  }
+
+  Future<Uint8List> _buildAccountReportPdfBytes(
+    _ProviderAccountView account, {
+    _AccountReportPreset? preset,
+  }) async {
+    final doc = pw.Document();
+    pw.MemoryImage? logoImage;
+    try {
+      final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+      logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+    } catch (_) {}
+
+    final reportTickets =
+        (preset == null
+                ? account.tickets
+                : account.tickets.where(
+                    (row) => _matchesAccountReportPreset(row.date, preset),
+                  ))
+            .toList(growable: false);
+    if (reportTickets.isEmpty) {
+      throw Exception('No hay tickets en ese rango.');
+    }
+    final reportTicketIds = reportTickets.map((row) => row.id).toSet();
+    final now = DateTime.now();
+    final printedAt =
+        '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    final ticketTotal = reportTickets.fold<double>(
+      0,
+      (sum, row) => sum + row.amount,
+    );
+    final directApplicationsByTicketId =
+        <String, List<_ProviderTicketSettlementView>>{};
+    for (final ticket in reportTickets) {
+      final applications =
+          account.ticketApplicationsByTicketId[ticket.id]?.toList(
+            growable: false,
+          ) ??
+          const <_ProviderTicketApplicationView>[];
+      for (final item in applications) {
+        directApplicationsByTicketId
+            .putIfAbsent(ticket.id, () => <_ProviderTicketSettlementView>[])
+            .add(
+              _ProviderTicketSettlementView(
+                date: item.application.appliedAt,
+                reference: item.movement.reference,
+                sourceLabel: _providerMovementSourceLabel(item.movement.source),
+                amount: item.application.appliedAmount,
+              ),
+            );
+      }
+    }
+    final bankApplicationsByTicketId = _buildBankApplicationsByTicket(
+      account.invoices,
+      reportTicketIds,
+    );
+
+    final prioritizedTickets = <ComprasTicketRecord>[
+      ...reportTickets.where(
+        (row) => row.coverageStatus != 'CUBIERTO' || row.pagoStatus != 'PAGADO',
+      ),
+      ...reportTickets
+          .where(
+            (row) =>
+                row.coverageStatus == 'CUBIERTO' && row.pagoStatus == 'PAGADO',
+          )
+          .take(30),
+    ];
+    final providerPaymentRowsById = <String, _ProviderAccountPaymentRow>{};
+    double paymentTotal = 0;
+    double openTotal = 0;
+    for (final ticket in reportTickets) {
+      final directApplications =
+          directApplicationsByTicketId[ticket.id]?.toList(growable: false) ??
+          const <_ProviderTicketSettlementView>[];
+      final bankApplications =
+          bankApplicationsByTicketId[ticket.id]?.toList(growable: false) ??
+          const <_ProviderTicketSettlementView>[];
+      final appliedFromCash = directApplications.fold<double>(
+        0,
+        (sum, item) => sum + item.amount,
+      );
+      for (final item in directApplications) {
+        final id =
+            'cash-${ticket.id}-${item.date.microsecondsSinceEpoch}-${item.reference}-${item.amount}';
+        providerPaymentRowsById.putIfAbsent(
+          id,
+          () => _ProviderAccountPaymentRow(
+            id: id,
+            date: item.date,
+            sourceLabel: item.sourceLabel,
+            reference: item.reference,
+            typeLabel: 'Abono',
+            amount: item.amount,
+          ),
+        );
+      }
+      final bankCoverage = bankApplications.fold<double>(
+        0,
+        (sum, item) => sum + item.amount,
+      );
+      final appliedTotal = (appliedFromCash + bankCoverage).clamp(
+        0,
+        ticket.amount,
+      );
+      paymentTotal += appliedTotal;
+      openTotal += (ticket.amount - appliedTotal).clamp(0, double.infinity);
+      for (final item in bankApplications) {
+        final id =
+            'bank-${ticket.id}-${item.date.microsecondsSinceEpoch}-${item.reference}-${item.amount}';
+        providerPaymentRowsById.putIfAbsent(
+          id,
+          () => _ProviderAccountPaymentRow(
+            id: id,
+            date: item.date,
+            sourceLabel: item.sourceLabel,
+            reference: item.reference,
+            typeLabel: 'Factura proveedor',
+            amount: item.amount,
+          ),
+        );
+      }
+    }
+    final paymentRows = providerPaymentRowsById.values.toList(growable: false)
+      ..sort((a, b) => a.date.compareTo(b.date));
+
+    pw.Widget summaryCard(String label, String value) {
+      return pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: pw.BoxDecoration(
+            color: PdfColor.fromHex('#F3D9D4'),
+            borderRadius: pw.BorderRadius.circular(14),
+            border: pw.Border.all(color: PdfColor.fromHex('#D8A39A')),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                label,
+                style: pw.TextStyle(
+                  fontSize: 9.2,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColor.fromHex('#8B2A1B'),
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Text(
+                value,
+                style: pw.TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: PdfColor.fromHex('#3F130C'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 28),
+        build: (_) => [
+          pw.Row(
+            children: [
+              if (logoImage != null)
+                pw.SizedBox(
+                  width: 42,
+                  height: 28,
+                  child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                ),
+              if (logoImage != null) pw.SizedBox(width: 10),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'REPORTE',
+                      style: pw.TextStyle(
+                        fontSize: 17,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      account.company.companyName,
+                      style: pw.TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: pw.FontWeight.bold,
+                      ),
+                    ),
+                    if (preset != null) ...[
+                      pw.SizedBox(height: 2),
+                      pw.Text(
+                        preset.label.toUpperCase(),
+                        style: const pw.TextStyle(fontSize: 9.4),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              pw.Text(printedAt, style: const pw.TextStyle(fontSize: 9.5)),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.Row(
+            children: [
+              summaryCard('TICKETS TOTAL', _money(ticketTotal)),
+              pw.SizedBox(width: 10),
+              summaryCard('ABONOS TOTAL', _money(paymentTotal)),
+              pw.SizedBox(width: 10),
+              summaryCard('SALDO PENDIENTE', _money(openTotal)),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.Text(
+            'TICKETS',
+            style: pw.TextStyle(
+              fontSize: 12.5,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColor.fromHex('#7A1914'),
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColor.fromHex('#D8A39A')),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(0.95),
+              1: const pw.FlexColumnWidth(0.95),
+              2: const pw.FlexColumnWidth(1.35),
+              3: const pw.FlexColumnWidth(0.9),
+              4: const pw.FlexColumnWidth(0.95),
+              5: const pw.FlexColumnWidth(0.9),
+              6: const pw.FlexColumnWidth(0.95),
+              7: const pw.FlexColumnWidth(1.9),
+            },
+            children: [
+              pw.TableRow(
+                decoration: pw.BoxDecoration(
+                  color: PdfColor.fromHex('#F3D9D4'),
+                ),
+                children:
+                    [
+                          'TICKET',
+                          'FECHA',
+                          'MATERIAL',
+                          'IMPORTE',
+                          'PAGO',
+                          'COB.',
+                          'APLICADO',
+                          'ABONOS',
+                        ]
+                        .map(
+                          (label) => pw.Padding(
+                            padding: const pw.EdgeInsets.all(7),
+                            child: pw.Text(
+                              label,
+                              style: pw.TextStyle(
+                                fontSize: 9.4,
+                                fontWeight: pw.FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+              ),
+              for (final row in prioritizedTickets)
+                pw.TableRow(
+                  children: () {
+                    final ticketApplications = <_ProviderTicketSettlementView>[
+                      ...?directApplicationsByTicketId[row.id],
+                      ...?bankApplicationsByTicketId[row.id],
+                    ]..sort((a, b) => a.date.compareTo(b.date));
+                    final appliedAmount = ticketApplications.fold<double>(
+                      0,
+                      (sum, item) => sum + item.amount,
+                    );
+                    final fullyCovered = appliedAmount >= row.amount - 0.009;
+                    final effectivePago = fullyCovered
+                        ? 'PAGADO'
+                        : appliedAmount > 0.009
+                        ? 'ABONO'
+                        : 'PENDIENTE_DE_PAGO';
+                    final effectiveCoverage = fullyCovered
+                        ? 'CUBIERTO'
+                        : appliedAmount > 0.009
+                        ? 'PARCIAL'
+                        : 'SIN_CUBRIR';
+                    final references = ticketApplications.isEmpty
+                        ? 'SIN ABONOS'
+                        : ticketApplications
+                              .map((item) {
+                                final reference = item.reference.trim().isEmpty
+                                    ? 'SIN REF'
+                                    : item.reference.trim();
+                                return '$reference ${_money(item.amount)}';
+                              })
+                              .join(' | ');
+                    return <String>[
+                          row.ticket,
+                          _dateLabel(row.date),
+                          row.materialNameSnapshot,
+                          _money(row.amount),
+                          comprasPagoStatusLabel(effectivePago),
+                          comprasCoverageStatusLabel(effectiveCoverage),
+                          appliedAmount <= 0
+                              ? _money(0)
+                              : _money(appliedAmount),
+                          references,
+                        ]
+                        .map(
+                          (value) => pw.Padding(
+                            padding: const pw.EdgeInsets.all(7),
+                            child: pw.Text(
+                              value,
+                              style: const pw.TextStyle(fontSize: 9.2),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false);
+                  }(),
+                ),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.Text(
+            'ABONOS',
+            style: pw.TextStyle(
+              fontSize: 12.5,
+              fontWeight: pw.FontWeight.bold,
+              color: PdfColor.fromHex('#7A1914'),
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Table(
+            border: pw.TableBorder.all(color: PdfColor.fromHex('#D8A39A')),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(1.0),
+              1: const pw.FlexColumnWidth(1.2),
+              2: const pw.FlexColumnWidth(1.1),
+              3: const pw.FlexColumnWidth(1.4),
+              4: const pw.FlexColumnWidth(1.0),
+            },
+            children: [
+              pw.TableRow(
+                decoration: pw.BoxDecoration(
+                  color: PdfColor.fromHex('#F3D9D4'),
+                ),
+                children: ['FECHA', 'ORIGEN', 'TIPO', 'REFERENCIA', 'IMPORTE']
+                    .map(
+                      (label) => pw.Padding(
+                        padding: const pw.EdgeInsets.all(7),
+                        child: pw.Text(
+                          label,
+                          style: pw.TextStyle(
+                            fontSize: 9.4,
+                            fontWeight: pw.FontWeight.bold,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
+              for (final row in paymentRows)
+                pw.TableRow(
+                  children:
+                      <String>[
+                            _dateLabel(row.date),
+                            row.sourceLabel,
+                            row.typeLabel,
+                            row.reference.isEmpty
+                                ? 'SIN REFERENCIA'
+                                : row.reference,
+                            _money(row.amount),
+                          ]
+                          .map(
+                            (value) => pw.Padding(
+                              padding: const pw.EdgeInsets.all(7),
+                              child: pw.Text(
+                                value,
+                                style: const pw.TextStyle(fontSize: 9.2),
+                              ),
+                            ),
+                          )
+                          .toList(growable: false),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+
+    return doc.save();
+  }
+
+  Future<void> _openPdfFile(String path) async {
+    ProcessResult result;
+    if (Platform.isMacOS) {
+      result = await Process.run('open', [path]);
+    } else if (Platform.isWindows) {
+      result = await Process.run('cmd', ['/c', 'start', '', path]);
+    } else if (Platform.isLinux) {
+      result = await Process.run('xdg-open', [path]);
+    } else {
+      throw UnsupportedError('Plataforma no soportada para abrir PDF');
+    }
+    if (result.exitCode != 0) {
+      throw Exception(result.stderr.toString().trim());
+    }
+  }
+
   Future<void> _registerProviderCashMovementForSelectedProvider() async {
     final account = _selectedAccount;
     if (account == null) return;
@@ -474,6 +1028,9 @@ class _FinanzasProviderAccountsPageState
     try {
       await ComprasTicketsStore.createProviderMovementAndAutoApply(
         movement: movement,
+      );
+      await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
+        providerId: account.company.companyId,
       );
       if (!mounted) return;
       _toast('Movimiento de proveedor registrado.');
@@ -515,6 +1072,9 @@ class _FinanzasProviderAccountsPageState
       await ComprasTicketsStore.updateProviderMovementAndAutoApply(
         movement: updatedMovement,
       );
+      await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
+        providerId: account.company.companyId,
+      );
       if (!mounted) return;
       _toast('Movimiento de proveedor actualizado.');
       await _loadPage();
@@ -529,6 +1089,8 @@ class _FinanzasProviderAccountsPageState
   Future<void> _deleteProviderCashMovementForSelectedProvider(
     ComprasProviderMovementRecord movement,
   ) async {
+    final account = _selectedAccount;
+    if (account == null) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (_) => AlertDialog(
@@ -553,6 +1115,9 @@ class _FinanzasProviderAccountsPageState
       await ComprasTicketsStore.deleteProviderMovementAndRebuildApplications(
         movement: movement,
       );
+      await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
+        providerId: account.company.companyId,
+      );
       if (!mounted) return;
       _toast('Movimiento de proveedor eliminado.');
       await _loadPage();
@@ -567,63 +1132,33 @@ class _FinanzasProviderAccountsPageState
   Future<void> _registerAgreementForSelectedProvider() async {
     final account = _selectedAccount;
     if (account == null) return;
+    final metrics = _computeProviderAccountMetrics(account);
+    final eligibleInvoices = account.invoices
+        .map((row) => row.invoice)
+        .where((invoice) => invoice.status != 'PAGADA')
+        .toList(growable: false);
     final draft = await showDialog<_AgreementDraftResult>(
       context: context,
       barrierDismissible: true,
       builder: (_) => _RegisterSupplierAgreementDialog(
         providerName: account.company.companyName,
-        suggestedBalance: account.openAmount,
+        suggestedBalance: metrics.openAmount,
+        invoices: eligibleInvoices,
+        initialTarget: _suggestTargetForProvider(account.company),
       ),
     );
     if (draft == null) return;
-    final agreementId =
-        'fin-agreement-${DateTime.now().microsecondsSinceEpoch}';
-    final totalAmount = draft.installmentAmount * draft.installmentCount;
-    final installments =
-        List<FinanzasSupplierAgreementInstallmentRecord>.generate(
-          draft.installmentCount,
-          (index) {
-            final dueDate = _agreementInstallmentDate(
-              startDate: draft.startDate,
-              frequency: draft.frequency,
-              offset: index,
-            );
-            return FinanzasSupplierAgreementInstallmentRecord(
-              id: '$agreementId-inst-${index + 1}',
-              agreementId: agreementId,
-              sequenceNumber: index + 1,
-              dueDate: dueDate,
-              amount: draft.installmentAmount,
-              paidAmount: 0,
-              status: 'PENDIENTE',
-              createdAt: null,
-              updatedAt: null,
-            );
-          },
-          growable: false,
-        );
-    final agreement = FinanzasSupplierAgreementRecord(
-      id: agreementId,
-      providerId: account.company.companyId,
-      providerNameSnapshot: account.company.companyName,
-      startDate: draft.startDate,
-      frequency: draft.frequency,
-      installmentAmount: draft.installmentAmount,
-      installmentCount: draft.installmentCount,
-      totalAmount: totalAmount,
-      remainingAmount: totalAmount,
-      nextDueDate: installments.isEmpty
-          ? draft.startDate
-          : installments.first.dueDate,
-      status: 'ACTIVO',
-      notes: draft.notes,
-      createdAt: null,
-      updatedAt: null,
+    final bundle = _buildAgreementBundle(
+      account: account,
+      draft: draft,
+      eligibleInvoices: eligibleInvoices,
     );
+    if (bundle == null) return;
     try {
       await FinanzasProviderAccountsStore.createAgreement(
-        agreement: agreement,
-        installments: installments,
+        agreement: bundle.agreement,
+        installments: bundle.installments,
+        invoiceLinks: bundle.invoiceLinks,
       );
       if (!mounted) return;
       _toast('Convenio registrado.');
@@ -634,6 +1169,363 @@ class _FinanzasProviderAccountsPageState
       if (!mounted) return;
       _toast('No se pudo registrar el convenio. $error');
     }
+  }
+
+  _AgreementSaveBundle? _buildAgreementBundle({
+    required _ProviderAccountView account,
+    required _AgreementDraftResult draft,
+    required List<FinanzasSupplierInvoiceRecord> eligibleInvoices,
+    String? agreementId,
+  }) {
+    final resolvedAgreementId =
+        agreementId ?? 'fin-agreement-${DateTime.now().microsecondsSinceEpoch}';
+    final installments = <FinanzasSupplierAgreementInstallmentRecord>[];
+    final invoiceLinks = <FinanzasSupplierAgreementInvoiceRecord>[];
+    double totalAmount = 0;
+    if (draft.agreementType == 'POR_FACTURAS') {
+      final selectedInvoices = eligibleInvoices
+          .where((invoice) => draft.selectedInvoiceIds.contains(invoice.id))
+          .toList(growable: false);
+      if (selectedInvoices.isEmpty) {
+        _toast('Selecciona al menos una factura para este convenio.');
+        return null;
+      }
+      final invoicesPerPeriod = draft.invoicesPerPeriod < 1
+          ? 1
+          : draft.invoicesPerPeriod;
+      for (
+        var start = 0, sequence = 1;
+        start < selectedInvoices.length;
+        start += invoicesPerPeriod, sequence++
+      ) {
+        final chunk = selectedInvoices
+            .skip(start)
+            .take(invoicesPerPeriod)
+            .toList(growable: false);
+        final installmentId = '$resolvedAgreementId-inst-$sequence';
+        final dueDate = _agreementInstallmentDate(
+          startDate: draft.startDate,
+          frequency: draft.frequency,
+          offset: sequence - 1,
+        );
+        final amount = chunk.fold<double>(
+          0,
+          (sum, invoice) => sum + invoice.balanceAmount,
+        );
+        totalAmount += amount;
+        installments.add(
+          FinanzasSupplierAgreementInstallmentRecord(
+            id: installmentId,
+            agreementId: resolvedAgreementId,
+            sequenceNumber: sequence,
+            dueDate: dueDate,
+            commitmentType: 'FACTURAS',
+            scheduledInvoiceCount: chunk.length,
+            amount: amount,
+            paidAmount: 0,
+            status: 'PENDIENTE',
+            createdAt: null,
+            updatedAt: null,
+          ),
+        );
+        for (var index = 0; index < chunk.length; index++) {
+          final invoice = chunk[index];
+          invoiceLinks.add(
+            FinanzasSupplierAgreementInvoiceRecord(
+              id: '$resolvedAgreementId-link-$sequence-${index + 1}',
+              agreementId: resolvedAgreementId,
+              installmentId: installmentId,
+              invoiceId: invoice.id,
+              sequenceNumber: start + index + 1,
+              createdAt: null,
+              updatedAt: null,
+            ),
+          );
+        }
+      }
+    } else {
+      totalAmount = draft.installmentAmount * draft.installmentCount;
+      installments.addAll(
+        List<FinanzasSupplierAgreementInstallmentRecord>.generate(
+          draft.installmentCount,
+          (index) {
+            final dueDate = _agreementInstallmentDate(
+              startDate: draft.startDate,
+              frequency: draft.frequency,
+              offset: index,
+            );
+            return FinanzasSupplierAgreementInstallmentRecord(
+              id: '$resolvedAgreementId-inst-${index + 1}',
+              agreementId: resolvedAgreementId,
+              sequenceNumber: index + 1,
+              dueDate: dueDate,
+              commitmentType: 'MONTO',
+              scheduledInvoiceCount: 0,
+              amount: draft.installmentAmount,
+              paidAmount: 0,
+              status: 'PENDIENTE',
+              createdAt: null,
+              updatedAt: null,
+            );
+          },
+          growable: false,
+        ),
+      );
+    }
+    final agreement = FinanzasSupplierAgreementRecord(
+      id: resolvedAgreementId,
+      providerId: account.company.companyId,
+      providerNameSnapshot: account.company.companyName,
+      targetCompany: draft.targetCompany,
+      targetBranch: draft.targetBranch,
+      startDate: draft.startDate,
+      agreementType: draft.agreementType,
+      frequency: draft.frequency,
+      installmentAmount: draft.installmentAmount,
+      installmentCount: installments.length,
+      invoicesPerPeriod: draft.invoicesPerPeriod,
+      scheduledInvoiceCount: draft.selectedInvoiceIds.length,
+      totalAmount: totalAmount,
+      remainingAmount: totalAmount,
+      nextDueDate: installments.isEmpty
+          ? draft.startDate
+          : installments.first.dueDate,
+      status: 'ACTIVO',
+      notes: draft.notes,
+      createdAt: null,
+      updatedAt: null,
+    );
+    return _AgreementSaveBundle(
+      agreement: agreement,
+      installments: installments,
+      invoiceLinks: invoiceLinks,
+    );
+  }
+
+  Future<void> _editAgreementForSelectedProvider(
+    _ProviderAgreementView row,
+  ) async {
+    final account = _selectedAccount;
+    if (account == null) return;
+    if (row.installments.any((item) => item.status == 'PAGADO')) {
+      _toast(
+        'Este convenio ya tiene compromisos pagados. Para cuidar el historial, cancélalo y crea uno nuevo.',
+      );
+      return;
+    }
+    final metrics = _computeProviderAccountMetrics(account);
+    final eligibleInvoices = account.invoices
+        .map((invoiceRow) => invoiceRow.invoice)
+        .where((invoice) => invoice.status != 'PAGADA')
+        .toList(growable: false);
+    final draft = await showDialog<_AgreementDraftResult>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _RegisterSupplierAgreementDialog(
+        providerName: account.company.companyName,
+        suggestedBalance: metrics.openAmount,
+        invoices: eligibleInvoices,
+        initialTarget: _suggestTargetForProvider(account.company),
+        initialDraft: _AgreementDraftResult(
+          startDate: row.agreement.startDate,
+          agreementType: row.agreement.agreementType,
+          frequency: row.agreement.frequency,
+          targetCompany: row.agreement.targetCompany,
+          targetBranch: row.agreement.targetBranch,
+          installmentAmount: row.agreement.installmentAmount,
+          installmentCount: row.agreement.installmentCount,
+          invoicesPerPeriod: row.agreement.invoicesPerPeriod,
+          selectedInvoiceIds: row.invoiceLinks
+              .map((link) => link.invoice.id)
+              .toList(growable: false),
+          notes: row.agreement.notes,
+        ),
+      ),
+    );
+    if (draft == null) return;
+    final bundle = _buildAgreementBundle(
+      account: account,
+      draft: draft,
+      eligibleInvoices: eligibleInvoices,
+      agreementId: row.agreement.id,
+    );
+    if (bundle == null) return;
+    final updatedAgreement = FinanzasSupplierAgreementRecord(
+      id: bundle.agreement.id,
+      providerId: bundle.agreement.providerId,
+      providerNameSnapshot: bundle.agreement.providerNameSnapshot,
+      targetCompany: bundle.agreement.targetCompany,
+      targetBranch: bundle.agreement.targetBranch,
+      startDate: bundle.agreement.startDate,
+      agreementType: bundle.agreement.agreementType,
+      frequency: bundle.agreement.frequency,
+      installmentAmount: bundle.agreement.installmentAmount,
+      installmentCount: bundle.agreement.installmentCount,
+      invoicesPerPeriod: bundle.agreement.invoicesPerPeriod,
+      scheduledInvoiceCount: bundle.agreement.scheduledInvoiceCount,
+      totalAmount: bundle.agreement.totalAmount,
+      remainingAmount: bundle.agreement.remainingAmount,
+      nextDueDate: bundle.agreement.nextDueDate,
+      status: row.agreement.status == 'CANCELADO' ? 'CANCELADO' : 'ACTIVO',
+      notes: bundle.agreement.notes,
+      createdAt: row.agreement.createdAt,
+      updatedAt: row.agreement.updatedAt,
+    );
+    try {
+      await FinanzasProviderAccountsStore.replaceAgreementStructure(
+        agreement: updatedAgreement,
+        installments: bundle.installments,
+        invoiceLinks: bundle.invoiceLinks,
+      );
+      if (!mounted) return;
+      _toast('Convenio actualizado.');
+      await _loadPage();
+      if (!mounted) return;
+      setState(() => _activeTab = _ProviderAccountsTab.convenios);
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo actualizar el convenio. $error');
+    }
+  }
+
+  Future<void> _cancelAgreementForSelectedProvider(
+    _ProviderAgreementView row,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: const Text('Cancelar convenio'),
+        content: const Text(
+          'Se cancelarán los compromisos pendientes, pero el historial permanecerá visible. ¿Continuar?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Volver'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Cancelar convenio'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    try {
+      await FinanzasProviderAccountsStore.cancelAgreement(
+        agreement: row.agreement,
+        installments: row.installments,
+      );
+      if (!mounted) return;
+      _toast('Convenio cancelado.');
+      await _loadPage();
+      if (!mounted) return;
+      setState(() => _activeTab = _ProviderAccountsTab.convenios);
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo cancelar el convenio. $error');
+    }
+  }
+
+  Future<void> _toggleAgreementInstallmentPaid(
+    _ProviderAgreementView row,
+    FinanzasSupplierAgreementInstallmentRecord installment,
+  ) async {
+    if (row.agreement.status == 'CANCELADO') {
+      _toast(
+        'Primero reactiva o reemplaza el convenio; este ya fue cancelado.',
+      );
+      return;
+    }
+    final updatedInstallment = FinanzasSupplierAgreementInstallmentRecord(
+      id: installment.id,
+      agreementId: installment.agreementId,
+      sequenceNumber: installment.sequenceNumber,
+      dueDate: installment.dueDate,
+      commitmentType: installment.commitmentType,
+      scheduledInvoiceCount: installment.scheduledInvoiceCount,
+      amount: installment.amount,
+      paidAmount: installment.status == 'PAGADO' ? 0 : installment.amount,
+      status: installment.status == 'PAGADO' ? 'PENDIENTE' : 'PAGADO',
+      createdAt: installment.createdAt,
+      updatedAt: installment.updatedAt,
+    );
+    final recomputedAgreement = _recomputeAgreementFromInstallments(
+      agreement: row.agreement,
+      installments: row.installments
+          .map((item) => item.id == installment.id ? updatedInstallment : item)
+          .toList(growable: false),
+    );
+    try {
+      await FinanzasProviderAccountsStore.saveAgreementInstallment(
+        updatedInstallment,
+      );
+      await FinanzasProviderAccountsStore.saveAgreement(recomputedAgreement);
+      if (!mounted) return;
+      _toast(
+        updatedInstallment.status == 'PAGADO'
+            ? 'Compromiso marcado como pagado.'
+            : 'Compromiso reabierto.',
+      );
+      await _loadPage();
+      if (!mounted) return;
+      setState(() => _activeTab = _ProviderAccountsTab.convenios);
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo actualizar el compromiso. $error');
+    }
+  }
+
+  FinanzasSupplierAgreementRecord _recomputeAgreementFromInstallments({
+    required FinanzasSupplierAgreementRecord agreement,
+    required List<FinanzasSupplierAgreementInstallmentRecord> installments,
+  }) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final ordered = installments.toList(growable: false)
+      ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber));
+    double remaining = 0;
+    DateTime? nextDueDate;
+    var hasOverdue = false;
+    for (final installment in ordered) {
+      if (installment.status == 'PAGADO' || installment.status == 'CANCELADO') {
+        continue;
+      }
+      remaining += (installment.amount - installment.paidAmount)
+          .clamp(0, double.infinity)
+          .toDouble();
+      nextDueDate ??= installment.dueDate;
+      if (DateUtils.dateOnly(installment.dueDate).isBefore(today)) {
+        hasOverdue = true;
+      }
+    }
+    final status = agreement.status == 'CANCELADO'
+        ? 'CANCELADO'
+        : remaining <= 0.009
+        ? 'CUMPLIDO'
+        : hasOverdue
+        ? 'ATRASADO'
+        : 'ACTIVO';
+    return FinanzasSupplierAgreementRecord(
+      id: agreement.id,
+      providerId: agreement.providerId,
+      providerNameSnapshot: agreement.providerNameSnapshot,
+      targetCompany: agreement.targetCompany,
+      targetBranch: agreement.targetBranch,
+      startDate: agreement.startDate,
+      agreementType: agreement.agreementType,
+      frequency: agreement.frequency,
+      installmentAmount: agreement.installmentAmount,
+      installmentCount: agreement.installmentCount,
+      invoicesPerPeriod: agreement.invoicesPerPeriod,
+      scheduledInvoiceCount: agreement.scheduledInvoiceCount,
+      totalAmount: agreement.totalAmount,
+      remainingAmount: remaining,
+      nextDueDate: nextDueDate,
+      status: status,
+      notes: agreement.notes,
+      createdAt: agreement.createdAt,
+      updatedAt: agreement.updatedAt,
+    );
   }
 
   Future<void> _registerInvoiceForSelectedProvider() async {
@@ -652,6 +1544,7 @@ class _FinanzasProviderAccountsPageState
       builder: (_) => _RegisterSupplierInvoiceDialog(
         companyName: account.company.companyName,
         tickets: eligibleTickets,
+        initialTarget: _suggestTargetForProvider(account.company),
       ),
     );
     if (draft == null) return;
@@ -674,6 +1567,8 @@ class _FinanzasProviderAccountsPageState
       id: 'fin-invoice-${DateTime.now().microsecondsSinceEpoch}',
       providerId: account.company.companyId,
       providerNameSnapshot: account.company.companyName,
+      targetCompany: draft.targetCompany,
+      targetBranch: draft.targetBranch,
       folio: draft.folio.trim(),
       invoiceDate: draft.invoiceDate,
       dueDate: draft.dueDate,
@@ -681,6 +1576,8 @@ class _FinanzasProviderAccountsPageState
       balanceAmount: total,
       status: status,
       notes: draft.notes.trim(),
+      manualPriority: 'NORMAL',
+      priorityNote: '',
       createdAt: null,
       updatedAt: null,
     );
@@ -697,6 +1594,385 @@ class _FinanzasProviderAccountsPageState
     } catch (error) {
       if (!mounted) return;
       _toast('No se pudo registrar la factura. $error');
+    }
+  }
+
+  Future<void> _editProviderPriorityForSelectedProvider() async {
+    final account = _selectedAccount;
+    if (account == null) return;
+    final draft = await showDialog<_ManualPriorityDraft>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _ManualPriorityDialog(
+        title: 'Prioridad del proveedor',
+        subtitle: account.company.companyName,
+        initialLevel: account.company.manualPriority,
+        initialNote: account.company.priorityNote,
+      ),
+    );
+    if (draft == null) return;
+    try {
+      await FinanzasCompanyDirectoryStore.saveDirectoryRow(
+        account.company.copyWith(
+          manualPriority: draft.level,
+          priorityNote: draft.note,
+        ),
+      );
+      if (!mounted) return;
+      _toast('Prioridad del proveedor actualizada.');
+      await _loadPage();
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo actualizar la prioridad del proveedor. $error');
+    }
+  }
+
+  Future<void> _editInvoicePriority(_ProviderInvoiceView row) async {
+    final draft = await showDialog<_ManualPriorityDraft>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _ManualPriorityDialog(
+        title: 'Prioridad de factura',
+        subtitle: '${row.invoice.folio} · ${row.invoice.providerNameSnapshot}',
+        initialLevel: row.invoice.manualPriority,
+        initialNote: row.invoice.priorityNote,
+      ),
+    );
+    if (draft == null) return;
+    try {
+      await FinanzasProviderAccountsStore.saveInvoice(
+        row.invoice.copyWith(
+          manualPriority: draft.level,
+          priorityNote: draft.note,
+        ),
+      );
+      if (!mounted) return;
+      _toast('Prioridad de factura actualizada.');
+      await _loadPage();
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo actualizar la prioridad de la factura. $error');
+    }
+  }
+
+  Future<void> _openInvoiceEvidenceDialog(_ProviderInvoiceView row) async {
+    var localEvidences = row.evidences.toList(growable: true);
+    var changed = false;
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setLocalState) {
+            return Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 28,
+                vertical: 28,
+              ),
+              child: AreaThemeScope(
+                tokens: finanzasAreaTokens,
+                child: ContractGlassCard(
+                  borderRadius: BorderRadius.circular(30),
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 760),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Evidencias de factura',
+                                    style: TextStyle(
+                                      fontSize: 24,
+                                      fontWeight: FontWeight.w900,
+                                      color: AreaThemeScope.of(
+                                        context,
+                                      ).primaryStrong,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    row.invoice.folio,
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w700,
+                                      color: kFinanzasMutedInk,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            FilledButton.icon(
+                              onPressed: () async {
+                                final uploaded = await _pickAndUploadEvidence(
+                                  ownerType:
+                                      kFinanzasEvidenceOwnerTypeSupplierInvoice,
+                                  ownerId: row.invoice.id,
+                                  title: 'Subir evidencia de factura',
+                                );
+                                if (uploaded == null) return;
+                                changed = true;
+                                setLocalState(() {
+                                  localEvidences = <FinanzasEvidenceRecord>[
+                                    uploaded,
+                                    ...localEvidences,
+                                  ];
+                                });
+                              },
+                              icon: const Icon(Icons.upload_file_rounded),
+                              label: const Text('Subir'),
+                            ),
+                            const SizedBox(width: 8),
+                            IconButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(),
+                              icon: const Icon(Icons.close_rounded),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        if (localEvidences.isEmpty)
+                          const _ProviderAccountsPendingPane(
+                            label: 'Sin evidencias',
+                            subtitle:
+                                'Todavía no hay PDF o fotos ligadas a esta factura.',
+                          )
+                        else
+                          ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 380),
+                            child: ListView.separated(
+                              shrinkWrap: true,
+                              itemCount: localEvidences.length,
+                              separatorBuilder: (_, _) =>
+                                  const SizedBox(height: 10),
+                              itemBuilder: (_, index) {
+                                final evidence = localEvidences[index];
+                                return Container(
+                                  padding: const EdgeInsets.fromLTRB(
+                                    14,
+                                    12,
+                                    14,
+                                    12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.74),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: AreaThemeScope.of(
+                                        context,
+                                      ).border.withValues(alpha: 0.84),
+                                    ),
+                                  ),
+                                  child: Row(
+                                    children: [
+                                      Icon(
+                                        evidence.fileName
+                                                .toLowerCase()
+                                                .endsWith('.pdf')
+                                            ? Icons.picture_as_pdf_outlined
+                                            : Icons.photo_library_outlined,
+                                        color: AreaThemeScope.of(
+                                          context,
+                                        ).primaryStrong,
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              evidence.fileName,
+                                              style: TextStyle(
+                                                fontSize: 13.5,
+                                                fontWeight: FontWeight.w900,
+                                                color: AreaThemeScope.of(
+                                                  context,
+                                                ).primaryStrong,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '${_dateLabelStatic(evidence.uploadedAt)} · ${evidence.uploadedByName.isEmpty ? 'Usuario' : evidence.uploadedByName}',
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.w700,
+                                                color: kFinanzasMutedInk,
+                                              ),
+                                            ),
+                                            if (evidence.comment
+                                                .trim()
+                                                .isNotEmpty)
+                                              Padding(
+                                                padding: const EdgeInsets.only(
+                                                  top: 4,
+                                                ),
+                                                child: Text(
+                                                  evidence.comment.trim(),
+                                                  style: TextStyle(
+                                                    fontSize: 12,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: kFinanzasMutedInk,
+                                                  ),
+                                                ),
+                                              ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      OutlinedButton.icon(
+                                        onPressed: () => unawaited(
+                                          _openEvidenceFile(evidence),
+                                        ),
+                                        icon: const Icon(
+                                          Icons.download_rounded,
+                                          size: 18,
+                                        ),
+                                        label: const Text('Descargar'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+    if (changed && mounted) {
+      await _loadPage();
+      _toast('Evidencia subida.');
+    }
+  }
+
+  Future<FinanzasEvidenceRecord?> _pickAndUploadEvidence({
+    required String ownerType,
+    required String ownerId,
+    required String title,
+  }) async {
+    PlatformFile? picked;
+    final commentC = TextEditingController();
+    try {
+      final save = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setLocalState) {
+              return AlertDialog(
+                title: Text(title),
+                content: SizedBox(
+                  width: 480,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          try {
+                            final result = await FilePicker.platform.pickFiles(
+                              allowMultiple: false,
+                              withData: true,
+                              lockParentWindow: true,
+                              type: FileType.custom,
+                              allowedExtensions: const [
+                                'pdf',
+                                'jpg',
+                                'jpeg',
+                                'png',
+                                'webp',
+                                'heic',
+                              ],
+                            );
+                            if (result == null || result.files.isEmpty) return;
+                            setLocalState(() => picked = result.files.first);
+                          } catch (error) {
+                            _toast(
+                              'No se pudo abrir selector de archivos. $error',
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.attach_file_rounded),
+                        label: Text(
+                          picked == null
+                              ? 'Seleccionar PDF o foto'
+                              : 'Archivo: ${picked!.name}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: commentC,
+                        minLines: 2,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Comentario',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('Guardar'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+      if (save != true || picked == null) return null;
+      return await FinanzasEvidenceStore.createUploadedEvidence(
+        ownerType: ownerType,
+        ownerId: ownerId,
+        file: picked!,
+        comment: commentC.text.trim(),
+      );
+    } catch (error) {
+      if (mounted) {
+        _toast('No se pudo subir evidencia. $error');
+      }
+      return null;
+    } finally {
+      commentC.dispose();
+    }
+  }
+
+  Future<void> _openEvidenceFile(FinanzasEvidenceRecord evidence) async {
+    try {
+      final path = await saveRemoteFileAs(
+        url: evidence.fileUrl,
+        suggestedFileName: evidence.fileName,
+        dialogTitle: 'Descargar evidencia',
+      );
+      if (!mounted) return;
+      if (path == null) {
+        _toast('Descarga cancelada.');
+      } else {
+        _toast('Evidencia guardada en $path');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo descargar la evidencia. $error');
     }
   }
 
@@ -739,6 +2015,20 @@ class _FinanzasProviderAccountsPageState
     );
   }
 
+  Future<void> _openPaymentCenter() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const FinanzasPaymentCenterPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openFixedPayments() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const FinanzasFixedPaymentsPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _openDirectionDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -767,6 +2057,14 @@ class _FinanzasProviderAccountsPageState
         if (_menuOpen) setState(() => _menuOpen = false);
         unawaited(_openComprasDashboard());
         return;
+      case 'Centro de pagos':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openPaymentCenter());
+        return;
+      case 'Pagos fijos':
+        if (_menuOpen) setState(() => _menuOpen = false);
+        unawaited(_openFixedPayments());
+        return;
       case 'Cuentas Bancarias':
         if (_menuOpen) setState(() => _menuOpen = false);
         unawaited(_openBankAccounts());
@@ -790,9 +2088,81 @@ class _FinanzasProviderAccountsPageState
     return '\$${buffer.toString()}.$fraction';
   }
 
+  String _providerMovementSourceLabel(String source) {
+    switch (source) {
+      case 'BOVEDA':
+        return 'Boveda';
+      case 'INTERNO':
+        return 'Interno';
+      case 'BANCO':
+        return 'Banco';
+      default:
+        return 'Efectivo';
+    }
+  }
+
   String _dateLabel(DateTime? value) {
     if (value == null) return '—';
     return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+  }
+
+  Map<String, _ProviderTicketStatusView> _buildReconciledTicketStatuses({
+    required List<ComprasTicketRecord> tickets,
+    required List<_ProviderInvoiceView> invoices,
+    required Map<String, List<_ProviderTicketApplicationView>>
+    ticketApplicationsByTicketId,
+  }) {
+    final statusByTicketId = <String, _ProviderTicketStatusView>{};
+    final bankApplicationsByTicketId = _buildBankApplicationsByTicket(
+      invoices,
+      tickets.map((row) => row.id).toSet(),
+    );
+    for (final ticket in tickets) {
+      final directApplications =
+          ticketApplicationsByTicketId[ticket.id]?.toList(growable: false) ??
+          const <_ProviderTicketApplicationView>[];
+      final directApplied = directApplications.fold<double>(
+        0,
+        (sum, item) => sum + item.application.appliedAmount,
+      );
+      final bankApplications =
+          bankApplicationsByTicketId[ticket.id]?.toList(growable: false) ??
+          const <_ProviderTicketSettlementView>[];
+      final bankApplied = bankApplications.fold<double>(
+        0,
+        (sum, item) => sum + item.amount,
+      );
+      final appliedAmount = (directApplied + bankApplied)
+          .clamp(0, ticket.amount)
+          .toDouble();
+      final fullyCovered = appliedAmount >= ticket.amount - 0.009;
+      final hasAbono = appliedAmount > 0.009 && !fullyCovered;
+      statusByTicketId[ticket.id] = _ProviderTicketStatusView(
+        appliedAmount: appliedAmount,
+        pagoStatus: fullyCovered
+            ? 'PAGADO'
+            : hasAbono
+            ? 'ABONO'
+            : 'PENDIENTE_DE_PAGO',
+        coverageStatus: fullyCovered
+            ? 'CUBIERTO'
+            : hasAbono
+            ? 'PARCIAL'
+            : 'SIN_CUBRIR',
+      );
+    }
+    return statusByTicketId;
+  }
+
+  bool _matchesAccountReportPreset(DateTime date, _AccountReportPreset preset) {
+    final today = DateUtils.dateOnly(DateTime.now());
+    final start = DateTime(
+      today.year,
+      today.month,
+      today.day - (preset.days - 1),
+    );
+    final ticketDay = DateUtils.dateOnly(date);
+    return !ticketDay.isBefore(start) && !ticketDay.isAfter(today);
   }
 
   @override
@@ -851,6 +2221,7 @@ class _FinanzasProviderAccountsPageState
                                   dateFormatter: _dateLabel,
                                   onSelect: (id) =>
                                       setState(() => _selectedCompanyId = id),
+                                  onPrintAccount: _printAccountReportFor,
                                 ),
                               ),
                               const SizedBox(width: 16),
@@ -866,15 +2237,28 @@ class _FinanzasProviderAccountsPageState
                                             setState(() => _activeTab = tab),
                                         onRegisterInvoice:
                                             _registerInvoiceForSelectedProvider,
+                                        onEditProviderPriority:
+                                            _editProviderPriorityForSelectedProvider,
                                         onOpenBankAccounts: _openBankAccounts,
                                         onRegisterCashMovement:
                                             _registerProviderCashMovementForSelectedProvider,
                                         onRegisterAgreement:
                                             _registerAgreementForSelectedProvider,
+                                        onEditAgreement:
+                                            _editAgreementForSelectedProvider,
+                                        onCancelAgreement:
+                                            _cancelAgreementForSelectedProvider,
+                                        onToggleInstallmentPaid:
+                                            _toggleAgreementInstallmentPaid,
                                         onEditCashMovement:
                                             _editProviderCashMovementForSelectedProvider,
                                         onDeleteCashMovement:
                                             _deleteProviderCashMovementForSelectedProvider,
+                                        onEditInvoicePriority:
+                                            _editInvoicePriority,
+                                        onOpenInvoiceEvidence:
+                                            _openInvoiceEvidenceDialog,
+                                        onPrintAccount: _printAccountReportFor,
                                       ),
                               ),
                             ],
@@ -931,10 +2315,13 @@ class _FinanzasProviderAccountsPageState
 class _ProviderAccountView {
   final FinanzasCompanyDirectoryRecord company;
   final List<ComprasTicketRecord> tickets;
+  final Map<String, _ProviderTicketStatusView> reconciledTicketStatuses;
   final List<_ProviderInvoiceView> invoices;
   final List<FinanzasBankMovementRecord> movements;
   final List<ComprasProviderMovementRecord> cashMovements;
   final List<_ProviderAgreementView> agreements;
+  final Map<String, List<_ProviderTicketApplicationView>>
+  ticketApplicationsByTicketId;
   final double totalAmount;
   final double openAmount;
   final double facturadoAmount;
@@ -951,10 +2338,12 @@ class _ProviderAccountView {
   const _ProviderAccountView({
     required this.company,
     required this.tickets,
+    required this.reconciledTicketStatuses,
     required this.invoices,
     required this.movements,
     required this.cashMovements,
     required this.agreements,
+    required this.ticketApplicationsByTicketId,
     required this.totalAmount,
     required this.openAmount,
     required this.facturadoAmount,
@@ -974,22 +2363,349 @@ class _ProviderInvoiceView {
   final FinanzasSupplierInvoiceRecord invoice;
   final FinanzasBankMovementRecord? bankMovement;
   final List<ComprasTicketRecord> tickets;
+  final List<FinanzasEvidenceRecord> evidences;
 
   const _ProviderInvoiceView({
     required this.invoice,
     required this.bankMovement,
     required this.tickets,
+    required this.evidences,
   });
+}
+
+class _ProviderTicketApplicationView {
+  final ComprasTicketPaymentApplicationRecord application;
+  final ComprasProviderMovementRecord movement;
+
+  const _ProviderTicketApplicationView({
+    required this.application,
+    required this.movement,
+  });
+}
+
+class _ProviderTicketStatusView {
+  final double appliedAmount;
+  final String pagoStatus;
+  final String coverageStatus;
+
+  const _ProviderTicketStatusView({
+    required this.appliedAmount,
+    required this.pagoStatus,
+    required this.coverageStatus,
+  });
+}
+
+class _ProviderAccountMetricsView {
+  final double totalAmount;
+  final double openAmount;
+  final double facturadoAmount;
+  final double sinFacturaAmount;
+  final double pendienteFacturarAmount;
+  final double paidAmount;
+  final double overdueAmount;
+  final int openTicketsCount;
+  final DateTime? nextCommitmentDate;
+
+  const _ProviderAccountMetricsView({
+    required this.totalAmount,
+    required this.openAmount,
+    required this.facturadoAmount,
+    required this.sinFacturaAmount,
+    required this.pendienteFacturarAmount,
+    required this.paidAmount,
+    required this.overdueAmount,
+    required this.openTicketsCount,
+    required this.nextCommitmentDate,
+  });
+}
+
+_ProviderAccountMetricsView _computeProviderAccountMetrics(
+  _ProviderAccountView account,
+) {
+  final today = DateUtils.dateOnly(DateTime.now());
+  double total = 0;
+  double open = 0;
+  double facturado = 0;
+  double sinFactura = 0;
+  double pendienteFacturar = 0;
+  double pagado = 0;
+  double vencido = 0;
+  var abiertos = 0;
+  DateTime? nextCommitment;
+
+  for (final ticket in account.tickets) {
+    final resolved = _resolveProviderTicketStatus(account, ticket);
+    total += ticket.amount;
+    final dueDate = DateUtils.dateOnly(
+      ticket.date.add(Duration(days: account.company.creditDays)),
+    );
+    if (resolved.pagoStatus == 'PAGADO') {
+      pagado += ticket.amount;
+      continue;
+    }
+    abiertos += 1;
+    open += ticket.amount;
+    if (ticket.facturaStatus == 'FACTURADO') {
+      facturado += ticket.amount;
+    } else if (ticket.facturaStatus == 'SIN_FACTURA') {
+      sinFactura += ticket.amount;
+    } else {
+      pendienteFacturar += ticket.amount;
+    }
+    if (account.company.creditDays > 0 &&
+        (dueDate.isBefore(today) || dueDate == today)) {
+      vencido += ticket.amount;
+    }
+    if (nextCommitment == null || dueDate.isBefore(nextCommitment)) {
+      nextCommitment = dueDate;
+    }
+  }
+
+  for (final invoice in account.invoices) {
+    if (invoice.invoice.status == 'PAGADA') continue;
+    final dueDate = invoice.invoice.dueDate;
+    if (dueDate == null) continue;
+    if (nextCommitment == null || dueDate.isBefore(nextCommitment)) {
+      nextCommitment = dueDate;
+    }
+  }
+
+  return _ProviderAccountMetricsView(
+    totalAmount: total,
+    openAmount: open,
+    facturadoAmount: facturado,
+    sinFacturaAmount: sinFactura,
+    pendienteFacturarAmount: pendienteFacturar,
+    paidAmount: pagado,
+    overdueAmount: vencido,
+    openTicketsCount: abiertos,
+    nextCommitmentDate: nextCommitment,
+  );
+}
+
+Map<String, List<_ProviderTicketSettlementView>> _buildBankApplicationsByTicket(
+  List<_ProviderInvoiceView> invoices,
+  Set<String> reportTicketIds,
+) {
+  final result = <String, List<_ProviderTicketSettlementView>>{};
+  for (final invoice in invoices) {
+    final movement = invoice.bankMovement;
+    if (movement == null) continue;
+    if (movement.debitAmount <= 0.009) continue;
+    final invoiceTickets =
+        invoice.tickets
+            .where((ticket) => reportTicketIds.contains(ticket.id))
+            .toList(growable: false)
+          ..sort((a, b) {
+            final dateCompare = a.date.compareTo(b.date);
+            if (dateCompare != 0) return dateCompare;
+            return a.ticket.compareTo(b.ticket);
+          });
+    if (invoiceTickets.isEmpty) continue;
+    var remaining =
+        (invoice.invoice.totalAmount - invoice.invoice.balanceAmount)
+            .clamp(0, invoice.invoice.totalAmount)
+            .toDouble();
+    if (remaining <= 0.009) continue;
+    for (final ticket in invoiceTickets) {
+      if (remaining <= 0.009) break;
+      final applied = remaining > ticket.amount ? ticket.amount : remaining;
+      if (applied <= 0.009) continue;
+      result
+          .putIfAbsent(ticket.id, () => <_ProviderTicketSettlementView>[])
+          .add(
+            _ProviderTicketSettlementView(
+              date: movement.date,
+              reference: movement.reference,
+              sourceLabel: '${movement.company} ${movement.branch}',
+              amount: applied,
+            ),
+          );
+      remaining = (remaining - applied).clamp(0, double.infinity).toDouble();
+    }
+  }
+  return result;
+}
+
+_ProviderTicketStatusView _resolveProviderTicketStatus(
+  _ProviderAccountView account,
+  ComprasTicketRecord ticket,
+) {
+  final directApplications =
+      account.ticketApplicationsByTicketId[ticket.id]?.toList(
+        growable: false,
+      ) ??
+      const <_ProviderTicketApplicationView>[];
+  final directApplied = directApplications.fold<double>(
+    0,
+    (sum, item) => sum + item.application.appliedAmount,
+  );
+  final bankApplications =
+      _buildBankApplicationsByTicket(
+        account.invoices,
+        account.tickets.map((row) => row.id).toSet(),
+      )[ticket.id]?.toList(growable: false) ??
+      const <_ProviderTicketSettlementView>[];
+  final bankApplied = bankApplications.fold<double>(
+    0,
+    (sum, item) => sum + item.amount,
+  );
+  final appliedAmount = (directApplied + bankApplied)
+      .clamp(0, ticket.amount)
+      .toDouble();
+  final fullyCovered = appliedAmount >= ticket.amount - 0.009;
+  final hasAbono = appliedAmount > 0.009 && !fullyCovered;
+  return _ProviderTicketStatusView(
+    appliedAmount: appliedAmount,
+    pagoStatus: fullyCovered
+        ? 'PAGADO'
+        : hasAbono
+        ? 'ABONO'
+        : 'PENDIENTE_DE_PAGO',
+    coverageStatus: fullyCovered
+        ? 'CUBIERTO'
+        : hasAbono
+        ? 'PARCIAL'
+        : 'SIN_CUBRIR',
+  );
 }
 
 class _ProviderAgreementView {
   final FinanzasSupplierAgreementRecord agreement;
   final List<FinanzasSupplierAgreementInstallmentRecord> installments;
+  final List<_ProviderAgreementInvoiceLinkView> invoiceLinks;
 
   const _ProviderAgreementView({
     required this.agreement,
     required this.installments,
+    required this.invoiceLinks,
   });
+}
+
+class _ProviderAgreementInvoiceLinkView {
+  final FinanzasSupplierAgreementInvoiceRecord link;
+  final FinanzasSupplierInvoiceRecord invoice;
+
+  const _ProviderAgreementInvoiceLinkView({
+    required this.link,
+    required this.invoice,
+  });
+}
+
+class _ProviderAccountPaymentRow {
+  final String id;
+  final DateTime date;
+  final String sourceLabel;
+  final String reference;
+  final String typeLabel;
+  final double amount;
+
+  const _ProviderAccountPaymentRow({
+    required this.id,
+    required this.date,
+    required this.sourceLabel,
+    required this.reference,
+    required this.typeLabel,
+    required this.amount,
+  });
+}
+
+class _ProviderTicketSettlementView {
+  final DateTime date;
+  final String reference;
+  final String sourceLabel;
+  final double amount;
+
+  const _ProviderTicketSettlementView({
+    required this.date,
+    required this.reference,
+    required this.sourceLabel,
+    required this.amount,
+  });
+}
+
+class _AccountReportPreset {
+  final String id;
+  final String label;
+  final int days;
+
+  const _AccountReportPreset({
+    required this.id,
+    required this.label,
+    required this.days,
+  });
+}
+
+const List<_AccountReportPreset> _kAccountReportPresets = [
+  _AccountReportPreset(id: 'last_30', label: 'Ultimos 30', days: 30),
+  _AccountReportPreset(id: 'last_90', label: 'Ultimos 90', days: 90),
+  _AccountReportPreset(id: 'last_180', label: 'Ultimos 180', days: 180),
+];
+
+const _AccountReportPreset _kDismissedAccountReportPreset =
+    _AccountReportPreset(id: 'dismissed', label: 'Cancelar', days: 0);
+
+Future<_AccountReportPreset?> _showAccountReportPresetDialog(
+  BuildContext context, {
+  required String providerName,
+}) async {
+  return showDialog<_AccountReportPreset?>(
+    context: context,
+    builder: (dialogContext) {
+      return AlertDialog(
+        title: const Text('Alcance del reporte'),
+        content: SizedBox(
+          width: 420,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                providerName,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: kFinanzasMutedInk,
+                ),
+              ),
+              const SizedBox(height: 14),
+              const Text(
+                'El reporte toma tickets del periodo elegido. Los abonos se jalán por relación real a esos tickets, aunque hayan ocurrido después.',
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w600,
+                  color: kFinanzasMutedInk,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 16),
+              for (final preset in _kAccountReportPresets) ...[
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(preset),
+                    child: Text(preset.label),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(_kDismissedAccountReportPreset),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(null),
+            child: const Text('Todos'),
+          ),
+        ],
+      );
+    },
+  );
 }
 
 class _ProviderAccountsListPane extends StatelessWidget {
@@ -999,6 +2715,7 @@ class _ProviderAccountsListPane extends StatelessWidget {
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
   final ValueChanged<String> onSelect;
+  final Future<void> Function(_ProviderAccountView row) onPrintAccount;
 
   const _ProviderAccountsListPane({
     required this.searchController,
@@ -1007,6 +2724,7 @@ class _ProviderAccountsListPane extends StatelessWidget {
     required this.moneyFormatter,
     required this.dateFormatter,
     required this.onSelect,
+    required this.onPrintAccount,
   });
 
   @override
@@ -1083,6 +2801,7 @@ class _ProviderAccountsListPane extends StatelessWidget {
                         moneyFormatter: moneyFormatter,
                         dateFormatter: dateFormatter,
                         onTap: () => onSelect(row.company.companyId),
+                        onPrint: () => onPrintAccount(row),
                       );
                     },
                   ),
@@ -1099,6 +2818,7 @@ class _ProviderAccountListCard extends StatelessWidget {
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
   final VoidCallback onTap;
+  final Future<void> Function() onPrint;
 
   const _ProviderAccountListCard({
     required this.row,
@@ -1106,11 +2826,13 @@ class _ProviderAccountListCard extends StatelessWidget {
     required this.moneyFormatter,
     required this.dateFormatter,
     required this.onTap,
+    required this.onPrint,
   });
 
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final metrics = _computeProviderAccountMetrics(row);
     return Material(
       color: selected
           ? tokens.badgeBackground.withValues(alpha: 0.92)
@@ -1138,13 +2860,19 @@ class _ProviderAccountListCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  _MovementIconAction(
+                    icon: Icons.picture_as_pdf_outlined,
+                    color: tokens.primaryStrong,
+                    onTap: onPrint,
+                  ),
                   const SizedBox(width: 10),
                   _MiniToneChip(label: row.urgencyLabel, tone: row.urgencyTone),
                 ],
               ),
               const SizedBox(height: 8),
               Text(
-                'Saldo abierto ${moneyFormatter(row.openAmount)}',
+                'Saldo abierto ${moneyFormatter(metrics.openAmount)}',
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w800,
@@ -1153,7 +2881,7 @@ class _ProviderAccountListCard extends StatelessWidget {
               ),
               const SizedBox(height: 4),
               Text(
-                'Abiertos ${row.openTicketsCount} · Próximo ${dateFormatter(row.nextCommitmentDate)}',
+                'Abiertos ${metrics.openTicketsCount} · Próximo ${dateFormatter(metrics.nextCommitmentDate)}',
                 style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -1175,13 +2903,27 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
   final String Function(DateTime? value) dateFormatter;
   final ValueChanged<_ProviderAccountsTab> onTabSelected;
   final Future<void> Function() onRegisterInvoice;
+  final Future<void> Function() onEditProviderPriority;
   final Future<void> Function() onOpenBankAccounts;
   final Future<void> Function() onRegisterCashMovement;
   final Future<void> Function() onRegisterAgreement;
+  final Future<void> Function(_ProviderAgreementView agreement) onEditAgreement;
+  final Future<void> Function(_ProviderAgreementView agreement)
+  onCancelAgreement;
+  final Future<void> Function(
+    _ProviderAgreementView agreement,
+    FinanzasSupplierAgreementInstallmentRecord installment,
+  )
+  onToggleInstallmentPaid;
   final Future<void> Function(ComprasProviderMovementRecord movement)
   onEditCashMovement;
   final Future<void> Function(ComprasProviderMovementRecord movement)
   onDeleteCashMovement;
+  final Future<void> Function(_ProviderInvoiceView invoice)
+  onEditInvoicePriority;
+  final Future<void> Function(_ProviderInvoiceView invoice)
+  onOpenInvoiceEvidence;
+  final Future<void> Function(_ProviderAccountView account) onPrintAccount;
 
   const _ProviderAccountsDetailPane({
     required this.account,
@@ -1190,16 +2932,24 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
     required this.dateFormatter,
     required this.onTabSelected,
     required this.onRegisterInvoice,
+    required this.onEditProviderPriority,
     required this.onOpenBankAccounts,
     required this.onRegisterCashMovement,
     required this.onRegisterAgreement,
+    required this.onEditAgreement,
+    required this.onCancelAgreement,
+    required this.onToggleInstallmentPaid,
     required this.onEditCashMovement,
     required this.onDeleteCashMovement,
+    required this.onEditInvoicePriority,
+    required this.onOpenInvoiceEvidence,
+    required this.onPrintAccount,
   });
 
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final metrics = _computeProviderAccountMetrics(account);
     return ContractGlassCard(
       borderRadius: BorderRadius.circular(30),
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -1229,12 +2979,46 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                         color: kFinanzasMutedInk,
                       ),
                     ),
+                    if (account.company.manualPriority != 'NORMAL') ...[
+                      const SizedBox(height: 8),
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          _MiniToneChip(
+                            label: finManualPriorityLabel(
+                              account.company.manualPriority,
+                            ),
+                            tone: _manualPriorityTone(
+                              account.company.manualPriority,
+                            ),
+                          ),
+                          if (account.company.priorityNote.trim().isNotEmpty)
+                            _MiniToneChip(
+                              label: account.company.priorityNote.trim(),
+                              tone: const Color(0xFF7A1914),
+                            ),
+                        ],
+                      ),
+                    ],
                   ],
                 ),
               ),
               _MiniToneChip(
                 label: account.urgencyLabel,
                 tone: account.urgencyTone,
+              ),
+              const SizedBox(width: 8),
+              _ActionPillButton(
+                label: 'Imprimir cuenta',
+                icon: Icons.picture_as_pdf_outlined,
+                onTap: () => onPrintAccount(account),
+              ),
+              const SizedBox(width: 8),
+              _MovementIconAction(
+                icon: Icons.flag_outlined,
+                color: _manualPriorityTone(account.company.manualPriority),
+                onTap: onEditProviderPriority,
               ),
             ],
           ),
@@ -1245,27 +3029,27 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
             children: [
               _SummaryMetricCard(
                 label: 'Saldo abierto',
-                value: moneyFormatter(account.openAmount),
+                value: moneyFormatter(metrics.openAmount),
               ),
               _SummaryMetricCard(
                 label: 'Vencido',
-                value: moneyFormatter(account.overdueAmount),
+                value: moneyFormatter(metrics.overdueAmount),
               ),
               _SummaryMetricCard(
                 label: 'Facturado',
-                value: moneyFormatter(account.facturadoAmount),
+                value: moneyFormatter(metrics.facturadoAmount),
               ),
               _SummaryMetricCard(
                 label: 'Sin factura',
-                value: moneyFormatter(account.sinFacturaAmount),
+                value: moneyFormatter(metrics.sinFacturaAmount),
               ),
               _SummaryMetricCard(
                 label: 'Pend. facturar',
-                value: moneyFormatter(account.pendienteFacturarAmount),
+                value: moneyFormatter(metrics.pendienteFacturarAmount),
               ),
               _SummaryMetricCard(
                 label: 'Pagado',
-                value: moneyFormatter(account.paidAmount),
+                value: moneyFormatter(metrics.paidAmount),
               ),
             ],
           ),
@@ -1304,6 +3088,8 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                 moneyFormatter: moneyFormatter,
                 dateFormatter: dateFormatter,
                 onRegisterInvoice: onRegisterInvoice,
+                onEditInvoicePriority: onEditInvoicePriority,
+                onOpenInvoiceEvidence: onOpenInvoiceEvidence,
               ),
               _ProviderAccountsTab.movimientos => _ProviderAccountMovementsView(
                 account: account,
@@ -1319,6 +3105,9 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                 moneyFormatter: moneyFormatter,
                 dateFormatter: dateFormatter,
                 onRegisterAgreement: onRegisterAgreement,
+                onEditAgreement: onEditAgreement,
+                onCancelAgreement: onCancelAgreement,
+                onToggleInstallmentPaid: onToggleInstallmentPaid,
               ),
             },
           ),
@@ -1342,6 +3131,7 @@ class _ProviderAccountSummaryView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final metrics = _computeProviderAccountMetrics(account);
     return SingleChildScrollView(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -1352,7 +3142,7 @@ class _ProviderAccountSummaryView extends StatelessWidget {
             children: [
               _LongInfoCard(
                 title: 'Próximo compromiso',
-                value: dateFormatter(account.nextCommitmentDate),
+                value: dateFormatter(metrics.nextCommitmentDate),
                 subtitle: 'Calculado desde días de crédito y tickets abiertos.',
               ),
               _LongInfoCard(
@@ -1394,7 +3184,7 @@ class _ProviderAccountSummaryView extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Saldo total histórico ${moneyFormatter(account.totalAmount)}. Abierto ${moneyFormatter(account.openAmount)}. Tickets abiertos ${account.openTicketsCount}.',
+                  'Saldo total histórico ${moneyFormatter(metrics.totalAmount)}. Abierto ${moneyFormatter(metrics.openAmount)}. Tickets abiertos ${metrics.openTicketsCount}.',
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
@@ -1465,6 +3255,7 @@ class _ProviderAccountTicketsView extends StatelessWidget {
             separatorBuilder: (_, _) => const SizedBox(height: 8),
             itemBuilder: (_, index) {
               final row = account.tickets[index];
+              final resolved = _resolveProviderTicketStatus(account, row);
               return Container(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
@@ -1507,13 +3298,15 @@ class _ProviderAccountTicketsView extends StatelessWidget {
                         ),
                         _TicketBadgeCell(
                           width: 160,
-                          label: comprasPagoStatusLabel(row.pagoStatus),
-                          tone: _pagoTone(row.pagoStatus),
+                          label: comprasPagoStatusLabel(resolved.pagoStatus),
+                          tone: _pagoTone(resolved.pagoStatus),
                         ),
                         _TicketBadgeCell(
                           width: 130,
-                          label: comprasCoverageStatusLabel(row.coverageStatus),
-                          tone: _coverageTone(row.coverageStatus),
+                          label: comprasCoverageStatusLabel(
+                            resolved.coverageStatus,
+                          ),
+                          tone: _coverageTone(resolved.coverageStatus),
                         ),
                       ],
                     ),
@@ -1533,12 +3326,18 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
   final Future<void> Function() onRegisterInvoice;
+  final Future<void> Function(_ProviderInvoiceView invoice)
+  onEditInvoicePriority;
+  final Future<void> Function(_ProviderInvoiceView invoice)
+  onOpenInvoiceEvidence;
 
   const _ProviderAccountInvoicesView({
     required this.account,
     required this.moneyFormatter,
     required this.dateFormatter,
     required this.onRegisterInvoice,
+    required this.onEditInvoicePriority,
+    required this.onOpenInvoiceEvidence,
   });
 
   @override
@@ -1640,6 +3439,25 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                               ],
                             ),
                           ),
+                          if (row.invoice.manualPriority != 'NORMAL') ...[
+                            _MiniToneChip(
+                              label: finManualPriorityLabel(
+                                row.invoice.manualPriority,
+                              ),
+                              tone: _manualPriorityTone(
+                                row.invoice.manualPriority,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
+                          _MovementIconAction(
+                            icon: Icons.flag_outlined,
+                            color: _manualPriorityTone(
+                              row.invoice.manualPriority,
+                            ),
+                            onTap: () => onEditInvoicePriority(row),
+                          ),
+                          const SizedBox(width: 8),
                           _MiniToneChip(
                             label: finSupplierInvoiceStatusLabel(
                               row.invoice.status,
@@ -1654,6 +3472,16 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                         runSpacing: 10,
                         children: [
                           _SummaryMetricCard(
+                            label: 'Empresa objetivo',
+                            value: row.invoice.targetCompany,
+                          ),
+                          _SummaryMetricCard(
+                            label: 'Cuenta objetivo',
+                            value: row.invoice.targetBranch == 'MAZATLAN'
+                                ? 'Mazatlan'
+                                : 'Celaya',
+                          ),
+                          _SummaryMetricCard(
                             label: 'Total',
                             value: moneyFormatter(row.invoice.totalAmount),
                           ),
@@ -1664,6 +3492,16 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                           _SummaryMetricCard(
                             label: 'Tickets',
                             value: '${row.tickets.length}',
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        children: [
+                          _ActionPillButton(
+                            label: 'Evidencias ${row.evidences.length}',
+                            icon: Icons.attach_file_rounded,
+                            onTap: () => onOpenInvoiceEvidence(row),
                           ),
                         ],
                       ),
@@ -1701,6 +3539,46 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                             ],
                           ),
                         ),
+                        if (row.bankMovement!.company !=
+                                row.invoice.targetCompany ||
+                            row.bankMovement!.branch !=
+                                row.invoice.targetBranch) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+                            decoration: BoxDecoration(
+                              color: const Color(
+                                0xFF8B5E00,
+                              ).withValues(alpha: 0.10),
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(
+                                color: const Color(
+                                  0xFF8B5E00,
+                                ).withValues(alpha: 0.22),
+                              ),
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.compare_arrows_rounded,
+                                  size: 18,
+                                  color: Color(0xFF8B5E00),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    'Objetivo: ${row.invoice.targetCompany} ${row.invoice.targetBranch == 'MAZATLAN' ? 'Mazatlan' : 'Celaya'} · Ejecución real: ${row.bankMovement!.company} ${row.bankMovement!.branch == 'MAZATLAN' ? 'Mazatlan' : 'Celaya'}',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: kFinanzasMutedInk,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                       ],
                       if (row.tickets.isNotEmpty) ...[
                         const SizedBox(height: 12),
@@ -1725,6 +3603,45 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             color: kFinanzasMutedInk,
                             height: 1.4,
+                          ),
+                        ),
+                      ],
+                      if (row.invoice.priorityNote.trim().isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Container(
+                          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+                          decoration: BoxDecoration(
+                            color: _manualPriorityTone(
+                              row.invoice.manualPriority,
+                            ).withValues(alpha: 0.08),
+                            borderRadius: BorderRadius.circular(14),
+                            border: Border.all(
+                              color: _manualPriorityTone(
+                                row.invoice.manualPriority,
+                              ).withValues(alpha: 0.18),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                Icons.flag_outlined,
+                                size: 16,
+                                color: _manualPriorityTone(
+                                  row.invoice.manualPriority,
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  row.invoice.priorityNote.trim(),
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: kFinanzasMutedInk,
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -1883,12 +3800,23 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
   final Future<void> Function() onRegisterAgreement;
+  final Future<void> Function(_ProviderAgreementView agreement) onEditAgreement;
+  final Future<void> Function(_ProviderAgreementView agreement)
+  onCancelAgreement;
+  final Future<void> Function(
+    _ProviderAgreementView agreement,
+    FinanzasSupplierAgreementInstallmentRecord installment,
+  )
+  onToggleInstallmentPaid;
 
   const _ProviderAccountAgreementsView({
     required this.account,
     required this.moneyFormatter,
     required this.dateFormatter,
     required this.onRegisterAgreement,
+    required this.onEditAgreement,
+    required this.onCancelAgreement,
+    required this.onToggleInstallmentPaid,
   });
 
   @override
@@ -1976,7 +3904,7 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              '${finSupplierAgreementFrequencyLabel(row.agreement.frequency)} · ${dateFormatter(row.agreement.startDate)}',
+                              '${finSupplierAgreementTypeLabel(row.agreement.agreementType)} · ${finSupplierAgreementFrequencyLabel(row.agreement.frequency)} · ${dateFormatter(row.agreement.startDate)}',
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w900,
@@ -1990,6 +3918,18 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
                             ),
                             tone: tone,
                           ),
+                          const SizedBox(width: 8),
+                          _MovementIconAction(
+                            icon: Icons.edit_outlined,
+                            color: AreaThemeScope.of(context).primaryStrong,
+                            onTap: () => onEditAgreement(row),
+                          ),
+                          const SizedBox(width: 8),
+                          _MovementIconAction(
+                            icon: Icons.cancel_outlined,
+                            color: const Color(0xFFB42318),
+                            onTap: () => onCancelAgreement(row),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 10),
@@ -1998,15 +3938,38 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
                         runSpacing: 10,
                         children: [
                           _SummaryMetricCard(
-                            label: 'Pago pactado',
-                            value: moneyFormatter(
-                              row.agreement.installmentAmount,
-                            ),
+                            label: 'Empresa objetivo',
+                            value: row.agreement.targetCompany,
                           ),
                           _SummaryMetricCard(
-                            label: 'Pagos',
+                            label: 'Cuenta objetivo',
+                            value: row.agreement.targetBranch == 'MAZATLAN'
+                                ? 'Mazatlan'
+                                : 'Celaya',
+                          ),
+                          if (row.agreement.agreementType == 'POR_MONTO')
+                            _SummaryMetricCard(
+                              label: 'Pago pactado',
+                              value: moneyFormatter(
+                                row.agreement.installmentAmount,
+                              ),
+                            )
+                          else
+                            _SummaryMetricCard(
+                              label: 'Facturas por periodo',
+                              value: '${row.agreement.invoicesPerPeriod}',
+                            ),
+                          _SummaryMetricCard(
+                            label: row.agreement.agreementType == 'POR_MONTO'
+                                ? 'Pagos'
+                                : 'Compromisos',
                             value: '${row.agreement.installmentCount}',
                           ),
+                          if (row.agreement.agreementType == 'POR_FACTURAS')
+                            _SummaryMetricCard(
+                              label: 'Facturas ligadas',
+                              value: '${row.agreement.scheduledInvoiceCount}',
+                            ),
                           _SummaryMetricCard(
                             label: 'Total',
                             value: moneyFormatter(row.agreement.totalAmount),
@@ -2039,67 +4002,112 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
                           runSpacing: 8,
                           children: [
                             for (final installment in row.installments)
-                              Container(
-                                width: 170,
-                                padding: const EdgeInsets.fromLTRB(
-                                  12,
-                                  10,
-                                  12,
-                                  10,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.white.withValues(alpha: 0.74),
-                                  borderRadius: BorderRadius.circular(16),
-                                  border: Border.all(
-                                    color: _installmentTone(
-                                      installment.status,
-                                    ).withValues(alpha: 0.18),
-                                  ),
-                                ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Pago ${installment.sequenceNumber}',
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.w900,
-                                        color: AreaThemeScope.of(
-                                          context,
-                                        ).primaryStrong,
+                              Builder(
+                                builder: (context) {
+                                  final installmentInvoices = row.invoiceLinks
+                                      .where(
+                                        (link) =>
+                                            link.link.installmentId ==
+                                            installment.id,
+                                      )
+                                      .toList(growable: false);
+                                  return Container(
+                                    width: 210,
+                                    padding: const EdgeInsets.fromLTRB(
+                                      12,
+                                      10,
+                                      12,
+                                      10,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.74,
+                                      ),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: _installmentTone(
+                                          installment.status,
+                                        ).withValues(alpha: 0.18),
                                       ),
                                     ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      dateFormatter(installment.dueDate),
-                                      style: TextStyle(
-                                        fontSize: 12.5,
-                                        fontWeight: FontWeight.w800,
-                                        color: kFinanzasMutedInk,
-                                      ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          row.agreement.agreementType ==
+                                                  'POR_FACTURAS'
+                                              ? 'Compromiso ${installment.sequenceNumber}'
+                                              : 'Pago ${installment.sequenceNumber}',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                            color: AreaThemeScope.of(
+                                              context,
+                                            ).primaryStrong,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 6),
+                                        Text(
+                                          dateFormatter(installment.dueDate),
+                                          style: TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w800,
+                                            color: kFinanzasMutedInk,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          moneyFormatter(installment.amount),
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w900,
+                                            color: AreaThemeScope.of(
+                                              context,
+                                            ).primaryStrong,
+                                          ),
+                                        ),
+                                        if (installmentInvoices.isNotEmpty) ...[
+                                          const SizedBox(height: 8),
+                                          Text(
+                                            installmentInvoices
+                                                .map((row) => row.invoice.folio)
+                                                .join(' · '),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              fontWeight: FontWeight.w800,
+                                              color: kFinanzasMutedInk,
+                                              height: 1.3,
+                                            ),
+                                          ),
+                                        ],
+                                        const SizedBox(height: 6),
+                                        _MiniToneChip(
+                                          label: _installmentStatusLabel(
+                                            installment.status,
+                                          ),
+                                          tone: _installmentTone(
+                                            installment.status,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 8),
+                                        _MovementIconAction(
+                                          icon: installment.status == 'PAGADO'
+                                              ? Icons.undo_rounded
+                                              : Icons
+                                                    .check_circle_outline_rounded,
+                                          color: installment.status == 'PAGADO'
+                                              ? const Color(0xFF8B5E00)
+                                              : const Color(0xFF0F766E),
+                                          onTap: () => onToggleInstallmentPaid(
+                                            row,
+                                            installment,
+                                          ),
+                                        ),
+                                      ],
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      moneyFormatter(installment.amount),
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w900,
-                                        color: AreaThemeScope.of(
-                                          context,
-                                        ).primaryStrong,
-                                      ),
-                                    ),
-                                    const SizedBox(height: 6),
-                                    _MiniToneChip(
-                                      label: _installmentStatusLabel(
-                                        installment.status,
-                                      ),
-                                      tone: _installmentTone(
-                                        installment.status,
-                                      ),
-                                    ),
-                                  ],
-                                ),
+                                  );
+                                },
                               ),
                           ],
                         ),
@@ -2383,27 +4391,267 @@ class _MovementIconAction extends StatelessWidget {
 
 class _AgreementDraftResult {
   final DateTime startDate;
+  final String agreementType;
   final String frequency;
+  final String targetCompany;
+  final String targetBranch;
   final double installmentAmount;
   final int installmentCount;
+  final int invoicesPerPeriod;
+  final List<String> selectedInvoiceIds;
   final String notes;
 
   const _AgreementDraftResult({
     required this.startDate,
+    required this.agreementType,
     required this.frequency,
+    required this.targetCompany,
+    required this.targetBranch,
     required this.installmentAmount,
     required this.installmentCount,
+    required this.invoicesPerPeriod,
+    required this.selectedInvoiceIds,
     required this.notes,
+  });
+}
+
+class _ManualPriorityDraft {
+  final String level;
+  final String note;
+
+  const _ManualPriorityDraft({required this.level, required this.note});
+}
+
+class _ManualPriorityDialog extends StatefulWidget {
+  final String title;
+  final String subtitle;
+  final String initialLevel;
+  final String initialNote;
+
+  const _ManualPriorityDialog({
+    required this.title,
+    required this.subtitle,
+    required this.initialLevel,
+    required this.initialNote,
+  });
+
+  @override
+  State<_ManualPriorityDialog> createState() => _ManualPriorityDialogState();
+}
+
+class _ManualPriorityDialogState extends State<_ManualPriorityDialog> {
+  late String _level;
+  late final TextEditingController _noteC;
+
+  @override
+  void initState() {
+    super.initState();
+    _level = kFinManualPriorityLevels.contains(widget.initialLevel)
+        ? widget.initialLevel
+        : 'NORMAL';
+    _noteC = TextEditingController(text: widget.initialNote);
+  }
+
+  @override
+  void dispose() {
+    _noteC.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 620),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(34),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.92),
+                borderRadius: BorderRadius.circular(34),
+                border: Border.all(
+                  color: tokens.primaryStrong.withValues(alpha: 0.16),
+                ),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              widget.title,
+                              style: TextStyle(
+                                fontSize: 28,
+                                fontWeight: FontWeight.w900,
+                                color: tokens.primaryStrong,
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              widget.subtitle,
+                              style: TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.w700,
+                                color: kFinanzasMutedInk,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: tokens.primaryStrong,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Prioridad manual',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      color: tokens.badgeText,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      for (final level in kFinManualPriorityLevels)
+                        ChoiceChip(
+                          label: Text(finManualPriorityLabel(level)),
+                          selected: _level == level,
+                          onSelected: (_) => setState(() => _level = level),
+                          selectedColor: _manualPriorityTone(
+                            level,
+                          ).withValues(alpha: 0.16),
+                          backgroundColor: Colors.white.withValues(alpha: 0.72),
+                          labelStyle: TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: _level == level
+                                ? _manualPriorityTone(level)
+                                : tokens.primaryStrong,
+                          ),
+                          side: BorderSide(
+                            color: _manualPriorityTone(
+                              level,
+                            ).withValues(alpha: _level == level ? 0.40 : 0.14),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Text(
+                    'Nota operativa',
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w900,
+                      color: tokens.badgeText,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  TextField(
+                    controller: _noteC,
+                    maxLines: 3,
+                    decoration: InputDecoration(
+                      hintText:
+                          'Ej. proveedor presionando, surtido crítico, acuerdo verbal, etc.',
+                      filled: true,
+                      fillColor: Colors.white.withValues(alpha: 0.88),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide(
+                          color: tokens.primaryStrong.withValues(alpha: 0.16),
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide(
+                          color: tokens.primaryStrong.withValues(alpha: 0.16),
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(18),
+                        borderSide: BorderSide(
+                          color: tokens.primaryStrong.withValues(alpha: 0.34),
+                          width: 1.4,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 20),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        child: const Text('Cancelar'),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton.icon(
+                        onPressed: () {
+                          Navigator.of(context).pop(
+                            _ManualPriorityDraft(
+                              level: _level,
+                              note: _noteC.text.trim(),
+                            ),
+                          );
+                        },
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('Guardar prioridad'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _AgreementSaveBundle {
+  final FinanzasSupplierAgreementRecord agreement;
+  final List<FinanzasSupplierAgreementInstallmentRecord> installments;
+  final List<FinanzasSupplierAgreementInvoiceRecord> invoiceLinks;
+
+  const _AgreementSaveBundle({
+    required this.agreement,
+    required this.installments,
+    required this.invoiceLinks,
   });
 }
 
 class _RegisterSupplierAgreementDialog extends StatefulWidget {
   final String providerName;
   final double suggestedBalance;
+  final List<FinanzasSupplierInvoiceRecord> invoices;
+  final _AgreementDraftResult? initialDraft;
+  final (String, String) initialTarget;
 
   const _RegisterSupplierAgreementDialog({
     required this.providerName,
     required this.suggestedBalance,
+    required this.invoices,
+    required this.initialTarget,
+    this.initialDraft,
   });
 
   @override
@@ -2413,20 +4661,44 @@ class _RegisterSupplierAgreementDialog extends StatefulWidget {
 
 class _RegisterSupplierAgreementDialogState
     extends State<_RegisterSupplierAgreementDialog> {
+  static const List<String> _targetCompanies = <String>['DICSA', 'VH'];
+  static const List<String> _targetBranches = <String>['CELAYA', 'MAZATLAN'];
   late final TextEditingController _amountC;
   late final TextEditingController _countC;
+  late final TextEditingController _invoicesPerPeriodC;
   late final TextEditingController _notesC;
   DateTime _startDate = DateUtils.dateOnly(DateTime.now());
+  String _agreementType = 'POR_MONTO';
   String _frequency = 'SEMANAL';
+  late String _targetCompany;
+  late String _targetBranch;
+  final Set<String> _selectedInvoiceIds = <String>{};
 
   @override
   void initState() {
     super.initState();
-    _amountC = TextEditingController();
-    _countC = TextEditingController(text: '4');
-    _notesC = TextEditingController();
+    final draft = widget.initialDraft;
+    _amountC = TextEditingController(
+      text: draft == null || draft.installmentAmount <= 0
+          ? ''
+          : draft.installmentAmount.toStringAsFixed(2),
+    );
+    _countC = TextEditingController(
+      text: draft == null ? '4' : '${draft.installmentCount}',
+    );
+    _invoicesPerPeriodC = TextEditingController(
+      text: draft == null ? '1' : '${draft.invoicesPerPeriod.clamp(1, 999)}',
+    );
+    _notesC = TextEditingController(text: draft?.notes ?? '');
+    _startDate = draft?.startDate ?? DateUtils.dateOnly(DateTime.now());
+    _agreementType = draft?.agreementType ?? 'POR_MONTO';
+    _frequency = draft?.frequency ?? 'SEMANAL';
+    _targetCompany = draft?.targetCompany ?? widget.initialTarget.$1;
+    _targetBranch = draft?.targetBranch ?? widget.initialTarget.$2;
+    _selectedInvoiceIds.addAll(draft?.selectedInvoiceIds ?? const <String>[]);
     _amountC.addListener(_refresh);
     _countC.addListener(_refresh);
+    _invoicesPerPeriodC.addListener(_refresh);
     _notesC.addListener(_refresh);
   }
 
@@ -2434,6 +4706,7 @@ class _RegisterSupplierAgreementDialogState
   void dispose() {
     _amountC.dispose();
     _countC.dispose();
+    _invoicesPerPeriodC.dispose();
     _notesC.dispose();
     super.dispose();
   }
@@ -2452,8 +4725,17 @@ class _RegisterSupplierAgreementDialogState
     return int.tryParse(raw.trim()) ?? 0;
   }
 
-  bool get _canSave =>
-      _parseAmount(_amountC.text) > 0 && _parseCount(_countC.text) > 0;
+  int _parseInvoicesPerPeriod(String raw) {
+    return int.tryParse(raw.trim()) ?? 0;
+  }
+
+  bool get _canSave {
+    if (_agreementType == 'POR_FACTURAS') {
+      return _selectedInvoiceIds.isNotEmpty &&
+          _parseInvoicesPerPeriod(_invoicesPerPeriodC.text) > 0;
+    }
+    return _parseAmount(_amountC.text) > 0 && _parseCount(_countC.text) > 0;
+  }
 
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
@@ -2484,9 +4766,83 @@ class _RegisterSupplierAgreementDialogState
     return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
   }
 
+  Future<void> _pickAgreementType() async {
+    final selected = await _showSimpleOptionsDialog(
+      context: context,
+      title: 'Tipo de convenio',
+      options: const [
+        _SimpleOption(
+          id: 'POR_MONTO',
+          label: 'Por monto',
+          subtitle: 'Pagar una cantidad fija por periodo',
+        ),
+        _SimpleOption(
+          id: 'POR_FACTURAS',
+          label: 'Por facturas',
+          subtitle: 'Pagar una o varias facturas por periodo',
+        ),
+      ],
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _agreementType = selected.id;
+      if (_agreementType == 'POR_MONTO') {
+        _selectedInvoiceIds.clear();
+      }
+    });
+  }
+
+  Future<void> _pickFrequency() async {
+    final selected = await _showSimpleOptionsDialog(
+      context: context,
+      title: 'Seleccionar frecuencia',
+      options: const [
+        _SimpleOption(id: 'SEMANAL', label: 'Semanal', subtitle: 'Cada 7 días'),
+        _SimpleOption(
+          id: 'QUINCENAL',
+          label: 'Quincenal',
+          subtitle: 'Cada 15 días',
+        ),
+        _SimpleOption(id: 'MENSUAL', label: 'Mensual', subtitle: 'Cada mes'),
+      ],
+    );
+    if (selected == null || !mounted) return;
+    setState(() => _frequency = selected.id);
+  }
+
+  Future<void> _pickInvoices() async {
+    final selected = await _showInvoiceSelectionDialog(
+      context: context,
+      invoices: widget.invoices,
+      selectedIds: _selectedInvoiceIds,
+    );
+    if (selected == null || !mounted) return;
+    setState(() {
+      _selectedInvoiceIds
+        ..clear()
+        ..addAll(selected);
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
-    final total = _parseAmount(_amountC.text) * _parseCount(_countC.text);
+    final selectedInvoices = widget.invoices
+        .where((invoice) => _selectedInvoiceIds.contains(invoice.id))
+        .toList(growable: false);
+    final invoiceTotal = selectedInvoices.fold<double>(
+      0,
+      (sum, invoice) => sum + invoice.balanceAmount,
+    );
+    final total = _agreementType == 'POR_FACTURAS'
+        ? invoiceTotal
+        : _parseAmount(_amountC.text) * _parseCount(_countC.text);
+    final projectedInstallments = _agreementType == 'POR_FACTURAS'
+        ? (() {
+            final perPeriod = _parseInvoicesPerPeriod(_invoicesPerPeriodC.text);
+            if (perPeriod <= 0 || selectedInvoices.isEmpty) return 0;
+            return (selectedInvoices.length / perPeriod).ceil();
+          })()
+        : _parseCount(_countC.text);
     return Dialog(
       backgroundColor: Colors.transparent,
       child: AreaThemeScope(
@@ -2501,7 +4857,9 @@ class _RegisterSupplierAgreementDialogState
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Nuevo convenio',
+                  widget.initialDraft == null
+                      ? 'Nuevo convenio'
+                      : 'Editar convenio',
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w900,
@@ -2522,6 +4880,16 @@ class _RegisterSupplierAgreementDialogState
                   children: [
                     Expanded(
                       child: _InlineChoiceField(
+                        label: 'Tipo',
+                        value: finSupplierAgreementTypeLabel(_agreementType),
+                        onTap: () {
+                          unawaited(_pickAgreementType());
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _InlineChoiceField(
                         label: 'Inicio',
                         value: _dateLabel(_startDate),
                         onTap: () {
@@ -2535,31 +4903,7 @@ class _RegisterSupplierAgreementDialogState
                         label: 'Frecuencia',
                         value: finSupplierAgreementFrequencyLabel(_frequency),
                         onTap: () {
-                          unawaited(() async {
-                            final selected = await _showSimpleOptionsDialog(
-                              context: context,
-                              title: 'Seleccionar frecuencia',
-                              options: const [
-                                _SimpleOption(
-                                  id: 'SEMANAL',
-                                  label: 'Semanal',
-                                  subtitle: 'Cada 7 días',
-                                ),
-                                _SimpleOption(
-                                  id: 'QUINCENAL',
-                                  label: 'Quincenal',
-                                  subtitle: 'Cada 15 días',
-                                ),
-                                _SimpleOption(
-                                  id: 'MENSUAL',
-                                  label: 'Mensual',
-                                  subtitle: 'Cada mes',
-                                ),
-                              ],
-                            );
-                            if (selected == null) return;
-                            setState(() => _frequency = selected.id);
-                          }());
+                          unawaited(_pickFrequency());
                         },
                       ),
                     ),
@@ -2569,32 +4913,141 @@ class _RegisterSupplierAgreementDialogState
                 Row(
                   children: [
                     Expanded(
-                      child: TextField(
-                        controller: _amountC,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: contractGlassFieldDecoration(
-                          context,
-                          hintText: 'Monto por pago',
-                          prefixIcon: const Icon(Icons.payments_outlined),
-                        ),
+                      child: _InlineChoiceField(
+                        label: 'Empresa objetivo',
+                        value: _targetCompany,
+                        onTap: () async {
+                          final selected = await _showSimpleOptionsDialog(
+                            context: context,
+                            title: 'Seleccionar empresa objetivo',
+                            options: _targetCompanies
+                                .map(
+                                  (row) => _SimpleOption(
+                                    id: row,
+                                    label: row,
+                                    subtitle: 'Cuenta pagadora esperada',
+                                  ),
+                                )
+                                .toList(growable: false),
+                          );
+                          if (selected == null || !mounted) return;
+                          setState(() => _targetCompany = selected.id);
+                        },
                       ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: TextField(
-                        controller: _countC,
-                        keyboardType: TextInputType.number,
-                        decoration: contractGlassFieldDecoration(
-                          context,
-                          hintText: 'Número de pagos',
-                          prefixIcon: const Icon(Icons.format_list_numbered),
-                        ),
+                      child: _InlineChoiceField(
+                        label: 'Cuenta objetivo',
+                        value: _targetBranch == 'MAZATLAN'
+                            ? 'Mazatlan'
+                            : 'Celaya',
+                        onTap: () async {
+                          final selected = await _showSimpleOptionsDialog(
+                            context: context,
+                            title: 'Seleccionar cuenta objetivo',
+                            options: _targetBranches
+                                .map(
+                                  (row) => _SimpleOption(
+                                    id: row,
+                                    label: row == 'MAZATLAN'
+                                        ? 'Mazatlan'
+                                        : 'Celaya',
+                                    subtitle: 'Sucursal/cuenta objetivo',
+                                  ),
+                                )
+                                .toList(growable: false),
+                          );
+                          if (selected == null || !mounted) return;
+                          setState(() => _targetBranch = selected.id);
+                        },
                       ),
                     ),
                   ],
                 ),
+                const SizedBox(height: 12),
+                if (_agreementType == 'POR_MONTO')
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _amountC,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: contractGlassFieldDecoration(
+                            context,
+                            hintText: 'Monto por pago',
+                            prefixIcon: const Icon(Icons.payments_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _countC,
+                          keyboardType: TextInputType.number,
+                          decoration: contractGlassFieldDecoration(
+                            context,
+                            hintText: 'Número de pagos',
+                            prefixIcon: const Icon(Icons.format_list_numbered),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                else
+                  Column(
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: _InlineChoiceField(
+                              label: 'Facturas',
+                              value: _selectedInvoiceIds.isEmpty
+                                  ? 'Seleccionar facturas'
+                                  : '${_selectedInvoiceIds.length} seleccionadas',
+                              onTap: () {
+                                unawaited(_pickInvoices());
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: _invoicesPerPeriodC,
+                              keyboardType: TextInputType.number,
+                              decoration: contractGlassFieldDecoration(
+                                context,
+                                hintText: 'Facturas por periodo',
+                                prefixIcon: const Icon(
+                                  Icons.stacked_line_chart_outlined,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (selectedInvoices.isNotEmpty) ...[
+                        const SizedBox(height: 10),
+                        Align(
+                          alignment: Alignment.centerLeft,
+                          child: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              for (final invoice in selectedInvoices)
+                                _CompactInvoiceChip(
+                                  label:
+                                      '${invoice.folio} · ${_moneyStatic(invoice.balanceAmount)}',
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
                 const SizedBox(height: 12),
                 Wrap(
                   spacing: 10,
@@ -2603,6 +5056,12 @@ class _RegisterSupplierAgreementDialogState
                     _SummaryMetricCard(
                       label: 'Total convenio',
                       value: _moneyStatic(total),
+                    ),
+                    _SummaryMetricCard(
+                      label: _agreementType == 'POR_FACTURAS'
+                          ? 'Compromisos'
+                          : 'Pagos',
+                      value: '$projectedInstallments',
                     ),
                     _SummaryMetricCard(
                       label: 'Frecuencia',
@@ -2637,11 +5096,19 @@ class _RegisterSupplierAgreementDialogState
                               Navigator.of(context).pop(
                                 _AgreementDraftResult(
                                   startDate: _startDate,
+                                  agreementType: _agreementType,
                                   frequency: _frequency,
+                                  targetCompany: _targetCompany,
+                                  targetBranch: _targetBranch,
                                   installmentAmount: _parseAmount(
                                     _amountC.text,
                                   ),
-                                  installmentCount: _parseCount(_countC.text),
+                                  installmentCount: projectedInstallments,
+                                  invoicesPerPeriod: _parseInvoicesPerPeriod(
+                                    _invoicesPerPeriodC.text,
+                                  ),
+                                  selectedInvoiceIds: _selectedInvoiceIds
+                                      .toList(growable: false),
                                   notes: _notesC.text.trim(),
                                 ),
                               );
@@ -3163,6 +5630,17 @@ Color _installmentTone(String status) {
   }
 }
 
+Color _manualPriorityTone(String level) {
+  switch (level) {
+    case 'CRITICA':
+      return const Color(0xFFB42318);
+    case 'ALTA':
+      return const Color(0xFF8B5E00);
+    default:
+      return const Color(0xFF6B7280);
+  }
+}
+
 String _installmentStatusLabel(String status) {
   switch (status) {
     case 'PAGADO':
@@ -3190,6 +5668,38 @@ String _moneyStatic(double value) {
     }
   }
   return '${negative ? '-' : ''}\$${buffer.toString()}.$decimal';
+}
+
+String _dateLabelStatic(DateTime value) {
+  return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+}
+
+class _CompactInvoiceChip extends StatelessWidget {
+  final String label;
+
+  const _CompactInvoiceChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.74),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: AreaThemeScope.of(context).border.withValues(alpha: 0.86),
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w800,
+          color: AreaThemeScope.of(context).primaryStrong,
+        ),
+      ),
+    );
+  }
 }
 
 class _SimpleOption {
@@ -3264,6 +5774,174 @@ Future<_SimpleOption?> _showSimpleOptionsDialog({
       ),
     ),
   );
+}
+
+Future<List<String>?> _showInvoiceSelectionDialog({
+  required BuildContext context,
+  required List<FinanzasSupplierInvoiceRecord> invoices,
+  required Set<String> selectedIds,
+}) {
+  return showDialog<List<String>>(
+    context: context,
+    builder: (_) => _SelectAgreementInvoicesDialog(
+      invoices: invoices,
+      initialSelectedIds: selectedIds.toList(growable: false),
+    ),
+  );
+}
+
+class _SelectAgreementInvoicesDialog extends StatefulWidget {
+  final List<FinanzasSupplierInvoiceRecord> invoices;
+  final List<String> initialSelectedIds;
+
+  const _SelectAgreementInvoicesDialog({
+    required this.invoices,
+    required this.initialSelectedIds,
+  });
+
+  @override
+  State<_SelectAgreementInvoicesDialog> createState() =>
+      _SelectAgreementInvoicesDialogState();
+}
+
+class _SelectAgreementInvoicesDialogState
+    extends State<_SelectAgreementInvoicesDialog> {
+  late final Set<String> _selectedIds;
+
+  @override
+  void initState() {
+    super.initState();
+    _selectedIds = widget.initialSelectedIds.toSet();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: AreaThemeScope(
+        tokens: finanzasAreaTokens,
+        child: ContractGlassCard(
+          borderRadius: BorderRadius.circular(28),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 640, maxHeight: 720),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Seleccionar facturas',
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                    color: kFinanzasInk,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'Elige las facturas que entran al convenio y luego define cuántas van por periodo.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: kFinanzasMutedInk,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: widget.invoices.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (_, index) {
+                      final invoice = widget.invoices[index];
+                      final selected = _selectedIds.contains(invoice.id);
+                      return InkWell(
+                        onTap: () {
+                          setState(() {
+                            if (selected) {
+                              _selectedIds.remove(invoice.id);
+                            } else {
+                              _selectedIds.add(invoice.id);
+                            }
+                          });
+                        },
+                        borderRadius: BorderRadius.circular(18),
+                        child: Container(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.72),
+                            borderRadius: BorderRadius.circular(18),
+                            border: Border.all(
+                              color: selected
+                                  ? finanzasAreaTokens.primaryStrong
+                                  : finanzasAreaTokens.border.withValues(
+                                      alpha: 0.9,
+                                    ),
+                            ),
+                          ),
+                          child: Row(
+                            children: [
+                              Icon(
+                                selected
+                                    ? Icons.check_circle_rounded
+                                    : Icons.circle_outlined,
+                                color: selected
+                                    ? finanzasAreaTokens.primaryStrong
+                                    : kFinanzasMutedInk,
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      invoice.folio,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w900,
+                                        color: kFinanzasInk,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      '${_dateLabelStatic(invoice.invoiceDate)} · ${_moneyStatic(invoice.balanceAmount)}',
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w700,
+                                        color: kFinanzasMutedInk,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    OutlinedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancelar'),
+                    ),
+                    const SizedBox(width: 10),
+                    FilledButton.icon(
+                      onPressed: () => Navigator.of(
+                        context,
+                      ).pop(_selectedIds.toList(growable: false)),
+                      icon: const Icon(Icons.check_rounded),
+                      label: const Text('Usar selección'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ProviderCashMovementDraft {
@@ -3655,6 +6333,8 @@ class _InvoiceDraftResult {
   final String folio;
   final DateTime invoiceDate;
   final DateTime? dueDate;
+  final String targetCompany;
+  final String targetBranch;
   final String notes;
   final Set<String> selectedTicketIds;
 
@@ -3662,6 +6342,8 @@ class _InvoiceDraftResult {
     required this.folio,
     required this.invoiceDate,
     required this.dueDate,
+    required this.targetCompany,
+    required this.targetBranch,
     required this.notes,
     required this.selectedTicketIds,
   });
@@ -3670,10 +6352,12 @@ class _InvoiceDraftResult {
 class _RegisterSupplierInvoiceDialog extends StatefulWidget {
   final String companyName;
   final List<ComprasTicketRecord> tickets;
+  final (String, String) initialTarget;
 
   const _RegisterSupplierInvoiceDialog({
     required this.companyName,
     required this.tickets,
+    required this.initialTarget,
   });
 
   @override
@@ -3683,11 +6367,15 @@ class _RegisterSupplierInvoiceDialog extends StatefulWidget {
 
 class _RegisterSupplierInvoiceDialogState
     extends State<_RegisterSupplierInvoiceDialog> {
+  static const List<String> _targetCompanies = <String>['DICSA', 'VH'];
+  static const List<String> _targetBranches = <String>['CELAYA', 'MAZATLAN'];
   late final TextEditingController _folioC;
   late final TextEditingController _notesC;
   late DateTime _invoiceDate;
   DateTime? _dueDate;
   late Set<String> _selectedTicketIds;
+  late String _targetCompany;
+  late String _targetBranch;
 
   @override
   void initState() {
@@ -3696,6 +6384,8 @@ class _RegisterSupplierInvoiceDialogState
     _notesC = TextEditingController();
     _invoiceDate = DateUtils.dateOnly(DateTime.now());
     _selectedTicketIds = widget.tickets.map((ticket) => ticket.id).toSet();
+    _targetCompany = widget.initialTarget.$1;
+    _targetBranch = widget.initialTarget.$2;
   }
 
   @override
@@ -3866,6 +6556,62 @@ class _RegisterSupplierInvoiceDialogState
                   ],
                 ),
                 const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _InlineChoiceField(
+                        label: 'Empresa objetivo',
+                        value: _targetCompany,
+                        onTap: () async {
+                          final selected = await _showSimpleOptionsDialog(
+                            context: context,
+                            title: 'Seleccionar empresa objetivo',
+                            options: _targetCompanies
+                                .map(
+                                  (row) => _SimpleOption(
+                                    id: row,
+                                    label: row,
+                                    subtitle: 'Cuenta pagadora esperada',
+                                  ),
+                                )
+                                .toList(growable: false),
+                          );
+                          if (selected == null || !mounted) return;
+                          setState(() => _targetCompany = selected.id);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _InlineChoiceField(
+                        label: 'Cuenta objetivo',
+                        value: _targetBranch == 'MAZATLAN'
+                            ? 'Mazatlan'
+                            : 'Celaya',
+                        onTap: () async {
+                          final selected = await _showSimpleOptionsDialog(
+                            context: context,
+                            title: 'Seleccionar cuenta objetivo',
+                            options: _targetBranches
+                                .map(
+                                  (row) => _SimpleOption(
+                                    id: row,
+                                    label: row == 'MAZATLAN'
+                                        ? 'Mazatlan'
+                                        : 'Celaya',
+                                    subtitle: 'Sucursal/cuenta objetivo',
+                                  ),
+                                )
+                                .toList(growable: false),
+                          );
+                          if (selected == null || !mounted) return;
+                          setState(() => _targetBranch = selected.id);
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 12),
                 TextField(
                   controller: _notesC,
                   minLines: 2,
@@ -4012,6 +6758,8 @@ class _RegisterSupplierInvoiceDialogState
                                   folio: _folioC.text.trim(),
                                   invoiceDate: _invoiceDate,
                                   dueDate: _dueDate,
+                                  targetCompany: _targetCompany,
+                                  targetBranch: _targetBranch,
                                   notes: _notesC.text.trim(),
                                   selectedTicketIds: _selectedTicketIds,
                                 ),
@@ -4097,91 +6845,7 @@ class _FinProviderAccountsBackground extends StatelessWidget {
   const _FinProviderAccountsBackground();
 
   @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        DecoratedBox(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFF7E5E2), Color(0xFFD45A52), Color(0xFF241313)],
-            ),
-          ),
-          child: const SizedBox.expand(),
-        ),
-        Positioned(
-          left: -260,
-          top: -130,
-          child: _FinBackgroundCircle(760, [
-            const Color(0xFFFFF6F4),
-            const Color(0xFFF2C0BC),
-          ]),
-        ),
-        Positioned(
-          right: -180,
-          top: -70,
-          child: _FinBackgroundCircle(580, [
-            const Color(0xFFBC2D25),
-            const Color(0x33241313),
-          ]),
-        ),
-        Positioned(
-          left: 20,
-          bottom: -260,
-          child: _FinBackgroundCircle(640, [
-            const Color(0x66241313),
-            const Color(0xFFFBE8E6),
-          ]),
-        ),
-        Positioned(
-          right: -105,
-          bottom: -120,
-          child: IgnorePointer(
-            child: Container(
-              width: 320,
-              height: 500,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(220),
-                gradient: const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF241313), Color(0xFFBC2D25)],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FinBackgroundCircle extends StatelessWidget {
-  final double diameter;
-  final List<Color> colors;
-
-  const _FinBackgroundCircle(this.diameter, this.colors);
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(colors: colors),
-          boxShadow: [
-            BoxShadow(
-              blurRadius: diameter * 0.10,
-              spreadRadius: diameter * 0.015,
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
-          ],
-        ),
-        child: SizedBox(width: diameter, height: diameter),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => const FinanzasAreaBackground();
 }
 
 class _FinProviderAccountsHeaderBrand extends StatelessWidget {
@@ -4211,16 +6875,7 @@ class _FinProviderAccountsHeaderBrand extends StatelessWidget {
           ),
           child: const Center(child: DicsaLogoD(size: 40, progress: 1)),
         ),
-        const SizedBox(width: 10),
-        Container(
-          width: 1.5,
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: tokens.primaryStrong.withValues(alpha: 0.22),
-            borderRadius: BorderRadius.circular(999),
-          ),
-        ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 20),
         const Text(
           'Cuentas',
           maxLines: 1,
@@ -4375,246 +7030,11 @@ class _FinProviderAccountsSidePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return SizedBox(
-      width: 372,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 12),
-        child: ContractGlassCard(
-          borderRadius: BorderRadius.circular(28),
-          padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Finanzas',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: tokens.primaryStrong,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (canReturnToDirection) ...[
-                  _FinSideNavItem(
-                    icon: Icons.arrow_back_rounded,
-                    title: 'Volver a Dirección',
-                    onTap: () async => onNavigate('Dashboard Dirección'),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                const _FinSideSectionHeader(label: 'AREA'),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: tokens.primarySoft.withValues(alpha: 0.34),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: tokens.primaryStrong.withValues(alpha: 0.14),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      _FinSideNavItem(
-                        icon: Icons.account_balance_wallet_outlined,
-                        title: 'Dashboard Finanzas',
-                        subtitle: 'Pagos, liquidez y compromisos',
-                        onTap: () async => onNavigate('Dashboard Finanzas'),
-                      ),
-                      const SizedBox(height: 8),
-                      _FinSideNavItem(
-                        icon: Icons.price_check_rounded,
-                        title: 'Catálogo Finanzas',
-                        subtitle: 'Empresas, conceptos y relaciones',
-                        onTap: () async => onNavigate('Catálogo Finanzas'),
-                      ),
-                      const SizedBox(height: 8),
-                      _FinSideNavItem(
-                        icon: Icons.account_balance_rounded,
-                        title: 'Directorio Empresas',
-                        subtitle: 'Crédito, contacto y operación',
-                        onTap: () async => onNavigate('Directorio Empresas'),
-                      ),
-                      const SizedBox(height: 8),
-                      _FinSideNavItem(
-                        icon: Icons.view_list_rounded,
-                        title: 'Cuentas por Proveedor',
-                        subtitle: 'Resumen, tickets y saldo',
-                        accented: true,
-                        onTap: () async {},
-                      ),
-                      const SizedBox(height: 8),
-                      _FinSideNavItem(
-                        icon: Icons.account_balance_outlined,
-                        title: 'Cuentas Bancarias',
-                        subtitle: 'Entradas, salidas y bancos',
-                        onTap: () async => onNavigate('Cuentas Bancarias'),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const _FinSideSectionHeader(label: 'ACCESOS'),
-                const SizedBox(height: 8),
-                if (canReturnToDirection) ...[
-                  _FinSideNavItem(
-                    icon: Icons.assessment_outlined,
-                    title: 'Dashboard Dirección',
-                    subtitle: 'Vista ejecutiva multiarea',
-                    onTap: () async => onNavigate('Dashboard Dirección'),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                if (canAccessComprasArea)
-                  _FinSideNavItem(
-                    icon: Icons.shopping_cart_checkout_rounded,
-                    title: 'Dashboard Compras',
-                    subtitle: 'Tickets y operación de compra',
-                    onTap: () async => onNavigate('Dashboard Compras'),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FinSideSectionHeader extends StatelessWidget {
-  final String label;
-  const _FinSideSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Text(
-      label,
-      style: TextStyle(
-        fontSize: 11.5,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 0.4,
-        color: tokens.badgeText,
-      ),
-    );
-  }
-}
-
-class _FinSideNavItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final bool accented;
-  final Future<void> Function()? onTap;
-
-  const _FinSideNavItem({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.accented = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: onTap == null ? null : () async => onTap!.call(),
-        child: Ink(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: accented
-                ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      tokens.primaryStrong.withValues(alpha: 0.92),
-                      tokens.primary.withValues(alpha: 0.94),
-                    ],
-                  )
-                : LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.70),
-                      tokens.surfaceTint.withValues(alpha: 0.66),
-                    ],
-                  ),
-            border: Border.all(
-              color: accented
-                  ? Colors.white.withValues(alpha: 0.34)
-                  : tokens.border.withValues(alpha: 0.62),
-            ),
-            boxShadow: accented
-                ? [
-                    BoxShadow(
-                      color: tokens.glow.withValues(alpha: 0.16),
-                      blurRadius: 22,
-                      offset: const Offset(0, 10),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: accented
-                      ? Colors.white.withValues(alpha: 0.14)
-                      : Colors.white.withValues(alpha: 0.66),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: accented
-                        ? Colors.white.withValues(alpha: 0.18)
-                        : tokens.border.withValues(alpha: 0.54),
-                  ),
-                ),
-                child: Icon(
-                  icon,
-                  color: accented ? Colors.white : tokens.primaryStrong,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: accented ? Colors.white : tokens.primaryStrong,
-                      ),
-                    ),
-                    if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle!,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: accented
-                              ? Colors.white.withValues(alpha: 0.86)
-                              : tokens.badgeText,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return FinanzasAreaSidePanel(
+      currentLabel: 'Cuentas por Proveedor',
+      canReturnToDirection: canReturnToDirection,
+      canAccessComprasArea: canAccessComprasArea,
+      onNavigate: onNavigate,
     );
   }
 }

@@ -5,6 +5,23 @@ import 'finanzas_data_store.dart';
 
 const String _kFinDirectoryTable = 'finanzas_company_directory';
 
+const List<String> kFinManualPriorityLevels = <String>[
+  'NORMAL',
+  'ALTA',
+  'CRITICA',
+];
+
+String finManualPriorityLabel(String value) {
+  switch (value) {
+    case 'CRITICA':
+      return 'Critica';
+    case 'ALTA':
+      return 'Alta';
+    default:
+      return 'Normal';
+  }
+}
+
 class FinanzasCompanyDirectoryRecord {
   final String companyId;
   final String companyName;
@@ -19,6 +36,8 @@ class FinanzasCompanyDirectoryRecord {
   final String paymentStage;
   final bool active;
   final String paymentNotes;
+  final String manualPriority;
+  final String priorityNote;
   final DateTime? updatedAt;
 
   const FinanzasCompanyDirectoryRecord({
@@ -35,6 +54,8 @@ class FinanzasCompanyDirectoryRecord {
     required this.paymentStage,
     required this.active,
     required this.paymentNotes,
+    required this.manualPriority,
+    required this.priorityNote,
     required this.updatedAt,
   });
 
@@ -52,6 +73,8 @@ class FinanzasCompanyDirectoryRecord {
     String? paymentStage,
     bool? active,
     String? paymentNotes,
+    String? manualPriority,
+    String? priorityNote,
     DateTime? updatedAt,
   }) {
     return FinanzasCompanyDirectoryRecord(
@@ -68,6 +91,8 @@ class FinanzasCompanyDirectoryRecord {
       paymentStage: paymentStage ?? this.paymentStage,
       active: active ?? this.active,
       paymentNotes: paymentNotes ?? this.paymentNotes,
+      manualPriority: manualPriority ?? this.manualPriority,
+      priorityNote: priorityNote ?? this.priorityNote,
       updatedAt: updatedAt ?? this.updatedAt,
     );
   }
@@ -88,6 +113,8 @@ class FinanzasCompanyDirectoryRecord {
     'payment_stage': paymentStage,
     'is_active': active,
     'payment_notes': paymentNotes.isEmpty ? null : paymentNotes,
+    'manual_priority': manualPriority,
+    'priority_note': priorityNote.isEmpty ? null : priorityNote,
   };
 
   factory FinanzasCompanyDirectoryRecord.fromRemoteRow(
@@ -107,6 +134,8 @@ class FinanzasCompanyDirectoryRecord {
       paymentStage: (row['payment_stage'] as String?) ?? 'AL_CORRIENTE',
       active: row['is_active'] as bool? ?? true,
       paymentNotes: (row['payment_notes'] ?? '').toString(),
+      manualPriority: (row['manual_priority'] ?? 'NORMAL').toString(),
+      priorityNote: (row['priority_note'] ?? '').toString(),
       updatedAt: _tryParseDateTime(row['updated_at'] as String?),
     );
   }
@@ -138,6 +167,8 @@ class FinanzasCompanyDirectoryStore {
                 paymentStage: remote?.paymentStage ?? 'AL_CORRIENTE',
                 active: company.active,
                 paymentNotes: remote?.paymentNotes ?? '',
+                manualPriority: remote?.manualPriority ?? 'NORMAL',
+                priorityNote: remote?.priorityNote ?? '',
                 updatedAt: remote?.updatedAt,
               );
               if (_needsSync(record, remote)) {

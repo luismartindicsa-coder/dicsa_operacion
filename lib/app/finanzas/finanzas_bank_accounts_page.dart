@@ -1,6 +1,5 @@
 import 'dart:async';
-import 'dart:ui';
-
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -11,6 +10,7 @@ import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/utils/file_download_save.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
@@ -20,9 +20,14 @@ import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/number_formatters.dart';
 import 'finanzas_bank_accounts_store.dart';
+import 'finanzas_catalog_page.dart';
 import 'finanzas_company_directory_page.dart';
 import 'finanzas_data_store.dart';
 import 'finanzas_dashboard_page.dart';
+import 'finanzas_evidence_store.dart';
+import 'finanzas_fixed_payments_store.dart';
+import 'finanzas_fixed_payments_page.dart';
+import 'finanzas_payment_center_page.dart';
 import 'finanzas_provider_accounts_page.dart';
 import 'finanzas_provider_accounts_store.dart';
 import 'finanzas_theme.dart';
@@ -42,10 +47,47 @@ final DateTimeRange _kClearedBankDateRange = DateTimeRange(
   end: DateTime(1900),
 );
 
+class FinanzasBankMovementLaunchPreset {
+  final String sourceType;
+  final String? linkedSupplierInvoiceId;
+  final String? linkedClientAccountId;
+  final String? linkedFixedPaymentId;
+  final String company;
+  final String branch;
+  final String? counterpartyCompanyId;
+  final String counterpartyName;
+  final String category;
+  final String reference;
+  final String comment;
+  final double creditAmount;
+  final double debitAmount;
+
+  const FinanzasBankMovementLaunchPreset({
+    required this.sourceType,
+    required this.company,
+    required this.branch,
+    required this.counterpartyName,
+    required this.category,
+    required this.reference,
+    required this.comment,
+    required this.creditAmount,
+    required this.debitAmount,
+    this.linkedSupplierInvoiceId,
+    this.linkedClientAccountId,
+    this.linkedFixedPaymentId,
+    this.counterpartyCompanyId,
+  });
+}
+
 class FinanzasBankAccountsPage extends StatefulWidget {
   final bool instantOpen;
+  final FinanzasBankMovementLaunchPreset? launchPreset;
 
-  const FinanzasBankAccountsPage({super.key, this.instantOpen = false});
+  const FinanzasBankAccountsPage({
+    super.key,
+    this.instantOpen = false,
+    this.launchPreset,
+  });
 
   @override
   State<FinanzasBankAccountsPage> createState() =>
@@ -58,6 +100,7 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
   bool _exportingCsv = false;
   bool _canReturnToDirection = false;
   bool _canAccessComprasArea = false;
+  bool _handledLaunchPreset = false;
   final FocusNode _rowsFocusNode = FocusNode(debugLabel: 'bankRows');
   DateTimeRange? _dateRangeFilter;
   Set<String> _companyFilters = <String>{};
@@ -69,12 +112,16 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
   Set<String> _debitFilters = <String>{};
   String? _selectedRowId;
   List<FinanzasBankMovementRecord> _rows = const <FinanzasBankMovementRecord>[];
+  List<FinanzasEvidenceRecord> _movementEvidences =
+      const <FinanzasEvidenceRecord>[];
   List<FinanzasCatalogCompanyRecord> _companies =
       const <FinanzasCatalogCompanyRecord>[];
   List<FinanzasSupplierInvoiceRecord> _supplierInvoices =
       const <FinanzasSupplierInvoiceRecord>[];
   List<FinanzasClientPaymentAccountRecord> _clientAccounts =
       const <FinanzasClientPaymentAccountRecord>[];
+  List<FinanzasFixedPaymentRecord> _fixedPayments =
+      const <FinanzasFixedPaymentRecord>[];
 
   @override
   void initState() {
@@ -105,6 +152,10 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
       FinanzasDataStore.loadCatalogSnapshot(),
       FinanzasProviderAccountsStore.loadInvoices(),
       FinanzasBankAccountsStore.loadOpenClientAccounts(),
+      FinanzasBankAccountsStore.loadOpenFixedPayments(),
+      FinanzasEvidenceStore.loadByOwnerType(
+        kFinanzasEvidenceOwnerTypeBankMovement,
+      ),
     ]);
     if (!mounted) return;
     final movements = results[0] as List<FinanzasBankMovementRecord>;
@@ -112,8 +163,11 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
     final invoices = results[2] as List<FinanzasSupplierInvoiceRecord>;
     final clientAccounts =
         results[3] as List<FinanzasClientPaymentAccountRecord>;
+    final fixedPayments = results[4] as List<FinanzasFixedPaymentRecord>;
+    final movementEvidences = results[5] as List<FinanzasEvidenceRecord>;
     setState(() {
       _rows = movements;
+      _movementEvidences = movementEvidences;
       _companies = snapshot.companies
           .where((row) => row.active)
           .toList(growable: false);
@@ -121,8 +175,21 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
           .where((row) => row.status != 'PAGADA')
           .toList(growable: false);
       _clientAccounts = clientAccounts;
+      _fixedPayments = fixedPayments;
       _syncSelectionWithVisibleRows();
       _loading = false;
+    });
+    await _maybeHandleLaunchPreset();
+  }
+
+  Future<void> _maybeHandleLaunchPreset() async {
+    if (_handledLaunchPreset || widget.launchPreset == null || !mounted) {
+      return;
+    }
+    _handledLaunchPreset = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_openNewMovementDialog(preset: widget.launchPreset));
     });
   }
 
@@ -187,6 +254,13 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
     );
   }
 
+  Future<void> _openCatalog() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const FinanzasCatalogPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _openDirectory() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -198,6 +272,20 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const FinanzasProviderAccountsPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openPaymentCenter() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const FinanzasPaymentCenterPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openFixedPayments() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const FinanzasFixedPaymentsPage(instantOpen: true)),
     );
   }
 
@@ -227,11 +315,20 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
       case 'Dashboard Finanzas':
         unawaited(_openDashboard());
         return;
+      case 'Catálogo Finanzas':
+        unawaited(_openCatalog());
+        return;
       case 'Directorio Empresas':
         unawaited(_openDirectory());
         return;
       case 'Cuentas por Proveedor':
         unawaited(_openProviderAccounts());
+        return;
+      case 'Centro de pagos':
+        unawaited(_openPaymentCenter());
+        return;
+      case 'Pagos fijos':
+        unawaited(_openFixedPayments());
         return;
       case 'Dashboard Compras':
         if (_menuOpen) setState(() => _menuOpen = false);
@@ -482,7 +579,9 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
     });
   }
 
-  Future<void> _openNewMovementDialog() async {
+  Future<void> _openNewMovementDialog({
+    FinanzasBankMovementLaunchPreset? preset,
+  }) async {
     final draft = await showDialog<_BankMovementDraft>(
       context: context,
       barrierDismissible: true,
@@ -490,6 +589,8 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
         companies: _companies,
         supplierInvoices: _supplierInvoices,
         clientAccounts: _clientAccounts,
+        fixedPayments: _fixedPayments,
+        launchPreset: preset,
       ),
     );
     if (draft == null) return;
@@ -508,6 +609,7 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
         companies: _companies,
         supplierInvoices: _supplierInvoices,
         clientAccounts: _clientAccounts,
+        fixedPayments: _fixedPayments,
         existingRow: row,
       ),
     );
@@ -539,6 +641,7 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
       debitAmount: draft.debitAmount,
       sourceType: draft.sourceType,
       linkedSupplierInvoiceId: draft.linkedSupplierInvoice?.id,
+      linkedFixedPaymentId: draft.linkedFixedPayment?.id,
       linkedExternalRef: draft.linkedClientAccount?.id,
       createdAt: existingRow?.createdAt,
       updatedAt: null,
@@ -551,6 +654,7 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
           movement: movement,
           linkedSupplierInvoice: draft.linkedSupplierInvoice,
           linkedClientAccount: draft.linkedClientAccount,
+          linkedFixedPayment: draft.linkedFixedPayment,
         );
       }
       if (!mounted) return;
@@ -703,10 +807,145 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
       context: context,
       builder: (_) => _BankMovementDetailsDialog(
         row: row,
+        evidences: _evidencesForMovement(row.id),
         moneyFormatter: _money,
         dateFormatter: _dateLabel,
+        onOpenEvidence: _openEvidenceFile,
       ),
     );
+  }
+
+  List<FinanzasEvidenceRecord> _evidencesForMovement(String movementId) =>
+      _movementEvidences
+          .where((row) => row.ownerId == movementId)
+          .toList(growable: false);
+
+  Future<void> _addMovementEvidence(FinanzasBankMovementRecord row) async {
+    final uploaded = await _pickAndUploadEvidence(
+      ownerType: kFinanzasEvidenceOwnerTypeBankMovement,
+      ownerId: row.id,
+      title: 'Subir evidencia del movimiento',
+    );
+    if (uploaded == null || !mounted) return;
+    _toast('Evidencia subida.');
+    await _loadPage();
+  }
+
+  Future<FinanzasEvidenceRecord?> _pickAndUploadEvidence({
+    required String ownerType,
+    required String ownerId,
+    required String title,
+  }) async {
+    PlatformFile? picked;
+    final commentC = TextEditingController();
+    try {
+      final save = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (context, setLocalState) {
+              return AlertDialog(
+                title: Text(title),
+                content: SizedBox(
+                  width: 480,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      OutlinedButton.icon(
+                        onPressed: () async {
+                          try {
+                            final result = await FilePicker.platform.pickFiles(
+                              allowMultiple: false,
+                              withData: true,
+                              lockParentWindow: true,
+                              type: FileType.custom,
+                              allowedExtensions: const [
+                                'pdf',
+                                'jpg',
+                                'jpeg',
+                                'png',
+                                'webp',
+                                'heic',
+                              ],
+                            );
+                            if (result == null || result.files.isEmpty) return;
+                            setLocalState(() => picked = result.files.first);
+                          } catch (error) {
+                            _toast(
+                              'No se pudo abrir selector de archivos. $error',
+                            );
+                          }
+                        },
+                        icon: const Icon(Icons.attach_file_rounded),
+                        label: Text(
+                          picked == null
+                              ? 'Seleccionar PDF o foto'
+                              : 'Archivo: ${picked!.name}',
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: commentC,
+                        minLines: 2,
+                        maxLines: 3,
+                        decoration: const InputDecoration(
+                          labelText: 'Comentario',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(false),
+                    child: const Text('Cancelar'),
+                  ),
+                  FilledButton(
+                    onPressed: () => Navigator.of(dialogContext).pop(true),
+                    child: const Text('Guardar'),
+                  ),
+                ],
+              );
+            },
+          );
+        },
+      );
+      if (save != true || picked == null) return null;
+      return await FinanzasEvidenceStore.createUploadedEvidence(
+        ownerType: ownerType,
+        ownerId: ownerId,
+        file: picked!,
+        comment: commentC.text.trim(),
+      );
+    } catch (error) {
+      if (mounted) {
+        _toast('No se pudo subir evidencia. $error');
+      }
+      return null;
+    } finally {
+      commentC.dispose();
+    }
+  }
+
+  Future<void> _openEvidenceFile(String url, String fileName) async {
+    try {
+      final path = await saveRemoteFileAs(
+        url: url,
+        suggestedFileName: fileName,
+        dialogTitle: 'Descargar evidencia',
+      );
+      if (!mounted) return;
+      if (path == null) {
+        _toast('Descarga cancelada.');
+      } else {
+        _toast('Evidencia guardada en $path');
+      }
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo descargar la evidencia. $error');
+    }
   }
 
   String _money(double value) {
@@ -794,158 +1033,145 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
                     padding: const EdgeInsets.fromLTRB(56, 0, 6, 0),
                     child: _loading
                         ? const Center(child: CircularProgressIndicator())
-                        : ContractGlassCard(
-                            borderRadius: BorderRadius.circular(30),
-                            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Padding(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    2,
-                                    2,
-                                    2,
-                                    10,
-                                  ),
-                                  child: _BankTopBar(
-                                    exportingCsv: _exportingCsv,
-                                    selectedCount: _selectedRow == null ? 0 : 1,
-                                    onExportCsv: _exportingCsv
-                                        ? null
-                                        : _exportCsv,
-                                    onCreate: _openNewMovementDialog,
+                        : Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(2, 2, 2, 12),
+                                child: _BankTopBar(
+                                  exportingCsv: _exportingCsv,
+                                  selectedCount: _selectedRow == null ? 0 : 1,
+                                  onExportCsv: _exportingCsv
+                                      ? null
+                                      : _exportCsv,
+                                  onCreate: _openNewMovementDialog,
+                                ),
+                              ),
+                              _BankAccountsTotalsRow(
+                                totals: _accountTotals.values.toList(
+                                  growable: false,
+                                ),
+                                moneyFormatter: _money,
+                              ),
+                              const SizedBox(height: 14),
+                              Expanded(
+                                child: _BankTabSurface(
+                                  child: Column(
+                                    children: [
+                                      _BankFilterSummaryRow(
+                                        labels: [
+                                          if (_dateRangeFilter != null)
+                                            'Fecha: ${_dateRangeLabel(_dateRangeFilter!)}',
+                                          for (final value in _companyFilters)
+                                            'Empresa: $value',
+                                          for (final value in _branchFilters)
+                                            'Cuenta: $value',
+                                          for (final value in _nameFilters)
+                                            'Nombre: $value',
+                                          for (final value in _categoryFilters)
+                                            'Categoría: $value',
+                                          for (final value in _referenceFilters)
+                                            'Referencia: $value',
+                                          for (final value in _creditFilters)
+                                            'Abono: ${_money(double.tryParse(value) ?? 0)}',
+                                          for (final value in _debitFilters)
+                                            'Cargo: ${_money(double.tryParse(value) ?? 0)}',
+                                        ],
+                                        onClearAll:
+                                            _dateRangeFilter == null &&
+                                                _companyFilters.isEmpty &&
+                                                _branchFilters.isEmpty &&
+                                                _nameFilters.isEmpty &&
+                                                _categoryFilters.isEmpty &&
+                                                _referenceFilters.isEmpty &&
+                                                _creditFilters.isEmpty &&
+                                                _debitFilters.isEmpty
+                                            ? null
+                                            : () => setState(() {
+                                                _dateRangeFilter = null;
+                                                _companyFilters = <String>{};
+                                                _branchFilters = <String>{};
+                                                _nameFilters = <String>{};
+                                                _categoryFilters = <String>{};
+                                                _referenceFilters = <String>{};
+                                                _creditFilters = <String>{};
+                                                _debitFilters = <String>{};
+                                                _syncSelectionWithVisibleRows();
+                                              }),
+                                      ),
+                                      const SizedBox(height: 10),
+                                      _BankHeaderRow(
+                                        onDateFilter: _pickDateFilter,
+                                        onCompanyFilter: _pickCompanyFilter,
+                                        onBranchFilter: _pickBranchFilter,
+                                        onNameFilter: _pickNameFilter,
+                                        onCategoryFilter: _pickCategoryFilter,
+                                        onReferenceFilter: _pickReferenceFilter,
+                                        onCreditFilter: _pickCreditFilter,
+                                        onDebitFilter: _pickDebitFilter,
+                                        dateFilterActive:
+                                            _dateRangeFilter != null,
+                                        companyFilterActive:
+                                            _companyFilters.isNotEmpty,
+                                        branchFilterActive:
+                                            _branchFilters.isNotEmpty,
+                                        nameFilterActive:
+                                            _nameFilters.isNotEmpty,
+                                        categoryFilterActive:
+                                            _categoryFilters.isNotEmpty,
+                                        referenceFilterActive:
+                                            _referenceFilters.isNotEmpty,
+                                        creditFilterActive:
+                                            _creditFilters.isNotEmpty,
+                                        debitFilterActive:
+                                            _debitFilters.isNotEmpty,
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Expanded(
+                                        child: Focus(
+                                          focusNode: _rowsFocusNode,
+                                          onKeyEvent: (_, event) =>
+                                              _handleRowsKeyEvent(event),
+                                          child: _visibleRows.isEmpty
+                                              ? const _FinBankEmptyPane()
+                                              : _BankMovementsGrid(
+                                                  rows: _visibleRows,
+                                                  selectedRowId: _selectedRowId,
+                                                  moneyFormatter: _money,
+                                                  dateFormatter: _dateLabel,
+                                                  onRowTap: _handleRowTap,
+                                                  onOpenDetails:
+                                                      _openMovementDetails,
+                                                  onCopyReference: (value) {
+                                                    Clipboard.setData(
+                                                      ClipboardData(
+                                                        text: value,
+                                                      ),
+                                                    );
+                                                    _toast(
+                                                      'Referencia copiada.',
+                                                    );
+                                                  },
+                                                  onCopyName: (value) {
+                                                    Clipboard.setData(
+                                                      ClipboardData(
+                                                        text: value,
+                                                      ),
+                                                    );
+                                                    _toast('Nombre copiado.');
+                                                  },
+                                                  onEdit:
+                                                      _openEditMovementDialog,
+                                                  onUploadEvidence:
+                                                      _addMovementEvidence,
+                                                ),
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ),
-                                const SizedBox(height: 6),
-                                _BankAccountsTotalsRow(
-                                  totals: _accountTotals.values.toList(
-                                    growable: false,
-                                  ),
-                                  moneyFormatter: _money,
-                                ),
-                                const SizedBox(height: 12),
-                                Expanded(
-                                  child: _BankTabSurface(
-                                    child: Column(
-                                      children: [
-                                        _BankFilterSummaryRow(
-                                          labels: [
-                                            if (_dateRangeFilter != null)
-                                              'Fecha: ${_dateRangeLabel(_dateRangeFilter!)}',
-                                            for (final value in _companyFilters)
-                                              'Empresa: $value',
-                                            for (final value in _branchFilters)
-                                              'Cuenta: $value',
-                                            for (final value in _nameFilters)
-                                              'Nombre: $value',
-                                            for (final value
-                                                in _categoryFilters)
-                                              'Categoría: $value',
-                                            for (final value
-                                                in _referenceFilters)
-                                              'Referencia: $value',
-                                            for (final value in _creditFilters)
-                                              'Abono: ${_money(double.tryParse(value) ?? 0)}',
-                                            for (final value in _debitFilters)
-                                              'Cargo: ${_money(double.tryParse(value) ?? 0)}',
-                                          ],
-                                          onClearAll:
-                                              _dateRangeFilter == null &&
-                                                  _companyFilters.isEmpty &&
-                                                  _branchFilters.isEmpty &&
-                                                  _nameFilters.isEmpty &&
-                                                  _categoryFilters.isEmpty &&
-                                                  _referenceFilters.isEmpty &&
-                                                  _creditFilters.isEmpty &&
-                                                  _debitFilters.isEmpty
-                                              ? null
-                                              : () => setState(() {
-                                                  _dateRangeFilter = null;
-                                                  _companyFilters = <String>{};
-                                                  _branchFilters = <String>{};
-                                                  _nameFilters = <String>{};
-                                                  _categoryFilters = <String>{};
-                                                  _referenceFilters =
-                                                      <String>{};
-                                                  _creditFilters = <String>{};
-                                                  _debitFilters = <String>{};
-                                                  _syncSelectionWithVisibleRows();
-                                                }),
-                                        ),
-                                        const SizedBox(height: 10),
-                                        _BankHeaderRow(
-                                          onDateFilter: _pickDateFilter,
-                                          onCompanyFilter: _pickCompanyFilter,
-                                          onBranchFilter: _pickBranchFilter,
-                                          onNameFilter: _pickNameFilter,
-                                          onCategoryFilter: _pickCategoryFilter,
-                                          onReferenceFilter:
-                                              _pickReferenceFilter,
-                                          onCreditFilter: _pickCreditFilter,
-                                          onDebitFilter: _pickDebitFilter,
-                                          dateFilterActive:
-                                              _dateRangeFilter != null,
-                                          companyFilterActive:
-                                              _companyFilters.isNotEmpty,
-                                          branchFilterActive:
-                                              _branchFilters.isNotEmpty,
-                                          nameFilterActive:
-                                              _nameFilters.isNotEmpty,
-                                          categoryFilterActive:
-                                              _categoryFilters.isNotEmpty,
-                                          referenceFilterActive:
-                                              _referenceFilters.isNotEmpty,
-                                          creditFilterActive:
-                                              _creditFilters.isNotEmpty,
-                                          debitFilterActive:
-                                              _debitFilters.isNotEmpty,
-                                        ),
-                                        const SizedBox(height: 10),
-                                        Expanded(
-                                          child: Focus(
-                                            focusNode: _rowsFocusNode,
-                                            onKeyEvent: (_, event) =>
-                                                _handleRowsKeyEvent(event),
-                                            child: _visibleRows.isEmpty
-                                                ? const _FinBankEmptyPane()
-                                                : _BankMovementsGrid(
-                                                    rows: _visibleRows,
-                                                    selectedRowId:
-                                                        _selectedRowId,
-                                                    moneyFormatter: _money,
-                                                    dateFormatter: _dateLabel,
-                                                    onRowTap: _handleRowTap,
-                                                    onOpenDetails:
-                                                        _openMovementDetails,
-                                                    onCopyReference: (value) {
-                                                      Clipboard.setData(
-                                                        ClipboardData(
-                                                          text: value,
-                                                        ),
-                                                      );
-                                                      _toast(
-                                                        'Referencia copiada.',
-                                                      );
-                                                    },
-                                                    onCopyName: (value) {
-                                                      Clipboard.setData(
-                                                        ClipboardData(
-                                                          text: value,
-                                                        ),
-                                                      );
-                                                      _toast('Nombre copiado.');
-                                                    },
-                                                    onEdit:
-                                                        _openEditMovementDialog,
-                                                  ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
+                              ),
+                            ],
                           ),
                   ),
                 ),
@@ -1006,6 +1232,7 @@ class _BankMovementsGrid extends StatelessWidget {
   final ValueChanged<String> onCopyReference;
   final ValueChanged<String> onCopyName;
   final ValueChanged<FinanzasBankMovementRecord> onEdit;
+  final ValueChanged<FinanzasBankMovementRecord> onUploadEvidence;
 
   const _BankMovementsGrid({
     required this.rows,
@@ -1017,6 +1244,7 @@ class _BankMovementsGrid extends StatelessWidget {
     required this.onCopyReference,
     required this.onCopyName,
     required this.onEdit,
+    required this.onUploadEvidence,
   });
 
   @override
@@ -1038,6 +1266,11 @@ class _BankMovementsGrid extends StatelessWidget {
                 icon: Icons.edit_outlined,
                 onTap: () => onEdit(row),
               ),
+            _BankRowMenuAction(
+              label: 'Subir evidencia',
+              icon: Icons.attach_file_rounded,
+              onTap: () => onUploadEvidence(row),
+            ),
             _BankRowMenuAction(
               label: 'Ver detalle',
               icon: Icons.visibility_outlined,
@@ -1104,6 +1337,7 @@ class _BankMovementDraft {
   final String sourceType;
   final FinanzasSupplierInvoiceRecord? linkedSupplierInvoice;
   final FinanzasClientPaymentAccountRecord? linkedClientAccount;
+  final FinanzasFixedPaymentRecord? linkedFixedPayment;
 
   const _BankMovementDraft({
     required this.date,
@@ -1119,6 +1353,7 @@ class _BankMovementDraft {
     required this.sourceType,
     required this.linkedSupplierInvoice,
     required this.linkedClientAccount,
+    required this.linkedFixedPayment,
   });
 }
 
@@ -1126,13 +1361,17 @@ class _NewBankMovementDialog extends StatefulWidget {
   final List<FinanzasCatalogCompanyRecord> companies;
   final List<FinanzasSupplierInvoiceRecord> supplierInvoices;
   final List<FinanzasClientPaymentAccountRecord> clientAccounts;
+  final List<FinanzasFixedPaymentRecord> fixedPayments;
   final FinanzasBankMovementRecord? existingRow;
+  final FinanzasBankMovementLaunchPreset? launchPreset;
 
   const _NewBankMovementDialog({
     required this.companies,
     required this.supplierInvoices,
     required this.clientAccounts,
+    required this.fixedPayments,
     this.existingRow,
+    this.launchPreset,
   });
 
   @override
@@ -1153,6 +1392,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
   String _category = 'OTROS';
   String? _selectedSupplierInvoiceId;
   String? _selectedClientAccountId;
+  String? _selectedFixedPaymentId;
 
   @override
   void initState() {
@@ -1178,6 +1418,8 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
       _debitC.text = existing.debitAmount > 0
           ? formatDecimal(existing.debitAmount, decimals: 2)
           : '';
+    } else if (widget.launchPreset != null) {
+      _applyLaunchPreset(widget.launchPreset!);
     }
     _commentC.addListener(_refresh);
     _referenceC.addListener(_refresh);
@@ -1244,6 +1486,15 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
     return null;
   }
 
+  FinanzasFixedPaymentRecord? get _selectedFixedPayment {
+    final id = _selectedFixedPaymentId;
+    if (id == null) return null;
+    for (final row in widget.fixedPayments) {
+      if (row.id == id) return row;
+    }
+    return null;
+  }
+
   double _parseAmount(String raw) {
     final cleaned = raw.replaceAll(',', '').replaceAll('\$', '').trim();
     return double.tryParse(cleaned) ?? 0;
@@ -1261,6 +1512,15 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
     if (_sourceType == 'VENTA_FACTURA' && _selectedClientAccount == null) {
       return false;
     }
+    if (_sourceType == 'PAGO_FIJO' && _selectedFixedPayment == null) {
+      return false;
+    }
+    if (_sourceType == 'COMPRA_FACTURA') {
+      final invoice = _selectedSupplierInvoice;
+      if (invoice == null) return false;
+      if (credit > 0) return false;
+      if ((debit - invoice.balanceAmount).abs() > 0.009) return false;
+    }
     return true;
   }
 
@@ -1271,9 +1531,12 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
         _category = 'COMPRA DE MATERIAL';
       } else if (value == 'VENTA_FACTURA') {
         _category = 'VENTAS';
+      } else if (value == 'PAGO_FIJO') {
+        _category = 'GASTOS OPERATIVOS';
       } else {
         _selectedSupplierInvoiceId = null;
         _selectedClientAccountId = null;
+        _selectedFixedPaymentId = null;
       }
     });
     if (value == 'MANUAL') {
@@ -1289,12 +1552,17 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
     if (value != 'VENTA_FACTURA') {
       _selectedClientAccountId = null;
     }
+    if (value != 'PAGO_FIJO') {
+      _selectedFixedPaymentId = null;
+    }
   }
 
   void _applySupplierInvoice(FinanzasSupplierInvoiceRecord invoice) {
     setState(() {
       _selectedSupplierInvoiceId = invoice.id;
       _selectedClientAccountId = null;
+      _company = invoice.targetCompany;
+      _branch = invoice.targetBranch;
       _counterpartyCompanyId = invoice.providerId;
       _counterpartyName = invoice.providerNameSnapshot;
       _category = 'COMPRA DE MATERIAL';
@@ -1308,6 +1576,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
     setState(() {
       _selectedClientAccountId = account.id;
       _selectedSupplierInvoiceId = null;
+      _selectedFixedPaymentId = null;
       _counterpartyCompanyId = account.clientId;
       _counterpartyName = account.clientName;
       _category = 'VENTAS';
@@ -1315,6 +1584,129 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
       _creditC.text = account.pendingBalance.toStringAsFixed(2);
       _debitC.text = '';
     });
+  }
+
+  void _applyFixedPayment(FinanzasFixedPaymentRecord payment) {
+    setState(() {
+      _selectedFixedPaymentId = payment.id;
+      _selectedSupplierInvoiceId = null;
+      _selectedClientAccountId = null;
+      _counterpartyCompanyId = payment.companyId;
+      _counterpartyName = payment.companyNameSnapshot;
+      _branch = payment.branch;
+      _category = 'GASTOS OPERATIVOS';
+      _referenceC.text = 'Pago fijo';
+      _creditC.text = '';
+      _debitC.text = payment.amount.toStringAsFixed(2);
+    });
+  }
+
+  void _applyLaunchPreset(FinanzasBankMovementLaunchPreset preset) {
+    _sourceType = preset.sourceType;
+    _company = preset.company;
+    _branch = preset.branch;
+    _counterpartyCompanyId = preset.counterpartyCompanyId;
+    _counterpartyName = preset.counterpartyName;
+    _category = preset.category;
+    _referenceC.text = preset.reference;
+    _commentC.text = preset.comment;
+    _creditC.text = preset.creditAmount > 0
+        ? formatDecimal(preset.creditAmount, decimals: 2)
+        : '';
+    _debitC.text = preset.debitAmount > 0
+        ? formatDecimal(preset.debitAmount, decimals: 2)
+        : '';
+    if (preset.sourceType == 'COMPRA_FACTURA' &&
+        preset.linkedSupplierInvoiceId != null) {
+      _selectedSupplierInvoiceId = preset.linkedSupplierInvoiceId;
+      FinanzasSupplierInvoiceRecord? invoice;
+      for (final row in widget.supplierInvoices) {
+        if (row.id == preset.linkedSupplierInvoiceId) {
+          invoice = row;
+          break;
+        }
+      }
+      if (invoice != null) {
+        _selectedClientAccountId = null;
+        _selectedFixedPaymentId = null;
+        _company = invoice.targetCompany;
+        _branch = invoice.targetBranch;
+        _counterpartyCompanyId = invoice.providerId;
+        _counterpartyName = invoice.providerNameSnapshot;
+        _category = 'COMPRA DE MATERIAL';
+        _referenceC.text = invoice.folio;
+        _creditC.text = '';
+        _debitC.text = invoice.balanceAmount.toStringAsFixed(2);
+        if (preset.debitAmount > 0) {
+          _debitC.text = formatDecimal(preset.debitAmount, decimals: 2);
+        }
+        if (preset.reference.trim().isNotEmpty) {
+          _referenceC.text = preset.reference;
+        }
+        if (preset.comment.trim().isNotEmpty) {
+          _commentC.text = preset.comment;
+        }
+      }
+    } else if (preset.sourceType == 'VENTA_FACTURA' &&
+        preset.linkedClientAccountId != null) {
+      _selectedClientAccountId = preset.linkedClientAccountId;
+      FinanzasClientPaymentAccountRecord? account;
+      for (final row in widget.clientAccounts) {
+        if (row.id == preset.linkedClientAccountId) {
+          account = row;
+          break;
+        }
+      }
+      if (account != null) {
+        _selectedSupplierInvoiceId = null;
+        _selectedFixedPaymentId = null;
+        _counterpartyCompanyId = account.clientId;
+        _counterpartyName = account.clientName;
+        _category = 'VENTAS';
+        _referenceC.text = account.documentNumber;
+        _creditC.text = account.pendingBalance.toStringAsFixed(2);
+        _debitC.text = '';
+        if (preset.creditAmount > 0) {
+          _creditC.text = formatDecimal(preset.creditAmount, decimals: 2);
+        }
+        if (preset.reference.trim().isNotEmpty) {
+          _referenceC.text = preset.reference;
+        }
+        if (preset.comment.trim().isNotEmpty) {
+          _commentC.text = preset.comment;
+        }
+      }
+    } else if (preset.sourceType == 'PAGO_FIJO' &&
+        preset.linkedFixedPaymentId != null) {
+      _selectedFixedPaymentId = preset.linkedFixedPaymentId;
+      FinanzasFixedPaymentRecord? payment;
+      for (final row in widget.fixedPayments) {
+        if (row.id == preset.linkedFixedPaymentId) {
+          payment = row;
+          break;
+        }
+      }
+      if (payment != null) {
+        _selectedSupplierInvoiceId = null;
+        _selectedClientAccountId = null;
+        _counterpartyCompanyId = payment.companyId;
+        _counterpartyName = payment.companyNameSnapshot;
+        _branch = payment.branch;
+        _category = 'GASTOS OPERATIVOS';
+        _referenceC.text = 'Pago fijo';
+        _creditC.text = '';
+        _debitC.text = payment.amount.toStringAsFixed(2);
+        if (preset.debitAmount > 0) {
+          _debitC.text = formatDecimal(preset.debitAmount, decimals: 2);
+        }
+        if (preset.reference.trim().isNotEmpty) {
+          _referenceC.text = preset.reference;
+        }
+        if (preset.comment.trim().isNotEmpty) {
+          _commentC.text = preset.comment;
+        }
+      }
+    }
   }
 
   Future<void> _pickCounterparty() async {
@@ -1343,9 +1735,12 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 28),
       child: AreaThemeScope(
         tokens: finanzasAreaTokens,
-        child: ContractGlassCard(
-          borderRadius: BorderRadius.circular(30),
+        child: FinanzasGlassPanel(
+          borderRadius: BorderRadius.circular(34),
           padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
+          fillColor: const Color(0x1813171F),
+          borderColor: Colors.white.withValues(alpha: 0.22),
+          edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 1080, maxHeight: 820),
             child: Column(
@@ -1382,16 +1777,13 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                         ],
                       ),
                     ),
-                    Container(
+                    FinanzasGlassPanel(
                       width: 54,
                       height: 54,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.72),
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: tokens.border.withValues(alpha: 0.82),
-                        ),
-                      ),
+                      padding: EdgeInsets.zero,
+                      borderRadius: BorderRadius.circular(999),
+                      fillColor: const Color(0x14161B23),
+                      borderColor: Colors.white.withValues(alpha: 0.20),
                       child: IconButton(
                         onPressed: () => Navigator.of(context).pop(),
                         icon: Icon(
@@ -1446,6 +1838,12 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                                                 label: 'Pago cliente',
                                                 subtitle:
                                                     'Registra el cobro de una cuenta de ventas mayoreo',
+                                              ),
+                                              _SimpleOption(
+                                                id: 'PAGO_FIJO',
+                                                label: 'Pago fijo',
+                                                subtitle:
+                                                    'Liquida una obligación fija del mes',
                                               ),
                                             ],
                                           );
@@ -1583,6 +1981,30 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                                         }());
                                       },
                                     )
+                                  : _sourceType == 'PAGO_FIJO'
+                                  ? _ChoiceChipField(
+                                      label: 'Pago fijo',
+                                      value: _selectedFixedPayment == null
+                                          ? 'Seleccionar pago fijo'
+                                          : '${_selectedFixedPayment!.companyNameSnapshot} · ${_dateLabel(_selectedFixedPayment!.paymentDate)} · ${_formatBankMoney(_selectedFixedPayment!.amount)}',
+                                      onTap: () {
+                                        unawaited(() async {
+                                          final selected =
+                                              await showDialog<
+                                                FinanzasFixedPaymentRecord
+                                              >(
+                                                context: context,
+                                                builder: (_) =>
+                                                    _FixedPaymentPickerDialog(
+                                                      payments:
+                                                          widget.fixedPayments,
+                                                    ),
+                                              );
+                                          if (selected == null) return;
+                                          _applyFixedPayment(selected);
+                                        }());
+                                      },
+                                    )
                                   : _ChoiceChipField(
                                       label: 'Nombre',
                                       value: _counterpartyName.isEmpty
@@ -1620,6 +2042,77 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                             ),
                           ],
                         ),
+                        if (_sourceType == 'COMPRA_FACTURA' &&
+                            _selectedSupplierInvoice != null) ...[
+                          const SizedBox(height: 10),
+                          Container(
+                            width: double.infinity,
+                            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                            decoration: BoxDecoration(
+                              color: Colors.white.withValues(alpha: 0.66),
+                              borderRadius: BorderRadius.circular(18),
+                              border: Border.all(
+                                color:
+                                    _company ==
+                                            _selectedSupplierInvoice!
+                                                .targetCompany &&
+                                        _branch ==
+                                            _selectedSupplierInvoice!
+                                                .targetBranch
+                                    ? tokens.primaryStrong.withValues(
+                                        alpha: 0.18,
+                                      )
+                                    : const Color(
+                                        0xFF8B5E00,
+                                      ).withValues(alpha: 0.28),
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Icon(
+                                  _company ==
+                                              _selectedSupplierInvoice!
+                                                  .targetCompany &&
+                                          _branch ==
+                                              _selectedSupplierInvoice!
+                                                  .targetBranch
+                                      ? Icons.track_changes_rounded
+                                      : Icons.warning_amber_rounded,
+                                  size: 18,
+                                  color:
+                                      _company ==
+                                              _selectedSupplierInvoice!
+                                                  .targetCompany &&
+                                          _branch ==
+                                              _selectedSupplierInvoice!
+                                                  .targetBranch
+                                      ? tokens.primaryStrong
+                                      : const Color(0xFF8B5E00),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    _company ==
+                                                _selectedSupplierInvoice!
+                                                    .targetCompany &&
+                                            _branch ==
+                                                _selectedSupplierInvoice!
+                                                    .targetBranch
+                                        ? 'Objetivo precargado desde factura: ${_selectedSupplierInvoice!.targetCompany} ${_selectedSupplierInvoice!.targetBranch}.'
+                                        : 'La ejecución quedó distinta al objetivo de la factura: ${_selectedSupplierInvoice!.targetCompany} ${_selectedSupplierInvoice!.targetBranch}.',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: kFinanzasMutedInk,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
                         const SizedBox(height: 18),
                         _BankDialogSectionTitle(
                           step: '3',
@@ -1634,7 +2127,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                               flex: 2,
                               child: TextField(
                                 controller: _referenceC,
-                                decoration: contractGlassFieldDecoration(
+                                decoration: _bankDialogFieldDecoration(
                                   context,
                                   hintText: 'No. factura o cheque',
                                   prefixIcon: const Icon(
@@ -1654,7 +2147,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                                 inputFormatters: const [
                                   _BankMoneyInputFormatter(),
                                 ],
-                                decoration: contractGlassFieldDecoration(
+                                decoration: _bankDialogFieldDecoration(
                                   context,
                                   hintText: 'Abono',
                                   prefixIcon: const Icon(
@@ -1667,16 +2160,19 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                             Expanded(
                               child: TextField(
                                 controller: _debitC,
+                                readOnly: _sourceType == 'COMPRA_FACTURA',
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
                                       decimal: true,
                                     ),
-                                inputFormatters: const [
-                                  _BankMoneyInputFormatter(),
-                                ],
-                                decoration: contractGlassFieldDecoration(
+                                inputFormatters: _sourceType == 'COMPRA_FACTURA'
+                                    ? const <TextInputFormatter>[]
+                                    : const [_BankMoneyInputFormatter()],
+                                decoration: _bankDialogFieldDecoration(
                                   context,
-                                  hintText: 'Cargo',
+                                  hintText: _sourceType == 'COMPRA_FACTURA'
+                                      ? 'Factura completa'
+                                      : 'Cargo',
                                   prefixIcon: const Icon(
                                     Icons.north_east_rounded,
                                   ),
@@ -1697,7 +2193,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                           controller: _commentC,
                           minLines: 3,
                           maxLines: 4,
-                          decoration: contractGlassFieldDecoration(
+                          decoration: _bankDialogFieldDecoration(
                             context,
                             hintText: 'Comentario del movimiento',
                             prefixIcon: const Icon(Icons.note_alt_outlined),
@@ -1762,6 +2258,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                                   linkedSupplierInvoice:
                                       _selectedSupplierInvoice,
                                   linkedClientAccount: _selectedClientAccount,
+                                  linkedFixedPayment: _selectedFixedPayment,
                                 ),
                               );
                             },
@@ -1799,6 +2296,34 @@ class _BankMoneyInputFormatter extends TextInputFormatter {
       selection: TextSelection.collapsed(offset: formatted.length),
     );
   }
+}
+
+InputDecoration _bankDialogFieldDecoration(
+  BuildContext context, {
+  String? hintText,
+  Widget? prefixIcon,
+}) {
+  final tokens = AreaThemeScope.of(context);
+  final border = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(18),
+    borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+  );
+  return contractGlassFieldDecoration(
+    context,
+    hintText: hintText,
+    prefixIcon: prefixIcon,
+  ).copyWith(
+    filled: true,
+    fillColor: const Color(0xCC171C24),
+    hintStyle: TextStyle(color: tokens.onGlass.withValues(alpha: 0.54)),
+    enabledBorder: border,
+    focusedBorder: border.copyWith(
+      borderSide: BorderSide(
+        color: tokens.primaryStrong.withValues(alpha: 0.80),
+        width: 1.4,
+      ),
+    ),
+  );
 }
 
 class _CounterpartyPickerDialog extends StatefulWidget {
@@ -1870,7 +2395,7 @@ class _CounterpartyPickerDialogState extends State<_CounterpartyPickerDialog> {
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
-                        tileColor: Colors.white.withValues(alpha: 0.72),
+                        tileColor: const Color(0xCC171C24),
                         title: Text(
                           row.name,
                           style: const TextStyle(fontWeight: FontWeight.w900),
@@ -1898,6 +2423,98 @@ class _SupplierInvoicePickerDialog extends StatefulWidget {
   @override
   State<_SupplierInvoicePickerDialog> createState() =>
       _SupplierInvoicePickerDialogState();
+}
+
+class _FixedPaymentPickerDialog extends StatefulWidget {
+  final List<FinanzasFixedPaymentRecord> payments;
+
+  const _FixedPaymentPickerDialog({required this.payments});
+
+  @override
+  State<_FixedPaymentPickerDialog> createState() =>
+      _FixedPaymentPickerDialogState();
+}
+
+class _FixedPaymentPickerDialogState extends State<_FixedPaymentPickerDialog> {
+  final TextEditingController _searchC = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _searchC.addListener(_refresh);
+  }
+
+  @override
+  void dispose() {
+    _searchC.removeListener(_refresh);
+    _searchC.dispose();
+    super.dispose();
+  }
+
+  void _refresh() => setState(() {});
+
+  @override
+  Widget build(BuildContext context) {
+    final query = _searchC.text.trim().toLowerCase();
+    final rows = widget.payments
+        .where((row) {
+          if (query.isEmpty) return true;
+          return row.companyNameSnapshot.toLowerCase().contains(query) ||
+              row.notes.toLowerCase().contains(query) ||
+              row.branch.toLowerCase().contains(query);
+        })
+        .toList(growable: false);
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      child: AreaThemeScope(
+        tokens: finanzasAreaTokens,
+        child: ContractGlassCard(
+          borderRadius: BorderRadius.circular(28),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 660, maxHeight: 640),
+            child: Column(
+              children: [
+                TextField(
+                  controller: _searchC,
+                  autofocus: true,
+                  decoration: contractGlassFieldDecoration(
+                    context,
+                    hintText: 'Buscar empresa, cuenta o comentario',
+                    prefixIcon: const Icon(Icons.search_rounded),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: rows.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 8),
+                    itemBuilder: (_, index) {
+                      final row = rows[index];
+                      return ListTile(
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        tileColor: const Color(0xCC171C24),
+                        title: Text(
+                          row.companyNameSnapshot,
+                          style: const TextStyle(fontWeight: FontWeight.w900),
+                        ),
+                        subtitle: Text(
+                          '${finFixedPaymentBranchLabel(row.branch)} · ${_formatBankMoney(row.amount)} · vence ${row.paymentDate.day.toString().padLeft(2, '0')}/${row.paymentDate.month.toString().padLeft(2, '0')}/${row.paymentDate.year}',
+                        ),
+                        onTap: () => Navigator.of(context).pop(row),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _ClientPaymentPickerDialog extends StatefulWidget {
@@ -1970,7 +2587,7 @@ class _ClientPaymentPickerDialogState
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
-                        tileColor: Colors.white.withValues(alpha: 0.72),
+                        tileColor: const Color(0xCC171C24),
                         title: Text(
                           row.clientName,
                           style: const TextStyle(fontWeight: FontWeight.w900),
@@ -2068,7 +2685,7 @@ class _SupplierInvoicePickerDialogState
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
-                        tileColor: Colors.white.withValues(alpha: 0.72),
+                        tileColor: const Color(0xCC171C24),
                         title: Text(
                           '${row.providerNameSnapshot} · ${row.folio}',
                           style: const TextStyle(fontWeight: FontWeight.w900),
@@ -2140,7 +2757,7 @@ Future<_SimpleOption?> _showSimpleOptionsDialog({
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),
                         ),
-                        tileColor: Colors.white.withValues(alpha: 0.72),
+                        tileColor: const Color(0xCC171C24),
                         title: Text(
                           row.label,
                           style: const TextStyle(fontWeight: FontWeight.w900),
@@ -2529,50 +3146,54 @@ class _ChoiceChipField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(18),
-        child: Ink(
-          width: 250,
-          padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.72),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: tokens.border.withValues(alpha: 0.9)),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      label,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w800,
-                        color: tokens.badgeText,
+    return FinanzasGlassPanel(
+      padding: EdgeInsets.zero,
+      borderRadius: BorderRadius.circular(20),
+      fillColor: const Color(0x18161A22),
+      borderColor: Colors.white.withValues(alpha: 0.22),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.22),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(20),
+          child: Ink(
+            width: 250,
+            padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                          color: tokens.badgeText,
+                        ),
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      value,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                        color: tokens.primaryStrong,
+                      const SizedBox(height: 4),
+                      Text(
+                        value,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
+                          color: tokens.primaryStrong,
+                        ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              Icon(Icons.expand_more_rounded, color: tokens.primaryStrong),
-            ],
+                const SizedBox(width: 8),
+                Icon(Icons.expand_more_rounded, color: tokens.primaryStrong),
+              ],
+            ),
           ),
         ),
       ),
@@ -2671,30 +3292,14 @@ class _BankTabSurface extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return ClipRRect(
+    return FinanzasGlassPanel(
       borderRadius: BorderRadius.circular(32),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: 0.82),
-                tokens.surfaceTint.withValues(alpha: 0.48),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(32),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.72)),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-            child: child,
-          ),
-        ),
-      ),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      fillColor: const Color(0x14141920),
+      borderColor: Colors.white.withValues(alpha: 0.28),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
+      glowColor: const Color(0x1FFF7A1F),
+      child: child,
     );
   }
 }
@@ -2717,9 +3322,9 @@ class _BankFilterSummaryRow extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: tokens.badgeBackground.withValues(alpha: 0.72),
+              color: Colors.white.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: tokens.border.withValues(alpha: 0.70)),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
             ),
             child: Text(
               label,
@@ -2735,6 +3340,7 @@ class _BankFilterSummaryRow extends StatelessWidget {
             onPressed: onClearAll,
             icon: const Icon(Icons.filter_alt_off_rounded, size: 16),
             label: const Text('Limpiar filtros'),
+            style: TextButton.styleFrom(foregroundColor: tokens.primarySoft),
           ),
       ],
     );
@@ -2846,87 +3452,90 @@ class _BankHeaderRow extends StatelessWidget {
         active: debitFilterActive,
       ),
     ];
-    return Card(
-      elevation: 0,
-      color: Colors.black.withValues(alpha: 0.03),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final totalWidth = columns.fold<double>(
-              _kBankActionsW,
-              (sum, column) => sum + column.width,
-            );
-            return SizedBox(
-              width: constraints.maxWidth,
-              child: ContractGridScaledRow(
-                child: SizedBox(
-                  width: totalWidth,
-                  child: Row(
-                    children: [
-                      for (final column in columns)
-                        SizedBox(
-                          width: column.width,
-                          child: Row(
-                            children: [
-                              if (column.onFilter != null) ...[
-                                InkWell(
-                                  borderRadius: BorderRadius.circular(8),
-                                  onTap: column.onFilter,
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 140),
-                                    curve: Curves.easeOutCubic,
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
+    return FinanzasGlassPanel(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      borderRadius: BorderRadius.circular(18),
+      fillColor: const Color(0x10151A22),
+      borderColor: Colors.white.withValues(alpha: 0.16),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.16),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final totalWidth = columns.fold<double>(
+            _kBankActionsW,
+            (sum, column) => sum + column.width,
+          );
+          return SizedBox(
+            width: constraints.maxWidth,
+            child: ContractGridScaledRow(
+              child: SizedBox(
+                width: totalWidth,
+                child: Row(
+                  children: [
+                    for (final column in columns)
+                      SizedBox(
+                        width: column.width,
+                        child: Row(
+                          children: [
+                            if (column.onFilter != null) ...[
+                              InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTap: column.onFilter,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 140),
+                                  curve: Curves.easeOutCubic,
+                                  padding: const EdgeInsets.all(5),
+                                  decoration: BoxDecoration(
+                                    color: column.active
+                                        ? tokens.primaryStrong.withValues(
+                                            alpha: 0.92,
+                                          )
+                                        : Colors.white.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
                                       color: column.active
-                                          ? tokens.primary
-                                          : tokens.badgeBackground,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: column.active
-                                            ? tokens.primaryStrong
-                                            : tokens.border,
-                                      ),
-                                    ),
-                                    child: Icon(
-                                      column.active
-                                          ? Icons.filter_alt
-                                          : Icons.filter_alt_outlined,
-                                      size: 15,
-                                      color: column.active
-                                          ? Colors.white
-                                          : tokens.badgeText,
+                                          ? tokens.primarySoft.withValues(
+                                              alpha: 0.82,
+                                            )
+                                          : Colors.white.withValues(
+                                              alpha: 0.16,
+                                            ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 6),
-                              ],
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 10),
-                                  child: Text(
-                                    column.label,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w800,
-                                      color: tokens.badgeText,
-                                    ),
+                                  child: Icon(
+                                    column.active
+                                        ? Icons.filter_alt
+                                        : Icons.filter_alt_outlined,
+                                    size: 15,
+                                    color: Colors.white,
                                   ),
                                 ),
                               ),
+                              const SizedBox(width: 6),
                             ],
-                          ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: Text(
+                                  column.label,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w800,
+                                    color: tokens.badgeText,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      const SizedBox(width: _kBankActionsW),
-                    ],
-                  ),
+                      ),
+                    const SizedBox(width: _kBankActionsW),
+                  ],
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -2943,13 +3552,28 @@ class _BankAccountsTotalsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 10,
-      runSpacing: 10,
-      children: [
-        for (final total in totals)
-          _BankAccountTotalCard(total: total, moneyFormatter: moneyFormatter),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final cardWidth = totals.isEmpty
+            ? 250.0
+            : ((constraints.maxWidth - ((totals.length - 1) * 12)) /
+                      totals.length)
+                  .clamp(220.0, 360.0);
+        return Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            for (final total in totals)
+              SizedBox(
+                width: cardWidth,
+                child: _BankAccountTotalCard(
+                  total: total,
+                  moneyFormatter: moneyFormatter,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -2970,13 +3594,12 @@ class _BankTopBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.34),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
-      ),
+    return FinanzasGlassPanel(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      borderRadius: BorderRadius.circular(26),
+      fillColor: const Color(0x12161A22),
+      borderColor: Colors.white.withValues(alpha: 0.24),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.20),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final actions = Wrap(
@@ -2986,8 +3609,8 @@ class _BankTopBar extends StatelessWidget {
               FilledButton.icon(
                 style: OutlinedButton.styleFrom(
                   foregroundColor: tokens.primaryStrong,
-                  backgroundColor: Colors.white.withValues(alpha: 0.44),
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.72)),
+                  backgroundColor: Colors.white.withValues(alpha: 0.12),
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.26)),
                   disabledForegroundColor: tokens.badgeText.withValues(
                     alpha: 0.55,
                   ),
@@ -3052,53 +3675,70 @@ class _BankAccountTotalCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final net = total.credit - total.debit;
-    return Container(
-      width: 250,
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: tokens.border.withValues(alpha: 0.84)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            '${total.company} ${total.branch}',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-              color: tokens.primaryStrong,
+    return FinanzasGlassPanel(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      borderRadius: BorderRadius.circular(26),
+      fillColor: const Color(0x14161A21),
+      borderColor: Colors.white.withValues(alpha: 0.24),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.20),
+      child: SizedBox(
+        height: 144,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '${total.company} ${total.branch}',
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: tokens.primaryStrong,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 10),
-          Text(
-            'Abonos ${moneyFormatter(total.credit)}',
-            style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF0F766E),
+            const SizedBox(height: 12),
+            Text(
+              'Abonos ${moneyFormatter(total.credit)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF48B7A9),
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            'Cargos ${moneyFormatter(total.debit)}',
-            style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFFB42318),
+            const SizedBox(height: 6),
+            Text(
+              'Cargos ${moneyFormatter(total.debit)}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFFF45F4E),
+              ),
             ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Neto ${moneyFormatter(net)}',
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w900,
-              color: net >= 0 ? const Color(0xFF0F766E) : tokens.primaryStrong,
+            const Spacer(),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Neto ${moneyFormatter(net)}',
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: net >= 0
+                      ? const Color(0xFF48B7A9)
+                      : tokens.primaryStrong,
+                ),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -3145,7 +3785,7 @@ class _BankTableCell {
       width: width,
       child: Text(
         text.isEmpty ? '—' : text,
-        maxLines: 2,
+        maxLines: 1,
         overflow: TextOverflow.ellipsis,
         style: TextStyle(
           fontSize: 12.5,
@@ -3250,10 +3890,10 @@ class _BankTableRowState extends State<_BankTableRow> {
       (sum, cell) => sum + cell.width,
     );
     final background = widget.selected
-        ? tokens.badgeBackground.withValues(alpha: 0.94)
+        ? const Color(0xF0262C36)
         : _hovering
-        ? Colors.white.withValues(alpha: 0.84)
-        : Colors.white.withValues(alpha: 0.66);
+        ? const Color(0xE01D222B)
+        : const Color(0xCC171B23);
 
     Widget buildCell(int index, _BankTableCell cell) {
       final editable = widget.editableColumns.contains(index);
@@ -3311,7 +3951,7 @@ class _BankTableRowState extends State<_BankTableRow> {
           side: BorderSide(
             color: widget.selected
                 ? tokens.primaryStrong.withValues(alpha: 0.52)
-                : tokens.border.withValues(alpha: 0.72),
+                : Colors.white.withValues(alpha: 0.14),
           ),
         ),
         child: Padding(
@@ -3389,10 +4029,10 @@ class _BankTableRowState extends State<_BankTableRow> {
                                       decoration: BoxDecoration(
                                         color: widget.selected
                                             ? tokens.primarySoft.withValues(
-                                                alpha: 0.42,
+                                                alpha: 0.20,
                                               )
                                             : Colors.white.withValues(
-                                                alpha: 0.88,
+                                                alpha: 0.06,
                                               ),
                                         borderRadius: BorderRadius.circular(12),
                                         border: Border.all(
@@ -3401,7 +4041,7 @@ class _BankTableRowState extends State<_BankTableRow> {
                                                   alpha: 0.36,
                                                 )
                                               : tokens.border.withValues(
-                                                  alpha: 0.82,
+                                                  alpha: 0.24,
                                                 ),
                                         ),
                                         boxShadow: [
@@ -3455,13 +4095,17 @@ class _BankRowMenuAction {
 
 class _BankMovementDetailsDialog extends StatelessWidget {
   final FinanzasBankMovementRecord row;
+  final List<FinanzasEvidenceRecord> evidences;
   final String Function(double value) moneyFormatter;
   final String Function(DateTime value) dateFormatter;
+  final Future<void> Function(String url, String fileName) onOpenEvidence;
 
   const _BankMovementDetailsDialog({
     required this.row,
+    required this.evidences,
     required this.moneyFormatter,
     required this.dateFormatter,
+    required this.onOpenEvidence,
   });
 
   @override
@@ -3544,6 +4188,12 @@ class _BankMovementDetailsDialog extends StatelessWidget {
                   label: 'Origen',
                   value: _bankSourceTypeLabel(row.sourceType),
                 ),
+                const SizedBox(height: 12),
+                _BankDetailsEvidenceBlock(
+                  evidences: evidences,
+                  dateFormatter: dateFormatter,
+                  onOpenEvidence: onOpenEvidence,
+                ),
                 const SizedBox(height: 18),
                 Align(
                   alignment: Alignment.centerRight,
@@ -3570,14 +4220,12 @@ class _BankDetailsStat extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return Container(
+    return FinanzasGlassPanel(
       width: 160,
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: tokens.border.withValues(alpha: 0.84)),
-      ),
+      borderRadius: BorderRadius.circular(20),
+      fillColor: const Color(0x14161A22),
+      borderColor: Colors.white.withValues(alpha: 0.18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3613,14 +4261,12 @@ class _BankDetailsBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return Container(
+    return FinanzasGlassPanel(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: tokens.border.withValues(alpha: 0.84)),
-      ),
+      borderRadius: BorderRadius.circular(20),
+      fillColor: const Color(0x14161A22),
+      borderColor: Colors.white.withValues(alpha: 0.18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -3648,6 +4294,120 @@ class _BankDetailsBlock extends StatelessWidget {
   }
 }
 
+class _BankDetailsEvidenceBlock extends StatelessWidget {
+  final List<FinanzasEvidenceRecord> evidences;
+  final String Function(DateTime value) dateFormatter;
+  final Future<void> Function(String url, String fileName) onOpenEvidence;
+
+  const _BankDetailsEvidenceBlock({
+    required this.evidences,
+    required this.dateFormatter,
+    required this.onOpenEvidence,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return FinanzasGlassPanel(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      borderRadius: BorderRadius.circular(20),
+      fillColor: const Color(0x14161A22),
+      borderColor: Colors.white.withValues(alpha: 0.18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Evidencias',
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: tokens.badgeText,
+            ),
+          ),
+          const SizedBox(height: 10),
+          if (evidences.isEmpty)
+            const Text(
+              'Sin evidencias.',
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasInk,
+              ),
+            )
+          else
+            Column(
+              children: [
+                for (var i = 0; i < evidences.length; i++) ...[
+                  Row(
+                    children: [
+                      Icon(
+                        evidences[i].fileName.toLowerCase().endsWith('.pdf')
+                            ? Icons.picture_as_pdf_outlined
+                            : Icons.photo_library_outlined,
+                        size: 18,
+                        color: tokens.primaryStrong,
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              evidences[i].fileName,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w900,
+                                color: kFinanzasInk,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              '${dateFormatter(evidences[i].uploadedAt)} · ${evidences[i].uploadedByName.isEmpty ? 'Usuario' : evidences[i].uploadedByName}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: kFinanzasMutedInk,
+                              ),
+                            ),
+                            if (evidences[i].comment.trim().isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 3),
+                                child: Text(
+                                  evidences[i].comment.trim(),
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                    color: kFinanzasMutedInk,
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      OutlinedButton.icon(
+                        onPressed: () => unawaited(
+                          onOpenEvidence(
+                            evidences[i].fileUrl,
+                            evidences[i].fileName,
+                          ),
+                        ),
+                        icon: const Icon(Icons.download_rounded, size: 18),
+                        label: const Text('Descargar'),
+                      ),
+                    ],
+                  ),
+                  if (i != evidences.length - 1) const SizedBox(height: 10),
+                ],
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 class _FinBankEmptyPane extends StatelessWidget {
   const _FinBankEmptyPane();
 
@@ -3655,16 +4415,12 @@ class _FinBankEmptyPane extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     return Center(
-      child: Container(
+      child: FinanzasGlassPanel(
         width: 420,
         padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.62),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: tokens.primaryStrong.withValues(alpha: 0.10),
-          ),
-        ),
+        borderRadius: BorderRadius.circular(24),
+        fillColor: const Color(0x12161A22),
+        borderColor: Colors.white.withValues(alpha: 0.18),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -3704,64 +4460,7 @@ class _FinBankBackground extends StatelessWidget {
   const _FinBankBackground();
 
   @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        DecoratedBox(
-          decoration: const BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFFF7E5E2), Color(0xFFD45A52), Color(0xFF241313)],
-            ),
-          ),
-          child: const SizedBox.expand(),
-        ),
-        Positioned(
-          left: -260,
-          top: -130,
-          child: _FinBankBackgroundCircle(760, [
-            const Color(0xFFFFF6F4),
-            const Color(0xFFF2C0BC),
-          ]),
-        ),
-        Positioned(
-          right: -180,
-          top: -70,
-          child: _FinBankBackgroundCircle(580, [
-            const Color(0xFFBC2D25),
-            const Color(0x33241313),
-          ]),
-        ),
-        Positioned(
-          left: 20,
-          bottom: -260,
-          child: _FinBankBackgroundCircle(640, [
-            const Color(0x66241313),
-            const Color(0xFFFBE8E6),
-          ]),
-        ),
-        Positioned(
-          right: -105,
-          bottom: -120,
-          child: IgnorePointer(
-            child: Container(
-              width: 320,
-              height: 500,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(220),
-                gradient: const LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [Color(0xFF241313), Color(0xFFBC2D25)],
-                ),
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+  Widget build(BuildContext context) => const FinanzasAreaBackground();
 }
 
 String _bankSourceTypeLabel(String value) {
@@ -3770,6 +4469,8 @@ String _bankSourceTypeLabel(String value) {
       return 'Factura proveedor';
     case 'VENTA_FACTURA':
       return 'Pago cliente';
+    case 'PAGO_FIJO':
+      return 'Pago fijo';
     case 'MANUAL':
     default:
       return 'Movimiento libre';
@@ -3790,33 +4491,6 @@ String _formatBankMoney(double value) {
     }
   }
   return '\$${buffer.toString()}.$fraction';
-}
-
-class _FinBankBackgroundCircle extends StatelessWidget {
-  final double diameter;
-  final List<Color> colors;
-
-  const _FinBankBackgroundCircle(this.diameter, this.colors);
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(colors: colors),
-          boxShadow: [
-            BoxShadow(
-              blurRadius: diameter * 0.10,
-              spreadRadius: diameter * 0.015,
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
-          ],
-        ),
-        child: SizedBox(width: diameter, height: diameter),
-      ),
-    );
-  }
 }
 
 class _FinBankHeaderBrand extends StatelessWidget {
@@ -3846,16 +4520,7 @@ class _FinBankHeaderBrand extends StatelessWidget {
           ),
           child: const Center(child: DicsaLogoD(size: 40, progress: 1)),
         ),
-        const SizedBox(width: 10),
-        Container(
-          width: 1.5,
-          margin: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: tokens.primaryStrong.withValues(alpha: 0.22),
-            borderRadius: BorderRadius.circular(999),
-          ),
-        ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 20),
         const Text(
           'Cuentas Bancarias',
           maxLines: 1,
@@ -4010,239 +4675,11 @@ class _FinBankSidePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return SizedBox(
-      width: 372,
-      child: Padding(
-        padding: const EdgeInsets.only(right: 12),
-        child: ContractGlassCard(
-          borderRadius: BorderRadius.circular(28),
-          padding: const EdgeInsets.fromLTRB(18, 20, 18, 20),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Finanzas',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: tokens.primaryStrong,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                if (canReturnToDirection) ...[
-                  _FinBankNavItem(
-                    icon: Icons.arrow_back_rounded,
-                    title: 'Volver a Dirección',
-                    onTap: () async => onNavigate('Dashboard Dirección'),
-                  ),
-                  const SizedBox(height: 10),
-                ],
-                const _FinBankSectionHeader(label: 'AREA'),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: tokens.primarySoft.withValues(alpha: 0.34),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: tokens.primaryStrong.withValues(alpha: 0.14),
-                    ),
-                  ),
-                  child: Column(
-                    children: [
-                      _FinBankNavItem(
-                        icon: Icons.account_balance_wallet_outlined,
-                        title: 'Dashboard Finanzas',
-                        subtitle: 'Pagos, liquidez y compromisos',
-                        onTap: () async => onNavigate('Dashboard Finanzas'),
-                      ),
-                      const SizedBox(height: 8),
-                      _FinBankNavItem(
-                        icon: Icons.account_balance_rounded,
-                        title: 'Directorio Empresas',
-                        subtitle: 'Crédito, contacto y operación',
-                        onTap: () async => onNavigate('Directorio Empresas'),
-                      ),
-                      const SizedBox(height: 8),
-                      _FinBankNavItem(
-                        icon: Icons.view_list_rounded,
-                        title: 'Cuentas por Proveedor',
-                        subtitle: 'Saldo vivo, tickets y seguimiento',
-                        onTap: () async => onNavigate('Cuentas por Proveedor'),
-                      ),
-                      const SizedBox(height: 8),
-                      _FinBankNavItem(
-                        icon: Icons.account_balance_outlined,
-                        title: 'Cuentas Bancarias',
-                        subtitle: 'Entradas, salidas y bancos',
-                        accented: true,
-                        onTap: () async {},
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                const _FinBankSectionHeader(label: 'ACCESOS'),
-                const SizedBox(height: 8),
-                if (canReturnToDirection) ...[
-                  _FinBankNavItem(
-                    icon: Icons.assessment_outlined,
-                    title: 'Dashboard Dirección',
-                    subtitle: 'Vista ejecutiva multiarea',
-                    onTap: () async => onNavigate('Dashboard Dirección'),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-                if (canAccessComprasArea)
-                  _FinBankNavItem(
-                    icon: Icons.shopping_cart_checkout_rounded,
-                    title: 'Dashboard Compras',
-                    subtitle: 'Tickets y operación de compra',
-                    onTap: () async => onNavigate('Dashboard Compras'),
-                  ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _FinBankSectionHeader extends StatelessWidget {
-  final String label;
-  const _FinBankSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Text(
-      label,
-      style: TextStyle(
-        fontSize: 11.5,
-        fontWeight: FontWeight.w900,
-        letterSpacing: 0.4,
-        color: tokens.badgeText,
-      ),
-    );
-  }
-}
-
-class _FinBankNavItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String? subtitle;
-  final bool accented;
-  final Future<void> Function()? onTap;
-
-  const _FinBankNavItem({
-    required this.icon,
-    required this.title,
-    this.subtitle,
-    this.accented = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: onTap == null ? null : () async => onTap!.call(),
-        child: Ink(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: accented
-                ? LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      tokens.primaryStrong.withValues(alpha: 0.92),
-                      tokens.primary.withValues(alpha: 0.94),
-                    ],
-                  )
-                : LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.70),
-                      tokens.surfaceTint.withValues(alpha: 0.42),
-                    ],
-                  ),
-            border: Border.all(
-              color: accented
-                  ? Colors.white.withValues(alpha: 0.34)
-                  : tokens.border.withValues(alpha: 0.62),
-            ),
-            boxShadow: accented
-                ? [
-                    BoxShadow(
-                      color: tokens.glow.withValues(alpha: 0.16),
-                      blurRadius: 22,
-                      offset: const Offset(0, 10),
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: accented
-                      ? Colors.white.withValues(alpha: 0.14)
-                      : Colors.white.withValues(alpha: 0.66),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: accented
-                        ? Colors.white.withValues(alpha: 0.18)
-                        : tokens.border.withValues(alpha: 0.54),
-                  ),
-                ),
-                child: Icon(
-                  icon,
-                  color: accented ? Colors.white : tokens.primaryStrong,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: accented ? Colors.white : tokens.primaryStrong,
-                      ),
-                    ),
-                    if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        subtitle!,
-                        style: TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w700,
-                          color: accented
-                              ? Colors.white.withValues(alpha: 0.86)
-                              : tokens.badgeText,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
+    return FinanzasAreaSidePanel(
+      currentLabel: 'Cuentas Bancarias',
+      canReturnToDirection: canReturnToDirection,
+      canAccessComprasArea: canAccessComprasArea,
+      onNavigate: onNavigate,
     );
   }
 }

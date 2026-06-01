@@ -1,6 +1,8 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../compras/compras_tickets_store.dart';
+import 'finanzas_fixed_payments_store.dart';
+import 'finanzas_financial_rules.dart';
 import 'finanzas_provider_accounts_store.dart';
 
 const String _kFinBankMovementsTable = 'finanzas_bank_movements';
@@ -27,6 +29,7 @@ const List<String> kFinBankMovementSourceTypes = <String>[
   'MANUAL',
   'COMPRA_FACTURA',
   'VENTA_FACTURA',
+  'PAGO_FIJO',
 ];
 
 class FinanzasBankMovementRecord {
@@ -44,6 +47,7 @@ class FinanzasBankMovementRecord {
   final double debitAmount;
   final String sourceType;
   final String? linkedSupplierInvoiceId;
+  final String? linkedFixedPaymentId;
   final String? linkedExternalRef;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -63,6 +67,7 @@ class FinanzasBankMovementRecord {
     required this.debitAmount,
     required this.sourceType,
     required this.linkedSupplierInvoiceId,
+    required this.linkedFixedPaymentId,
     required this.linkedExternalRef,
     required this.createdAt,
     required this.updatedAt,
@@ -83,6 +88,7 @@ class FinanzasBankMovementRecord {
     'debit_amount': debitAmount,
     'source_type': sourceType,
     'linked_supplier_invoice_id': linkedSupplierInvoiceId,
+    'linked_fixed_payment_id': linkedFixedPaymentId,
     'linked_external_ref': linkedExternalRef,
   };
 
@@ -104,6 +110,7 @@ class FinanzasBankMovementRecord {
       debitAmount: ((row['debit_amount'] as num?) ?? 0).toDouble(),
       sourceType: (row['source_type'] ?? 'MANUAL').toString(),
       linkedSupplierInvoiceId: row['linked_supplier_invoice_id']?.toString(),
+      linkedFixedPaymentId: row['linked_fixed_payment_id']?.toString(),
       linkedExternalRef: row['linked_external_ref']?.toString(),
       createdAt: _tryParseDateTime(row['created_at'] as String?),
       updatedAt: _tryParseDateTime(row['updated_at'] as String?),
@@ -206,30 +213,93 @@ class FinanzasBankAccountsStore {
     }
   }
 
+  static Future<List<FinanzasFixedPaymentRecord>> loadOpenFixedPayments() {
+    return FinanzasFixedPaymentsStore.loadOpenPayments();
+  }
+
   static Future<void> createMovementAndApply({
     required FinanzasBankMovementRecord movement,
     FinanzasSupplierInvoiceRecord? linkedSupplierInvoice,
     FinanzasClientPaymentAccountRecord? linkedClientAccount,
+    FinanzasFixedPaymentRecord? linkedFixedPayment,
   }) async {
     await saveMovement(movement);
+    final providerCounterpartyId =
+        linkedSupplierInvoice?.providerId ?? movement.counterpartyCompanyId;
     if (linkedClientAccount != null) {
+      final appliedAmount = movement.creditAmount.clamp(0, double.infinity);
+      if (appliedAmount <= 0.009) return;
+      final nextPaidAmount = (linkedClientAccount.paidAmount + appliedAmount)
+          .clamp(0, linkedClientAccount.approvedAmount)
+          .toDouble();
+      final fullySettled =
+          nextPaidAmount >= linkedClientAccount.approvedAmount - 0.009;
       await Supabase.instance.client
           .from(_kMayoreoAccountsTable)
           .update(<String, dynamic>{
-            'paid_amount': linkedClientAccount.approvedAmount,
-            'status': 'pagada',
-            'settlement_date': movement.date.toIso8601String(),
+            'paid_amount': nextPaidAmount,
+            'status': fullySettled ? 'pagada' : linkedClientAccount.status,
+            'settlement_date': fullySettled
+                ? movement.date.toIso8601String()
+                : null,
           })
           .eq('id', linkedClientAccount.id);
       return;
     }
-    if (linkedSupplierInvoice == null) return;
+    if (linkedFixedPayment != null) {
+      final appliedAmount = movement.debitAmount
+          .clamp(0, double.infinity)
+          .toDouble();
+      assertFullSettlementAmount(
+        appliedAmount: appliedAmount,
+        expectedAmount: linkedFixedPayment.amount,
+        contextLabel: 'El pago fijo',
+      );
+      await FinanzasFixedPaymentsStore.savePayment(
+        linkedFixedPayment.copyWith(
+          status: 'PAGADO',
+          executionMethod: 'BANCO',
+          linkedBankMovementId: movement.id,
+          settledAt: movement.date,
+        ),
+      );
+      return;
+    }
+    if (linkedSupplierInvoice == null) {
+      if (providerCounterpartyId != null &&
+          movement.debitAmount > 0.009 &&
+          movement.sourceType != 'VENTA_FACTURA') {
+        await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
+          providerId: providerCounterpartyId,
+        );
+      }
+      return;
+    }
 
-    final paidInvoice = linkedSupplierInvoice.copyWith(
-      balanceAmount: 0,
-      status: 'PAGADA',
+    final appliedAmount = movement.debitAmount
+        .clamp(0, double.infinity)
+        .toDouble();
+    if (appliedAmount <= 0.009) return;
+    assertFullSettlementAmount(
+      appliedAmount: appliedAmount,
+      expectedAmount: linkedSupplierInvoice.balanceAmount,
+      contextLabel: 'La factura proveedor',
     );
-    await FinanzasProviderAccountsStore.saveInvoice(paidInvoice);
+    final nextBalanceAmount =
+        (linkedSupplierInvoice.balanceAmount - appliedAmount)
+            .clamp(0, linkedSupplierInvoice.totalAmount)
+            .toDouble();
+    final updatedInvoice = linkedSupplierInvoice.copyWith(
+      balanceAmount: nextBalanceAmount,
+      status: deriveSupplierInvoiceStatus(
+        balanceAmount: nextBalanceAmount,
+        dueDate: linkedSupplierInvoice.dueDate,
+      ),
+    );
+    await FinanzasProviderAccountsStore.saveInvoice(updatedInvoice);
+    await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
+      providerId: linkedSupplierInvoice.providerId,
+    );
 
     final invoiceTickets =
         await FinanzasProviderAccountsStore.loadInvoiceTickets();
@@ -239,12 +309,62 @@ class FinanzasBankAccountsStore {
         .toSet();
     if (linkedTicketIds.isEmpty) return;
     final allTickets = await ComprasTicketsStore.loadTickets();
-    final updatedTickets = allTickets
-        .where((ticket) => linkedTicketIds.contains(ticket.id))
-        .map(
-          (ticket) =>
-              ticket.copyWith(pagoStatus: 'PAGADO', coverageStatus: 'CUBIERTO'),
-        )
+    final allApplications =
+        await ComprasTicketsStore.loadTicketPaymentApplications();
+    final linkedTickets =
+        allTickets
+            .where((ticket) => linkedTicketIds.contains(ticket.id))
+            .toList(growable: false)
+          ..sort((a, b) {
+            final dateCompare = a.date.compareTo(b.date);
+            if (dateCompare != 0) return dateCompare;
+            return a.ticket.compareTo(b.ticket);
+          });
+    final directAppliedByTicketId = <String, double>{};
+    for (final application in allApplications) {
+      if (!linkedTicketIds.contains(application.ticketId)) continue;
+      directAppliedByTicketId.update(
+        application.ticketId,
+        (value) => value + application.appliedAmount,
+        ifAbsent: () => application.appliedAmount,
+      );
+    }
+    var invoicePaidRemaining =
+        (linkedSupplierInvoice.totalAmount - nextBalanceAmount)
+            .clamp(0, linkedSupplierInvoice.totalAmount)
+            .toDouble();
+    final updatedTickets = linkedTickets
+        .map((ticket) {
+          final directApplied = (directAppliedByTicketId[ticket.id] ?? 0)
+              .clamp(0, ticket.amount)
+              .toDouble();
+          final pendingAfterDirect = (ticket.amount - directApplied)
+              .clamp(0, double.infinity)
+              .toDouble();
+          final invoiceApplied = invoicePaidRemaining > pendingAfterDirect
+              ? pendingAfterDirect
+              : invoicePaidRemaining;
+          invoicePaidRemaining = (invoicePaidRemaining - invoiceApplied)
+              .clamp(0, double.infinity)
+              .toDouble();
+          final totalApplied = (directApplied + invoiceApplied)
+              .clamp(0, ticket.amount)
+              .toDouble();
+          final fullyCovered = totalApplied >= ticket.amount - 0.009;
+          final hasAbono = totalApplied > 0.009 && !fullyCovered;
+          return ticket.copyWith(
+            pagoStatus: fullyCovered
+                ? 'PAGADO'
+                : hasAbono
+                ? 'ABONO'
+                : 'PENDIENTE_DE_PAGO',
+            coverageStatus: fullyCovered
+                ? 'CUBIERTO'
+                : hasAbono
+                ? 'PARCIAL'
+                : 'SIN_CUBRIR',
+          );
+        })
         .toList(growable: false);
     if (updatedTickets.isEmpty) return;
     await ComprasTicketsStore.saveTickets(updatedTickets);

@@ -2076,19 +2076,6 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
                     canReturnToDirection: _canReturnToDirection,
                     areaItems: [
                       ComprasAreaNavEntry(
-                        icon: Icons.shopping_cart_checkout_rounded,
-                        title: 'Dashboard Compras',
-                        subtitle: 'Tickets y operación de compra',
-                        onTap: () async =>
-                            _handleNavigationAction('Dashboard Compras'),
-                      ),
-                      const ComprasAreaNavEntry(
-                        icon: Icons.price_check_rounded,
-                        title: 'Catálogo Compras',
-                        subtitle: 'Proveedores, materiales y precios',
-                        accented: true,
-                      ),
-                      ComprasAreaNavEntry(
                         icon: Icons.confirmation_number_outlined,
                         title: 'Tickets Compras',
                         subtitle: 'Captura y seguimiento operativo',
@@ -2102,6 +2089,12 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
                         onTap: () async =>
                             _handleNavigationAction('Ajuste de precios'),
                       ),
+                      const ComprasAreaNavEntry(
+                        icon: Icons.price_check_rounded,
+                        title: 'Catálogo Compras',
+                        subtitle: 'Proveedores, materiales y precios',
+                        accented: true,
+                      ),
                       ComprasAreaNavEntry(
                         icon: Icons.badge_rounded,
                         title: 'Directorio Proveedores',
@@ -2111,14 +2104,13 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
                       ),
                     ],
                     accessItems: [
-                      if (_canReturnToDirection)
-                        ComprasAreaNavEntry(
-                          icon: Icons.assessment_outlined,
-                          title: 'Dashboard Dirección',
-                          subtitle: 'Vista ejecutiva multiarea',
-                          onTap: () async =>
-                              _handleNavigationAction('Dashboard Dirección'),
-                        ),
+                      ComprasAreaNavEntry(
+                        icon: Icons.shopping_cart_checkout_rounded,
+                        title: 'Dashboard Compras',
+                        subtitle: 'Tickets y operación de compra',
+                        onTap: () async =>
+                            _handleNavigationAction('Dashboard Compras'),
+                      ),
                       if (_canAccessFinanzasArea)
                         ComprasAreaNavEntry(
                           icon: Icons.account_balance_wallet_outlined,
@@ -2126,6 +2118,14 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
                           subtitle: 'Pagos, liquidez y compromisos',
                           onTap: () async =>
                               _handleNavigationAction('Dashboard Finanzas'),
+                        ),
+                      if (_canReturnToDirection)
+                        ComprasAreaNavEntry(
+                          icon: Icons.assessment_outlined,
+                          title: 'Dashboard Dirección',
+                          subtitle: 'Vista ejecutiva multiarea',
+                          onTap: () async =>
+                              _handleNavigationAction('Dashboard Dirección'),
                         ),
                     ],
                   ),
@@ -3483,6 +3483,12 @@ class _CompanyInlineEditRowState extends State<_CompanyInlineEditRow> {
 
   void cancelFromParent() => widget.onCancel();
 
+  TextStyle _fieldStyle() => TextStyle(
+    fontSize: 13.5,
+    fontWeight: FontWeight.w800,
+    color: comprasAreaTokens.onGlass,
+  );
+
   @override
   Widget build(BuildContext context) {
     return TapRegion(
@@ -3529,6 +3535,8 @@ class _CompanyInlineEditRowState extends State<_CompanyInlineEditRow> {
                 controller: _nameC,
                 focusNode: _nameFocus,
                 autofocus: true,
+                cursorColor: comprasAreaTokens.primaryStrong,
+                style: _fieldStyle(),
                 textCapitalization: TextCapitalization.characters,
                 inputFormatters: [_normalizedUppercaseFormatter()],
                 onSubmitted: (_) => _contactFocus.requestFocus(),
@@ -3543,6 +3551,8 @@ class _CompanyInlineEditRowState extends State<_CompanyInlineEditRow> {
               child: TextField(
                 controller: _contactC,
                 focusNode: _contactFocus,
+                cursorColor: comprasAreaTokens.primaryStrong,
+                style: _fieldStyle(),
                 textCapitalization: TextCapitalization.characters,
                 inputFormatters: [_normalizedUppercaseFormatter()],
                 onSubmitted: (_) => _notesFocus.requestFocus(),
@@ -3568,6 +3578,8 @@ class _CompanyInlineEditRowState extends State<_CompanyInlineEditRow> {
               child: TextField(
                 controller: _notesC,
                 focusNode: _notesFocus,
+                cursorColor: comprasAreaTokens.primaryStrong,
+                style: _fieldStyle(),
                 onSubmitted: (_) => _submit(),
                 decoration: contractGlassFieldDecoration(
                   context,
@@ -3649,6 +3661,12 @@ class _MaterialInlineEditRowState extends State<_MaterialInlineEditRow> {
 
   void cancelFromParent() => widget.onCancel();
 
+  TextStyle _fieldStyle() => TextStyle(
+    fontSize: 13.5,
+    fontWeight: FontWeight.w800,
+    color: comprasAreaTokens.onGlass,
+  );
+
   @override
   Widget build(BuildContext context) {
     return TapRegion(
@@ -3709,6 +3727,8 @@ class _MaterialInlineEditRowState extends State<_MaterialInlineEditRow> {
                 controller: _nameC,
                 focusNode: _nameFocus,
                 autofocus: true,
+                cursorColor: comprasAreaTokens.primaryStrong,
+                style: _fieldStyle(),
                 textCapitalization: TextCapitalization.characters,
                 inputFormatters: [_normalizedUppercaseFormatter()],
                 onSubmitted: (_) => _level == 'GENERAL'
@@ -3787,6 +3807,8 @@ class _MaterialInlineEditRowState extends State<_MaterialInlineEditRow> {
               child: TextField(
                 controller: _notesC,
                 focusNode: _notesFocus,
+                cursorColor: comprasAreaTokens.primaryStrong,
+                style: _fieldStyle(),
                 onSubmitted: (_) => _submit(),
                 decoration: contractGlassFieldDecoration(
                   context,
@@ -3869,6 +3891,12 @@ class _PriceInlineEditRowState extends State<_PriceInlineEditRow> {
 
   void cancelFromParent() => widget.onCancel();
 
+  TextStyle _fieldStyle() => TextStyle(
+    fontSize: 13.5,
+    fontWeight: FontWeight.w800,
+    color: comprasAreaTokens.onGlass,
+  );
+
   @override
   Widget build(BuildContext context) {
     return TapRegion(
@@ -3950,6 +3978,8 @@ class _PriceInlineEditRowState extends State<_PriceInlineEditRow> {
                 controller: _amountC,
                 focusNode: _amountFocus,
                 autofocus: true,
+                cursorColor: comprasAreaTokens.primaryStrong,
+                style: _fieldStyle(),
                 keyboardType: const TextInputType.numberWithOptions(
                   decimal: true,
                 ),
@@ -3976,6 +4006,8 @@ class _PriceInlineEditRowState extends State<_PriceInlineEditRow> {
               child: TextField(
                 controller: _notesC,
                 focusNode: _notesFocus,
+                cursorColor: comprasAreaTokens.primaryStrong,
+                style: _fieldStyle(),
                 onSubmitted: (_) => _submit(),
                 decoration: contractGlassFieldDecoration(
                   context,
@@ -4160,6 +4192,7 @@ class _CatalogInlineActionButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return InkWell(
       borderRadius: BorderRadius.circular(10),
       onTap: onTap,
@@ -4169,11 +4202,30 @@ class _CatalogInlineActionButton extends StatelessWidget {
         width: 34,
         height: 34,
         decoration: BoxDecoration(
-          color: color.withValues(alpha: onTap == null ? 0.28 : 0.92),
+          color: onTap == null
+              ? tokens.fieldSurface.withValues(alpha: 0.58)
+              : color.withValues(alpha: 0.94),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.52)),
+          border: Border.all(
+            color: onTap == null
+                ? tokens.border.withValues(alpha: 0.62)
+                : color.withValues(alpha: 0.56),
+          ),
+          boxShadow: onTap == null
+              ? null
+              : [
+                  BoxShadow(
+                    color: color.withValues(alpha: 0.22),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
         ),
-        child: Icon(icon, size: 18, color: Colors.white),
+        child: Icon(
+          icon,
+          size: 18,
+          color: onTap == null ? tokens.badgeText : Colors.white,
+        ),
       ),
     );
   }
@@ -4723,10 +4775,10 @@ class _MayoreoPickerOptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final background = selected
-        ? comprasAreaTokens.badgeBackground.withValues(alpha: 0.90)
+        ? comprasAreaTokens.badgeBackground.withValues(alpha: 0.76)
         : highlighted
-        ? comprasAreaTokens.surfaceTint.withValues(alpha: 0.66)
-        : Colors.white.withValues(alpha: 0.44);
+        ? comprasAreaTokens.glassSurface.withValues(alpha: 0.82)
+        : comprasAreaTokens.fieldSurface.withValues(alpha: 0.72);
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
@@ -4880,21 +4932,6 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
                 child: Column(
                   children: [
                     _MayoreoCatalogNavItem(
-                      icon: Icons.shopping_cart_checkout_rounded,
-                      title: 'Dashboard Compras',
-                      subtitle: 'Tickets y operación de compra',
-                      onTap: () async => onNavigate('Dashboard Compras'),
-                    ),
-                    const SizedBox(height: 8),
-                    _MayoreoCatalogNavItem(
-                      icon: Icons.price_check_rounded,
-                      title: 'Catálogo Compras',
-                      subtitle: 'Proveedores, materiales y precios',
-                      accented: true,
-                      onTap: () async {},
-                    ),
-                    const SizedBox(height: 8),
-                    _MayoreoCatalogNavItem(
                       icon: Icons.confirmation_number_outlined,
                       title: 'Tickets Compras',
                       subtitle: 'Captura y seguimiento operativo',
@@ -4909,6 +4946,14 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     _MayoreoCatalogNavItem(
+                      icon: Icons.price_check_rounded,
+                      title: 'Catálogo Compras',
+                      subtitle: 'Proveedores, materiales y precios',
+                      accented: true,
+                      onTap: () async {},
+                    ),
+                    const SizedBox(height: 8),
+                    _MayoreoCatalogNavItem(
                       icon: Icons.badge_rounded,
                       title: 'Directorio Proveedores',
                       subtitle: 'Crédito, contacto y operación',
@@ -4920,21 +4965,27 @@ class _MayoreoCatalogSidePanel extends StatelessWidget {
               const SizedBox(height: 14),
               const _MayoreoCatalogSectionHeader(label: 'ACCESOS'),
               const SizedBox(height: 8),
-              if (canReturnToDirection) ...[
-                _MayoreoCatalogNavItem(
-                  icon: Icons.assessment_outlined,
-                  title: 'Dashboard Dirección',
-                  subtitle: 'Vista ejecutiva multiarea',
-                  onTap: () async => onNavigate('Dashboard Dirección'),
-                ),
-                const SizedBox(height: 8),
-              ],
+              _MayoreoCatalogNavItem(
+                icon: Icons.shopping_cart_checkout_rounded,
+                title: 'Dashboard Compras',
+                subtitle: 'Tickets y operación de compra',
+                onTap: () async => onNavigate('Dashboard Compras'),
+              ),
+              if (canAccessFinanzasArea) const SizedBox(height: 8),
               if (canAccessFinanzasArea)
                 _MayoreoCatalogNavItem(
                   icon: Icons.account_balance_wallet_outlined,
                   title: 'Dashboard Finanzas',
                   subtitle: 'Pagos, liquidez y compromisos',
                   onTap: () async => onNavigate('Dashboard Finanzas'),
+                ),
+              if (canReturnToDirection) const SizedBox(height: 8),
+              if (canReturnToDirection)
+                _MayoreoCatalogNavItem(
+                  icon: Icons.assessment_outlined,
+                  title: 'Dashboard Dirección',
+                  subtitle: 'Vista ejecutiva multiarea',
+                  onTap: () async => onNavigate('Dashboard Dirección'),
                 ),
             ],
           ),
@@ -5407,7 +5458,7 @@ class _CatalogTableRowState extends State<_CatalogTableRow> {
     widget.onSecondarySelection?.call();
     final action = await showMenu<_RowMenuAction>(
       context: context,
-      color: comprasAreaTokens.surfaceTint.withValues(alpha: 0.98),
+      color: comprasAreaTokens.fieldSurface.withValues(alpha: 0.94),
       position: RelativeRect.fromLTRB(
         globalPosition.dx,
         globalPosition.dy,
@@ -5432,10 +5483,10 @@ class _CatalogTableRowState extends State<_CatalogTableRow> {
                 const SizedBox(width: 10),
                 Text(
                   item.label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w700,
-                    color: kComprasInk,
+                    color: comprasAreaTokens.onGlass,
                   ),
                 ),
               ],
@@ -5456,10 +5507,10 @@ class _CatalogTableRowState extends State<_CatalogTableRow> {
       (sum, cell) => sum + cell.width,
     );
     final background = selected
-        ? tokens.badgeBackground.withValues(alpha: 0.94)
+        ? tokens.badgeBackground.withValues(alpha: 0.68)
         : _hovering
-        ? Colors.white.withValues(alpha: 0.84)
-        : Colors.white.withValues(alpha: 0.66);
+        ? tokens.glassSurface.withValues(alpha: 0.92)
+        : tokens.fieldSurface.withValues(alpha: 0.78);
 
     Widget buildCell(int index, _CatalogTableCell cell) {
       final editable = widget.editableColumns.contains(index);
@@ -5565,13 +5616,13 @@ class _CatalogTableRowState extends State<_CatalogTableRow> {
                                     trailing: PopupMenuButton<_RowMenuAction>(
                                       tooltip: 'Acciones',
                                       padding: EdgeInsets.zero,
-                                      color: comprasAreaTokens.surfaceTint
+                                      color: comprasAreaTokens.fieldSurface
                                           .withValues(alpha: 0.98),
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(16),
                                         side: BorderSide(
-                                          color: Colors.white.withValues(
-                                            alpha: 0.70,
+                                          color: tokens.border.withValues(
+                                            alpha: 0.78,
                                           ),
                                         ),
                                       ),
@@ -5592,10 +5643,11 @@ class _CatalogTableRowState extends State<_CatalogTableRow> {
                                                 const SizedBox(width: 10),
                                                 Text(
                                                   item.label,
-                                                  style: const TextStyle(
+                                                  style: TextStyle(
                                                     fontSize: 12.5,
                                                     fontWeight: FontWeight.w700,
-                                                    color: kComprasInk,
+                                                    color: comprasAreaTokens
+                                                        .onGlass,
                                                   ),
                                                 ),
                                               ],
@@ -5607,29 +5659,29 @@ class _CatalogTableRowState extends State<_CatalogTableRow> {
                                         height: 36,
                                         decoration: BoxDecoration(
                                           color: selected
-                                              ? tokens.primarySoft.withValues(
-                                                  alpha: 0.42,
+                                              ? tokens.fieldSurface.withValues(
+                                                  alpha: 0.96,
                                                 )
-                                              : Colors.white.withValues(
-                                                  alpha: 0.88,
-                                                ),
+                                              : const Color(
+                                                  0xFF171C22,
+                                                ).withValues(alpha: 0.96),
                                           borderRadius: BorderRadius.circular(
                                             12,
                                           ),
                                           border: Border.all(
                                             color: selected
                                                 ? tokens.primaryStrong
-                                                      .withValues(alpha: 0.36)
+                                                      .withValues(alpha: 0.52)
                                                 : tokens.border.withValues(
-                                                    alpha: 0.82,
+                                                    alpha: 0.78,
                                                   ),
                                           ),
                                           boxShadow: [
                                             BoxShadow(
-                                              blurRadius: 10,
-                                              offset: const Offset(0, 4),
+                                              blurRadius: 12,
+                                              offset: const Offset(0, 5),
                                               color: Colors.black.withValues(
-                                                alpha: 0.06,
+                                                alpha: 0.16,
                                               ),
                                             ),
                                           ],
@@ -5637,7 +5689,7 @@ class _CatalogTableRowState extends State<_CatalogTableRow> {
                                         child: Center(
                                           child: Icon(
                                             Icons.more_horiz_rounded,
-                                            color: tokens.primaryStrong,
+                                            color: Colors.white,
                                             size: 20,
                                           ),
                                         ),
