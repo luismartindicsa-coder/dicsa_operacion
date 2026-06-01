@@ -1159,7 +1159,9 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
     });
   }
 
-  Future<List<Map<String, dynamic>>?> _createTicketsFromDraft() async {
+  Future<List<Map<String, dynamic>>?> _createTicketsFromDraft({
+    bool refreshList = true,
+  }) async {
     if (_creatingTicketDraft) return null;
     final baseTicket = _ticketC.text.trim();
     if (baseTicket.isEmpty) {
@@ -1302,7 +1304,9 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       final normalizedRows = (inserted as List)
           .map((row) => _normalizeTicketRow(Map<String, dynamic>.from(row)))
           .toList(growable: false);
-      await _loadTickets();
+      if (refreshList) {
+        await _loadTickets();
+      }
       _toast(
         _splitEnabled
             ? 'Se crearon ${createdRows.length} tickets del split'
@@ -1755,8 +1759,9 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                               return;
                             }
                             if (!draftPersisted) {
-                              final createdRows =
-                                  await _createTicketsFromDraft();
+                              final createdRows = await _createTicketsFromDraft(
+                                refreshList: false,
+                              );
                               if (createdRows == null || createdRows.isEmpty) {
                                 return;
                               }
@@ -1768,6 +1773,10 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                             await _openTicketPdfForDraft(
                               row: persistedRows.first,
                             );
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                            unawaited(_loadTickets());
                           },
                         ),
                       ],
@@ -1804,7 +1813,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
         '${Directory.systemTemp.path}/menudeo_ticket_${safeTicket}_$stamp.pdf',
       );
       await file.writeAsBytes(pdfBytes, flush: true);
-      await _openPdfFile(file.path);
+      await _dispatchTicketPdf(file.path);
       _toast('Ticket enviado a impresión');
     } catch (e) {
       _toast('No se pudo generar el ticket: $e');
@@ -2398,16 +2407,46 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
         '${Directory.systemTemp.path}/menudeo_ticket_${ticket}_$stamp.pdf',
       );
       await file.writeAsBytes(pdfBytes, flush: true);
-      await _openPdfFile(file.path);
+      await _dispatchTicketPdf(file.path);
     } catch (e) {
       _toast('No se pudo abrir el ticket en PDF: $e');
     }
   }
 
-  Future<void> _openPdfFile(String path) async {
+  Future<void> _dispatchTicketPdf(String path) async {
+    if (Platform.isWindows) {
+      await _printPdfFile(path);
+      return;
+    }
+    await _openPdfFile(path, freshWindowOnMacOS: true);
+  }
+
+  Future<void> _printPdfFile(String path) async {
+    final escapedPath = path.replaceAll("'", "''");
+    final result = await Process.run('powershell', [
+      '-NoProfile',
+      '-Command',
+      "Start-Process -FilePath '$escapedPath' -Verb Print",
+    ]);
+    if (result.exitCode != 0) {
+      throw Exception(result.stderr.toString().trim());
+    }
+  }
+
+  Future<void> _openPdfFile(
+    String path, {
+    bool freshWindowOnMacOS = false,
+  }) async {
     ProcessResult result;
     if (Platform.isMacOS) {
-      result = await Process.run('open', [path]);
+      if (freshWindowOnMacOS) {
+        result = await Process.run('open', ['-n', '-a', 'Preview', path]);
+        if (result.exitCode != 0) {
+          result = await Process.run('open', [path]);
+        }
+      } else {
+        result = await Process.run('open', [path]);
+      }
     } else if (Platform.isWindows) {
       result = await Process.run('cmd', ['/c', 'start', '', path]);
     } else if (Platform.isLinux) {
