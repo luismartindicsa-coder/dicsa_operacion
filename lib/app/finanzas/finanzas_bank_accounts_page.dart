@@ -10,8 +10,14 @@ import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/archetypes/grid_editable/filters/grid_filter_dialog.dart';
+import '../shared/archetypes/grid_editable/filters/grid_filter_state.dart';
+import '../shared/archetypes/grid_editable/row/editable_grid_context_menu.dart';
+import '../shared/archetypes/grid_editable/row/editable_row_actions_button.dart';
 import '../shared/utils/file_download_save.dart';
+import '../shared/ui_contract_core/dialogs/contract_menu_surface.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
+import '../shared/ui_contract_core/keyboard/grid_keyboard_contract.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
@@ -33,7 +39,7 @@ import 'finanzas_provider_accounts_store.dart';
 import 'finanzas_theme.dart';
 
 const double _kBankDateW = 110;
-const double _kBankCompanyW = 100;
+const double _kBankCompanyW = 128;
 const double _kBankBranchW = 110;
 const double _kBankNameW = 220;
 const double _kBankCategoryW = 210;
@@ -111,6 +117,10 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
   Set<String> _creditFilters = <String>{};
   Set<String> _debitFilters = <String>{};
   String? _selectedRowId;
+  Set<String> _selectedRowIds = <String>{};
+  String? _selectionAnchorRowId;
+  bool _dragSelectionActive = false;
+  bool _dragSelectionAdditive = false;
   List<FinanzasBankMovementRecord> _rows = const <FinanzasBankMovementRecord>[];
   List<FinanzasEvidenceRecord> _movementEvidences =
       const <FinanzasEvidenceRecord>[];
@@ -364,27 +374,43 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
   String _dateRangeLabel(DateTimeRange range) =>
       '${_dateLabel(range.start)} - ${_dateLabel(range.end)}';
 
-  Future<void> _pickCompanyFilter() async {
-    final options = [
-      const _SimpleOption(
-        id: '__all__',
-        label: 'Todas',
-        subtitle: 'Quitar filtro',
-      ),
-      ..._sortedDistinct(
-        _rows.map((row) => row.company),
-      ).map((value) => _SimpleOption(id: value, label: value, subtitle: '')),
-    ];
-    final selected = await _showSimpleOptionsDialog(
+  Future<Set<String>?> _showGridMultiFilterDialog({
+    required String title,
+    required List<_SimpleOption> options,
+    required Set<String> selectedValues,
+  }) async {
+    final result = await showDialog<GridFilterState>(
       context: context,
+      builder: (_) => GridFilterDialog(
+        title: title,
+        initialState: GridFilterState(
+          options: options
+              .map(
+                (option) => GridFilterOption(
+                  value: option.id,
+                  label: option.label,
+                  selected: selectedValues.contains(option.id),
+                ),
+              )
+              .toList(growable: false),
+        ),
+      ),
+    );
+    if (result == null) return null;
+    return result.selectedValues;
+  }
+
+  Future<void> _pickCompanyFilter() async {
+    final selected = await _showGridMultiFilterDialog(
       title: 'Filtrar empresa',
-      options: options,
+      selectedValues: _companyFilters,
+      options: _sortedDistinct(_rows.map((row) => row.company))
+          .map((value) => _SimpleOption(id: value, label: value, subtitle: ''))
+          .toList(growable: false),
     );
     if (selected == null || !mounted) return;
     setState(() {
-      _companyFilters = selected.id == '__all__'
-          ? <String>{}
-          : <String>{selected.id};
+      _companyFilters = selected;
       _syncSelectionWithVisibleRows();
     });
   }
@@ -418,163 +444,109 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
   }
 
   Future<void> _pickBranchFilter() async {
-    final options = [
-      const _SimpleOption(
-        id: '__all__',
-        label: 'Todas',
-        subtitle: 'Quitar filtro',
-      ),
-      ..._sortedDistinct(
-        _rows.map((row) => row.branch),
-      ).map((value) => _SimpleOption(id: value, label: value, subtitle: '')),
-    ];
-    final selected = await _showSimpleOptionsDialog(
-      context: context,
+    final selected = await _showGridMultiFilterDialog(
       title: 'Filtrar cuenta',
-      options: options,
+      selectedValues: _branchFilters,
+      options: _sortedDistinct(_rows.map((row) => row.branch))
+          .map((value) => _SimpleOption(id: value, label: value, subtitle: ''))
+          .toList(growable: false),
     );
     if (selected == null || !mounted) return;
     setState(() {
-      _branchFilters = selected.id == '__all__'
-          ? <String>{}
-          : <String>{selected.id};
+      _branchFilters = selected;
       _syncSelectionWithVisibleRows();
     });
   }
 
   Future<void> _pickNameFilter() async {
-    final options = [
-      const _SimpleOption(
-        id: '__all__',
-        label: 'Todos',
-        subtitle: 'Quitar filtro',
-      ),
-      ..._sortedDistinct(
-        _rows.map((row) => row.counterpartyNameSnapshot),
-      ).map((value) => _SimpleOption(id: value, label: value, subtitle: '')),
-    ];
-    final selected = await _showSimpleOptionsDialog(
-      context: context,
+    final selected = await _showGridMultiFilterDialog(
       title: 'Filtrar nombre',
-      options: options,
+      selectedValues: _nameFilters,
+      options: _sortedDistinct(_rows.map((row) => row.counterpartyNameSnapshot))
+          .map((value) => _SimpleOption(id: value, label: value, subtitle: ''))
+          .toList(growable: false),
     );
     if (selected == null || !mounted) return;
     setState(() {
-      _nameFilters = selected.id == '__all__'
-          ? <String>{}
-          : <String>{selected.id};
+      _nameFilters = selected;
       _syncSelectionWithVisibleRows();
     });
   }
 
   Future<void> _pickCategoryFilter() async {
-    final options = [
-      const _SimpleOption(
-        id: '__all__',
-        label: 'Todas',
-        subtitle: 'Quitar filtro',
-      ),
-      ..._sortedDistinct(
-        _rows.map((row) => row.category),
-      ).map((value) => _SimpleOption(id: value, label: value, subtitle: '')),
-    ];
-    final selected = await _showSimpleOptionsDialog(
-      context: context,
+    final selected = await _showGridMultiFilterDialog(
       title: 'Filtrar categoría',
-      options: options,
+      selectedValues: _categoryFilters,
+      options: _sortedDistinct(_rows.map((row) => row.category))
+          .map((value) => _SimpleOption(id: value, label: value, subtitle: ''))
+          .toList(growable: false),
     );
     if (selected == null || !mounted) return;
     setState(() {
-      _categoryFilters = selected.id == '__all__'
-          ? <String>{}
-          : <String>{selected.id};
+      _categoryFilters = selected;
       _syncSelectionWithVisibleRows();
     });
   }
 
   Future<void> _pickReferenceFilter() async {
-    final options = [
-      const _SimpleOption(
-        id: '__all__',
-        label: 'Todas',
-        subtitle: 'Quitar filtro',
-      ),
-      ..._sortedDistinct(
-        _rows.map((row) => row.reference),
-      ).map((value) => _SimpleOption(id: value, label: value, subtitle: '')),
-    ];
-    final selected = await _showSimpleOptionsDialog(
-      context: context,
+    final selected = await _showGridMultiFilterDialog(
       title: 'Filtrar referencia',
-      options: options,
+      selectedValues: _referenceFilters,
+      options: _sortedDistinct(_rows.map((row) => row.reference))
+          .map((value) => _SimpleOption(id: value, label: value, subtitle: ''))
+          .toList(growable: false),
     );
     if (selected == null || !mounted) return;
     setState(() {
-      _referenceFilters = selected.id == '__all__'
-          ? <String>{}
-          : <String>{selected.id};
+      _referenceFilters = selected;
       _syncSelectionWithVisibleRows();
     });
   }
 
   Future<void> _pickCreditFilter() async {
-    final options = [
-      const _SimpleOption(
-        id: '__all__',
-        label: 'Todos',
-        subtitle: 'Quitar filtro',
-      ),
-      ..._sortedDistinct(
-        _rows.map((row) => row.creditAmount.toStringAsFixed(2)),
-      ).map(
-        (value) => _SimpleOption(
-          id: value,
-          label: _money(double.tryParse(value) ?? 0),
-          subtitle: '',
-        ),
-      ),
-    ];
-    final selected = await _showSimpleOptionsDialog(
-      context: context,
+    final selected = await _showGridMultiFilterDialog(
       title: 'Filtrar abono',
-      options: options,
+      selectedValues: _creditFilters,
+      options:
+          _sortedDistinct(
+                _rows.map((row) => row.creditAmount.toStringAsFixed(2)),
+              )
+              .map(
+                (value) => _SimpleOption(
+                  id: value,
+                  label: _money(double.tryParse(value) ?? 0),
+                  subtitle: '',
+                ),
+              )
+              .toList(growable: false),
     );
     if (selected == null || !mounted) return;
     setState(() {
-      _creditFilters = selected.id == '__all__'
-          ? <String>{}
-          : <String>{selected.id};
+      _creditFilters = selected;
       _syncSelectionWithVisibleRows();
     });
   }
 
   Future<void> _pickDebitFilter() async {
-    final options = [
-      const _SimpleOption(
-        id: '__all__',
-        label: 'Todos',
-        subtitle: 'Quitar filtro',
-      ),
-      ..._sortedDistinct(
-        _rows.map((row) => row.debitAmount.toStringAsFixed(2)),
-      ).map(
-        (value) => _SimpleOption(
-          id: value,
-          label: _money(double.tryParse(value) ?? 0),
-          subtitle: '',
-        ),
-      ),
-    ];
-    final selected = await _showSimpleOptionsDialog(
-      context: context,
+    final selected = await _showGridMultiFilterDialog(
       title: 'Filtrar cargo',
-      options: options,
+      selectedValues: _debitFilters,
+      options:
+          _sortedDistinct(
+                _rows.map((row) => row.debitAmount.toStringAsFixed(2)),
+              )
+              .map(
+                (value) => _SimpleOption(
+                  id: value,
+                  label: _money(double.tryParse(value) ?? 0),
+                  subtitle: '',
+                ),
+              )
+              .toList(growable: false),
     );
     if (selected == null || !mounted) return;
     setState(() {
-      _debitFilters = selected.id == '__all__'
-          ? <String>{}
-          : <String>{selected.id};
+      _debitFilters = selected;
       _syncSelectionWithVisibleRows();
     });
   }
@@ -744,13 +716,54 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
   }
 
   void _handleRowTap(String rowId) {
-    setState(() => _selectedRowId = rowId);
+    final additive = isSelectionModifierPressed();
+    final range = isRangeModifierPressed();
+    if (range && _selectionAnchorRowId != null) {
+      final rows = _visibleRows;
+      final anchorIndex = rows.indexWhere(
+        (row) => row.id == _selectionAnchorRowId,
+      );
+      final targetIndex = rows.indexWhere((row) => row.id == rowId);
+      if (anchorIndex >= 0 && targetIndex >= 0) {
+        final start = anchorIndex < targetIndex ? anchorIndex : targetIndex;
+        final end = anchorIndex > targetIndex ? anchorIndex : targetIndex;
+        final rangeIds = rows
+            .sublist(start, end + 1)
+            .map((row) => row.id)
+            .toSet();
+        setState(() {
+          _selectedRowId = rowId;
+          _selectedRowIds = additive
+              ? {..._selectedRowIds, ...rangeIds}
+              : rangeIds;
+        });
+        _rowsFocusNode.requestFocus();
+        return;
+      }
+    }
+    setState(() {
+      _selectedRowId = rowId;
+      if (additive) {
+        if (_selectedRowIds.contains(rowId)) {
+          _selectedRowIds.remove(rowId);
+        } else {
+          _selectedRowIds.add(rowId);
+        }
+      } else {
+        _selectedRowIds = <String>{rowId};
+      }
+      _selectionAnchorRowId = rowId;
+    });
     _rowsFocusNode.requestFocus();
   }
 
   void _clearRowSelection() {
-    if (_selectedRowId == null) return;
-    setState(() => _selectedRowId = null);
+    if (_selectedRowId == null && _selectedRowIds.isEmpty) return;
+    setState(() {
+      _selectedRowId = null;
+      _selectedRowIds = <String>{};
+      _selectionAnchorRowId = null;
+    });
   }
 
   FinanzasBankMovementRecord? get _selectedRow {
@@ -763,10 +776,51 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
   }
 
   void _syncSelectionWithVisibleRows() {
+    final visibleIds = _visibleRows.map((row) => row.id).toSet();
+    _selectedRowIds = _selectedRowIds.intersection(visibleIds);
     final id = _selectedRowId;
-    if (id == null) return;
-    final exists = _visibleRows.any((row) => row.id == id);
-    if (!exists) _selectedRowId = null;
+    if (id != null && !visibleIds.contains(id)) {
+      _selectedRowId = _selectedRowIds.isEmpty ? null : _selectedRowIds.first;
+    }
+    final anchor = _selectionAnchorRowId;
+    if (anchor != null && !visibleIds.contains(anchor)) {
+      _selectionAnchorRowId = _selectedRowId;
+    }
+  }
+
+  void _beginDragSelection(String rowId, {required bool additive}) {
+    setState(() {
+      _dragSelectionActive = true;
+      _dragSelectionAdditive = additive;
+      _selectedRowId = rowId;
+      _selectionAnchorRowId = rowId;
+      if (!additive) {
+        _selectedRowIds = <String>{rowId};
+      } else {
+        _selectedRowIds.add(rowId);
+      }
+    });
+    _rowsFocusNode.requestFocus();
+  }
+
+  void _extendDragSelection(String rowId) {
+    if (!_dragSelectionActive) return;
+    setState(() {
+      _selectedRowId = rowId;
+      if (_dragSelectionAdditive) {
+        _selectedRowIds.add(rowId);
+      } else {
+        _selectedRowIds.add(rowId);
+      }
+    });
+  }
+
+  void _endDragSelection() {
+    if (!_dragSelectionActive) return;
+    setState(() {
+      _dragSelectionActive = false;
+      _dragSelectionAdditive = false;
+    });
   }
 
   KeyEventResult _handleRowsKeyEvent(KeyEvent event) {
@@ -780,12 +834,20 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
       final nextIndex = currentIndex < 0
           ? 0
           : (currentIndex + 1).clamp(0, rows.length - 1);
-      setState(() => _selectedRowId = rows[nextIndex].id);
+      setState(() {
+        _selectedRowId = rows[nextIndex].id;
+        _selectedRowIds = <String>{rows[nextIndex].id};
+        _selectionAnchorRowId = rows[nextIndex].id;
+      });
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
       final nextIndex = currentIndex <= 0 ? 0 : currentIndex - 1;
-      setState(() => _selectedRowId = rows[nextIndex].id);
+      setState(() {
+        _selectedRowId = rows[nextIndex].id;
+        _selectedRowIds = <String>{rows[nextIndex].id};
+        _selectionAnchorRowId = rows[nextIndex].id;
+      });
       return KeyEventResult.handled;
     }
     if (event.logicalKey == LogicalKeyboardKey.escape) {
@@ -794,8 +856,8 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
     }
     if (event.logicalKey == LogicalKeyboardKey.enter) {
       final row = _selectedRow;
-      if (row != null) {
-        unawaited(_openMovementDetails(row));
+      if (row != null && row.sourceType == 'MANUAL') {
+        unawaited(_openEditMovementDialog(row));
         return KeyEventResult.handled;
       }
     }
@@ -1040,7 +1102,7 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
                                 padding: const EdgeInsets.fromLTRB(2, 2, 2, 12),
                                 child: _BankTopBar(
                                   exportingCsv: _exportingCsv,
-                                  selectedCount: _selectedRow == null ? 0 : 1,
+                                  selectedCount: _selectedRowIds.length,
                                   onExportCsv: _exportingCsv
                                       ? null
                                       : _exportCsv,
@@ -1137,9 +1199,18 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
                                               : _BankMovementsGrid(
                                                   rows: _visibleRows,
                                                   selectedRowId: _selectedRowId,
+                                                  selectedRowIds:
+                                                      _selectedRowIds,
+                                                  dragSelectionActive:
+                                                      _dragSelectionActive,
                                                   moneyFormatter: _money,
                                                   dateFormatter: _dateLabel,
                                                   onRowTap: _handleRowTap,
+                                                  onDragStart:
+                                                      _beginDragSelection,
+                                                  onDragEnter:
+                                                      _extendDragSelection,
+                                                  onDragEnd: _endDragSelection,
                                                   onOpenDetails:
                                                       _openMovementDetails,
                                                   onCopyReference: (value) {
@@ -1160,6 +1231,8 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
                                                     );
                                                     _toast('Nombre copiado.');
                                                   },
+                                                  onPrepareMenuSelection:
+                                                      _handleRowTap,
                                                   onEdit:
                                                       _openEditMovementDialog,
                                                   onUploadEvidence:
@@ -1225,25 +1298,37 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
 class _BankMovementsGrid extends StatelessWidget {
   final List<FinanzasBankMovementRecord> rows;
   final String? selectedRowId;
+  final Set<String> selectedRowIds;
+  final bool dragSelectionActive;
   final String Function(double value) moneyFormatter;
   final String Function(DateTime value) dateFormatter;
   final ValueChanged<String> onRowTap;
+  final void Function(String rowId, {required bool additive}) onDragStart;
+  final ValueChanged<String> onDragEnter;
+  final VoidCallback onDragEnd;
   final ValueChanged<FinanzasBankMovementRecord> onOpenDetails;
   final ValueChanged<String> onCopyReference;
   final ValueChanged<String> onCopyName;
   final ValueChanged<FinanzasBankMovementRecord> onEdit;
+  final ValueChanged<String> onPrepareMenuSelection;
   final ValueChanged<FinanzasBankMovementRecord> onUploadEvidence;
 
   const _BankMovementsGrid({
     required this.rows,
     required this.selectedRowId,
+    required this.selectedRowIds,
+    required this.dragSelectionActive,
     required this.moneyFormatter,
     required this.dateFormatter,
     required this.onRowTap,
+    required this.onDragStart,
+    required this.onDragEnter,
+    required this.onDragEnd,
     required this.onOpenDetails,
     required this.onCopyReference,
     required this.onCopyName,
     required this.onEdit,
+    required this.onPrepareMenuSelection,
     required this.onUploadEvidence,
   });
 
@@ -1256,9 +1341,14 @@ class _BankMovementsGrid extends StatelessWidget {
         final row = rows[index];
         return _BankTableRow(
           rowKey: row.id,
-          selected: selectedRowId == row.id,
+          selected: selectedRowIds.contains(row.id),
+          dragSelectionActive: dragSelectionActive,
           onTap: () => onRowTap(row.id),
-          onDoubleTap: () => onOpenDetails(row),
+          onDragStart: (additive) => onDragStart(row.id, additive: additive),
+          onDragEnter: () => onDragEnter(row.id),
+          onDragEnd: onDragEnd,
+          onDoubleTap: () => onEdit(row),
+          onPrepareMenuSelection: () => onPrepareMenuSelection(row.id),
           menuItems: [
             if (row.sourceType == 'MANUAL')
               _BankRowMenuAction(
@@ -1452,11 +1542,42 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
           tokens: finanzasAreaTokens,
           child: Theme(
             data: Theme.of(context).copyWith(
-              colorScheme: ColorScheme.light(
+              colorScheme: ColorScheme.dark(
                 primary: finanzasAreaTokens.primaryStrong,
                 onPrimary: Colors.white,
-                surface: Colors.white,
+                surface: const Color(0xFF171C24),
                 onSurface: kFinanzasInk,
+              ),
+              dialogTheme: const DialogThemeData(
+                backgroundColor: Color(0xFF171C24),
+              ),
+              datePickerTheme: DatePickerThemeData(
+                backgroundColor: const Color(0xFF171C24),
+                surfaceTintColor: Colors.transparent,
+                headerBackgroundColor: const Color(0xFF171C24),
+                headerForegroundColor: kFinanzasInk,
+                weekdayStyle: const TextStyle(color: kFinanzasMutedInk),
+                dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return Colors.white;
+                  }
+                  return kFinanzasInk;
+                }),
+                dayBackgroundColor: WidgetStateProperty.resolveWith((states) {
+                  if (states.contains(WidgetState.selected)) {
+                    return finanzasAreaTokens.primaryStrong;
+                  }
+                  return Colors.transparent;
+                }),
+                todayForegroundColor: WidgetStateProperty.all(
+                  finanzasAreaTokens.primarySoft,
+                ),
+                cancelButtonStyle: TextButton.styleFrom(
+                  foregroundColor: finanzasAreaTokens.primarySoft,
+                ),
+                confirmButtonStyle: TextButton.styleFrom(
+                  foregroundColor: finanzasAreaTokens.primaryStrong,
+                ),
               ),
             ),
             child: child ?? const SizedBox.shrink(),
@@ -1712,7 +1833,8 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
   Future<void> _pickCounterparty() async {
     final selected = await showDialog<FinanzasCatalogCompanyRecord>(
       context: context,
-      builder: (_) => _CounterpartyPickerDialog(companies: widget.companies),
+      builder: (_) =>
+          _CounterpartyPickerDialog(companies: widget.companies, maxWidth: 780),
     );
     if (selected == null || !mounted) return;
     setState(() {
@@ -1788,7 +1910,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                         onPressed: () => Navigator.of(context).pop(),
                         icon: Icon(
                           Icons.close_rounded,
-                          color: tokens.primaryStrong,
+                          color: Colors.white.withValues(alpha: 0.88),
                         ),
                       ),
                     ),
@@ -2127,6 +2249,11 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                               flex: 2,
                               child: TextField(
                                 controller: _referenceC,
+                                style: const TextStyle(
+                                  color: kFinanzasInk,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                cursorColor: finanzasAreaTokens.primaryStrong,
                                 decoration: _bankDialogFieldDecoration(
                                   context,
                                   hintText: 'No. factura o cheque',
@@ -2140,6 +2267,11 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                             Expanded(
                               child: TextField(
                                 controller: _creditC,
+                                style: const TextStyle(
+                                  color: kFinanzasInk,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                cursorColor: finanzasAreaTokens.primaryStrong,
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
                                       decimal: true,
@@ -2160,6 +2292,11 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                             Expanded(
                               child: TextField(
                                 controller: _debitC,
+                                style: const TextStyle(
+                                  color: kFinanzasInk,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                cursorColor: finanzasAreaTokens.primaryStrong,
                                 readOnly: _sourceType == 'COMPRA_FACTURA',
                                 keyboardType:
                                     const TextInputType.numberWithOptions(
@@ -2191,6 +2328,11 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                         const SizedBox(height: 10),
                         TextField(
                           controller: _commentC,
+                          style: const TextStyle(
+                            color: kFinanzasInk,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          cursorColor: finanzasAreaTokens.primaryStrong,
                           minLines: 3,
                           maxLines: 4,
                           decoration: _bankDialogFieldDecoration(
@@ -2328,8 +2470,12 @@ InputDecoration _bankDialogFieldDecoration(
 
 class _CounterpartyPickerDialog extends StatefulWidget {
   final List<FinanzasCatalogCompanyRecord> companies;
+  final double maxWidth;
 
-  const _CounterpartyPickerDialog({required this.companies});
+  const _CounterpartyPickerDialog({
+    required this.companies,
+    this.maxWidth = 560,
+  });
 
   @override
   State<_CounterpartyPickerDialog> createState() =>
@@ -2338,6 +2484,8 @@ class _CounterpartyPickerDialog extends StatefulWidget {
 
 class _CounterpartyPickerDialogState extends State<_CounterpartyPickerDialog> {
   final TextEditingController _searchC = TextEditingController();
+  final FocusNode _searchFocusNode = FocusNode();
+  int _highlightedIndex = 0;
 
   @override
   void initState() {
@@ -2349,10 +2497,11 @@ class _CounterpartyPickerDialogState extends State<_CounterpartyPickerDialog> {
   void dispose() {
     _searchC.removeListener(_refresh);
     _searchC.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
-  void _refresh() => setState(() {});
+  void _refresh() => setState(() => _highlightedIndex = 0);
 
   @override
   Widget build(BuildContext context) {
@@ -2364,49 +2513,107 @@ class _CounterpartyPickerDialogState extends State<_CounterpartyPickerDialog> {
               row.source.toLowerCase().contains(query);
         })
         .toList(growable: false);
+    void selectHighlighted() {
+      if (rows.isEmpty) return;
+      Navigator.of(
+        context,
+      ).pop(rows[_highlightedIndex.clamp(0, rows.length - 1)]);
+    }
+
     return Dialog(
       backgroundColor: Colors.transparent,
       child: AreaThemeScope(
         tokens: finanzasAreaTokens,
-        child: ContractGlassCard(
-          borderRadius: BorderRadius.circular(28),
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560, maxHeight: 620),
-            child: Column(
-              children: [
-                TextField(
-                  controller: _searchC,
-                  autofocus: true,
-                  decoration: contractGlassFieldDecoration(
-                    context,
-                    hintText: 'Buscar nombre',
-                    prefixIcon: const Icon(Icons.search_rounded),
+        child: Focus(
+          onKeyEvent: (_, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+                rows.isNotEmpty) {
+              setState(() {
+                _highlightedIndex = (_highlightedIndex + 1).clamp(
+                  0,
+                  rows.length - 1,
+                );
+              });
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
+                rows.isNotEmpty) {
+              setState(() {
+                _highlightedIndex = (_highlightedIndex - 1).clamp(
+                  0,
+                  rows.length - 1,
+                );
+              });
+              return KeyEventResult.handled;
+            }
+            if (event.logicalKey == LogicalKeyboardKey.enter) {
+              selectHighlighted();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: FinanzasGlassPanel(
+            borderRadius: BorderRadius.circular(28),
+            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            fillColor: const Color(0x1813171F),
+            borderColor: Colors.white.withValues(alpha: 0.18),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: widget.maxWidth,
+                maxHeight: 620,
+              ),
+              child: Column(
+                children: [
+                  TextField(
+                    focusNode: _searchFocusNode,
+                    controller: _searchC,
+                    autofocus: true,
+                    style: const TextStyle(
+                      color: kFinanzasInk,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    cursorColor: finanzasAreaTokens.primaryStrong,
+                    decoration: _bankDialogFieldDecoration(
+                      context,
+                      hintText: 'Buscar nombre',
+                      prefixIcon: const Icon(Icons.search_rounded),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: rows.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (_, index) {
-                      final row = rows[index];
-                      return ListTile(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        tileColor: const Color(0xCC171C24),
-                        title: Text(
-                          row.name,
-                          style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        subtitle: Text(row.source),
-                        onTap: () => Navigator.of(context).pop(row),
-                      );
-                    },
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: rows.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (_, index) {
+                        final row = rows[index];
+                        final selected = index == _highlightedIndex;
+                        return ListTile(
+                          selected: selected,
+                          selectedTileColor: finanzasAreaTokens.primaryStrong
+                              .withValues(alpha: 0.16),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          tileColor: const Color(0xCC171C24),
+                          title: Text(
+                            row.name,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w900,
+                              color: kFinanzasInk,
+                            ),
+                          ),
+                          subtitle: Text(
+                            row.source,
+                            style: const TextStyle(color: kFinanzasMutedInk),
+                          ),
+                          onTap: () => Navigator.of(context).pop(row),
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -2468,9 +2675,11 @@ class _FixedPaymentPickerDialogState extends State<_FixedPaymentPickerDialog> {
       backgroundColor: Colors.transparent,
       child: AreaThemeScope(
         tokens: finanzasAreaTokens,
-        child: ContractGlassCard(
+        child: FinanzasGlassPanel(
           borderRadius: BorderRadius.circular(28),
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          fillColor: const Color(0x1813171F),
+          borderColor: Colors.white.withValues(alpha: 0.18),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 660, maxHeight: 640),
             child: Column(
@@ -2478,7 +2687,12 @@ class _FixedPaymentPickerDialogState extends State<_FixedPaymentPickerDialog> {
                 TextField(
                   controller: _searchC,
                   autofocus: true,
-                  decoration: contractGlassFieldDecoration(
+                  style: const TextStyle(
+                    color: kFinanzasInk,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  cursorColor: finanzasAreaTokens.primaryStrong,
+                  decoration: _bankDialogFieldDecoration(
                     context,
                     hintText: 'Buscar empresa, cuenta o comentario',
                     prefixIcon: const Icon(Icons.search_rounded),
@@ -2498,10 +2712,14 @@ class _FixedPaymentPickerDialogState extends State<_FixedPaymentPickerDialog> {
                         tileColor: const Color(0xCC171C24),
                         title: Text(
                           row.companyNameSnapshot,
-                          style: const TextStyle(fontWeight: FontWeight.w900),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: kFinanzasInk,
+                          ),
                         ),
                         subtitle: Text(
                           '${finFixedPaymentBranchLabel(row.branch)} · ${_formatBankMoney(row.amount)} · vence ${row.paymentDate.day.toString().padLeft(2, '0')}/${row.paymentDate.month.toString().padLeft(2, '0')}/${row.paymentDate.year}',
+                          style: const TextStyle(color: kFinanzasMutedInk),
                         ),
                         onTap: () => Navigator.of(context).pop(row),
                       );
@@ -2560,9 +2778,11 @@ class _ClientPaymentPickerDialogState
       backgroundColor: Colors.transparent,
       child: AreaThemeScope(
         tokens: finanzasAreaTokens,
-        child: ContractGlassCard(
+        child: FinanzasGlassPanel(
           borderRadius: BorderRadius.circular(28),
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          fillColor: const Color(0x1813171F),
+          borderColor: Colors.white.withValues(alpha: 0.18),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 640, maxHeight: 640),
             child: Column(
@@ -2570,7 +2790,12 @@ class _ClientPaymentPickerDialogState
                 TextField(
                   controller: _searchC,
                   autofocus: true,
-                  decoration: contractGlassFieldDecoration(
+                  style: const TextStyle(
+                    color: kFinanzasInk,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  cursorColor: finanzasAreaTokens.primaryStrong,
+                  decoration: _bankDialogFieldDecoration(
                     context,
                     hintText: 'Buscar cliente o referencia',
                     prefixIcon: const Icon(Icons.search_rounded),
@@ -2590,10 +2815,14 @@ class _ClientPaymentPickerDialogState
                         tileColor: const Color(0xCC171C24),
                         title: Text(
                           row.clientName,
-                          style: const TextStyle(fontWeight: FontWeight.w900),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: kFinanzasInk,
+                          ),
                         ),
                         subtitle: Text(
                           '${row.documentNumber.isEmpty ? 'Sin referencia' : row.documentNumber} · ${_formatBankMoney(row.pendingBalance)} por cobrar',
+                          style: const TextStyle(color: kFinanzasMutedInk),
                         ),
                         onTap: () => Navigator.of(context).pop(row),
                       );
@@ -2658,9 +2887,11 @@ class _SupplierInvoicePickerDialogState
       backgroundColor: Colors.transparent,
       child: AreaThemeScope(
         tokens: finanzasAreaTokens,
-        child: ContractGlassCard(
+        child: FinanzasGlassPanel(
           borderRadius: BorderRadius.circular(28),
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          fillColor: const Color(0x1813171F),
+          borderColor: Colors.white.withValues(alpha: 0.18),
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 640, maxHeight: 640),
             child: Column(
@@ -2668,7 +2899,12 @@ class _SupplierInvoicePickerDialogState
                 TextField(
                   controller: _searchC,
                   autofocus: true,
-                  decoration: contractGlassFieldDecoration(
+                  style: const TextStyle(
+                    color: kFinanzasInk,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  cursorColor: finanzasAreaTokens.primaryStrong,
+                  decoration: _bankDialogFieldDecoration(
                     context,
                     hintText: 'Buscar proveedor o folio',
                     prefixIcon: const Icon(Icons.search_rounded),
@@ -2688,10 +2924,14 @@ class _SupplierInvoicePickerDialogState
                         tileColor: const Color(0xCC171C24),
                         title: Text(
                           '${row.providerNameSnapshot} · ${row.folio}',
-                          style: const TextStyle(fontWeight: FontWeight.w900),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.w900,
+                            color: kFinanzasInk,
+                          ),
                         ),
                         subtitle: Text(
                           '${finSupplierInvoiceStatusLabel(row.status)} · saldo ${_money(row.balanceAmount)}',
+                          style: const TextStyle(color: kFinanzasMutedInk),
                         ),
                         onTap: () => Navigator.of(context).pop(row),
                       );
@@ -2724,57 +2964,144 @@ Future<_SimpleOption?> _showSimpleOptionsDialog({
   required String title,
   required List<_SimpleOption> options,
 }) {
+  final searchC = TextEditingController();
+  var highlightedIndex = 0;
   return showDialog<_SimpleOption>(
     context: context,
-    builder: (_) => Dialog(
-      backgroundColor: Colors.transparent,
-      child: AreaThemeScope(
-        tokens: finanzasAreaTokens,
-        child: ContractGlassCard(
-          borderRadius: BorderRadius.circular(28),
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 520, maxHeight: 560),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: kFinanzasInk,
+    builder: (_) => StatefulBuilder(
+      builder: (context, setLocalState) {
+        final query = searchC.text.trim().toLowerCase();
+        final filtered = options
+            .where((row) {
+              if (query.isEmpty) return true;
+              return row.label.toLowerCase().contains(query) ||
+                  row.subtitle.toLowerCase().contains(query);
+            })
+            .toList(growable: false);
+        void selectHighlighted() {
+          if (filtered.isEmpty) return;
+          Navigator.of(
+            context,
+          ).pop(filtered[highlightedIndex.clamp(0, filtered.length - 1)]);
+        }
+
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: AreaThemeScope(
+            tokens: finanzasAreaTokens,
+            child: Focus(
+              onKeyEvent: (_, event) {
+                if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+                    filtered.isNotEmpty) {
+                  setLocalState(() {
+                    highlightedIndex = (highlightedIndex + 1).clamp(
+                      0,
+                      filtered.length - 1,
+                    );
+                  });
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
+                    filtered.isNotEmpty) {
+                  setLocalState(() {
+                    highlightedIndex = (highlightedIndex - 1).clamp(
+                      0,
+                      filtered.length - 1,
+                    );
+                  });
+                  return KeyEventResult.handled;
+                }
+                if (event.logicalKey == LogicalKeyboardKey.enter) {
+                  selectHighlighted();
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
+              child: FinanzasGlassPanel(
+                borderRadius: BorderRadius.circular(28),
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                fillColor: const Color(0x1813171F),
+                borderColor: Colors.white.withValues(alpha: 0.18),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 520,
+                    maxHeight: 560,
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.w900,
+                          color: kFinanzasInk,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: searchC,
+                        autofocus: true,
+                        onChanged: (_) => setLocalState(() {
+                          highlightedIndex = 0;
+                        }),
+                        style: const TextStyle(
+                          color: kFinanzasInk,
+                          fontWeight: FontWeight.w700,
+                        ),
+                        cursorColor: finanzasAreaTokens.primaryStrong,
+                        decoration: _bankDialogFieldDecoration(
+                          context,
+                          hintText: 'Buscar opción',
+                          prefixIcon: const Icon(Icons.search_rounded),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Expanded(
+                        child: ListView.separated(
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          itemBuilder: (_, index) {
+                            final row = filtered[index];
+                            final selected = index == highlightedIndex;
+                            return ListTile(
+                              selected: selected,
+                              selectedTileColor: finanzasAreaTokens
+                                  .primaryStrong
+                                  .withValues(alpha: 0.16),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                              tileColor: const Color(0xCC171C24),
+                              title: Text(
+                                row.label,
+                                style: const TextStyle(
+                                  fontWeight: FontWeight.w900,
+                                  color: kFinanzasInk,
+                                ),
+                              ),
+                              subtitle: row.subtitle.trim().isEmpty
+                                  ? null
+                                  : Text(
+                                      row.subtitle,
+                                      style: const TextStyle(
+                                        color: kFinanzasMutedInk,
+                                      ),
+                                    ),
+                              onTap: () => Navigator.of(context).pop(row),
+                            );
+                          },
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 12),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: options.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (_, index) {
-                      final row = options[index];
-                      return ListTile(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        tileColor: const Color(0xCC171C24),
-                        title: Text(
-                          row.label,
-                          style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        subtitle: row.subtitle.trim().isEmpty
-                            ? null
-                            : Text(row.subtitle),
-                        onTap: () => Navigator.of(context).pop(row),
-                      );
-                    },
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     ),
   );
 }
@@ -3158,7 +3485,7 @@ class _ChoiceChipField extends StatelessWidget {
           onTap: onTap,
           borderRadius: BorderRadius.circular(20),
           child: Ink(
-            width: 250,
+            width: double.infinity,
             padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
             child: Row(
               children: [
@@ -3474,59 +3801,72 @@ class _BankHeaderRow extends StatelessWidget {
                     for (final column in columns)
                       SizedBox(
                         width: column.width,
-                        child: Row(
-                          children: [
-                            if (column.onFilter != null) ...[
-                              InkWell(
-                                borderRadius: BorderRadius.circular(10),
-                                onTap: column.onFilter,
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 140),
-                                  curve: Curves.easeOutCubic,
-                                  padding: const EdgeInsets.all(5),
-                                  decoration: BoxDecoration(
-                                    color: column.active
-                                        ? tokens.primaryStrong.withValues(
-                                            alpha: 0.92,
-                                          )
-                                        : Colors.white.withValues(alpha: 0.08),
-                                    borderRadius: BorderRadius.circular(10),
-                                    border: Border.all(
+                        child: SizedBox(
+                          height: 34,
+                          child: Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              if (column.onFilter != null) ...[
+                                InkWell(
+                                  borderRadius: BorderRadius.circular(10),
+                                  onTap: column.onFilter,
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 140),
+                                    curve: Curves.easeOutCubic,
+                                    padding: const EdgeInsets.all(5),
+                                    decoration: BoxDecoration(
                                       color: column.active
-                                          ? tokens.primarySoft.withValues(
-                                              alpha: 0.82,
+                                          ? tokens.primaryStrong.withValues(
+                                              alpha: 0.92,
                                             )
                                           : Colors.white.withValues(
-                                              alpha: 0.16,
+                                              alpha: 0.08,
                                             ),
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: column.active
+                                            ? tokens.primarySoft.withValues(
+                                                alpha: 0.82,
+                                              )
+                                            : Colors.white.withValues(
+                                                alpha: 0.16,
+                                              ),
+                                      ),
+                                    ),
+                                    child: Icon(
+                                      column.active
+                                          ? Icons.filter_alt
+                                          : Icons.filter_alt_outlined,
+                                      size: 15,
+                                      color: Colors.white,
                                     ),
                                   ),
-                                  child: Icon(
-                                    column.active
-                                        ? Icons.filter_alt
-                                        : Icons.filter_alt_outlined,
-                                    size: 15,
-                                    color: Colors.white,
+                                ),
+                                const SizedBox(width: 6),
+                              ],
+                              Expanded(
+                                child: Padding(
+                                  padding: const EdgeInsets.only(right: 10),
+                                  child: Align(
+                                    alignment: Alignment.centerLeft,
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      alignment: Alignment.centerLeft,
+                                      child: Text(
+                                        column.label,
+                                        maxLines: 1,
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w800,
+                                          color: tokens.badgeText,
+                                        ),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(width: 6),
                             ],
-                            Expanded(
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: Text(
-                                  column.label,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w800,
-                                    color: tokens.badgeText,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                          ),
                         ),
                       ),
                     const SizedBox(width: _kBankActionsW),
@@ -3818,8 +4158,13 @@ class _BankTableCell {
 class _BankTableRow extends StatefulWidget {
   final String rowKey;
   final bool selected;
+  final bool dragSelectionActive;
   final VoidCallback onTap;
+  final ValueChanged<bool> onDragStart;
+  final VoidCallback onDragEnter;
+  final VoidCallback onDragEnd;
   final VoidCallback? onDoubleTap;
+  final VoidCallback onPrepareMenuSelection;
   final List<_BankTableCell> cells;
   final List<_BankRowMenuAction> menuItems;
   final Set<int> editableColumns;
@@ -3827,8 +4172,13 @@ class _BankTableRow extends StatefulWidget {
   const _BankTableRow({
     required this.rowKey,
     required this.selected,
+    required this.dragSelectionActive,
     required this.onTap,
+    required this.onDragStart,
+    required this.onDragEnter,
+    required this.onDragEnd,
     this.onDoubleTap,
+    required this.onPrepareMenuSelection,
     required this.cells,
     required this.menuItems,
     this.editableColumns = const <int>{},
@@ -3843,38 +4193,15 @@ class _BankTableRowState extends State<_BankTableRow> {
   int? _hoveredEditableColumn;
 
   Future<void> _openContextMenuAt(Offset globalPosition) async {
-    final tokens = AreaThemeScope.of(context);
-    final action = await showMenu<_BankRowMenuAction>(
+    final action = await showEditableGridContextMenu<_BankRowMenuAction>(
       context: context,
-      color: finanzasAreaTokens.surfaceTint.withValues(alpha: 0.98),
-      position: RelativeRect.fromLTRB(
-        globalPosition.dx,
-        globalPosition.dy,
-        globalPosition.dx,
-        globalPosition.dy,
-      ),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: Colors.white.withValues(alpha: 0.70)),
-      ),
-      items: [
+      globalPosition: globalPosition,
+      entries: [
         for (final item in widget.menuItems)
-          PopupMenuItem<_BankRowMenuAction>(
+          ContractMenuEntry<_BankRowMenuAction>(
             value: item,
-            child: Row(
-              children: [
-                Icon(item.icon, color: tokens.primaryStrong, size: 18),
-                const SizedBox(width: 10),
-                Text(
-                  item.label,
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w700,
-                    color: kFinanzasInk,
-                  ),
-                ),
-              ],
-            ),
+            label: item.label,
+            icon: item.icon,
           ),
       ],
     );
@@ -3941,7 +4268,12 @@ class _BankTableRowState extends State<_BankTableRow> {
     }
 
     return MouseRegion(
-      onEnter: (_) => setState(() => _hovering = true),
+      onEnter: (_) {
+        setState(() => _hovering = true);
+        if (widget.dragSelectionActive) {
+          widget.onDragEnter();
+        }
+      },
       onExit: (_) => setState(() => _hovering = false),
       child: Card(
         elevation: 0,
@@ -3964,66 +4296,43 @@ class _BankTableRowState extends State<_BankTableRow> {
                   child: GestureDetector(
                     behavior: HitTestBehavior.translucent,
                     onSecondaryTapDown: (details) {
+                      widget.onPrepareMenuSelection();
                       unawaited(_openContextMenuAt(details.globalPosition));
                     },
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        borderRadius: BorderRadius.circular(18),
-                        onTap: widget.onTap,
-                        onDoubleTap: widget.onDoubleTap,
-                        child: Align(
-                          alignment: Alignment.topCenter,
-                          child: SizedBox(
-                            width: rowContentWidth,
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                for (var i = 0; i < widget.cells.length; i++)
-                                  buildCell(i, widget.cells[i]),
-                                AnchoredActionSlot(
-                                  width: _kBankActionsW,
-                                  trailingWidth: 36,
-                                  leading: const SizedBox.shrink(),
-                                  trailing: PopupMenuButton<_BankRowMenuAction>(
-                                    tooltip: 'Acciones',
-                                    padding: EdgeInsets.zero,
-                                    color: finanzasAreaTokens.surfaceTint
-                                        .withValues(alpha: 0.98),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                      side: BorderSide(
-                                        color: Colors.white.withValues(
-                                          alpha: 0.70,
-                                        ),
-                                      ),
-                                    ),
-                                    onSelected: (item) => item.onTap(),
-                                    itemBuilder: (context) => [
-                                      for (final item in widget.menuItems)
-                                        PopupMenuItem<_BankRowMenuAction>(
-                                          value: item,
-                                          child: Row(
-                                            children: [
-                                              Icon(
-                                                item.icon,
-                                                color: tokens.primaryStrong,
-                                                size: 18,
-                                              ),
-                                              const SizedBox(width: 10),
-                                              Text(
-                                                item.label,
-                                                style: const TextStyle(
-                                                  fontSize: 12.5,
-                                                  fontWeight: FontWeight.w700,
-                                                  color: kFinanzasInk,
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ),
-                                    ],
-                                    child: Container(
+                    child: Listener(
+                      onPointerDown: (event) {
+                        if (event.buttons == 0) return;
+                        final pressed =
+                            HardwareKeyboard.instance.logicalKeysPressed;
+                        final additive =
+                            pressed.contains(LogicalKeyboardKey.controlLeft) ||
+                            pressed.contains(LogicalKeyboardKey.controlRight) ||
+                            pressed.contains(LogicalKeyboardKey.metaLeft) ||
+                            pressed.contains(LogicalKeyboardKey.metaRight);
+                        widget.onDragStart(additive);
+                      },
+                      onPointerUp: (_) => widget.onDragEnd(),
+                      onPointerCancel: (_) => widget.onDragEnd(),
+                      child: Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(18),
+                          onTap: widget.onTap,
+                          onDoubleTap: widget.onDoubleTap,
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: SizedBox(
+                              width: rowContentWidth,
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  for (var i = 0; i < widget.cells.length; i++)
+                                    buildCell(i, widget.cells[i]),
+                                  AnchoredActionSlot(
+                                    width: _kBankActionsW,
+                                    trailingWidth: 36,
+                                    leading: const SizedBox.shrink(),
+                                    trailing: Container(
                                       width: 36,
                                       height: 36,
                                       decoration: BoxDecoration(
@@ -4054,17 +4363,31 @@ class _BankTableRowState extends State<_BankTableRow> {
                                           ),
                                         ],
                                       ),
-                                      child: Center(
-                                        child: Icon(
-                                          Icons.more_horiz_rounded,
-                                          color: tokens.primaryStrong,
-                                          size: 20,
-                                        ),
-                                      ),
+                                      child:
+                                          EditableRowActionsButton<
+                                            _BankRowMenuAction
+                                          >(
+                                            tooltip: 'Acciones',
+                                            entries: [
+                                              for (final item
+                                                  in widget.menuItems)
+                                                ContractMenuEntry<
+                                                  _BankRowMenuAction
+                                                >(
+                                                  value: item,
+                                                  label: item.label,
+                                                  icon: item.icon,
+                                                ),
+                                            ],
+                                            onSelected: (item) {
+                                              widget.onPrepareMenuSelection();
+                                              item.onTap();
+                                            },
+                                          ),
                                     ),
                                   ),
-                                ),
-                              ],
+                                ],
+                              ),
                             ),
                           ),
                         ),
@@ -4151,9 +4474,20 @@ class _BankMovementDetailsDialog extends StatelessWidget {
                         ],
                       ),
                     ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
+                    FinanzasGlassPanel(
+                      width: 44,
+                      height: 44,
+                      padding: EdgeInsets.zero,
+                      borderRadius: BorderRadius.circular(999),
+                      fillColor: const Color(0x14161B23),
+                      borderColor: Colors.white.withValues(alpha: 0.18),
+                      child: IconButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        icon: Icon(
+                          Icons.close_rounded,
+                          color: Colors.white.withValues(alpha: 0.88),
+                        ),
+                      ),
                     ),
                   ],
                 ),

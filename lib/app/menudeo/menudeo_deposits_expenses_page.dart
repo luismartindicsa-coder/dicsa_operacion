@@ -579,6 +579,9 @@ const List<String> _voucherDestinations = <String>[
   'Queretania',
 ];
 
+const int _kDepositFolioStart = 250;
+const int _kExpenseFolioStart = 18420;
+
 Iterable<List<T>> _chunkList<T>(List<T> items, int chunkSize) sync* {
   if (chunkSize <= 0) {
     throw ArgumentError.value(chunkSize, 'chunkSize', 'Must be greater than 0');
@@ -617,8 +620,8 @@ class _MenudeoDepositsExpensesPageState
   bool _exportingCsv = false;
   int _currentPage = 0;
   int _pageSize = 40;
-  int _expenseFolioSequence = 18420;
-  int _depositFolioSequence = 250;
+  int _expenseFolioSequence = _kExpenseFolioStart;
+  int _depositFolioSequence = _kDepositFolioStart;
   List<String> _unitOptions = <String>[];
   List<String> _companyOptions = <String>[];
   List<String> _driverOptions = <String>[];
@@ -632,6 +635,7 @@ class _MenudeoDepositsExpensesPageState
     _pendingInitialVoucherId = widget.initialVoucherId;
     unawaited(HardwareKeyboard.instance.syncKeyboardState());
     unawaited(_resolveNavigationAccess());
+    unawaited(_syncVoucherSequences());
     unawaited(_loadVouchers());
     unawaited(_loadCatalogOptions());
   }
@@ -777,7 +781,10 @@ class _MenudeoDepositsExpensesPageState
       }
 
       var nextExpenseSequence = _expenseFolioSequence;
-      var nextDepositSequence = math.max(_depositFolioSequence, 250);
+      var nextDepositSequence = math.max(
+        _depositFolioSequence,
+        _kDepositFolioStart,
+      );
       final mappedRows = vouchers
           .map((row) {
             final folio = (row['folio'] ?? '').toString();
@@ -844,6 +851,82 @@ class _MenudeoDepositsExpensesPageState
           behavior: SnackBarBehavior.floating,
         ),
       );
+    }
+  }
+
+  int _sequenceFloorForType(_VoucherType type) {
+    return type == _VoucherType.deposit
+        ? _kDepositFolioStart
+        : _kExpenseFolioStart;
+  }
+
+  int _sequenceValueForType(_VoucherType type) {
+    return type == _VoucherType.deposit
+        ? _depositFolioSequence
+        : _expenseFolioSequence;
+  }
+
+  int _normalizeSequenceForType(_VoucherType type, int? candidate) {
+    final floor = _sequenceFloorForType(type);
+    return math.max(candidate ?? floor, floor);
+  }
+
+  Future<int> _fetchLatestVoucherSequence(_VoucherType type) async {
+    final voucherType = type == _VoucherType.deposit ? 'deposit' : 'expense';
+    final rows = await _supa
+        .from('vw_men_cash_vouchers_grid')
+        .select('folio,folio_sort')
+        .eq('voucher_type', voucherType)
+        .order('folio_sort', ascending: false)
+        .order('folio', ascending: false)
+        .limit(type == _VoucherType.deposit ? 200 : 20);
+    int? numeric;
+    for (final row in (rows as List).cast<Map<String, dynamic>>()) {
+      final candidate =
+          (row['folio_sort'] as num?)?.toInt() ??
+          int.tryParse(
+            (row['folio'] ?? '').toString().replaceAll(RegExp(r'[^0-9]'), ''),
+          );
+      if (candidate == null) continue;
+      if (type == _VoucherType.deposit &&
+          (candidate < _kDepositFolioStart || candidate >= 1000)) {
+        continue;
+      }
+      numeric = candidate;
+      break;
+    }
+    return _normalizeSequenceForType(type, numeric);
+  }
+
+  Future<void> _syncVoucherSequences() async {
+    try {
+      final results = await Future.wait<int>([
+        _fetchLatestVoucherSequence(_VoucherType.expense),
+        _fetchLatestVoucherSequence(_VoucherType.deposit),
+      ]);
+      if (!mounted) return;
+      setState(() {
+        _expenseFolioSequence = results[0];
+        _depositFolioSequence = results[1];
+      });
+    } catch (_) {
+      // Keep the current in-memory fallback if the quick sequence lookup fails.
+    }
+  }
+
+  Future<void> _refreshSequenceForType(_VoucherType type) async {
+    try {
+      final latest = await _fetchLatestVoucherSequence(type);
+      if (!mounted) return;
+      setState(() {
+        if (type == _VoucherType.deposit) {
+          _depositFolioSequence = latest;
+        } else {
+          _expenseFolioSequence = latest;
+        }
+      });
+    } catch (_) {
+      // Fall back to the last known in-memory sequence.
     }
   }
 
@@ -1515,7 +1598,42 @@ class _MenudeoDepositsExpensesPageState
     return '${parsed.year.toString().padLeft(4, '0')}-${parsed.month.toString().padLeft(2, '0')}-${parsed.day.toString().padLeft(2, '0')}';
   }
 
+  Future<bool> _hasConflictingVoucherFolio(_VoucherRecord record) async {
+    final voucherType = record.type == _VoucherType.deposit
+        ? 'deposit'
+        : 'expense';
+    final rows = await _supa
+        .from('men_cash_vouchers')
+        .select('id')
+        .eq('voucher_type', voucherType)
+        .eq('folio', record.folio)
+        .limit(5);
+    final currentId = record.id ?? '';
+    for (final row in (rows as List).cast<Map<String, dynamic>>()) {
+      final id = (row['id'] ?? '').toString();
+      if (id.isNotEmpty && id != currentId) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  bool _isDuplicateVoucherFolioError(PostgrestException error) {
+    final message = error.message.toLowerCase();
+    final details = (error.details ?? '').toString().toLowerCase();
+    return error.code == '23505' &&
+        (message.contains('folio') ||
+            details.contains('folio') ||
+            message.contains('voucher_type') ||
+            details.contains('voucher_type'));
+  }
+
   Future<_VoucherRecord> _persistVoucher(_VoucherRecord record) async {
+    if (await _hasConflictingVoucherFolio(record)) {
+      throw Exception(
+        'Ya existe un ${record.type == _VoucherType.deposit ? 'depósito' : 'gasto'} con el folio ${record.folio}.',
+      );
+    }
     final payload = <String, dynamic>{
       'voucher_date': _uiDateToIso(record.date),
       'folio': record.folio,
@@ -1544,26 +1662,53 @@ class _MenudeoDepositsExpensesPageState
           .eq('voucher_id', voucherId);
     }
 
-    if (record.lines.isNotEmpty) {
-      final linesPayload = <Map<String, dynamic>>[];
-      for (var i = 0; i < record.lines.length; i++) {
-        final line = record.lines[i];
-        linesPayload.add(<String, dynamic>{
-          'voucher_id': voucherId,
-          'line_order': i + 1,
-          'concept': line.concept,
-          'unit': line.unit,
-          'quantity': line.quantity,
-          'company': line.company,
-          'driver': line.driver,
-          'destination': line.destination,
-          'subconcept': line.subconcept,
-          'mode': line.mode,
-          'amount': double.tryParse(line.amount) ?? 0,
-          'comment': line.comment,
+    try {
+      if (record.lines.isNotEmpty) {
+        final linesPayload = <Map<String, dynamic>>[];
+        for (var i = 0; i < record.lines.length; i++) {
+          final line = record.lines[i];
+          linesPayload.add(<String, dynamic>{
+            'voucher_id': voucherId,
+            'line_order': i + 1,
+            'concept': line.concept,
+            'unit': line.unit,
+            'quantity': line.quantity,
+            'company': line.company,
+            'driver': line.driver,
+            'destination': line.destination,
+            'subconcept': line.subconcept,
+            'mode': line.mode,
+            'amount': double.tryParse(line.amount) ?? 0,
+            'comment': line.comment,
+          });
+        }
+        await _supa.from('men_cash_voucher_lines').insert(linesPayload);
+      }
+      final savedNumericFolio = int.tryParse(
+        record.folio.replaceAll(RegExp(r'[^0-9]'), ''),
+      );
+      if (savedNumericFolio != null && mounted) {
+        setState(() {
+          if (record.type == _VoucherType.deposit) {
+            _depositFolioSequence = math.max(
+              _depositFolioSequence,
+              math.max(savedNumericFolio, _kDepositFolioStart),
+            );
+          } else {
+            _expenseFolioSequence = math.max(
+              _expenseFolioSequence,
+              math.max(savedNumericFolio, _kExpenseFolioStart),
+            );
+          }
         });
       }
-      await _supa.from('men_cash_voucher_lines').insert(linesPayload);
+    } on PostgrestException catch (error) {
+      if (_isDuplicateVoucherFolioError(error)) {
+        throw Exception(
+          'Ya existe un ${record.type == _VoucherType.deposit ? 'depósito' : 'gasto'} con el folio ${record.folio}.',
+        );
+      }
+      rethrow;
     }
     return _VoucherRecord(
       id: voucherId,
@@ -1579,6 +1724,13 @@ class _MenudeoDepositsExpensesPageState
   }
 
   Future<void> _openVoucherDialog({_VoucherRecord? initial, int? index}) async {
+    if (initial == null) {
+      await Future.wait<void>([
+        _refreshSequenceForType(_VoucherType.expense),
+        _refreshSequenceForType(_VoucherType.deposit),
+      ]);
+      if (!mounted) return;
+    }
     final pageContext = context;
     final editableEntries = <({int index, _VoucherRecord row})>[
       if (initial != null && index != null)
@@ -1608,13 +1760,21 @@ class _MenudeoDepositsExpensesPageState
         context: pageContext,
         barrierColor: Colors.black.withValues(alpha: 0.24),
         builder: (dialogContext) {
+          final expenseSuggestion =
+              currentInitial?.folio ??
+              (_sequenceValueForType(_VoucherType.expense) + 1).toString();
+          final depositSuggestion =
+              currentInitial?.folio ??
+              math
+                  .max(
+                    _sequenceValueForType(_VoucherType.deposit) + 1,
+                    _kDepositFolioStart + 1,
+                  )
+                  .toString();
           return _VoucherEditorDialog(
             initial: currentInitial,
-            suggestedExpenseFolio:
-                currentInitial?.folio ?? (_expenseFolioSequence + 1).toString(),
-            suggestedDepositFolio:
-                currentInitial?.folio ??
-                math.max(_depositFolioSequence + 1, 251).toString(),
+            suggestedExpenseFolio: expenseSuggestion,
+            suggestedDepositFolio: depositSuggestion,
             unitOptions: _unitOptions,
             companyOptions: _companyOptions,
             driverOptions: _driverOptions,
