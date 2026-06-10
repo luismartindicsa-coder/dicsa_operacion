@@ -270,13 +270,68 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
   String _rowsSignature(List<_MayoreoSalesReportRow> rows) =>
       jsonEncode(rows.map((row) => row.toJson()).toList(growable: false));
 
+  String _normalizeCatalogLabel(String value) =>
+      value.trim().toUpperCase().replaceAll(RegExp(r'\s+'), ' ');
+
+  List<_MayoreoSalesReportRow> _healRowsAgainstCurrentCatalog(
+    List<_MayoreoSalesReportRow> rows,
+  ) {
+    if (rows.isEmpty || _materials.isEmpty) return rows;
+    final knownMaterialIds = _materials.map((row) => row.id).toSet();
+    final materialIdByName = <String, String>{
+      for (final material in _materials)
+        _normalizeCatalogLabel(material.name): material.id,
+    };
+    var changed = false;
+    final healed = rows
+        .map((row) {
+          if (knownMaterialIds.contains(row.materialId)) {
+            return row;
+          }
+          final healedMaterialId =
+              materialIdByName[_normalizeCatalogLabel(row.materialName)];
+          if (healedMaterialId == null || healedMaterialId == row.materialId) {
+            return row;
+          }
+          changed = true;
+          return row.copyWith(materialId: healedMaterialId);
+        })
+        .toList(growable: false);
+    return changed ? healed : rows;
+  }
+
   Future<void> _persistRowsToSupabase(List<_MayoreoSalesReportRow> rows) async {
     try {
+      final healedRows = _healRowsAgainstCurrentCatalog(rows);
+      if (!identical(healedRows, rows) && mounted) {
+        setState(() => _rows = healedRows);
+        _persistState();
+      }
+      final knownMaterialIds = _materials.map((row) => row.id).toSet();
+      if (knownMaterialIds.isNotEmpty) {
+        final invalidMaterialRows = healedRows
+            .where((row) => !knownMaterialIds.contains(row.materialId))
+            .toList(growable: false);
+        if (invalidMaterialRows.isNotEmpty) {
+          final invalidTickets = invalidMaterialRows
+              .map((row) => row.ticket.trim())
+              .where((ticket) => ticket.isNotEmpty)
+              .take(3)
+              .join(', ');
+          _toast(
+            invalidTickets.isEmpty
+                ? 'Hay reportes con materiales que ya no existen en el catalogo Mayoreo.'
+                : 'Hay reportes con materiales eliminados del catalogo Mayoreo: $invalidTickets.',
+          );
+          await _loadRemoteRows();
+          return;
+        }
+      }
       if (rows.isNotEmpty) {
         await _supa
             .from(_kMayoreoSalesReportsTable)
             .upsert(
-              rows.map((row) => row.toSupabase()).toList(growable: false),
+              healedRows.map((row) => row.toSupabase()).toList(growable: false),
               onConflict: 'id',
             );
       }
@@ -286,7 +341,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
       final existingIds = (existingIdsResponse as List)
           .map((row) => (row as Map)['id'].toString())
           .toSet();
-      final nextIds = rows.map((row) => row.id).toSet();
+      final nextIds = healedRows.map((row) => row.id).toSet();
       final deletedIds = existingIds
           .difference(nextIds)
           .toList(growable: false);
@@ -296,7 +351,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
             .delete()
             .inFilter('id', deletedIds);
       }
-      _lastPersistedRowsSignature = _rowsSignature(rows);
+      _lastPersistedRowsSignature = _rowsSignature(healedRows);
     } on PostgrestException catch (e) {
       _toast('No se pudo guardar Ventas Mayoreo: ${e.message}');
       await _loadRemoteRows();

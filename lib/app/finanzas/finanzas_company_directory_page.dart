@@ -8,11 +8,13 @@ import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../compras/compras_dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
-import '../services/inventory_movements_grid.dart';
 import '../shared/app_shell.dart';
+import '../shared/archetypes/grid_editable/row/editable_row_actions_button.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/dialogs/contract_menu_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
@@ -915,7 +917,10 @@ class _FinanzasCompanyDirectoryPageState
   Future<void> _editRow(FinanzasCompanyDirectoryRecord row) async {
     final saved = await showDialog<FinanzasCompanyDirectoryRecord>(
       context: context,
-      builder: (_) => _FinDirectoryEditDialog(row: row),
+      builder: (_) => AreaThemeScope(
+        tokens: finanzasAreaTokens,
+        child: _FinDirectoryEditDialog(row: row),
+      ),
     );
     if (saved == null) return;
     await _saveRow(saved);
@@ -1012,12 +1017,6 @@ class _FinanzasCompanyDirectoryPageState
             mainAxisSize: MainAxisSize.min,
             children: [
               _FinDirectoryHeaderButton(
-                label: 'Catálogo',
-                icon: Icons.price_check_rounded,
-                onTap: _openCatalog,
-              ),
-              const SizedBox(width: 10),
-              _FinDirectoryHeaderButton(
                 label: 'Cerrar sesión',
                 icon: Icons.logout_rounded,
                 onTap: _logout,
@@ -1095,22 +1094,15 @@ class _FinanzasCompanyDirectoryPageState
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
-                    child: InventoryGridTopBar(
-                      data: InventoryGridTopBarData(
-                        metricIcon: Icons.account_balance_rounded,
-                        metricLabel: 'DIRECTORIO',
-                        metricValue: '${_rows.length}',
-                        metricSubtitle:
-                            '${_rows.where((row) => row.creditDays > 0).length} con crédito definido',
-                        exportingCsv: _exportingCsv,
-                        gridEditMode: false,
-                        canToggleGridEdit: false,
-                        canDeleteSelection: false,
-                        deletingSelection: false,
-                        selectedCount: _selectedCount,
-                        activeCellLabel: selectedRow?.companyName,
-                        onExportCsv: _exportCsv,
-                      ),
+                    child: _FinDirectoryTopBar(
+                      exportingCsv: _exportingCsv,
+                      selectedCount: _selectedCount,
+                      creditConfiguredCount: _rows
+                          .where((row) => row.creditDays > 0)
+                          .length,
+                      totalCount: _rows.length,
+                      activeLabel: selectedRow?.companyName,
+                      onExportCsv: _exportCsv,
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -1373,7 +1365,7 @@ class _FinDirectoryEditDialogState extends State<_FinDirectoryEditDialog> {
                               fontSize: 34,
                               fontWeight: FontWeight.w900,
                               letterSpacing: -0.8,
-                              color: Color(0xFF7A1914),
+                              color: Color(0xFFFF8A3D),
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -1382,7 +1374,7 @@ class _FinDirectoryEditDialogState extends State<_FinDirectoryEditDialog> {
                             style: TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.w700,
-                              color: kFinanzasMutedInk.withValues(alpha: 0.92),
+                              color: Colors.white.withValues(alpha: 0.74),
                             ),
                           ),
                         ],
@@ -1399,7 +1391,9 @@ class _FinDirectoryEditDialogState extends State<_FinDirectoryEditDialog> {
                   width: 36,
                   height: 3,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFB12720).withValues(alpha: 0.36),
+                    color: finanzasAreaTokens.primaryStrong.withValues(
+                      alpha: 0.36,
+                    ),
                     borderRadius: BorderRadius.circular(999),
                   ),
                 ),
@@ -1461,7 +1455,7 @@ class _FinDirectoryEditDialogState extends State<_FinDirectoryEditDialog> {
                 Divider(
                   height: 1,
                   thickness: 1,
-                  color: Colors.black.withValues(alpha: 0.08),
+                  color: Colors.white.withValues(alpha: 0.08),
                 ),
                 const SizedBox(height: 24),
                 Row(
@@ -1480,7 +1474,7 @@ class _FinDirectoryEditDialogState extends State<_FinDirectoryEditDialog> {
                                     style: TextStyle(
                                       fontSize: 17,
                                       fontWeight: FontWeight.w900,
-                                      color: Color(0xFF7A1914),
+                                      color: Colors.white,
                                     ),
                                   ),
                                 ),
@@ -1505,9 +1499,7 @@ class _FinDirectoryEditDialogState extends State<_FinDirectoryEditDialog> {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w700,
-                                color: kFinanzasMutedInk.withValues(
-                                  alpha: 0.92,
-                                ),
+                                color: Colors.white.withValues(alpha: 0.7),
                               ),
                             ),
                             const SizedBox(height: 20),
@@ -1534,7 +1526,7 @@ class _FinDirectoryEditDialogState extends State<_FinDirectoryEditDialog> {
                         decoration: BoxDecoration(
                           border: Border(
                             left: BorderSide(
-                              color: Colors.black.withValues(alpha: 0.10),
+                              color: Colors.white.withValues(alpha: 0.10),
                             ),
                           ),
                         ),
@@ -1546,7 +1538,7 @@ class _FinDirectoryEditDialogState extends State<_FinDirectoryEditDialog> {
                               style: TextStyle(
                                 fontSize: 17,
                                 fontWeight: FontWeight.w900,
-                                color: Color(0xFF7A1914),
+                                color: Colors.white,
                               ),
                             ),
                             const SizedBox(height: 14),
@@ -1643,6 +1635,8 @@ class _FinDirectoryDialogField extends StatelessWidget {
       child: controller != null
           ? TextField(
               controller: controller,
+              style: const TextStyle(color: Colors.white),
+              cursorColor: finanzasAreaTokens.primaryStrong,
               readOnly: readOnly,
               enabled: enabled,
               minLines: minLines,
@@ -1658,6 +1652,7 @@ class _FinDirectoryDialogField extends StatelessWidget {
             )
           : TextFormField(
               initialValue: initialValue,
+              style: const TextStyle(color: Colors.white),
               readOnly: readOnly,
               enabled: enabled,
               minLines: minLines,
@@ -1684,18 +1679,22 @@ InputDecoration _finDirectoryFieldDecoration({
     hintText: hintText,
     floatingLabelBehavior: FloatingLabelBehavior.always,
     filled: true,
-    fillColor: Colors.white.withValues(alpha: 0.94),
-    prefixIcon: Icon(icon, color: const Color(0xFFB12720), size: 28),
+    fillColor: finanzasAreaTokens.fieldSurface.withValues(alpha: 0.92),
+    prefixIcon: Icon(icon, color: finanzasAreaTokens.primaryStrong, size: 28),
     suffixIcon: trailingIcon == null
         ? null
-        : Icon(trailingIcon, color: const Color(0xFFB48680), size: 28),
+        : Icon(
+            trailingIcon,
+            color: finanzasAreaTokens.primaryStrong.withValues(alpha: 0.8),
+            size: 28,
+          ),
     hintStyle: TextStyle(
-      color: kFinanzasMutedInk.withValues(alpha: 0.70),
+      color: Colors.white.withValues(alpha: 0.46),
       fontSize: 15,
       fontWeight: FontWeight.w600,
     ),
-    labelStyle: const TextStyle(
-      color: kFinanzasInk,
+    labelStyle: TextStyle(
+      color: Colors.white.withValues(alpha: 0.82),
       fontSize: 13,
       fontWeight: FontWeight.w900,
     ),
@@ -1707,18 +1706,21 @@ InputDecoration _finDirectoryFieldDecoration({
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(20),
       borderSide: BorderSide(
-        color: const Color(0xFFD8B1AB).withValues(alpha: 0.56),
+        color: Colors.white.withValues(alpha: 0.12),
         width: 1.35,
       ),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(20),
-      borderSide: const BorderSide(color: Color(0xFFB12720), width: 1.6),
+      borderSide: BorderSide(
+        color: finanzasAreaTokens.primaryStrong,
+        width: 1.6,
+      ),
     ),
     disabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(20),
       borderSide: BorderSide(
-        color: const Color(0xFFD8B1AB).withValues(alpha: 0.42),
+        color: Colors.white.withValues(alpha: 0.08),
         width: 1.2,
       ),
     ),
@@ -1741,21 +1743,21 @@ class _FinDirectoryDialogCloseButton extends StatelessWidget {
           width: 70,
           height: 70,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.82),
+            color: finanzasAreaTokens.fieldSurface.withValues(alpha: 0.9),
             shape: BoxShape.circle,
-            border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
             boxShadow: [
               BoxShadow(
                 blurRadius: 20,
                 offset: const Offset(0, 8),
-                color: Colors.black.withValues(alpha: 0.06),
+                color: Colors.black.withValues(alpha: 0.14),
               ),
             ],
           ),
-          child: const Icon(
+          child: Icon(
             Icons.close_rounded,
             size: 34,
-            color: Color(0xFF9B6D67),
+            color: finanzasAreaTokens.onGlass.withValues(alpha: 0.92),
           ),
         ),
       ),
@@ -1773,8 +1775,9 @@ class _FinDirectoryDialogSectionCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.46),
+        color: Colors.white.withValues(alpha: 0.04),
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
       ),
       child: child,
     );
@@ -1794,14 +1797,11 @@ class _FinDirectoryDialogTextButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return OutlinedButton(
       onPressed: onTap,
-      style: OutlinedButton.styleFrom(
-        minimumSize: const Size(150, 58),
-        side: BorderSide(
-          color: const Color(0xFFB12720).withValues(alpha: 0.50),
+      style: contractSecondaryButtonStyle(context).copyWith(
+        minimumSize: const WidgetStatePropertyAll(Size(150, 58)),
+        textStyle: const WidgetStatePropertyAll(
+          TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
         ),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-        foregroundColor: const Color(0xFF9E2A22),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
       ),
       child: Text(label),
     );
@@ -1823,12 +1823,11 @@ class _FinDirectoryDialogPrimaryButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return FilledButton.icon(
       onPressed: onTap,
-      style: FilledButton.styleFrom(
-        minimumSize: const Size(180, 58),
-        backgroundColor: const Color(0xFFB12720),
-        foregroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
-        textStyle: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+      style: contractPrimaryButtonStyle(context).copyWith(
+        minimumSize: const WidgetStatePropertyAll(Size(180, 58)),
+        textStyle: const WidgetStatePropertyAll(
+          TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
+        ),
       ),
       icon: Icon(icon),
       label: Text(label),
@@ -1874,7 +1873,9 @@ class _FinPaymentStageChoiceChip extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
           decoration: BoxDecoration(
-            color: selected ? tone : Colors.white.withValues(alpha: 0.90),
+            color: selected
+                ? tone
+                : finanzasAreaTokens.fieldSurface.withValues(alpha: 0.92),
             borderRadius: BorderRadius.circular(999),
             border: Border.all(
               color: selected ? tone : tone.withValues(alpha: 0.42),
@@ -1934,18 +1935,18 @@ class _FinDirectoryFilterSummary extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: finanzasAreaTokens.badgeBackground.withValues(alpha: 0.72),
+              color: finanzasAreaTokens.badgeBackground.withValues(alpha: 0.24),
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
-                color: finanzasAreaTokens.border.withValues(alpha: 0.70),
+                color: finanzasAreaTokens.border.withValues(alpha: 0.46),
               ),
             ),
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w800,
-                color: kFinanzasInk,
+                color: finanzasAreaTokens.onGlass,
               ),
             ),
           ),
@@ -1973,81 +1974,83 @@ class _FinDirectoryHeaderRow extends StatelessWidget {
   Widget build(BuildContext context) {
     const textStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w800);
     final tokens = AreaThemeScope.of(context);
-    return Card(
-      elevation: 0,
-      color: Colors.black.withValues(alpha: 0.03),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SizedBox(
-              width: constraints.maxWidth,
-              child: ContractGridScaledRow(
-                child: SizedBox(
-                  width: contentWidth + _kFinDirActionsW,
-                  child: Row(
-                    children: [
-                      for (final column in columns)
-                        SizedBox(
-                          width: column.width,
-                          child: Row(
-                            children: [
-                              if (column.onFilter != null) ...[
-                                InkWell(
-                                  borderRadius: BorderRadius.circular(8),
-                                  onTap: column.onFilter,
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 140),
-                                    curve: Curves.easeOutCubic,
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
+    return ContractGlassCard(
+      borderRadius: BorderRadius.circular(22),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SizedBox(
+            width: constraints.maxWidth,
+            child: ContractGridScaledRow(
+              child: SizedBox(
+                width: contentWidth + _kFinDirActionsW,
+                child: Row(
+                  children: [
+                    for (final column in columns)
+                      SizedBox(
+                        width: column.width,
+                        child: Row(
+                          children: [
+                            if (column.onFilter != null) ...[
+                              InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTap: column.onFilter,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 140),
+                                  curve: Curves.easeOutCubic,
+                                  padding: const EdgeInsets.all(5),
+                                  decoration: BoxDecoration(
+                                    color: column.active
+                                        ? tokens.primary.withValues(alpha: 0.86)
+                                        : tokens.badgeBackground.withValues(
+                                            alpha: 0.18,
+                                          ),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
                                       color: column.active
-                                          ? tokens.primary
-                                          : tokens.badgeBackground,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: column.active
-                                            ? tokens.primaryStrong
-                                            : tokens.border,
-                                      ),
-                                    ),
-                                    child: Icon(
-                                      column.active
-                                          ? Icons.filter_alt
-                                          : Icons.filter_alt_outlined,
-                                      size: 15,
-                                      color: column.active
-                                          ? Colors.white
-                                          : tokens.badgeText,
+                                          ? tokens.primaryStrong
+                                          : tokens.border.withValues(
+                                              alpha: 0.64,
+                                            ),
                                     ),
                                   ),
+                                  child: Icon(
+                                    column.active
+                                        ? Icons.filter_alt
+                                        : Icons.filter_alt_outlined,
+                                    size: 15,
+                                    color: column.active
+                                        ? Colors.white
+                                        : tokens.onGlass.withValues(alpha: 0.9),
+                                  ),
                                 ),
-                                const SizedBox(width: 6),
-                              ],
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 10),
-                                  child: Text(
-                                    column.label,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: textStyle.copyWith(
-                                      color: tokens.badgeText,
+                              ),
+                              const SizedBox(width: 8),
+                            ],
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: Text(
+                                  column.label,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: textStyle.copyWith(
+                                    color: tokens.onGlass.withValues(
+                                      alpha: 0.92,
                                     ),
                                   ),
                                 ),
                               ),
-                            ],
-                          ),
+                            ),
+                          ],
                         ),
-                      const SizedBox(width: _kFinDirActionsW),
-                    ],
-                  ),
+                      ),
+                    const SizedBox(width: _kFinDirActionsW),
+                  ],
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -2100,10 +2103,10 @@ class _FinDirectoryDataRowState extends State<_FinDirectoryDataRow> {
     final tokens = AreaThemeScope.of(context);
     final selected = widget.selected;
     final fill = selected
-        ? tokens.primarySoft.withValues(alpha: 0.92)
+        ? tokens.primary.withValues(alpha: 0.78)
         : _hovering
-        ? Colors.white.withValues(alpha: 0.84)
-        : Colors.white.withValues(alpha: 0.86);
+        ? const Color(0xE2171B23)
+        : const Color(0xCC171B23);
     return MouseRegion(
       onEnter: (_) {
         setState(() => _hovering = true);
@@ -2131,8 +2134,8 @@ class _FinDirectoryDataRowState extends State<_FinDirectoryDataRow> {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: selected
-                      ? tokens.primaryStrong.withValues(alpha: 0.30)
-                      : Colors.white.withValues(alpha: 0.72),
+                      ? tokens.primaryStrong.withValues(alpha: 0.96)
+                      : Colors.white.withValues(alpha: 0.12),
                 ),
               ),
               child: ContractGridScaledRow(
@@ -2217,70 +2220,38 @@ class _FinDirectoryDataRowState extends State<_FinDirectoryDataRow> {
                           width: _kFinDirActionsW,
                           child: Align(
                             alignment: Alignment.centerRight,
-                            child: PopupMenuButton<String>(
-                              tooltip: 'Acciones',
-                              padding: EdgeInsets.zero,
-                              color: finanzasAreaTokens.surfaceTint.withValues(
-                                alpha: 0.98,
-                              ),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                side: BorderSide(
-                                  color: Colors.white.withValues(alpha: 0.70),
-                                ),
-                              ),
-                              onOpened: widget.onSecondarySelection,
-                              onSelected: (value) {
-                                if (value == 'edit') {
-                                  unawaited(widget.onEdit());
-                                }
-                              },
-                              itemBuilder: (context) => const [
-                                PopupMenuItem<String>(
-                                  value: 'edit',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.edit_rounded, size: 18),
-                                      SizedBox(width: 10),
-                                      Text('Editar'),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                              child: Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
+                            child: Container(
+                              width: 42,
+                              height: 42,
+                              decoration: BoxDecoration(
+                                color: selected
+                                    ? Colors.black.withValues(alpha: 0.3)
+                                    : Colors.white.withValues(alpha: 0.06),
+                                borderRadius: BorderRadius.circular(14),
+                                border: Border.all(
                                   color: selected
-                                      ? tokens.primarySoft.withValues(
-                                          alpha: 0.42,
-                                        )
-                                      : Colors.white.withValues(alpha: 0.88),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: Border.all(
-                                    color: selected
-                                        ? tokens.primaryStrong.withValues(
-                                            alpha: 0.36,
-                                          )
-                                        : finanzasAreaTokens.border.withValues(
-                                            alpha: 0.82,
-                                          ),
+                                      ? Colors.white.withValues(alpha: 0.22)
+                                      : Colors.white.withValues(alpha: 0.12),
+                                ),
+                              ),
+                              child: EditableRowActionsButton<String>(
+                                tooltip: 'Acciones',
+                                iconColor: selected
+                                    ? Colors.white
+                                    : tokens.onGlass.withValues(alpha: 0.96),
+                                entries: const [
+                                  ContractMenuEntry<String>(
+                                    value: 'edit',
+                                    label: 'Editar',
+                                    icon: Icons.edit_rounded,
                                   ),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 4),
-                                      color: Colors.black.withValues(
-                                        alpha: 0.05,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                child: const Icon(
-                                  Icons.more_horiz_rounded,
-                                  size: 18,
-                                  color: kFinanzasInk,
-                                ),
+                                ],
+                                onSelected: (value) {
+                                  widget.onSecondarySelection?.call();
+                                  if (value == 'edit') {
+                                    unawaited(widget.onEdit());
+                                  }
+                                },
                               ),
                             ),
                           ),
@@ -2324,7 +2295,7 @@ class _FinDirectoryCell extends StatelessWidget {
           style: TextStyle(
             fontSize: 12.5,
             fontWeight: bold ? FontWeight.w900 : FontWeight.w700,
-            color: kFinanzasInk,
+            color: Colors.white,
             height: 1.15,
           ),
         );
@@ -2360,12 +2331,12 @@ class _FinDirectoryBadge extends StatelessWidget {
       decoration: BoxDecoration(
         color: active
             ? resolvedTone.withValues(alpha: 0.10)
-            : tokens.badgeBackground.withValues(alpha: 0.62),
+            : tokens.badgeBackground.withValues(alpha: 0.16),
         borderRadius: BorderRadius.circular(999),
         border: Border.all(
           color: active
               ? resolvedTone.withValues(alpha: 0.24)
-              : tokens.border.withValues(alpha: 0.70),
+              : tokens.border.withValues(alpha: 0.40),
         ),
       ),
       child: Text(
@@ -2444,32 +2415,106 @@ Future<T?> _showFinDirectorySingleSelectDialog<T>(
   required List<_FinDirectoryPickerOption<T>> options,
   bool allowClear = false,
 }) {
+  final searchC = TextEditingController();
+  int? hoveredIndex;
   return showDialog<T>(
     context: context,
     builder: (dialogContext) {
-      return AlertDialog(
-        title: Text(title),
-        content: ConstrainedBox(
-          constraints: const BoxConstraints(maxWidth: 360, maxHeight: 420),
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              if (allowClear)
-                ListTile(
-                  title: const Text('Limpiar filtro'),
-                  onTap: () => Navigator.of(dialogContext).pop(null),
+      return StatefulBuilder(
+        builder: (context, setLocalState) {
+          final query = searchC.text.trim().toLowerCase();
+          final filtered = options
+              .where(
+                (option) =>
+                    query.isEmpty || option.label.toLowerCase().contains(query),
+              )
+              .toList(growable: false);
+          return AreaThemeScope(
+            tokens: finanzasAreaTokens,
+            child: Dialog(
+              backgroundColor: Colors.transparent,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: 420,
+                  maxHeight: 520,
                 ),
-              for (final option in options)
-                ListTile(
-                  title: Text(option.label),
-                  trailing: option.value == initialValue
-                      ? const Icon(Icons.check_rounded)
-                      : null,
-                  onTap: () => Navigator.of(dialogContext).pop(option.value),
+                child: FinanzasGlassPanel(
+                  borderRadius: BorderRadius.circular(28),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                  fillColor: const Color(0x1813171F),
+                  borderColor: Colors.white.withValues(alpha: 0.22),
+                  edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFFFF8A3D),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Builder(
+                        builder: (themedContext) => TextField(
+                          controller: searchC,
+                          onChanged: (_) =>
+                              setLocalState(() => hoveredIndex = null),
+                          style: const TextStyle(color: Colors.white),
+                          cursorColor: finanzasAreaTokens.primaryStrong,
+                          decoration: contractGlassFieldDecoration(
+                            themedContext,
+                            hintText: 'Buscar opción',
+                            prefixIcon: Icon(
+                              Icons.search_rounded,
+                              color: Colors.white.withValues(alpha: 0.56),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Flexible(
+                        child: ListView(
+                          shrinkWrap: true,
+                          children: [
+                            if (allowClear)
+                              _FinDirectoryPickerOptionTile(
+                                title: 'Limpiar filtro',
+                                hovered: hoveredIndex == -1,
+                                onHoverChanged: (hovered) => setLocalState(
+                                  () => hoveredIndex = hovered ? -1 : null,
+                                ),
+                                onTap: () =>
+                                    Navigator.of(dialogContext).pop(null),
+                              ),
+                            if (allowClear) const SizedBox(height: 8),
+                            for (var i = 0; i < filtered.length; i++) ...[
+                              _FinDirectoryPickerOptionTile(
+                                title: filtered[i].label,
+                                selected: filtered[i].value == initialValue,
+                                hovered: hoveredIndex == i,
+                                onHoverChanged: (hovered) => setLocalState(
+                                  () => hoveredIndex = hovered ? i : null,
+                                ),
+                                onTap: () => Navigator.of(
+                                  dialogContext,
+                                ).pop(filtered[i].value),
+                              ),
+                              if (i != filtered.length - 1)
+                                const SizedBox(height: 8),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-            ],
-          ),
-        ),
+              ),
+            ),
+          );
+        },
       );
     },
   );
@@ -2481,52 +2526,132 @@ Future<Set<T>?> _showFinDirectoryMultiSelectDialog<T>(
   required List<T> options,
   required Set<T> initialValues,
 }) {
+  final searchC = TextEditingController();
+  int? hoveredIndex;
   return showDialog<Set<T>>(
     context: context,
     builder: (dialogContext) {
       final selected = <T>{...initialValues};
       return StatefulBuilder(
         builder: (context, setDialogState) {
-          return AlertDialog(
-            title: Text(title),
-            content: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420, maxHeight: 460),
-              child: ListView(
-                shrinkWrap: true,
-                children: [
-                  for (final option in options)
-                    CheckboxListTile(
-                      value: selected.contains(option),
-                      title: Text(option.toString()),
-                      onChanged: (checked) {
-                        setDialogState(() {
-                          if (checked == true) {
-                            selected.add(option);
-                          } else {
-                            selected.remove(option);
-                          }
-                        });
-                      },
-                    ),
-                ],
+          final query = searchC.text.trim().toLowerCase();
+          final filtered = options
+              .where(
+                (option) =>
+                    query.isEmpty ||
+                    option.toString().toLowerCase().contains(query),
+              )
+              .toList(growable: false);
+          return AreaThemeScope(
+            tokens: finanzasAreaTokens,
+            child: Dialog(
+              backgroundColor: Colors.transparent,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(
+                  maxWidth: 440,
+                  maxHeight: 520,
+                ),
+                child: FinanzasGlassPanel(
+                  borderRadius: BorderRadius.circular(28),
+                  padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+                  fillColor: const Color(0x1813171F),
+                  borderColor: Colors.white.withValues(alpha: 0.22),
+                  edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.w900,
+                          color: Color(0xFFFF8A3D),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Builder(
+                        builder: (themedContext) => TextField(
+                          controller: searchC,
+                          onChanged: (_) =>
+                              setDialogState(() => hoveredIndex = null),
+                          style: const TextStyle(color: Colors.white),
+                          cursorColor: finanzasAreaTokens.primaryStrong,
+                          decoration: contractGlassFieldDecoration(
+                            themedContext,
+                            hintText: 'Buscar opción',
+                            prefixIcon: Icon(
+                              Icons.search_rounded,
+                              color: Colors.white.withValues(alpha: 0.56),
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      Flexible(
+                        child: ListView(
+                          shrinkWrap: true,
+                          children: [
+                            for (var i = 0; i < filtered.length; i++) ...[
+                              _FinDirectoryPickerOptionTile(
+                                title: filtered[i].toString(),
+                                selected: selected.contains(filtered[i]),
+                                hovered: hoveredIndex == i,
+                                onHoverChanged: (hovered) => setDialogState(
+                                  () => hoveredIndex = hovered ? i : null,
+                                ),
+                                onTap: () {
+                                  setDialogState(() {
+                                    if (selected.contains(filtered[i])) {
+                                      selected.remove(filtered[i]);
+                                    } else {
+                                      selected.add(filtered[i]);
+                                    }
+                                  });
+                                },
+                              ),
+                              if (i != filtered.length - 1)
+                                const SizedBox(height: 8),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Builder(
+                        builder: (themedContext) => Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            OutlinedButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(null),
+                              style: contractSecondaryButtonStyle(
+                                themedContext,
+                              ),
+                              child: const Text('Cancelar'),
+                            ),
+                            const SizedBox(width: 10),
+                            TextButton(
+                              onPressed: () {
+                                setDialogState(() => selected.clear());
+                              },
+                              style: contractGhostButtonStyle(themedContext),
+                              child: const Text('Limpiar'),
+                            ),
+                            const SizedBox(width: 10),
+                            FilledButton(
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(selected),
+                              style: contractPrimaryButtonStyle(themedContext),
+                              child: const Text('Aplicar'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(dialogContext).pop(null),
-                child: const Text('Cancelar'),
-              ),
-              TextButton(
-                onPressed: () {
-                  setDialogState(() => selected.clear());
-                },
-                child: const Text('Limpiar'),
-              ),
-              FilledButton(
-                onPressed: () => Navigator.of(dialogContext).pop(selected),
-                child: const Text('Aplicar'),
-              ),
-            ],
           );
         },
       );
@@ -2539,6 +2664,212 @@ class _FinDirectoryBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => const FinanzasAreaBackground();
+}
+
+class _FinDirectoryPickerOptionTile extends StatefulWidget {
+  final String title;
+  final bool selected;
+  final bool hovered;
+  final ValueChanged<bool>? onHoverChanged;
+  final VoidCallback onTap;
+
+  const _FinDirectoryPickerOptionTile({
+    required this.title,
+    required this.onTap,
+    this.selected = false,
+    this.hovered = false,
+    this.onHoverChanged,
+  });
+
+  @override
+  State<_FinDirectoryPickerOptionTile> createState() =>
+      _FinDirectoryPickerOptionTileState();
+}
+
+class _FinDirectoryPickerOptionTileState
+    extends State<_FinDirectoryPickerOptionTile> {
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final selected = widget.selected;
+    final hovered = widget.hovered;
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => widget.onHoverChanged?.call(true),
+      onExit: (_) => widget.onHoverChanged?.call(false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: widget.onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: selected
+                  ? tokens.primaryStrong.withValues(alpha: 0.16)
+                  : hovered
+                  ? tokens.primaryStrong.withValues(alpha: 0.12)
+                  : const Color(0xCC171C24),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: selected
+                    ? tokens.primaryStrong.withValues(alpha: 0.54)
+                    : hovered
+                    ? tokens.primaryStrong.withValues(alpha: 0.42)
+                    : Colors.white.withValues(alpha: 0.14),
+              ),
+              boxShadow: selected || hovered
+                  ? [
+                      BoxShadow(
+                        color: tokens.primaryStrong.withValues(
+                          alpha: selected ? 0.16 : 0.10,
+                        ),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontWeight: FontWeight.w900,
+                      color: selected || hovered
+                          ? tokens.primaryStrong
+                          : kFinanzasInk,
+                    ),
+                  ),
+                ),
+                if (selected) ...[
+                  const SizedBox(width: 10),
+                  Icon(
+                    Icons.check_circle_rounded,
+                    size: 18,
+                    color: tokens.primaryStrong,
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FinDirectoryTopBar extends StatelessWidget {
+  final bool exportingCsv;
+  final int selectedCount;
+  final int creditConfiguredCount;
+  final int totalCount;
+  final String? activeLabel;
+  final Future<void> Function() onExportCsv;
+
+  const _FinDirectoryTopBar({
+    required this.exportingCsv,
+    required this.selectedCount,
+    required this.creditConfiguredCount,
+    required this.totalCount,
+    required this.activeLabel,
+    required this.onExportCsv,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return ContractGlassCard(
+      borderRadius: BorderRadius.circular(28),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Row(
+        children: [
+          _FinDirectoryTopActionButton(
+            label: exportingCsv ? 'Exportando CSV...' : 'Descargar CSV',
+            icon: exportingCsv
+                ? Icons.downloading_rounded
+                : Icons.download_rounded,
+            enabled: !exportingCsv,
+            onTap: onExportCsv,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'DIRECTORIO $totalCount',
+                  style: TextStyle(
+                    color: tokens.primaryStrong,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  '$creditConfiguredCount con crédito definido'
+                  '${activeLabel == null ? '' : ' • Activa: $activeLabel'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.onGlass.withValues(alpha: 0.72),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            selectedCount == 1
+                ? '1 seleccionada'
+                : '$selectedCount seleccionadas',
+            style: TextStyle(
+              color: tokens.onGlass,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinDirectoryTopActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool enabled;
+  final Future<void> Function() onTap;
+
+  const _FinDirectoryTopActionButton({
+    required this.label,
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return FilledButton.icon(
+      onPressed: enabled ? () => unawaited(onTap()) : null,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: tokens.primaryStrong,
+        backgroundColor: Colors.white.withValues(alpha: 0.12),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.26)),
+        disabledForegroundColor: tokens.badgeText.withValues(alpha: 0.55),
+      ),
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+    );
+  }
 }
 
 class _FinDirectoryHeaderBrand extends StatelessWidget {
@@ -2570,7 +2901,7 @@ class _FinDirectoryHeaderBrand extends StatelessWidget {
         ),
         const SizedBox(width: 20),
         const Text(
-          'Directorio',
+          'Directorio Empresas',
           maxLines: 1,
           style: TextStyle(
             fontSize: 28,
@@ -2665,7 +2996,9 @@ class _FinDirectoryHeaderButtonState extends State<_FinDirectoryHeaderButton> {
                 highlighted ? -2.5 : 0,
                 0,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              width: 176,
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,

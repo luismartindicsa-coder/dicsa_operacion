@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:ui';
+import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -14,10 +14,12 @@ import '../compras/compras_dashboard_page.dart';
 import '../compras/compras_tickets_store.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
+import '../shared/archetypes/auxiliary_surfaces/confirmation_dialog.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
 import '../shared/utils/file_download_save.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import 'finanzas_bank_accounts_store.dart';
 import 'finanzas_bank_accounts_page.dart';
@@ -28,6 +30,7 @@ import 'finanzas_dashboard_page.dart';
 import 'finanzas_evidence_store.dart';
 import 'finanzas_fixed_payments_page.dart';
 import 'finanzas_payment_center_page.dart';
+import 'finanzas_provider_excel_templates.dart';
 import 'finanzas_provider_accounts_store.dart';
 import 'finanzas_theme.dart';
 
@@ -571,11 +574,11 @@ class _FinanzasProviderAccountsPageState
       context,
       providerName: account.company.companyName,
     );
-    if (preset == _kDismissedAccountReportPreset) return;
+    if (preset == null || preset == _kDismissedAccountReportPreset) return;
     try {
       final pdfBytes = await _buildAccountReportPdfBytes(
         account,
-        preset: preset,
+        preset: preset == _kAllAccountReportPreset ? null : preset,
       );
       final stamp = DateTime.now().millisecondsSinceEpoch;
       final file = File(
@@ -588,11 +591,100 @@ class _FinanzasProviderAccountsPageState
     }
   }
 
+  FinanzasProviderExcelTemplateKind? _providerExcelTemplateKindFor(
+    _ProviderAccountView account,
+  ) {
+    final normalized = account.company.companyName.trim().toUpperCase();
+    if (normalized == 'AVON') return FinanzasProviderExcelTemplateKind.avon;
+    return FinanzasProviderExcelTemplateKind.genericMaterials;
+  }
+
+  Future<void> _exportProviderExcelTemplateFor(
+    _ProviderAccountView account,
+  ) async {
+    final kind = _providerExcelTemplateKindFor(account);
+    if (kind == null) return;
+    if (account.tickets.isEmpty) {
+      _toast('Este proveedor no tiene tickets para exportar.');
+      return;
+    }
+
+    final selectedTickets = await showDialog<List<ComprasTicketRecord>>(
+      context: context,
+      builder: (dialogContext) {
+        final tokens = AreaThemeScope.of(context);
+        return AreaThemeScope(
+          tokens: tokens,
+          child: _ProviderExcelTicketSelectionDialog(
+            providerName: account.company.companyName,
+            tickets: account.tickets,
+            moneyFormatter: _moneyStatic,
+            dateFormatter: (value) =>
+                value == null ? 'Sin fecha' : _dateLabelStatic(value),
+            kind: kind,
+          ),
+        );
+      },
+    );
+    if (selectedTickets == null || selectedTickets.isEmpty) return;
+
+    try {
+      final bytes = await FinanzasProviderExcelTemplates.buildWorkbook(
+        kind: kind,
+        tickets: selectedTickets,
+        providerName: account.company.companyName,
+        providerLinkedName: account.company.linkedName,
+      );
+      final path = await saveBytesAs(
+        bytes: bytes,
+        suggestedFileName: _providerExcelFileName(
+          account.company.companyName,
+          selectedTickets,
+        ),
+        dialogTitle: 'Guardar Excel proveedor...',
+      );
+      if (path == null) return;
+      _toast('Excel proveedor guardado en $path');
+    } on FinanzasProviderExcelException catch (error) {
+      _toast(error.message);
+    } catch (error) {
+      _toast('No se pudo generar el Excel del proveedor: $error');
+    }
+  }
+
+  String _providerExcelFileName(
+    String providerName,
+    List<ComprasTicketRecord> tickets,
+  ) {
+    final ordered = tickets.toList(growable: false)
+      ..sort((a, b) {
+        final byDate = a.date.compareTo(b.date);
+        if (byDate != 0) return byDate;
+        return a.ticket.compareTo(b.ticket);
+      });
+    final first = ordered.first.date;
+    final last = ordered.last.date;
+    final range =
+        '${first.day.toString().padLeft(2, '0')}-${first.month.toString().padLeft(2, '0')}_${last.day.toString().padLeft(2, '0')}-${last.month.toString().padLeft(2, '0')}_${last.year}';
+    final normalizedProvider = providerName
+        .replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '')
+        .toLowerCase();
+    return '${normalizedProvider}_semana_$range.xlsx';
+  }
+
   Future<Uint8List> _buildAccountReportPdfBytes(
     _ProviderAccountView account, {
     _AccountReportPreset? preset,
   }) async {
     final doc = pw.Document();
+    final dicsaBlueSoft = PdfColor.fromHex('#E9F0FF');
+    final dicsaBlueDeep = PdfColor.fromHex('#173A7A');
+    final dicsaGreenSoft = PdfColor.fromHex('#EEF9F1');
+    final dicsaInk = PdfColor.fromHex('#16202B');
+    final dicsaMuted = PdfColor.fromHex('#5E6B78');
+    final dicsaBorder = PdfColor.fromHex('#B8C7DD');
     pw.MemoryImage? logoImage;
     try {
       final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
@@ -719,9 +811,9 @@ class _FinanzasProviderAccountsPageState
         child: pw.Container(
           padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12),
           decoration: pw.BoxDecoration(
-            color: PdfColor.fromHex('#F3D9D4'),
+            color: dicsaBlueSoft,
             borderRadius: pw.BorderRadius.circular(14),
-            border: pw.Border.all(color: PdfColor.fromHex('#D8A39A')),
+            border: pw.Border.all(color: dicsaBorder),
           ),
           child: pw.Column(
             crossAxisAlignment: pw.CrossAxisAlignment.start,
@@ -731,7 +823,7 @@ class _FinanzasProviderAccountsPageState
                 style: pw.TextStyle(
                   fontSize: 9.2,
                   fontWeight: pw.FontWeight.bold,
-                  color: PdfColor.fromHex('#8B2A1B'),
+                  color: dicsaBlueDeep,
                 ),
               ),
               pw.SizedBox(height: 6),
@@ -740,7 +832,7 @@ class _FinanzasProviderAccountsPageState
                 style: pw.TextStyle(
                   fontSize: 15.5,
                   fontWeight: pw.FontWeight.bold,
-                  color: PdfColor.fromHex('#3F130C'),
+                  color: dicsaInk,
                 ),
               ),
             ],
@@ -772,6 +864,7 @@ class _FinanzasProviderAccountsPageState
                       style: pw.TextStyle(
                         fontSize: 17,
                         fontWeight: pw.FontWeight.bold,
+                        color: dicsaBlueDeep,
                       ),
                     ),
                     pw.SizedBox(height: 2),
@@ -780,13 +873,17 @@ class _FinanzasProviderAccountsPageState
                       style: pw.TextStyle(
                         fontSize: 10.5,
                         fontWeight: pw.FontWeight.bold,
+                        color: dicsaMuted,
                       ),
                     ),
                     if (preset != null) ...[
                       pw.SizedBox(height: 2),
                       pw.Text(
                         preset.label.toUpperCase(),
-                        style: const pw.TextStyle(fontSize: 9.4),
+                        style: pw.TextStyle(
+                          fontSize: 9.4,
+                          color: dicsaBlueDeep,
+                        ),
                       ),
                     ],
                   ],
@@ -811,12 +908,12 @@ class _FinanzasProviderAccountsPageState
             style: pw.TextStyle(
               fontSize: 12.5,
               fontWeight: pw.FontWeight.bold,
-              color: PdfColor.fromHex('#7A1914'),
+              color: dicsaBlueDeep,
             ),
           ),
           pw.SizedBox(height: 8),
           pw.Table(
-            border: pw.TableBorder.all(color: PdfColor.fromHex('#D8A39A')),
+            border: pw.TableBorder.all(color: dicsaBorder),
             columnWidths: {
               0: const pw.FlexColumnWidth(0.95),
               1: const pw.FlexColumnWidth(0.95),
@@ -829,9 +926,7 @@ class _FinanzasProviderAccountsPageState
             },
             children: [
               pw.TableRow(
-                decoration: pw.BoxDecoration(
-                  color: PdfColor.fromHex('#F3D9D4'),
-                ),
+                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
                 children:
                     [
                           'TICKET',
@@ -851,6 +946,7 @@ class _FinanzasProviderAccountsPageState
                               style: pw.TextStyle(
                                 fontSize: 9.4,
                                 fontWeight: pw.FontWeight.bold,
+                                color: dicsaBlueDeep,
                               ),
                             ),
                           ),
@@ -921,12 +1017,12 @@ class _FinanzasProviderAccountsPageState
             style: pw.TextStyle(
               fontSize: 12.5,
               fontWeight: pw.FontWeight.bold,
-              color: PdfColor.fromHex('#7A1914'),
+              color: dicsaBlueDeep,
             ),
           ),
           pw.SizedBox(height: 8),
           pw.Table(
-            border: pw.TableBorder.all(color: PdfColor.fromHex('#D8A39A')),
+            border: pw.TableBorder.all(color: dicsaBorder),
             columnWidths: {
               0: const pw.FlexColumnWidth(1.0),
               1: const pw.FlexColumnWidth(1.2),
@@ -936,9 +1032,7 @@ class _FinanzasProviderAccountsPageState
             },
             children: [
               pw.TableRow(
-                decoration: pw.BoxDecoration(
-                  color: PdfColor.fromHex('#F3D9D4'),
-                ),
+                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
                 children: ['FECHA', 'ORIGEN', 'TIPO', 'REFERENCIA', 'IMPORTE']
                     .map(
                       (label) => pw.Padding(
@@ -948,6 +1042,7 @@ class _FinanzasProviderAccountsPageState
                           style: pw.TextStyle(
                             fontSize: 9.4,
                             fontWeight: pw.FontWeight.bold,
+                            color: dicsaBlueDeep,
                           ),
                         ),
                       ),
@@ -1091,24 +1186,14 @@ class _FinanzasProviderAccountsPageState
   ) async {
     final account = _selectedAccount;
     if (account == null) return;
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Eliminar movimiento'),
-        content: Text(
-          'Se eliminará este movimiento directo del proveedor y se recalculará su aplicación sobre tickets abiertos. ¿Continuar?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Eliminar'),
-          ),
-        ],
-      ),
+    final confirmed = await showContractConfirmationDialog(
+      context,
+      title: 'Eliminar movimiento',
+      content:
+          'Se eliminará este movimiento directo del proveedor y se recalculará su aplicación sobre tickets abiertos. Esta acción no se puede deshacer.',
+      confirmText: 'Eliminar',
+      destructive: true,
+      tokens: finanzasAreaTokens,
     );
     if (confirmed != true) return;
     try {
@@ -1391,24 +1476,13 @@ class _FinanzasProviderAccountsPageState
   Future<void> _cancelAgreementForSelectedProvider(
     _ProviderAgreementView row,
   ) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (_) => AlertDialog(
-        title: const Text('Cancelar convenio'),
-        content: const Text(
+    final confirmed = await showContractConfirmationDialog(
+      context,
+      title: 'Cancelar convenio',
+      content:
           'Se cancelarán los compromisos pendientes, pero el historial permanecerá visible. ¿Continuar?',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Volver'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Cancelar convenio'),
-          ),
-        ],
-      ),
+      confirmText: 'Cancelar convenio',
+      destructive: true,
     );
     if (confirmed != true) return;
     try {
@@ -1655,6 +1729,58 @@ class _FinanzasProviderAccountsPageState
     }
   }
 
+  Future<void> _deleteTicketForSelectedProvider(ComprasTicketRecord row) async {
+    if (row.facturaStatus == 'FACTURADO') {
+      _toast(
+        'Este ticket está facturado. Primero elimina la factura relacionada para liberarlo.',
+      );
+      return;
+    }
+    final confirmed = await showContractConfirmationDialog(
+      context,
+      title: 'Eliminar ticket',
+      content:
+          'Se eliminará el ticket ${row.ticket} del proveedor. Esta acción no se puede deshacer.',
+      confirmText: 'Eliminar',
+      destructive: true,
+      tokens: finanzasAreaTokens,
+    );
+    if (confirmed != true) return;
+    try {
+      await ComprasTicketsStore.deleteTickets(<String>{row.id});
+      if (!mounted) return;
+      _toast('Ticket eliminado.');
+      await _loadPage();
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo eliminar el ticket. $error');
+    }
+  }
+
+  Future<void> _deleteInvoiceForSelectedProvider(
+    _ProviderInvoiceView row,
+  ) async {
+    final confirmed = await showContractConfirmationDialog(
+      context,
+      title: 'Eliminar factura',
+      content:
+          'Se eliminará la factura ${row.invoice.folio}, se soltarán sus tickets relacionados y se limpiarán evidencias y vínculos operativos. Esta acción no se puede deshacer.',
+      confirmText: 'Eliminar',
+      destructive: true,
+      tokens: finanzasAreaTokens,
+    );
+    if (confirmed != true) return;
+    try {
+      await FinanzasProviderAccountsStore.deleteInvoice(row.invoice);
+      if (!mounted) return;
+      _toast('Factura eliminada.');
+      await _loadPage();
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo eliminar la factura. $error');
+    }
+  }
+
   Future<void> _openInvoiceEvidenceDialog(_ProviderInvoiceView row) async {
     var localEvidences = row.evidences.toList(growable: true);
     var changed = false;
@@ -1872,69 +1998,88 @@ class _FinanzasProviderAccountsPageState
         builder: (dialogContext) {
           return StatefulBuilder(
             builder: (context, setLocalState) {
-              return AlertDialog(
-                title: Text(title),
-                content: SizedBox(
-                  width: 480,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: () async {
-                          try {
-                            final result = await FilePicker.platform.pickFiles(
-                              allowMultiple: false,
-                              withData: true,
-                              lockParentWindow: true,
-                              type: FileType.custom,
-                              allowedExtensions: const [
-                                'pdf',
-                                'jpg',
-                                'jpeg',
-                                'png',
-                                'webp',
-                                'heic',
-                              ],
-                            );
-                            if (result == null || result.files.isEmpty) return;
-                            setLocalState(() => picked = result.files.first);
-                          } catch (error) {
-                            _toast(
-                              'No se pudo abrir selector de archivos. $error',
-                            );
-                          }
-                        },
-                        icon: const Icon(Icons.attach_file_rounded),
-                        label: Text(
-                          picked == null
-                              ? 'Seleccionar PDF o foto'
-                              : 'Archivo: ${picked!.name}',
-                          overflow: TextOverflow.ellipsis,
-                        ),
+              return Dialog(
+                backgroundColor: Colors.transparent,
+                child: AreaThemeScope(
+                  tokens: finanzasAreaTokens,
+                  child: ContractGlassCard(
+                    borderRadius: BorderRadius.circular(28),
+                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 520),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _DialogHeader(
+                            title: title,
+                            subtitle: 'Adjunta PDF o evidencia fotográfica.',
+                            popContext: dialogContext,
+                          ),
+                          const SizedBox(height: 12),
+                          OutlinedButton.icon(
+                            style: contractSecondaryButtonStyle(context),
+                            onPressed: () async {
+                              try {
+                                final result = await FilePicker.platform
+                                    .pickFiles(
+                                      allowMultiple: false,
+                                      withData: true,
+                                      lockParentWindow: true,
+                                      type: FileType.custom,
+                                      allowedExtensions: const [
+                                        'pdf',
+                                        'jpg',
+                                        'jpeg',
+                                        'png',
+                                        'webp',
+                                        'heic',
+                                      ],
+                                    );
+                                if (result == null || result.files.isEmpty) {
+                                  return;
+                                }
+                                setLocalState(
+                                  () => picked = result.files.first,
+                                );
+                              } catch (error) {
+                                _toast(
+                                  'No se pudo abrir selector de archivos. $error',
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.attach_file_rounded),
+                            label: Text(
+                              picked == null
+                                  ? 'Seleccionar PDF o foto'
+                                  : 'Archivo: ${picked!.name}',
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextField(
+                            controller: commentC,
+                            minLines: 2,
+                            maxLines: 3,
+                            decoration: contractGlassFieldDecoration(
+                              context,
+                              hintText: 'Comentario',
+                              prefixIcon: const Icon(Icons.note_alt_outlined),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          _DialogActionsRow(
+                            onCancel: () =>
+                                Navigator.of(dialogContext).pop(false),
+                            onConfirm: () =>
+                                Navigator.of(dialogContext).pop(true),
+                            confirmLabel: 'Guardar',
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 12),
-                      TextField(
-                        controller: commentC,
-                        minLines: 2,
-                        maxLines: 3,
-                        decoration: const InputDecoration(
-                          labelText: 'Comentario',
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
                 ),
-                actions: [
-                  OutlinedButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(false),
-                    child: const Text('Cancelar'),
-                  ),
-                  FilledButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(true),
-                    child: const Text('Guardar'),
-                  ),
-                ],
               );
             },
           );
@@ -2258,7 +2403,13 @@ class _FinanzasProviderAccountsPageState
                                             _editInvoicePriority,
                                         onOpenInvoiceEvidence:
                                             _openInvoiceEvidenceDialog,
+                                        onDeleteTicket:
+                                            _deleteTicketForSelectedProvider,
+                                        onDeleteInvoice:
+                                            _deleteInvoiceForSelectedProvider,
                                         onPrintAccount: _printAccountReportFor,
+                                        onExportProviderExcelTemplate:
+                                            _exportProviderExcelTemplateFor,
                                       ),
                               ),
                             ],
@@ -2642,6 +2793,12 @@ const List<_AccountReportPreset> _kAccountReportPresets = [
   _AccountReportPreset(id: 'last_180', label: 'Ultimos 180', days: 180),
 ];
 
+const _AccountReportPreset _kAllAccountReportPreset = _AccountReportPreset(
+  id: 'all',
+  label: 'Todos',
+  days: 0,
+);
+
 const _AccountReportPreset _kDismissedAccountReportPreset =
     _AccountReportPreset(id: 'dismissed', label: 'Cancelar', days: 0);
 
@@ -2652,57 +2809,65 @@ Future<_AccountReportPreset?> _showAccountReportPresetDialog(
   return showDialog<_AccountReportPreset?>(
     context: context,
     builder: (dialogContext) {
-      return AlertDialog(
-        title: const Text('Alcance del reporte'),
-        content: SizedBox(
-          width: 420,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                providerName,
-                style: const TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w700,
-                  color: kFinanzasMutedInk,
+      return Dialog(
+        backgroundColor: Colors.transparent,
+        child: AreaThemeScope(
+          tokens: finanzasAreaTokens,
+          child: Builder(
+            builder: (context) => ContractGlassCard(
+              borderRadius: BorderRadius.circular(28),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 520),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _DialogHeader(
+                      title: 'Alcance del reporte',
+                      subtitle: providerName,
+                      popContext: dialogContext,
+                    ),
+                    const SizedBox(height: 10),
+                    const Text(
+                      'El reporte toma tickets del periodo elegido. Los abonos se jalán por relación real a esos tickets, aunque hayan ocurrido después.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: kFinanzasMutedInk,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    for (final preset in _kAccountReportPresets) ...[
+                      SizedBox(
+                        width: double.infinity,
+                        child: OutlinedButton(
+                          style: contractSecondaryButtonStyle(context),
+                          onPressed: () =>
+                              Navigator.of(dialogContext).pop(preset),
+                          child: Text(preset.label),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                    ],
+                    _DialogActionsRow(
+                      onCancel: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_kDismissedAccountReportPreset),
+                      onConfirm: () => Navigator.of(
+                        dialogContext,
+                      ).pop(_kAllAccountReportPreset),
+                      confirmLabel: 'Todos',
+                      cancelLabel: 'Cancelar',
+                      confirmIcon: Icons.visibility_outlined,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 14),
-              const Text(
-                'El reporte toma tickets del periodo elegido. Los abonos se jalán por relación real a esos tickets, aunque hayan ocurrido después.',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w600,
-                  color: kFinanzasMutedInk,
-                  height: 1.35,
-                ),
-              ),
-              const SizedBox(height: 16),
-              for (final preset in _kAccountReportPresets) ...[
-                SizedBox(
-                  width: double.infinity,
-                  child: OutlinedButton(
-                    onPressed: () => Navigator.of(dialogContext).pop(preset),
-                    child: Text(preset.label),
-                  ),
-                ),
-                const SizedBox(height: 10),
-              ],
-            ],
+            ),
           ),
         ),
-        actions: [
-          TextButton(
-            onPressed: () =>
-                Navigator.of(dialogContext).pop(_kDismissedAccountReportPreset),
-            child: const Text('Cancelar'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.of(dialogContext).pop(null),
-            child: const Text('Todos'),
-          ),
-        ],
       );
     },
   );
@@ -2731,8 +2896,8 @@ class _ProviderAccountsListPane extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     return ContractGlassCard(
-      borderRadius: BorderRadius.circular(28),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      borderRadius: BorderRadius.circular(30),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2753,8 +2918,11 @@ class _ProviderAccountsListPane extends StatelessWidget {
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  color: tokens.badgeBackground.withValues(alpha: 0.86),
+                  color: Colors.white.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(999),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.14),
+                  ),
                 ),
                 child: Text(
                   '${rows.length}',
@@ -2770,11 +2938,22 @@ class _ProviderAccountsListPane extends StatelessWidget {
           const SizedBox(height: 12),
           TextField(
             controller: searchController,
-            decoration: contractGlassFieldDecoration(
-              context,
-              hintText: 'Buscar proveedor',
-              prefixIcon: const Icon(Icons.search_rounded),
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w700,
             ),
+            cursorColor: finanzasAreaTokens.primaryStrong,
+            decoration:
+                contractGlassFieldDecoration(
+                  context,
+                  hintText: 'Buscar proveedor',
+                  prefixIcon: const Icon(Icons.search_rounded),
+                ).copyWith(
+                  hintStyle: const TextStyle(
+                    color: Color(0xB3FFFFFF),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
           ),
           const SizedBox(height: 12),
           Expanded(
@@ -2833,62 +3012,87 @@ class _ProviderAccountListCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final metrics = _computeProviderAccountMetrics(row);
-    return Material(
-      color: selected
-          ? tokens.badgeBackground.withValues(alpha: 0.92)
-          : Colors.white.withValues(alpha: 0.74),
+    return FinanzasGlassPanel(
       borderRadius: BorderRadius.circular(20),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(20),
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      row.company.companyName,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: tokens.primaryStrong,
+      padding: EdgeInsets.zero,
+      fillColor: selected
+          ? tokens.primaryStrong.withValues(alpha: 0.16)
+          : const Color(0xB8141820),
+      borderColor: selected
+          ? tokens.primaryStrong.withValues(alpha: 0.58)
+          : Colors.white.withValues(alpha: 0.12),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(20),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        row.company.companyName,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w900,
+                          color: tokens.primaryStrong,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  _MovementIconAction(
-                    icon: Icons.picture_as_pdf_outlined,
-                    color: tokens.primaryStrong,
-                    onTap: onPrint,
-                  ),
-                  const SizedBox(width: 10),
-                  _MiniToneChip(label: row.urgencyLabel, tone: row.urgencyTone),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Saldo abierto ${moneyFormatter(metrics.openAmount)}',
-                style: TextStyle(
-                  fontSize: 13,
-                  fontWeight: FontWeight.w800,
-                  color: tokens.badgeText,
+                    const SizedBox(width: 8),
+                    _MovementIconAction(
+                      icon: Icons.picture_as_pdf_outlined,
+                      color: tokens.primaryStrong,
+                      onTap: onPrint,
+                    ),
+                    const SizedBox(width: 10),
+                    _MiniToneChip(
+                      label: row.urgencyLabel,
+                      tone: row.urgencyTone,
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                'Abiertos ${metrics.openTicketsCount} · Próximo ${dateFormatter(metrics.nextCommitmentDate)}',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: kFinanzasMutedInk,
+                const SizedBox(height: 8),
+                Container(
+                  width: double.infinity,
+                  height: 1,
+                  color: Colors.white.withValues(alpha: 0.08),
                 ),
-              ),
-            ],
+                const SizedBox(height: 12),
+                Text(
+                  'Saldo abierto',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: kFinanzasMutedInk,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  moneyFormatter(metrics.openAmount),
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  'Abiertos ${metrics.openTicketsCount} · Próximo ${dateFormatter(metrics.nextCommitmentDate)}',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                    color: kFinanzasMutedInk,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -2923,7 +3127,11 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
   onEditInvoicePriority;
   final Future<void> Function(_ProviderInvoiceView invoice)
   onOpenInvoiceEvidence;
+  final Future<void> Function(ComprasTicketRecord ticket) onDeleteTicket;
+  final Future<void> Function(_ProviderInvoiceView invoice) onDeleteInvoice;
   final Future<void> Function(_ProviderAccountView account) onPrintAccount;
+  final Future<void> Function(_ProviderAccountView account)
+  onExportProviderExcelTemplate;
 
   const _ProviderAccountsDetailPane({
     required this.account,
@@ -2943,7 +3151,10 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
     required this.onDeleteCashMovement,
     required this.onEditInvoicePriority,
     required this.onOpenInvoiceEvidence,
+    required this.onDeleteTicket,
+    required this.onDeleteInvoice,
     required this.onPrintAccount,
+    required this.onExportProviderExcelTemplate,
   });
 
   @override
@@ -2951,8 +3162,8 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
     final tokens = AreaThemeScope.of(context);
     final metrics = _computeProviderAccountMetrics(account);
     return ContractGlassCard(
-      borderRadius: BorderRadius.circular(30),
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      borderRadius: BorderRadius.circular(32),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2965,7 +3176,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                     Text(
                       account.company.companyName,
                       style: TextStyle(
-                        fontSize: 26,
+                        fontSize: 28,
                         fontWeight: FontWeight.w900,
                         color: tokens.primaryStrong,
                       ),
@@ -3030,44 +3241,52 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
               _SummaryMetricCard(
                 label: 'Saldo abierto',
                 value: moneyFormatter(metrics.openAmount),
+                icon: Icons.account_balance_wallet_outlined,
               ),
               _SummaryMetricCard(
                 label: 'Vencido',
                 value: moneyFormatter(metrics.overdueAmount),
+                icon: Icons.event_busy_outlined,
               ),
               _SummaryMetricCard(
                 label: 'Facturado',
                 value: moneyFormatter(metrics.facturadoAmount),
+                icon: Icons.receipt_long_outlined,
               ),
               _SummaryMetricCard(
                 label: 'Sin factura',
                 value: moneyFormatter(metrics.sinFacturaAmount),
+                icon: Icons.description_outlined,
               ),
               _SummaryMetricCard(
                 label: 'Pend. facturar',
                 value: moneyFormatter(metrics.pendienteFacturarAmount),
-              ),
-              _SummaryMetricCard(
-                label: 'Pagado',
-                value: moneyFormatter(metrics.paidAmount),
+                icon: Icons.pending_actions_outlined,
               ),
             ],
           ),
           const SizedBox(height: 16),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                for (final tab in _ProviderAccountsTab.values) ...[
-                  _DetailTabChip(
-                    label: tab.label,
-                    active: activeTab == tab,
-                    onTap: () => onTabSelected(tab),
-                  ),
-                  if (tab != _ProviderAccountsTab.values.last)
-                    const SizedBox(width: 8),
+          FinanzasGlassPanel(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            borderRadius: BorderRadius.circular(22),
+            fillColor: const Color(0x14161B23),
+            borderColor: Colors.white.withValues(alpha: 0.10),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  for (final tab in _ProviderAccountsTab.values) ...[
+                    _DetailTabChip(
+                      label: tab.label,
+                      active: activeTab == tab,
+                      onTap: () => onTabSelected(tab),
+                    ),
+                    if (tab != _ProviderAccountsTab.values.last)
+                      const SizedBox(width: 8),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
           const SizedBox(height: 16),
@@ -3082,6 +3301,11 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                 account: account,
                 moneyFormatter: moneyFormatter,
                 dateFormatter: dateFormatter,
+                onExportProviderExcelTemplate: () =>
+                    onExportProviderExcelTemplate(account),
+                canExportProviderExcelTemplate:
+                    account.company.companyName.trim().toUpperCase() == 'AVON',
+                onDeleteTicket: onDeleteTicket,
               ),
               _ProviderAccountsTab.facturas => _ProviderAccountInvoicesView(
                 account: account,
@@ -3090,6 +3314,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                 onRegisterInvoice: onRegisterInvoice,
                 onEditInvoicePriority: onEditInvoicePriority,
                 onOpenInvoiceEvidence: onOpenInvoiceEvidence,
+                onDeleteInvoice: onDeleteInvoice,
               ),
               _ProviderAccountsTab.movimientos => _ProviderAccountMovementsView(
                 account: account,
@@ -3144,6 +3369,7 @@ class _ProviderAccountSummaryView extends StatelessWidget {
                 title: 'Próximo compromiso',
                 value: dateFormatter(metrics.nextCommitmentDate),
                 subtitle: 'Calculado desde días de crédito y tickets abiertos.',
+                accent: AreaThemeScope.of(context).primaryStrong,
               ),
               _LongInfoCard(
                 title: 'Etapa de pago',
@@ -3151,12 +3377,14 @@ class _ProviderAccountSummaryView extends StatelessWidget {
                 subtitle: account.company.paymentNotes.isEmpty
                     ? 'Sin nota operativa registrada.'
                     : account.company.paymentNotes,
+                accent: AreaThemeScope.of(context).primaryStrong,
               ),
               _LongInfoCard(
                 title: 'Crédito proveedor',
                 value: '${account.company.creditDays} días',
                 subtitle:
                     'Contacto ${account.company.operationalContact.isEmpty ? 'sin capturar' : account.company.operationalContact}.',
+                accent: AreaThemeScope.of(context).primaryStrong,
               ),
             ],
           ),
@@ -3165,10 +3393,10 @@ class _ProviderAccountSummaryView extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.68),
+              color: const Color(0xCC171B23),
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
-                color: tokens.primaryStrong.withValues(alpha: 0.12),
+                color: tokens.primaryStrong.withValues(alpha: 0.16),
               ),
             ),
             child: Column(
@@ -3205,17 +3433,22 @@ class _ProviderAccountTicketsView extends StatelessWidget {
   final _ProviderAccountView account;
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
+  final Future<void> Function() onExportProviderExcelTemplate;
+  final bool canExportProviderExcelTemplate;
+  final Future<void> Function(ComprasTicketRecord ticket) onDeleteTicket;
 
   const _ProviderAccountTicketsView({
     required this.account,
     required this.moneyFormatter,
     required this.dateFormatter,
+    required this.onExportProviderExcelTemplate,
+    required this.canExportProviderExcelTemplate,
+    required this.onDeleteTicket,
   });
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    const tableWidth = 950.0;
+    const tableWidth = 1010.0;
     if (account.tickets.isEmpty) {
       return _ProviderAccountsPendingPane(
         label: 'Sin tickets',
@@ -3224,11 +3457,35 @@ class _ProviderAccountTicketsView extends StatelessWidget {
     }
     return Column(
       children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Selecciona la semana operativa y exporta una plantilla exacta del proveedor sin tocar el PDF general de cuenta.',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: kFinanzasMutedInk,
+                ),
+              ),
+            ),
+            if (canExportProviderExcelTemplate) ...[
+              const SizedBox(width: 12),
+              _ActionPillButton(
+                label: 'Exportar Excel proveedor',
+                icon: Icons.table_view_rounded,
+                onTap: onExportProviderExcelTemplate,
+              ),
+            ],
+          ],
+        ),
+        const SizedBox(height: 12),
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.03),
-            borderRadius: BorderRadius.circular(14),
+            color: Colors.white.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
           ),
           child: SingleChildScrollView(
             scrollDirection: Axis.horizontal,
@@ -3243,6 +3500,7 @@ class _ProviderAccountTicketsView extends StatelessWidget {
                   _TicketHeaderCell(width: 170, label: 'FACTURA'),
                   _TicketHeaderCell(width: 160, label: 'PAGO'),
                   _TicketHeaderCell(width: 130, label: 'COBERTURA'),
+                  _TicketHeaderCell(width: 60, label: ''),
                 ],
               ),
             ),
@@ -3256,18 +3514,14 @@ class _ProviderAccountTicketsView extends StatelessWidget {
             itemBuilder: (_, index) {
               final row = account.tickets[index];
               final resolved = _resolveProviderTicketStatus(account, row);
-              return Container(
+              return FinanzasGlassPanel(
                 padding: const EdgeInsets.symmetric(
                   horizontal: 14,
                   vertical: 12,
                 ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.76),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(
-                    color: tokens.primaryStrong.withValues(alpha: 0.12),
-                  ),
-                ),
+                borderRadius: BorderRadius.circular(20),
+                fillColor: const Color(0xB8141820),
+                borderColor: Colors.white.withValues(alpha: 0.12),
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
                   child: SizedBox(
@@ -3308,6 +3562,17 @@ class _ProviderAccountTicketsView extends StatelessWidget {
                           ),
                           tone: _coverageTone(resolved.coverageStatus),
                         ),
+                        SizedBox(
+                          width: 60,
+                          child: Align(
+                            alignment: Alignment.centerRight,
+                            child: _MovementIconAction(
+                              icon: Icons.delete_outline_rounded,
+                              color: const Color(0xFFEA6B5F),
+                              onTap: () => onDeleteTicket(row),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -3321,6 +3586,249 @@ class _ProviderAccountTicketsView extends StatelessWidget {
   }
 }
 
+class _ProviderExcelTicketSelectionDialog extends StatefulWidget {
+  final String providerName;
+  final List<ComprasTicketRecord> tickets;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+  final FinanzasProviderExcelTemplateKind kind;
+
+  const _ProviderExcelTicketSelectionDialog({
+    required this.providerName,
+    required this.tickets,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+    required this.kind,
+  });
+
+  @override
+  State<_ProviderExcelTicketSelectionDialog> createState() =>
+      _ProviderExcelTicketSelectionDialogState();
+}
+
+class _ProviderExcelTicketSelectionDialogState
+    extends State<_ProviderExcelTicketSelectionDialog> {
+  late final List<ComprasTicketRecord> _tickets;
+  final Set<String> _selectedIds = <String>{};
+
+  @override
+  void initState() {
+    super.initState();
+    _tickets = widget.tickets.toList(growable: false)
+      ..sort((a, b) {
+        final byDate = a.date.compareTo(b.date);
+        if (byDate != 0) return byDate;
+        return a.ticket.compareTo(b.ticket);
+      });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final selectedTickets = _tickets
+        .where((row) => _selectedIds.contains(row.id))
+        .toList(growable: false);
+    final rangeLabel = selectedTickets.isEmpty
+        ? 'Selecciona los tickets de la semana que llenarán la plantilla.'
+        : 'Semana ${_providerExcelSelectionRangeLabel(selectedTickets)}';
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
+      child: ContractGlassCard(
+        borderRadius: BorderRadius.circular(30),
+        padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+        child: SizedBox(
+          width: 920,
+          height: 640,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _DialogHeader(
+                title: 'Exportar Excel proveedor',
+                subtitle:
+                    '${widget.providerName} · $rangeLabel · ${_selectedIds.length} ticket(s) seleccionados.',
+              ),
+              const SizedBox(height: 16),
+              Row(
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: () => setState(() {
+                      _selectedIds
+                        ..clear()
+                        ..addAll(_tickets.map((row) => row.id));
+                    }),
+                    style: contractSecondaryButtonStyle(context),
+                    icon: const Icon(Icons.done_all_rounded, size: 18),
+                    label: const Text('Seleccionar todos'),
+                  ),
+                  const SizedBox(width: 8),
+                  TextButton.icon(
+                    onPressed: () => setState(_selectedIds.clear),
+                    style: contractGhostButtonStyle(context),
+                    icon: const Icon(Icons.layers_clear_rounded, size: 18),
+                    label: const Text('Limpiar'),
+                  ),
+                  const Spacer(),
+                  FinanzasGlassPanel(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 10,
+                    ),
+                    borderRadius: BorderRadius.circular(18),
+                    fillColor: const Color(0xA0141820),
+                    borderColor: Colors.white.withValues(alpha: 0.10),
+                    child: Text(
+                      widget.kind == FinanzasProviderExcelTemplateKind.avon
+                          ? 'Avon soporta hasta 50 tickets por exportación.'
+                          : 'La plantilla genérica soporta hasta 12 materiales y 9 tickets por material.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: tokens.onGlass.withValues(alpha: 0.74),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Expanded(
+                child: ListView.separated(
+                  itemCount: _tickets.length,
+                  separatorBuilder: (_, _) => const SizedBox(height: 10),
+                  itemBuilder: (context, index) {
+                    final row = _tickets[index];
+                    final selected = _selectedIds.contains(row.id);
+                    return MouseRegion(
+                      cursor: SystemMouseCursors.click,
+                      child: GestureDetector(
+                        onTap: () => setState(() {
+                          if (selected) {
+                            _selectedIds.remove(row.id);
+                          } else {
+                            _selectedIds.add(row.id);
+                          }
+                        }),
+                        child: FinanzasGlassPanel(
+                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                          borderRadius: BorderRadius.circular(22),
+                          fillColor: selected
+                              ? const Color(0xD89A5C27)
+                              : const Color(0xB8141820),
+                          borderColor: selected
+                              ? const Color(0xFFFF8A3D)
+                              : Colors.white.withValues(alpha: 0.12),
+                          child: Row(
+                            children: [
+                              Icon(
+                                selected
+                                    ? Icons.check_circle_rounded
+                                    : Icons.circle_outlined,
+                                color: selected
+                                    ? Colors.white
+                                    : Colors.white.withValues(alpha: 0.74),
+                              ),
+                              const SizedBox(width: 14),
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '${widget.dateFormatter(row.date)} · Ticket ${row.ticket}',
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w900,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      row.materialNameSnapshot,
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w700,
+                                        color: selected
+                                            ? Colors.white.withValues(
+                                                alpha: 0.94,
+                                              )
+                                            : kFinanzasMutedInk,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              SizedBox(
+                                width: 130,
+                                child: Text(
+                                  '${row.payableWeight.toStringAsFixed(0)} kg',
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                              const SizedBox(width: 14),
+                              SizedBox(
+                                width: 120,
+                                child: Text(
+                                  widget.moneyFormatter(row.amount),
+                                  textAlign: TextAlign.right,
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w900,
+                                    color: Colors.white,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+              const SizedBox(height: 16),
+              _DialogActionsRow(
+                onCancel: () => Navigator.of(context).pop(),
+                confirmLabel: 'Generar Excel',
+                confirmIcon: Icons.table_view_rounded,
+                onConfirm:
+                    _selectedIds.isEmpty ||
+                        (widget.kind ==
+                                FinanzasProviderExcelTemplateKind.avon &&
+                            _selectedIds.length > 50)
+                    ? null
+                    : () {
+                        Navigator.of(context).pop(
+                          _tickets
+                              .where((row) => _selectedIds.contains(row.id))
+                              .toList(growable: false),
+                        );
+                      },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+String _providerExcelSelectionRangeLabel(List<ComprasTicketRecord> tickets) {
+  final ordered = tickets.toList(growable: false)
+    ..sort((a, b) {
+      final byDate = a.date.compareTo(b.date);
+      if (byDate != 0) return byDate;
+      return a.ticket.compareTo(b.ticket);
+    });
+  final first = ordered.first.date;
+  final last = ordered.last.date;
+  return '${_dateLabelStatic(first)} - ${_dateLabelStatic(last)}';
+}
+
 class _ProviderAccountInvoicesView extends StatelessWidget {
   final _ProviderAccountView account;
   final String Function(double value) moneyFormatter;
@@ -3330,6 +3838,7 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
   onEditInvoicePriority;
   final Future<void> Function(_ProviderInvoiceView invoice)
   onOpenInvoiceEvidence;
+  final Future<void> Function(_ProviderInvoiceView invoice) onDeleteInvoice;
 
   const _ProviderAccountInvoicesView({
     required this.account,
@@ -3338,6 +3847,7 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
     required this.onRegisterInvoice,
     required this.onEditInvoicePriority,
     required this.onOpenInvoiceEvidence,
+    required this.onDeleteInvoice,
   });
 
   @override
@@ -3369,21 +3879,6 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
             ),
           ],
         ),
-        const SizedBox(height: 12),
-        Wrap(
-          spacing: 10,
-          runSpacing: 10,
-          children: [
-            _SummaryMetricCard(
-              label: 'Facturas',
-              value: '${account.invoices.length}',
-            ),
-            _SummaryMetricCard(
-              label: 'Tickets elegibles',
-              value: '$eligibleCount',
-            ),
-          ],
-        ),
         const SizedBox(height: 14),
         if (account.invoices.isEmpty)
           Expanded(
@@ -3401,15 +3896,11 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
               separatorBuilder: (_, _) => const SizedBox(height: 10),
               itemBuilder: (_, index) {
                 final row = account.invoices[index];
-                return Container(
+                return FinanzasGlassPanel(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.76),
-                    borderRadius: BorderRadius.circular(20),
-                    border: Border.all(
-                      color: tokens.primaryStrong.withValues(alpha: 0.12),
-                    ),
-                  ),
+                  borderRadius: BorderRadius.circular(22),
+                  fillColor: const Color(0xB8141820),
+                  borderColor: Colors.white.withValues(alpha: 0.12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -3458,6 +3949,12 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                             onTap: () => onEditInvoicePriority(row),
                           ),
                           const SizedBox(width: 8),
+                          _MovementIconAction(
+                            icon: Icons.delete_outline_rounded,
+                            color: const Color(0xFFEA6B5F),
+                            onTap: () => onDeleteInvoice(row),
+                          ),
+                          const SizedBox(width: 8),
                           _MiniToneChip(
                             label: finSupplierInvoiceStatusLabel(
                               row.invoice.status,
@@ -3471,25 +3968,25 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                         spacing: 10,
                         runSpacing: 10,
                         children: [
-                          _SummaryMetricCard(
+                          _CompactSummaryPill(
                             label: 'Empresa objetivo',
                             value: row.invoice.targetCompany,
                           ),
-                          _SummaryMetricCard(
+                          _CompactSummaryPill(
                             label: 'Cuenta objetivo',
                             value: row.invoice.targetBranch == 'MAZATLAN'
                                 ? 'Mazatlan'
                                 : 'Celaya',
                           ),
-                          _SummaryMetricCard(
+                          _CompactSummaryPill(
                             label: 'Total',
                             value: moneyFormatter(row.invoice.totalAmount),
                           ),
-                          _SummaryMetricCard(
+                          _CompactSummaryPill(
                             label: 'Saldo',
                             value: moneyFormatter(row.invoice.balanceAmount),
                           ),
-                          _SummaryMetricCard(
+                          _CompactSummaryPill(
                             label: 'Tickets',
                             value: '${row.tickets.length}',
                           ),
@@ -3510,11 +4007,11 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                         Container(
                           padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                           decoration: BoxDecoration(
-                            color: tokens.primarySoft.withValues(alpha: 0.18),
+                            color: Colors.white.withValues(alpha: 0.05),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: tokens.primaryStrong.withValues(
-                                alpha: 0.12,
+                                alpha: 0.16,
                               ),
                             ),
                           ),
@@ -3742,19 +4239,19 @@ class _ProviderAccountMovementsView extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Wrap(
-          spacing: 10,
-          runSpacing: 10,
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            _SummaryMetricCard(label: 'Movimientos', value: '$totalItems'),
-            _SummaryMetricCard(
+            _CompactSummaryPill(label: 'Movimientos', value: '$totalItems'),
+            _CompactSummaryPill(
               label: 'Abonos',
               value: moneyFormatter(totalCredit),
             ),
-            _SummaryMetricCard(
+            _CompactSummaryPill(
               label: 'Cargos',
               value: moneyFormatter(totalDebit),
             ),
-            _SummaryMetricCard(label: 'Neto', value: moneyFormatter(net)),
+            _CompactSummaryPill(label: 'Neto', value: moneyFormatter(net)),
           ],
         ),
         const SizedBox(height: 14),
@@ -3855,15 +4352,15 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
         ),
         const SizedBox(height: 12),
         Wrap(
-          spacing: 10,
-          runSpacing: 10,
+          spacing: 8,
+          runSpacing: 8,
           children: [
-            _SummaryMetricCard(label: 'Convenios', value: '$totalItems'),
-            _SummaryMetricCard(
+            _CompactSummaryPill(label: 'Convenios', value: '$totalItems'),
+            _CompactSummaryPill(
               label: 'Comprometido',
               value: moneyFormatter(totalCommitted),
             ),
-            _SummaryMetricCard(
+            _CompactSummaryPill(
               label: 'Restante',
               value: moneyFormatter(totalRemaining),
             ),
@@ -3886,17 +4383,11 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
               itemBuilder: (_, index) {
                 final row = account.agreements[index];
                 final tone = _agreementTone(row.agreement.status);
-                return Container(
+                return FinanzasGlassPanel(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.76),
-                    borderRadius: BorderRadius.circular(22),
-                    border: Border.all(
-                      color: AreaThemeScope.of(
-                        context,
-                      ).primaryStrong.withValues(alpha: 0.12),
-                    ),
-                  ),
+                  borderRadius: BorderRadius.circular(22),
+                  fillColor: const Color(0xB8141820),
+                  borderColor: Colors.white.withValues(alpha: 0.12),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
@@ -3937,50 +4428,50 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
                         spacing: 10,
                         runSpacing: 10,
                         children: [
-                          _SummaryMetricCard(
+                          _CompactSummaryPill(
                             label: 'Empresa objetivo',
                             value: row.agreement.targetCompany,
                           ),
-                          _SummaryMetricCard(
+                          _CompactSummaryPill(
                             label: 'Cuenta objetivo',
                             value: row.agreement.targetBranch == 'MAZATLAN'
                                 ? 'Mazatlan'
                                 : 'Celaya',
                           ),
                           if (row.agreement.agreementType == 'POR_MONTO')
-                            _SummaryMetricCard(
+                            _CompactSummaryPill(
                               label: 'Pago pactado',
                               value: moneyFormatter(
                                 row.agreement.installmentAmount,
                               ),
                             )
                           else
-                            _SummaryMetricCard(
+                            _CompactSummaryPill(
                               label: 'Facturas por periodo',
                               value: '${row.agreement.invoicesPerPeriod}',
                             ),
-                          _SummaryMetricCard(
+                          _CompactSummaryPill(
                             label: row.agreement.agreementType == 'POR_MONTO'
                                 ? 'Pagos'
                                 : 'Compromisos',
                             value: '${row.agreement.installmentCount}',
                           ),
                           if (row.agreement.agreementType == 'POR_FACTURAS')
-                            _SummaryMetricCard(
+                            _CompactSummaryPill(
                               label: 'Facturas ligadas',
                               value: '${row.agreement.scheduledInvoiceCount}',
                             ),
-                          _SummaryMetricCard(
+                          _CompactSummaryPill(
                             label: 'Total',
                             value: moneyFormatter(row.agreement.totalAmount),
                           ),
-                          _SummaryMetricCard(
+                          _CompactSummaryPill(
                             label: 'Restante',
                             value: moneyFormatter(
                               row.agreement.remainingAmount,
                             ),
                           ),
-                          _SummaryMetricCard(
+                          _CompactSummaryPill(
                             label: 'Próximo',
                             value: dateFormatter(row.agreement.nextDueDate),
                           ),
@@ -4021,7 +4512,7 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
                                     ),
                                     decoration: BoxDecoration(
                                       color: Colors.white.withValues(
-                                        alpha: 0.74,
+                                        alpha: 0.04,
                                       ),
                                       borderRadius: BorderRadius.circular(16),
                                       border: Border.all(
@@ -4188,9 +4679,9 @@ class _ProviderBankMovementCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.76),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: tokens.primaryStrong.withValues(alpha: 0.12)),
+        color: const Color(0xCC171B23),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4279,9 +4770,9 @@ class _ProviderCashMovementCard extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.76),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: tokens.primaryStrong.withValues(alpha: 0.12)),
+        color: const Color(0xCC171B23),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -4466,159 +4957,94 @@ class _ManualPriorityDialogState extends State<_ManualPriorityDialog> {
       insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 28),
       child: ConstrainedBox(
         constraints: const BoxConstraints(maxWidth: 620),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(34),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.92),
-                borderRadius: BorderRadius.circular(34),
-                border: Border.all(
-                  color: tokens.primaryStrong.withValues(alpha: 0.16),
+        child: AreaThemeScope(
+          tokens: finanzasAreaTokens,
+          child: ContractGlassCard(
+            borderRadius: BorderRadius.circular(34),
+            padding: const EdgeInsets.fromLTRB(24, 24, 24, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _DialogHeader(title: widget.title, subtitle: widget.subtitle),
+                const SizedBox(height: 18),
+                Text(
+                  'Prioridad manual',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: tokens.badgeText,
+                  ),
                 ),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              widget.title,
-                              style: TextStyle(
-                                fontSize: 28,
-                                fontWeight: FontWeight.w900,
-                                color: tokens.primaryStrong,
-                              ),
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              widget.subtitle,
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: kFinanzasMutedInk,
-                              ),
-                            ),
-                          ],
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  children: [
+                    for (final level in kFinManualPriorityLevels)
+                      ChoiceChip(
+                        label: Text(finManualPriorityLabel(level)),
+                        selected: _level == level,
+                        onSelected: (_) => setState(() => _level = level),
+                        selectedColor: _manualPriorityTone(
+                          level,
+                        ).withValues(alpha: 0.16),
+                        backgroundColor: tokens.fieldSurface.withValues(
+                          alpha: 0.78,
                         ),
-                      ),
-                      IconButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        icon: Icon(
-                          Icons.close_rounded,
-                          color: tokens.primaryStrong,
+                        labelStyle: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          color: _level == level
+                              ? _manualPriorityTone(level)
+                              : tokens.onGlass,
                         ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Prioridad manual',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                      color: tokens.badgeText,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      for (final level in kFinManualPriorityLevels)
-                        ChoiceChip(
-                          label: Text(finManualPriorityLabel(level)),
-                          selected: _level == level,
-                          onSelected: (_) => setState(() => _level = level),
-                          selectedColor: _manualPriorityTone(
+                        side: BorderSide(
+                          color: _manualPriorityTone(
                             level,
-                          ).withValues(alpha: 0.16),
-                          backgroundColor: Colors.white.withValues(alpha: 0.72),
-                          labelStyle: TextStyle(
-                            fontWeight: FontWeight.w900,
-                            color: _level == level
-                                ? _manualPriorityTone(level)
-                                : tokens.primaryStrong,
-                          ),
-                          side: BorderSide(
-                            color: _manualPriorityTone(
-                              level,
-                            ).withValues(alpha: _level == level ? 0.40 : 0.14),
-                          ),
-                        ),
-                    ],
-                  ),
-                  const SizedBox(height: 18),
-                  Text(
-                    'Nota operativa',
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w900,
-                      color: tokens.badgeText,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextField(
-                    controller: _noteC,
-                    maxLines: 3,
-                    decoration: InputDecoration(
-                      hintText:
-                          'Ej. proveedor presionando, surtido crítico, acuerdo verbal, etc.',
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.88),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: BorderSide(
-                          color: tokens.primaryStrong.withValues(alpha: 0.16),
+                          ).withValues(alpha: _level == level ? 0.40 : 0.14),
                         ),
                       ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: BorderSide(
-                          color: tokens.primaryStrong.withValues(alpha: 0.16),
-                        ),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(18),
-                        borderSide: BorderSide(
-                          color: tokens.primaryStrong.withValues(alpha: 0.34),
-                          width: 1.4,
-                        ),
-                      ),
-                    ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Nota operativa',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    color: tokens.badgeText,
                   ),
-                  const SizedBox(height: 20),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
-                    children: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Cancelar'),
-                      ),
-                      const SizedBox(width: 10),
-                      FilledButton.icon(
-                        onPressed: () {
-                          Navigator.of(context).pop(
-                            _ManualPriorityDraft(
-                              level: _level,
-                              note: _noteC.text.trim(),
-                            ),
-                          );
-                        },
-                        icon: const Icon(Icons.save_outlined),
-                        label: const Text('Guardar prioridad'),
-                      ),
-                    ],
+                ),
+                const SizedBox(height: 10),
+                TextField(
+                  controller: _noteC,
+                  style: const TextStyle(
+                    color: kFinanzasInk,
+                    fontWeight: FontWeight.w700,
                   ),
-                ],
-              ),
+                  cursorColor: finanzasAreaTokens.primaryStrong,
+                  maxLines: 3,
+                  decoration: contractGlassFieldDecoration(
+                    context,
+                    hintText:
+                        'Ej. proveedor presionando, surtido crítico, acuerdo verbal, etc.',
+                    prefixIcon: const Icon(Icons.note_alt_outlined),
+                  ),
+                ),
+                const SizedBox(height: 20),
+                _DialogActionsRow(
+                  onCancel: () => Navigator.of(context).pop(),
+                  onConfirm: () {
+                    Navigator.of(context).pop(
+                      _ManualPriorityDraft(
+                        level: _level,
+                        note: _noteC.text.trim(),
+                      ),
+                    );
+                  },
+                  confirmLabel: 'Guardar prioridad',
+                ),
+              ],
             ),
           ),
         ),
@@ -4746,14 +5172,7 @@ class _RegisterSupplierAgreementDialogState
       builder: (context, child) => AreaThemeScope(
         tokens: finanzasAreaTokens,
         child: Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: ColorScheme.light(
-              primary: finanzasAreaTokens.primaryStrong,
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: kFinanzasInk,
-            ),
-          ),
+          data: _buildFinanzasDatePickerTheme(context),
           child: child ?? const SizedBox.shrink(),
         ),
       ),
@@ -4847,278 +5266,279 @@ class _RegisterSupplierAgreementDialogState
       backgroundColor: Colors.transparent,
       child: AreaThemeScope(
         tokens: finanzasAreaTokens,
-        child: ContractGlassCard(
-          borderRadius: BorderRadius.circular(28),
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 780),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.initialDraft == null
-                      ? 'Nuevo convenio'
-                      : 'Editar convenio',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: AreaThemeScope.of(context).primaryStrong,
+        child: Builder(
+          builder: (context) => ContractGlassCard(
+            borderRadius: BorderRadius.circular(28),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 780),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DialogHeader(
+                    title: widget.initialDraft == null
+                        ? 'Nuevo convenio'
+                        : 'Editar convenio',
+                    subtitle:
+                        '${widget.providerName} · Saldo sugerido ${_moneyStatic(widget.suggestedBalance)}',
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  '${widget.providerName} · Saldo sugerido ${_moneyStatic(widget.suggestedBalance)}',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: kFinanzasMutedInk,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _InlineChoiceField(
-                        label: 'Tipo',
-                        value: finSupplierAgreementTypeLabel(_agreementType),
-                        onTap: () {
-                          unawaited(_pickAgreementType());
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _InlineChoiceField(
-                        label: 'Inicio',
-                        value: _dateLabel(_startDate),
-                        onTap: () {
-                          unawaited(_pickDate());
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _InlineChoiceField(
-                        label: 'Frecuencia',
-                        value: finSupplierAgreementFrequencyLabel(_frequency),
-                        onTap: () {
-                          unawaited(_pickFrequency());
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _InlineChoiceField(
-                        label: 'Empresa objetivo',
-                        value: _targetCompany,
-                        onTap: () async {
-                          final selected = await _showSimpleOptionsDialog(
-                            context: context,
-                            title: 'Seleccionar empresa objetivo',
-                            options: _targetCompanies
-                                .map(
-                                  (row) => _SimpleOption(
-                                    id: row,
-                                    label: row,
-                                    subtitle: 'Cuenta pagadora esperada',
-                                  ),
-                                )
-                                .toList(growable: false),
-                          );
-                          if (selected == null || !mounted) return;
-                          setState(() => _targetCompany = selected.id);
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _InlineChoiceField(
-                        label: 'Cuenta objetivo',
-                        value: _targetBranch == 'MAZATLAN'
-                            ? 'Mazatlan'
-                            : 'Celaya',
-                        onTap: () async {
-                          final selected = await _showSimpleOptionsDialog(
-                            context: context,
-                            title: 'Seleccionar cuenta objetivo',
-                            options: _targetBranches
-                                .map(
-                                  (row) => _SimpleOption(
-                                    id: row,
-                                    label: row == 'MAZATLAN'
-                                        ? 'Mazatlan'
-                                        : 'Celaya',
-                                    subtitle: 'Sucursal/cuenta objetivo',
-                                  ),
-                                )
-                                .toList(growable: false),
-                          );
-                          if (selected == null || !mounted) return;
-                          setState(() => _targetBranch = selected.id);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                if (_agreementType == 'POR_MONTO')
+                  const SizedBox(height: 14),
                   Row(
                     children: [
                       Expanded(
-                        child: TextField(
-                          controller: _amountC,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
-                          ),
-                          decoration: contractGlassFieldDecoration(
-                            context,
-                            hintText: 'Monto por pago',
-                            prefixIcon: const Icon(Icons.payments_outlined),
-                          ),
+                        child: _InlineChoiceField(
+                          label: 'Tipo',
+                          value: finSupplierAgreementTypeLabel(_agreementType),
+                          onTap: () {
+                            unawaited(_pickAgreementType());
+                          },
                         ),
                       ),
                       const SizedBox(width: 12),
                       Expanded(
-                        child: TextField(
-                          controller: _countC,
-                          keyboardType: TextInputType.number,
-                          decoration: contractGlassFieldDecoration(
-                            context,
-                            hintText: 'Número de pagos',
-                            prefixIcon: const Icon(Icons.format_list_numbered),
-                          ),
+                        child: _InlineChoiceField(
+                          label: 'Inicio',
+                          value: _dateLabel(_startDate),
+                          onTap: () {
+                            unawaited(_pickDate());
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _InlineChoiceField(
+                          label: 'Frecuencia',
+                          value: finSupplierAgreementFrequencyLabel(_frequency),
+                          onTap: () {
+                            unawaited(_pickFrequency());
+                          },
                         ),
                       ),
                     ],
-                  )
-                else
-                  Column(
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
                     children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            flex: 2,
-                            child: _InlineChoiceField(
-                              label: 'Facturas',
-                              value: _selectedInvoiceIds.isEmpty
-                                  ? 'Seleccionar facturas'
-                                  : '${_selectedInvoiceIds.length} seleccionadas',
-                              onTap: () {
-                                unawaited(_pickInvoices());
-                              },
+                      Expanded(
+                        child: _InlineChoiceField(
+                          label: 'Empresa objetivo',
+                          value: _targetCompany,
+                          onTap: () async {
+                            final selected = await _showSimpleOptionsDialog(
+                              context: context,
+                              title: 'Seleccionar empresa objetivo',
+                              options: _targetCompanies
+                                  .map(
+                                    (row) => _SimpleOption(
+                                      id: row,
+                                      label: row,
+                                      subtitle: 'Cuenta pagadora esperada',
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                            );
+                            if (selected == null || !mounted) return;
+                            setState(() => _targetCompany = selected.id);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _InlineChoiceField(
+                          label: 'Cuenta objetivo',
+                          value: _targetBranch == 'MAZATLAN'
+                              ? 'Mazatlan'
+                              : 'Celaya',
+                          onTap: () async {
+                            final selected = await _showSimpleOptionsDialog(
+                              context: context,
+                              title: 'Seleccionar cuenta objetivo',
+                              options: _targetBranches
+                                  .map(
+                                    (row) => _SimpleOption(
+                                      id: row,
+                                      label: row == 'MAZATLAN'
+                                          ? 'Mazatlan'
+                                          : 'Celaya',
+                                      subtitle: 'Sucursal/cuenta objetivo',
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                            );
+                            if (selected == null || !mounted) return;
+                            setState(() => _targetBranch = selected.id);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  if (_agreementType == 'POR_MONTO')
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _amountC,
+                            style: const TextStyle(
+                              color: kFinanzasInk,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            cursorColor: finanzasAreaTokens.primaryStrong,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: contractGlassFieldDecoration(
+                              context,
+                              hintText: 'Monto por pago',
+                              prefixIcon: const Icon(Icons.payments_outlined),
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: TextField(
-                              controller: _invoicesPerPeriodC,
-                              keyboardType: TextInputType.number,
-                              decoration: contractGlassFieldDecoration(
-                                context,
-                                hintText: 'Facturas por periodo',
-                                prefixIcon: const Icon(
-                                  Icons.stacked_line_chart_outlined,
-                                ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _countC,
+                            style: const TextStyle(
+                              color: kFinanzasInk,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            cursorColor: finanzasAreaTokens.primaryStrong,
+                            keyboardType: TextInputType.number,
+                            decoration: contractGlassFieldDecoration(
+                              context,
+                              hintText: 'Número de pagos',
+                              prefixIcon: const Icon(
+                                Icons.format_list_numbered,
                               ),
                             ),
                           ),
-                        ],
-                      ),
-                      if (selectedInvoices.isNotEmpty) ...[
-                        const SizedBox(height: 10),
-                        Align(
-                          alignment: Alignment.centerLeft,
-                          child: Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              for (final invoice in selectedInvoices)
-                                _CompactInvoiceChip(
-                                  label:
-                                      '${invoice.folio} · ${_moneyStatic(invoice.balanceAmount)}',
-                                ),
-                            ],
-                          ),
                         ),
                       ],
+                    )
+                  else
+                    Column(
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              flex: 2,
+                              child: _InlineChoiceField(
+                                label: 'Facturas',
+                                value: _selectedInvoiceIds.isEmpty
+                                    ? 'Seleccionar facturas'
+                                    : '${_selectedInvoiceIds.length} seleccionadas',
+                                onTap: () {
+                                  unawaited(_pickInvoices());
+                                },
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: TextField(
+                                controller: _invoicesPerPeriodC,
+                                style: const TextStyle(
+                                  color: kFinanzasInk,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                                cursorColor: finanzasAreaTokens.primaryStrong,
+                                keyboardType: TextInputType.number,
+                                decoration: contractGlassFieldDecoration(
+                                  context,
+                                  hintText: 'Facturas por periodo',
+                                  prefixIcon: const Icon(
+                                    Icons.stacked_line_chart_outlined,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        if (selectedInvoices.isNotEmpty) ...[
+                          const SizedBox(height: 10),
+                          Align(
+                            alignment: Alignment.centerLeft,
+                            child: Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              children: [
+                                for (final invoice in selectedInvoices)
+                                  _CompactInvoiceChip(
+                                    label:
+                                        '${invoice.folio} · ${_moneyStatic(invoice.balanceAmount)}',
+                                  ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  const SizedBox(height: 12),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _SummaryMetricCard(
+                        label: 'Total convenio',
+                        value: _moneyStatic(total),
+                      ),
+                      _SummaryMetricCard(
+                        label: _agreementType == 'POR_FACTURAS'
+                            ? 'Compromisos'
+                            : 'Pagos',
+                        value: '$projectedInstallments',
+                      ),
+                      _SummaryMetricCard(
+                        label: 'Frecuencia',
+                        value: finSupplierAgreementFrequencyLabel(_frequency),
+                      ),
                     ],
                   ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 10,
-                  runSpacing: 10,
-                  children: [
-                    _SummaryMetricCard(
-                      label: 'Total convenio',
-                      value: _moneyStatic(total),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _notesC,
+                    style: const TextStyle(
+                      color: kFinanzasInk,
+                      fontWeight: FontWeight.w700,
                     ),
-                    _SummaryMetricCard(
-                      label: _agreementType == 'POR_FACTURAS'
-                          ? 'Compromisos'
-                          : 'Pagos',
-                      value: '$projectedInstallments',
+                    cursorColor: finanzasAreaTokens.primaryStrong,
+                    minLines: 3,
+                    maxLines: 4,
+                    decoration: contractGlassFieldDecoration(
+                      context,
+                      hintText: 'Notas del convenio',
+                      prefixIcon: const Icon(Icons.note_alt_outlined),
                     ),
-                    _SummaryMetricCard(
-                      label: 'Frecuencia',
-                      value: finSupplierAgreementFrequencyLabel(_frequency),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _notesC,
-                  minLines: 3,
-                  maxLines: 4,
-                  decoration: contractGlassFieldDecoration(
-                    context,
-                    hintText: 'Notas del convenio',
-                    prefixIcon: const Icon(Icons.note_alt_outlined),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      onPressed: !_canSave
-                          ? null
-                          : () {
-                              Navigator.of(context).pop(
-                                _AgreementDraftResult(
-                                  startDate: _startDate,
-                                  agreementType: _agreementType,
-                                  frequency: _frequency,
-                                  targetCompany: _targetCompany,
-                                  targetBranch: _targetBranch,
-                                  installmentAmount: _parseAmount(
-                                    _amountC.text,
-                                  ),
-                                  installmentCount: projectedInstallments,
-                                  invoicesPerPeriod: _parseInvoicesPerPeriod(
-                                    _invoicesPerPeriodC.text,
-                                  ),
-                                  selectedInvoiceIds: _selectedInvoiceIds
-                                      .toList(growable: false),
-                                  notes: _notesC.text.trim(),
+                  const SizedBox(height: 16),
+                  _DialogActionsRow(
+                    onCancel: () => Navigator.of(context).pop(),
+                    onConfirm: !_canSave
+                        ? null
+                        : () {
+                            Navigator.of(context).pop(
+                              _AgreementDraftResult(
+                                startDate: _startDate,
+                                agreementType: _agreementType,
+                                frequency: _frequency,
+                                targetCompany: _targetCompany,
+                                targetBranch: _targetBranch,
+                                installmentAmount: _parseAmount(_amountC.text),
+                                installmentCount: projectedInstallments,
+                                invoicesPerPeriod: _parseInvoicesPerPeriod(
+                                  _invoicesPerPeriodC.text,
                                 ),
-                              );
-                            },
-                      icon: const Icon(Icons.save_outlined),
-                      label: const Text('Guardar convenio'),
-                    ),
-                  ],
-                ),
-              ],
+                                selectedInvoiceIds: _selectedInvoiceIds.toList(
+                                  growable: false,
+                                ),
+                                notes: _notesC.text.trim(),
+                              ),
+                            );
+                          },
+                    confirmLabel: 'Guardar convenio',
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -5139,48 +5559,110 @@ class _ProviderAccountsPendingPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return Center(
-      child: Container(
-        width: 420,
-        padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.62),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: tokens.primaryStrong.withValues(alpha: 0.10),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final ultraCompact = constraints.maxHeight <= 72;
+        final isCompact = constraints.maxHeight <= 156;
+        final horizontalCompact = constraints.maxHeight <= 120;
+        final maxWidth = math.min(420.0, constraints.maxWidth);
+        return Center(
+          child: FinanzasGlassPanel(
+            width: maxWidth,
+            padding: EdgeInsets.fromLTRB(
+              horizontalCompact ? 14 : 22,
+              ultraCompact
+                  ? 8
+                  : (horizontalCompact ? 12 : (isCompact ? 16 : 22)),
+              horizontalCompact ? 14 : 22,
+              ultraCompact
+                  ? 8
+                  : (horizontalCompact ? 12 : (isCompact ? 16 : 22)),
+            ),
+            borderRadius: BorderRadius.circular(24),
+            fillColor: const Color(0xB8141820),
+            borderColor: Colors.white.withValues(alpha: 0.12),
+            child: horizontalCompact
+                ? Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.space_dashboard_outlined,
+                        size: ultraCompact ? 18 : 20,
+                        color: tokens.primaryStrong,
+                      ),
+                      SizedBox(width: ultraCompact ? 8 : 10),
+                      Expanded(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: ultraCompact ? 14 : 15,
+                                fontWeight: FontWeight.w900,
+                                color: tokens.primaryStrong,
+                              ),
+                            ),
+                            if (!ultraCompact) ...[
+                              const SizedBox(height: 2),
+                              Text(
+                                subtitle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: kFinanzasMutedInk,
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  )
+                : Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.space_dashboard_outlined,
+                        size: isCompact ? 26 : 34,
+                        color: tokens.primaryStrong,
+                      ),
+                      SizedBox(height: isCompact ? 8 : 12),
+                      Text(
+                        label,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: isCompact ? 16 : 18,
+                          fontWeight: FontWeight.w900,
+                          color: tokens.primaryStrong,
+                        ),
+                      ),
+                      SizedBox(height: isCompact ? 4 : 8),
+                      Text(
+                        subtitle,
+                        textAlign: TextAlign.center,
+                        maxLines: isCompact ? 2 : null,
+                        overflow: isCompact
+                            ? TextOverflow.ellipsis
+                            : TextOverflow.visible,
+                        style: TextStyle(
+                          fontSize: isCompact ? 13 : 14,
+                          fontWeight: FontWeight.w700,
+                          color: kFinanzasMutedInk,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ),
           ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.space_dashboard_outlined,
-              size: 34,
-              color: tokens.primaryStrong,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: tokens.primaryStrong,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              subtitle,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: kFinanzasMutedInk,
-                height: 1.4,
-              ),
-            ),
-          ],
-        ),
-      ),
+        );
+      },
     );
   }
 }
@@ -5201,36 +5683,199 @@ class _ProviderAccountsEmptyDetail extends StatelessWidget {
 class _SummaryMetricCard extends StatelessWidget {
   final String label;
   final String value;
+  final IconData icon;
 
-  const _SummaryMetricCard({required this.label, required this.value});
+  const _SummaryMetricCard({
+    required this.label,
+    required this.value,
+    this.icon = Icons.insert_chart_outlined_rounded,
+  });
 
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return Container(
-      width: 176,
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: tokens.border.withValues(alpha: 0.84)),
-      ),
+    return FinanzasGlassPanel(
+      width: 168,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      borderRadius: BorderRadius.circular(22),
+      fillColor: const Color(0xB8141820),
+      borderColor: Colors.white.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          Container(
+            width: 42,
+            height: 42,
+            decoration: BoxDecoration(
+              color: tokens.primaryStrong.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: tokens.primaryStrong.withValues(alpha: 0.16),
+              ),
+            ),
+            child: Icon(icon, color: tokens.primaryStrong, size: 20),
+          ),
+          const SizedBox(height: 14),
           Text(
             label,
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: tokens.badgeText,
+              color: Colors.white.withValues(alpha: 0.84),
             ),
           ),
           const SizedBox(height: 8),
           Text(
             value,
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 17,
+              fontWeight: FontWeight.w900,
+              color: tokens.primaryStrong,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DialogHeader extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final BuildContext? popContext;
+
+  const _DialogHeader({required this.title, this.subtitle, this.popContext});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final navigatorContext = popContext ?? context;
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 26,
+                  fontWeight: FontWeight.w900,
+                  color: tokens.primaryStrong,
+                ),
+              ),
+              if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+                const SizedBox(height: 6),
+                Text(
+                  subtitle!,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: kFinanzasMutedInk,
+                    height: 1.35,
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(width: 12),
+        FinanzasGlassPanel(
+          width: 52,
+          height: 52,
+          padding: EdgeInsets.zero,
+          borderRadius: BorderRadius.circular(999),
+          fillColor: const Color(0x14161B23),
+          borderColor: Colors.white.withValues(alpha: 0.18),
+          child: Center(
+            child: IconButton(
+              onPressed: () => Navigator.of(navigatorContext).pop(),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 52, height: 52),
+              iconSize: 28,
+              alignment: Alignment.center,
+              splashRadius: 22,
+              icon: Icon(
+                Icons.close_rounded,
+                color: Colors.white.withValues(alpha: 0.88),
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DialogActionsRow extends StatelessWidget {
+  final VoidCallback onCancel;
+  final VoidCallback? onConfirm;
+  final String cancelLabel;
+  final String confirmLabel;
+  final IconData? confirmIcon;
+
+  const _DialogActionsRow({
+    required this.onCancel,
+    required this.confirmLabel,
+    this.onConfirm,
+    this.cancelLabel = 'Cancelar',
+    this.confirmIcon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        OutlinedButton(
+          style: contractSecondaryButtonStyle(context),
+          onPressed: onCancel,
+          child: Text(cancelLabel),
+        ),
+        const SizedBox(width: 10),
+        FilledButton.icon(
+          style: contractPrimaryButtonStyle(context),
+          onPressed: onConfirm,
+          icon: Icon(confirmIcon ?? Icons.save_outlined),
+          label: Text(confirmLabel),
+        ),
+      ],
+    );
+  }
+}
+
+class _CompactSummaryPill extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _CompactSummaryPill({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return FinanzasGlassPanel(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      borderRadius: BorderRadius.circular(16),
+      fillColor: const Color(0xB8141820),
+      borderColor: Colors.white.withValues(alpha: 0.12),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+              color: Colors.white.withValues(alpha: 0.72),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
               fontWeight: FontWeight.w900,
               color: tokens.primaryStrong,
             ),
@@ -5245,24 +5890,23 @@ class _LongInfoCard extends StatelessWidget {
   final String title;
   final String value;
   final String subtitle;
+  final Color accent;
 
   const _LongInfoCard({
     required this.title,
     required this.value,
     required this.subtitle,
+    required this.accent,
   });
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Container(
+    return FinanzasGlassPanel(
       width: 260,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: tokens.border.withValues(alpha: 0.84)),
-      ),
+      borderRadius: BorderRadius.circular(22),
+      fillColor: const Color(0xB8141820),
+      borderColor: accent.withValues(alpha: 0.18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5271,7 +5915,7 @@ class _LongInfoCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: tokens.badgeText,
+              color: Colors.white.withValues(alpha: 0.82),
             ),
           ),
           const SizedBox(height: 8),
@@ -5280,7 +5924,7 @@ class _LongInfoCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w900,
-              color: tokens.primaryStrong,
+              color: accent,
             ),
           ),
           const SizedBox(height: 8),
@@ -5312,23 +5956,24 @@ class _DetailTabChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
     return Material(
       color: active
-          ? tokens.primaryStrong.withValues(alpha: 0.92)
-          : Colors.white.withValues(alpha: 0.66),
+          ? AreaThemeScope.of(context).primaryStrong.withValues(alpha: 0.88)
+          : Colors.white.withValues(alpha: 0.04),
       borderRadius: BorderRadius.circular(999),
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
         onTap: onTap,
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 11),
           child: Text(
             label,
             style: TextStyle(
               fontSize: 13,
               fontWeight: FontWeight.w900,
-              color: active ? Colors.white : tokens.primaryStrong,
+              color: active
+                  ? Colors.white
+                  : Colors.white.withValues(alpha: 0.9),
             ),
           ),
         ),
@@ -5674,6 +6319,75 @@ String _dateLabelStatic(DateTime value) {
   return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
 }
 
+void _syncPickerOptionKeys(List<GlobalKey> keys, int count) {
+  while (keys.length < count) {
+    keys.add(GlobalKey());
+  }
+  while (keys.length > count) {
+    keys.removeLast();
+  }
+}
+
+void _ensurePickerHighlightVisible({
+  required List<GlobalKey> keys,
+  required int highlightedIndex,
+  required int rowCount,
+}) {
+  if (rowCount <= 0) return;
+  _syncPickerOptionKeys(keys, rowCount);
+  final safeIndex = highlightedIndex.clamp(0, rowCount - 1);
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    final context = keys[safeIndex].currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 110),
+      curve: Curves.easeOutCubic,
+      alignment: 0.38,
+    );
+  });
+}
+
+ThemeData _buildFinanzasDatePickerTheme(BuildContext context) {
+  return Theme.of(context).copyWith(
+    colorScheme: ColorScheme.dark(
+      primary: finanzasAreaTokens.primaryStrong,
+      onPrimary: Colors.white,
+      surface: const Color(0xFF171C24),
+      onSurface: kFinanzasInk,
+    ),
+    dialogTheme: const DialogThemeData(backgroundColor: Color(0xFF171C24)),
+    datePickerTheme: DatePickerThemeData(
+      backgroundColor: const Color(0xFF171C24),
+      surfaceTintColor: Colors.transparent,
+      headerBackgroundColor: const Color(0xFF171C24),
+      headerForegroundColor: kFinanzasInk,
+      weekdayStyle: const TextStyle(color: kFinanzasMutedInk),
+      dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return Colors.white;
+        }
+        return kFinanzasInk;
+      }),
+      dayBackgroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return finanzasAreaTokens.primaryStrong;
+        }
+        return Colors.transparent;
+      }),
+      todayForegroundColor: WidgetStateProperty.all(
+        finanzasAreaTokens.primarySoft,
+      ),
+      cancelButtonStyle: TextButton.styleFrom(
+        foregroundColor: finanzasAreaTokens.primarySoft,
+      ),
+      confirmButtonStyle: TextButton.styleFrom(
+        foregroundColor: finanzasAreaTokens.primaryStrong,
+      ),
+    ),
+  );
+}
+
 class _CompactInvoiceChip extends StatelessWidget {
   final String label;
 
@@ -5684,11 +6398,9 @@ class _CompactInvoiceChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.74),
+        color: AreaThemeScope.of(context).fieldSurface.withValues(alpha: 0.82),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: AreaThemeScope.of(context).border.withValues(alpha: 0.86),
-        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
       ),
       child: Text(
         label,
@@ -5719,59 +6431,153 @@ Future<_SimpleOption?> _showSimpleOptionsDialog({
   required String title,
   required List<_SimpleOption> options,
 }) {
+  final searchC = TextEditingController();
+  final optionKeys = <GlobalKey>[];
+  var highlightedIndex = -1;
+  int? hoveredIndex;
   return showDialog<_SimpleOption>(
     context: context,
-    builder: (_) => Dialog(
-      backgroundColor: Colors.transparent,
-      child: AreaThemeScope(
-        tokens: finanzasAreaTokens,
-        child: ContractGlassCard(
-          borderRadius: BorderRadius.circular(28),
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 560, maxHeight: 640),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: kFinanzasInk,
+    builder: (_) => StatefulBuilder(
+      builder: (context, setLocalState) {
+        final query = searchC.text.trim().toLowerCase();
+        final filtered = options
+            .where((row) {
+              if (query.isEmpty) return true;
+              return row.label.toLowerCase().contains(query) ||
+                  row.subtitle.toLowerCase().contains(query);
+            })
+            .toList(growable: false);
+        _syncPickerOptionKeys(optionKeys, filtered.length);
+        if (highlightedIndex >= 0) {
+          _ensurePickerHighlightVisible(
+            keys: optionKeys,
+            highlightedIndex: highlightedIndex,
+            rowCount: filtered.length,
+          );
+        }
+
+        void selectHighlighted() {
+          if (filtered.isEmpty || highlightedIndex < 0) return;
+          Navigator.of(
+            context,
+          ).pop(filtered[highlightedIndex.clamp(0, filtered.length - 1)]);
+        }
+
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: AreaThemeScope(
+            tokens: finanzasAreaTokens,
+            child: Builder(
+              builder: (dialogContext) => Focus(
+                onKeyEvent: (_, event) {
+                  if (event is! KeyDownEvent) return KeyEventResult.ignored;
+                  if (event.logicalKey == LogicalKeyboardKey.arrowDown &&
+                      filtered.isNotEmpty) {
+                    setLocalState(() {
+                      highlightedIndex = highlightedIndex < 0
+                          ? 0
+                          : (highlightedIndex + 1).clamp(
+                              0,
+                              filtered.length - 1,
+                            );
+                    });
+                    return KeyEventResult.handled;
+                  }
+                  if (event.logicalKey == LogicalKeyboardKey.arrowUp &&
+                      filtered.isNotEmpty) {
+                    setLocalState(() {
+                      highlightedIndex = highlightedIndex < 0
+                          ? filtered.length - 1
+                          : (highlightedIndex - 1).clamp(
+                              0,
+                              filtered.length - 1,
+                            );
+                    });
+                    return KeyEventResult.handled;
+                  }
+                  if (event.logicalKey == LogicalKeyboardKey.enter) {
+                    selectHighlighted();
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: ContractGlassCard(
+                  borderRadius: BorderRadius.circular(28),
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(
+                      maxWidth: 560,
+                      maxHeight: 640,
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _DialogHeader(title: title, popContext: context),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: searchC,
+                          autofocus: true,
+                          onChanged: (_) => setLocalState(() {
+                            highlightedIndex = -1;
+                          }),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          cursorColor: finanzasAreaTokens.primaryStrong,
+                          decoration:
+                              contractGlassFieldDecoration(
+                                dialogContext,
+                                hintText: 'Buscar opción',
+                                prefixIcon: const Icon(Icons.search_rounded),
+                              ).copyWith(
+                                hintStyle: const TextStyle(
+                                  color: Color(0xB3FFFFFF),
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                        ),
+                        const SizedBox(height: 12),
+                        Flexible(
+                          child: ListView.separated(
+                            shrinkWrap: true,
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (_, index) {
+                              final row = filtered[index];
+                              final selected =
+                                  index == highlightedIndex &&
+                                  (hoveredIndex == null ||
+                                      hoveredIndex == index);
+                              return KeyedSubtree(
+                                key: optionKeys[index],
+                                child: _ProviderPickerOptionTile(
+                                  title: row.label,
+                                  subtitle: row.subtitle,
+                                  selected: selected,
+                                  hovered: hoveredIndex == index,
+                                  onHoverChanged: (hovered) {
+                                    setLocalState(() {
+                                      hoveredIndex = hovered ? index : null;
+                                    });
+                                  },
+                                  onTap: () => Navigator.of(context).pop(row),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Flexible(
-                  child: ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: options.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (_, index) {
-                      final row = options[index];
-                      return ListTile(
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        tileColor: Colors.white.withValues(alpha: 0.72),
-                        title: Text(
-                          row.label,
-                          style: const TextStyle(fontWeight: FontWeight.w900),
-                        ),
-                        subtitle: row.subtitle.isEmpty
-                            ? null
-                            : Text(row.subtitle),
-                        onTap: () => Navigator.of(context).pop(row),
-                      );
-                    },
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     ),
   );
 }
@@ -5828,22 +6634,10 @@ class _SelectAgreementInvoicesDialogState
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'Seleccionar facturas',
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                    color: kFinanzasInk,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  'Elige las facturas que entran al convenio y luego define cuántas van por periodo.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: kFinanzasMutedInk,
-                  ),
+                _DialogHeader(
+                  title: 'Seleccionar facturas',
+                  subtitle:
+                      'Elige las facturas que entran al convenio y luego define cuántas van por periodo.',
                 ),
                 const SizedBox(height: 12),
                 Expanded(
@@ -5867,14 +6661,14 @@ class _SelectAgreementInvoicesDialogState
                         child: Container(
                           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                           decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.72),
+                            color: finanzasAreaTokens.fieldSurface.withValues(
+                              alpha: selected ? 0.96 : 0.82,
+                            ),
                             borderRadius: BorderRadius.circular(18),
                             border: Border.all(
                               color: selected
                                   ? finanzasAreaTokens.primaryStrong
-                                  : finanzasAreaTokens.border.withValues(
-                                      alpha: 0.9,
-                                    ),
+                                  : Colors.white.withValues(alpha: 0.14),
                             ),
                           ),
                           child: Row(
@@ -5894,9 +6688,9 @@ class _SelectAgreementInvoicesDialogState
                                   children: [
                                     Text(
                                       invoice.folio,
-                                      style: const TextStyle(
+                                      style: TextStyle(
                                         fontWeight: FontWeight.w900,
-                                        color: kFinanzasInk,
+                                        color: finanzasAreaTokens.primaryStrong,
                                       ),
                                     ),
                                     const SizedBox(height: 4),
@@ -5918,22 +6712,13 @@ class _SelectAgreementInvoicesDialogState
                   ),
                 ),
                 const SizedBox(height: 14),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      onPressed: () => Navigator.of(
-                        context,
-                      ).pop(_selectedIds.toList(growable: false)),
-                      icon: const Icon(Icons.check_rounded),
-                      label: const Text('Usar selección'),
-                    ),
-                  ],
+                _DialogActionsRow(
+                  onCancel: () => Navigator.of(context).pop(),
+                  onConfirm: () => Navigator.of(
+                    context,
+                  ).pop(_selectedIds.toList(growable: false)),
+                  confirmLabel: 'Usar selección',
+                  confirmIcon: Icons.check_rounded,
                 ),
               ],
             ),
@@ -6032,14 +6817,7 @@ class _RegisterProviderCashMovementDialogState
         return AreaThemeScope(
           tokens: finanzasAreaTokens,
           child: Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme: ColorScheme.light(
-                primary: finanzasAreaTokens.primaryStrong,
-                onPrimary: Colors.white,
-                surface: Colors.white,
-                onSurface: kFinanzasInk,
-              ),
-            ),
+            data: _buildFinanzasDatePickerTheme(context),
             child: child ?? const SizedBox.shrink(),
           ),
         );
@@ -6055,206 +6833,199 @@ class _RegisterProviderCashMovementDialogState
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
     final isEditing = widget.initialMovement != null;
     return Dialog(
       backgroundColor: Colors.transparent,
       child: AreaThemeScope(
         tokens: finanzasAreaTokens,
-        child: ContractGlassCard(
-          borderRadius: BorderRadius.circular(28),
-          padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 760),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  isEditing ? 'Editar movimiento' : 'Registrar abono',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: tokens.primaryStrong,
+        child: Builder(
+          builder: (context) => ContractGlassCard(
+            borderRadius: BorderRadius.circular(28),
+            padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 760),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DialogHeader(
+                    title: isEditing ? 'Editar movimiento' : 'Registrar abono',
+                    subtitle: isEditing
+                        ? '${widget.providerName} · Al guardar se recalculará la aplicación del movimiento en tickets abiertos.'
+                        : '${widget.providerName} · Se aplicará por antigüedad al saldo abierto del proveedor.',
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  isEditing
-                      ? '${widget.providerName} · Al guardar se recalculará la aplicación del movimiento en tickets abiertos.'
-                      : '${widget.providerName} · Se aplicará por antigüedad al saldo abierto del proveedor.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: kFinanzasMutedInk,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _InlineChoiceField(
-                        label: 'Tipo',
-                        value: _providerMovementTypeLabel(_type),
-                        onTap: () {
-                          unawaited(() async {
-                            final selected = await _showSimpleOptionsDialog(
-                              context: context,
-                              title: 'Seleccionar tipo',
-                              options: const [
-                                _SimpleOption(
-                                  id: 'ABONO',
-                                  label: 'Abono',
-                                  subtitle: 'Reduce saldo del proveedor',
-                                ),
-                                _SimpleOption(
-                                  id: 'PAGO',
-                                  label: 'Pago',
-                                  subtitle: 'Liquida saldo del proveedor',
-                                ),
-                                _SimpleOption(
-                                  id: 'CARGO',
-                                  label: 'Cargo',
-                                  subtitle: 'Aumenta saldo del proveedor',
-                                ),
-                                _SimpleOption(
-                                  id: 'AJUSTE',
-                                  label: 'Ajuste',
-                                  subtitle: 'Corrección manual',
-                                ),
-                              ],
-                            );
-                            if (selected == null) return;
-                            setState(() => _type = selected.id);
-                          }());
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _InlineChoiceField(
-                        label: 'Origen',
-                        value: _source,
-                        onTap: () {
-                          unawaited(() async {
-                            final selected = await _showSimpleOptionsDialog(
-                              context: context,
-                              title: 'Seleccionar origen',
-                              options: const [
-                                _SimpleOption(
-                                  id: 'EFECTIVO',
-                                  label: 'Efectivo',
-                                  subtitle: 'Pago directo en efectivo',
-                                ),
-                                _SimpleOption(
-                                  id: 'BOVEDA',
-                                  label: 'Bóveda',
-                                  subtitle: 'Sale de caja/bóveda',
-                                ),
-                                _SimpleOption(
-                                  id: 'INTERNO',
-                                  label: 'Interno',
-                                  subtitle: 'Ajuste o movimiento interno',
-                                ),
-                                _SimpleOption(
-                                  id: 'BANCO',
-                                  label: 'Banco',
-                                  subtitle: 'Registro manual desde banco',
-                                ),
-                              ],
-                            );
-                            if (selected == null) return;
-                            setState(() => _source = selected.id);
-                          }());
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _InlineChoiceField(
-                        label: 'Fecha',
-                        value: _dateLabel(_date),
-                        onTap: () {
-                          unawaited(_pickDate());
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _amountC,
-                        keyboardType: const TextInputType.numberWithOptions(
-                          decimal: true,
-                        ),
-                        decoration: contractGlassFieldDecoration(
-                          context,
-                          hintText: 'Monto',
-                          prefixIcon: const Icon(Icons.payments_outlined),
+                  const SizedBox(height: 14),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _InlineChoiceField(
+                          label: 'Tipo',
+                          value: _providerMovementTypeLabel(_type),
+                          onTap: () {
+                            unawaited(() async {
+                              final selected = await _showSimpleOptionsDialog(
+                                context: context,
+                                title: 'Seleccionar tipo',
+                                options: const [
+                                  _SimpleOption(
+                                    id: 'ABONO',
+                                    label: 'Abono',
+                                    subtitle: 'Reduce saldo del proveedor',
+                                  ),
+                                  _SimpleOption(
+                                    id: 'PAGO',
+                                    label: 'Pago',
+                                    subtitle: 'Liquida saldo del proveedor',
+                                  ),
+                                  _SimpleOption(
+                                    id: 'CARGO',
+                                    label: 'Cargo',
+                                    subtitle: 'Aumenta saldo del proveedor',
+                                  ),
+                                  _SimpleOption(
+                                    id: 'AJUSTE',
+                                    label: 'Ajuste',
+                                    subtitle: 'Corrección manual',
+                                  ),
+                                ],
+                              );
+                              if (selected == null) return;
+                              setState(() => _type = selected.id);
+                            }());
+                          },
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        controller: _referenceC,
-                        decoration: contractGlassFieldDecoration(
-                          context,
-                          hintText: 'Referencia',
-                          prefixIcon: const Icon(
-                            Icons.confirmation_num_outlined,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _InlineChoiceField(
+                          label: 'Origen',
+                          value: _source,
+                          onTap: () {
+                            unawaited(() async {
+                              final selected = await _showSimpleOptionsDialog(
+                                context: context,
+                                title: 'Seleccionar origen',
+                                options: const [
+                                  _SimpleOption(
+                                    id: 'EFECTIVO',
+                                    label: 'Efectivo',
+                                    subtitle: 'Pago directo en efectivo',
+                                  ),
+                                  _SimpleOption(
+                                    id: 'BOVEDA',
+                                    label: 'Bóveda',
+                                    subtitle: 'Sale de caja/bóveda',
+                                  ),
+                                  _SimpleOption(
+                                    id: 'INTERNO',
+                                    label: 'Interno',
+                                    subtitle: 'Ajuste o movimiento interno',
+                                  ),
+                                  _SimpleOption(
+                                    id: 'BANCO',
+                                    label: 'Banco',
+                                    subtitle: 'Registro manual desde banco',
+                                  ),
+                                ],
+                              );
+                              if (selected == null) return;
+                              setState(() => _source = selected.id);
+                            }());
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _InlineChoiceField(
+                          label: 'Fecha',
+                          value: _dateLabel(_date),
+                          onTap: () {
+                            unawaited(_pickDate());
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _amountC,
+                          style: const TextStyle(
+                            color: kFinanzasInk,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          cursorColor: finanzasAreaTokens.primaryStrong,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                          ),
+                          decoration: contractGlassFieldDecoration(
+                            context,
+                            hintText: 'Monto',
+                            prefixIcon: const Icon(Icons.payments_outlined),
                           ),
                         ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _notesC,
-                  minLines: 3,
-                  maxLines: 4,
-                  decoration: contractGlassFieldDecoration(
-                    context,
-                    hintText: 'Notas del movimiento',
-                    prefixIcon: const Icon(Icons.note_alt_outlined),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      onPressed: !_canSave
-                          ? null
-                          : () {
-                              Navigator.of(context).pop(
-                                _ProviderCashMovementDraft(
-                                  date: _date,
-                                  type: _type,
-                                  source: _source,
-                                  amount: _parseAmount(_amountC.text),
-                                  reference: _referenceC.text.trim(),
-                                  notes: _notesC.text.trim(),
-                                ),
-                              );
-                            },
-                      icon: const Icon(Icons.save_outlined),
-                      label: Text(
-                        isEditing ? 'Guardar cambios' : 'Guardar movimiento',
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          controller: _referenceC,
+                          style: const TextStyle(
+                            color: kFinanzasInk,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          cursorColor: finanzasAreaTokens.primaryStrong,
+                          decoration: contractGlassFieldDecoration(
+                            context,
+                            hintText: 'Referencia',
+                            prefixIcon: const Icon(
+                              Icons.confirmation_num_outlined,
+                            ),
+                          ),
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _notesC,
+                    style: const TextStyle(
+                      color: kFinanzasInk,
+                      fontWeight: FontWeight.w700,
                     ),
-                  ],
-                ),
-              ],
+                    cursorColor: finanzasAreaTokens.primaryStrong,
+                    minLines: 3,
+                    maxLines: 4,
+                    decoration: contractGlassFieldDecoration(
+                      context,
+                      hintText: 'Notas del movimiento',
+                      prefixIcon: const Icon(Icons.note_alt_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  _DialogActionsRow(
+                    onCancel: () => Navigator.of(context).pop(),
+                    onConfirm: !_canSave
+                        ? null
+                        : () {
+                            Navigator.of(context).pop(
+                              _ProviderCashMovementDraft(
+                                date: _date,
+                                type: _type,
+                                source: _source,
+                                amount: _parseAmount(_amountC.text),
+                                reference: _referenceC.text.trim(),
+                                notes: _notesC.text.trim(),
+                              ),
+                            );
+                          },
+                    confirmLabel: isEditing
+                        ? 'Guardar cambios'
+                        : 'Guardar movimiento',
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -6276,6 +7047,7 @@ class _InlineChoiceField extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -6284,11 +7056,9 @@ class _InlineChoiceField extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.72),
+            color: tokens.fieldSurface.withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(
-              color: AreaThemeScope.of(context).border.withValues(alpha: 0.9),
-            ),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
           ),
           child: Row(
             children: [
@@ -6301,7 +7071,7 @@ class _InlineChoiceField extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
-                        color: AreaThemeScope.of(context).badgeText,
+                        color: tokens.badgeText,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -6310,17 +7080,14 @@ class _InlineChoiceField extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: AreaThemeScope.of(context).primaryStrong,
+                        color: tokens.primaryStrong,
                       ),
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              Icon(
-                Icons.expand_more_rounded,
-                color: AreaThemeScope.of(context).primaryStrong,
-              ),
+              Icon(Icons.expand_more_rounded, color: tokens.primaryStrong),
             ],
           ),
         ),
@@ -6430,14 +7197,7 @@ class _RegisterSupplierInvoiceDialogState
         return AreaThemeScope(
           tokens: finanzasAreaTokens,
           child: Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme: ColorScheme.light(
-                primary: finanzasAreaTokens.primaryStrong,
-                onPrimary: Colors.white,
-                surface: Colors.white,
-                onSurface: kFinanzasInk,
-              ),
-            ),
+            data: _buildFinanzasDatePickerTheme(context),
             child: child ?? const SizedBox.shrink(),
           ),
         );
@@ -6458,14 +7218,7 @@ class _RegisterSupplierInvoiceDialogState
         return AreaThemeScope(
           tokens: finanzasAreaTokens,
           child: Theme(
-            data: Theme.of(context).copyWith(
-              colorScheme: ColorScheme.light(
-                primary: finanzasAreaTokens.primaryStrong,
-                onPrimary: Colors.white,
-                surface: Colors.white,
-                onSurface: kFinanzasInk,
-              ),
-            ),
+            data: _buildFinanzasDatePickerTheme(context),
             child: child ?? const SizedBox.shrink(),
           ),
         );
@@ -6483,294 +7236,275 @@ class _RegisterSupplierInvoiceDialogState
       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 28),
       child: AreaThemeScope(
         tokens: finanzasAreaTokens,
-        child: ContractGlassCard(
-          borderRadius: BorderRadius.circular(30),
-          padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 860, maxHeight: 760),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Registrar factura',
-                            style: TextStyle(
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
-                              color: tokens.primaryStrong,
-                            ),
+        child: Builder(
+          builder: (context) => ContractGlassCard(
+            borderRadius: BorderRadius.circular(30),
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 860, maxHeight: 760),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DialogHeader(
+                    title: 'Registrar factura',
+                    subtitle: widget.companyName,
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _folioC,
+                          onChanged: (_) => setState(() {}),
+                          style: const TextStyle(
+                            color: kFinanzasInk,
+                            fontWeight: FontWeight.w700,
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            widget.companyName,
-                            style: TextStyle(
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                              color: kFinanzasMutedInk,
-                            ),
+                          cursorColor: finanzasAreaTokens.primaryStrong,
+                          decoration: contractGlassFieldDecoration(
+                            context,
+                            hintText: 'Folio de factura',
+                            prefixIcon: const Icon(Icons.receipt_long_rounded),
                           ),
-                        ],
-                      ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: const Icon(Icons.close_rounded),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _folioC,
-                        onChanged: (_) => setState(() {}),
-                        decoration: contractGlassFieldDecoration(
-                          context,
-                          hintText: 'Folio de factura',
-                          prefixIcon: const Icon(Icons.receipt_long_rounded),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _DateFieldButton(
-                        label: 'Fecha factura',
-                        value: _dateLabel(_invoiceDate),
-                        onTap: _pickInvoiceDate,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DateFieldButton(
+                          label: 'Fecha factura',
+                          value: _dateLabel(_invoiceDate),
+                          onTap: _pickInvoiceDate,
+                        ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _DateFieldButton(
-                        label: 'Fecha límite',
-                        value: _dateLabel(_dueDate),
-                        onTap: _pickDueDate,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DateFieldButton(
+                          label: 'Fecha límite',
+                          value: _dateLabel(_dueDate),
+                          onTap: _pickDueDate,
+                        ),
                       ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _InlineChoiceField(
-                        label: 'Empresa objetivo',
-                        value: _targetCompany,
-                        onTap: () async {
-                          final selected = await _showSimpleOptionsDialog(
-                            context: context,
-                            title: 'Seleccionar empresa objetivo',
-                            options: _targetCompanies
-                                .map(
-                                  (row) => _SimpleOption(
-                                    id: row,
-                                    label: row,
-                                    subtitle: 'Cuenta pagadora esperada',
-                                  ),
-                                )
-                                .toList(growable: false),
-                          );
-                          if (selected == null || !mounted) return;
-                          setState(() => _targetCompany = selected.id);
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _InlineChoiceField(
-                        label: 'Cuenta objetivo',
-                        value: _targetBranch == 'MAZATLAN'
-                            ? 'Mazatlan'
-                            : 'Celaya',
-                        onTap: () async {
-                          final selected = await _showSimpleOptionsDialog(
-                            context: context,
-                            title: 'Seleccionar cuenta objetivo',
-                            options: _targetBranches
-                                .map(
-                                  (row) => _SimpleOption(
-                                    id: row,
-                                    label: row == 'MAZATLAN'
-                                        ? 'Mazatlan'
-                                        : 'Celaya',
-                                    subtitle: 'Sucursal/cuenta objetivo',
-                                  ),
-                                )
-                                .toList(growable: false),
-                          );
-                          if (selected == null || !mounted) return;
-                          setState(() => _targetBranch = selected.id);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: _notesC,
-                  minLines: 2,
-                  maxLines: 3,
-                  decoration: contractGlassFieldDecoration(
-                    context,
-                    hintText: 'Notas de factura o convenio',
-                    prefixIcon: const Icon(Icons.note_alt_outlined),
+                    ],
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Text(
-                      'Tickets elegibles',
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
-                        color: tokens.primaryStrong,
-                      ),
-                    ),
-                    const Spacer(),
-                    Text(
-                      '${_selectedTicketIds.length} seleccionados · ${_money(_selectedTotal)}',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w800,
-                        color: kFinanzasMutedInk,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: ListView.separated(
-                    itemCount: widget.tickets.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 8),
-                    itemBuilder: (_, index) {
-                      final row = widget.tickets[index];
-                      final selected = _selectedTicketIds.contains(row.id);
-                      return Material(
-                        color: Colors.transparent,
-                        child: InkWell(
-                          onTap: () {
-                            setState(() {
-                              if (selected) {
-                                _selectedTicketIds.remove(row.id);
-                              } else {
-                                _selectedTicketIds.add(row.id);
-                              }
-                            });
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _InlineChoiceField(
+                          label: 'Empresa objetivo',
+                          value: _targetCompany,
+                          onTap: () async {
+                            final selected = await _showSimpleOptionsDialog(
+                              context: context,
+                              title: 'Seleccionar empresa objetivo',
+                              options: _targetCompanies
+                                  .map(
+                                    (row) => _SimpleOption(
+                                      id: row,
+                                      label: row,
+                                      subtitle: 'Cuenta pagadora esperada',
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                            );
+                            if (selected == null || !mounted) return;
+                            setState(() => _targetCompany = selected.id);
                           },
-                          borderRadius: BorderRadius.circular(18),
-                          child: Ink(
-                            padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-                            decoration: BoxDecoration(
-                              color: selected
-                                  ? tokens.badgeBackground.withValues(
-                                      alpha: 0.86,
-                                    )
-                                  : Colors.white.withValues(alpha: 0.76),
-                              borderRadius: BorderRadius.circular(18),
-                              border: Border.all(
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _InlineChoiceField(
+                          label: 'Cuenta objetivo',
+                          value: _targetBranch == 'MAZATLAN'
+                              ? 'Mazatlan'
+                              : 'Celaya',
+                          onTap: () async {
+                            final selected = await _showSimpleOptionsDialog(
+                              context: context,
+                              title: 'Seleccionar cuenta objetivo',
+                              options: _targetBranches
+                                  .map(
+                                    (row) => _SimpleOption(
+                                      id: row,
+                                      label: row == 'MAZATLAN'
+                                          ? 'Mazatlan'
+                                          : 'Celaya',
+                                      subtitle: 'Sucursal/cuenta objetivo',
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                            );
+                            if (selected == null || !mounted) return;
+                            setState(() => _targetBranch = selected.id);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _notesC,
+                    style: const TextStyle(
+                      color: kFinanzasInk,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    cursorColor: finanzasAreaTokens.primaryStrong,
+                    minLines: 2,
+                    maxLines: 3,
+                    decoration: contractGlassFieldDecoration(
+                      context,
+                      hintText: 'Notas de factura o convenio',
+                      prefixIcon: const Icon(Icons.note_alt_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      Text(
+                        'Tickets elegibles',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: tokens.primaryStrong,
+                        ),
+                      ),
+                      const Spacer(),
+                      Text(
+                        '${_selectedTicketIds.length} seleccionados · ${_money(_selectedTotal)}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w800,
+                          color: kFinanzasMutedInk,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Expanded(
+                    child: ListView.separated(
+                      itemCount: widget.tickets.length,
+                      separatorBuilder: (_, _) => const SizedBox(height: 8),
+                      itemBuilder: (_, index) {
+                        final row = widget.tickets[index];
+                        final selected = _selectedTicketIds.contains(row.id);
+                        return Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: () {
+                              setState(() {
+                                if (selected) {
+                                  _selectedTicketIds.remove(row.id);
+                                } else {
+                                  _selectedTicketIds.add(row.id);
+                                }
+                              });
+                            },
+                            borderRadius: BorderRadius.circular(18),
+                            child: Ink(
+                              padding: const EdgeInsets.fromLTRB(
+                                14,
+                                14,
+                                14,
+                                14,
+                              ),
+                              decoration: BoxDecoration(
                                 color: selected
-                                    ? tokens.primaryStrong.withValues(
-                                        alpha: 0.32,
+                                    ? tokens.badgeBackground.withValues(
+                                        alpha: 0.86,
                                       )
-                                    : tokens.border.withValues(alpha: 0.70),
+                                    : tokens.fieldSurface.withValues(
+                                        alpha: 0.82,
+                                      ),
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: selected
+                                      ? tokens.primaryStrong.withValues(
+                                          alpha: 0.32,
+                                        )
+                                      : Colors.white.withValues(alpha: 0.14),
+                                ),
+                              ),
+                              child: Row(
+                                children: [
+                                  Checkbox(
+                                    value: selected,
+                                    onChanged: (_) {
+                                      setState(() {
+                                        if (selected) {
+                                          _selectedTicketIds.remove(row.id);
+                                        } else {
+                                          _selectedTicketIds.add(row.id);
+                                        }
+                                      });
+                                    },
+                                  ),
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          '${row.ticket} · ${row.materialNameSnapshot}',
+                                          style: TextStyle(
+                                            fontSize: 14,
+                                            fontWeight: FontWeight.w900,
+                                            color: tokens.primaryStrong,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          '${_dateLabel(row.date)} · ${row.providerNameSnapshot}',
+                                          style: TextStyle(
+                                            fontSize: 12.5,
+                                            fontWeight: FontWeight.w700,
+                                            color: kFinanzasMutedInk,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Text(
+                                    _money(row.amount),
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w900,
+                                      color: tokens.primaryStrong,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
-                            child: Row(
-                              children: [
-                                Checkbox(
-                                  value: selected,
-                                  onChanged: (_) {
-                                    setState(() {
-                                      if (selected) {
-                                        _selectedTicketIds.remove(row.id);
-                                      } else {
-                                        _selectedTicketIds.add(row.id);
-                                      }
-                                    });
-                                  },
-                                ),
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment:
-                                        CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        '${row.ticket} · ${row.materialNameSnapshot}',
-                                        style: TextStyle(
-                                          fontSize: 14,
-                                          fontWeight: FontWeight.w900,
-                                          color: tokens.primaryStrong,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        '${_dateLabel(row.date)} · ${row.providerNameSnapshot}',
-                                        style: TextStyle(
-                                          fontSize: 12.5,
-                                          fontWeight: FontWeight.w700,
-                                          color: kFinanzasMutedInk,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Text(
-                                  _money(row.amount),
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w900,
-                                    color: tokens.primaryStrong,
-                                  ),
-                                ),
-                              ],
-                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancelar'),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      onPressed:
-                          _folioC.text.trim().isEmpty ||
-                              _selectedTicketIds.isEmpty
-                          ? null
-                          : () {
-                              Navigator.of(context).pop(
-                                _InvoiceDraftResult(
-                                  folio: _folioC.text.trim(),
-                                  invoiceDate: _invoiceDate,
-                                  dueDate: _dueDate,
-                                  targetCompany: _targetCompany,
-                                  targetBranch: _targetBranch,
-                                  notes: _notesC.text.trim(),
-                                  selectedTicketIds: _selectedTicketIds,
-                                ),
-                              );
-                            },
-                      icon: const Icon(Icons.save_outlined),
-                      label: const Text('Guardar factura'),
-                    ),
-                  ],
-                ),
-              ],
+                  const SizedBox(height: 16),
+                  _DialogActionsRow(
+                    onCancel: () => Navigator.of(context).pop(),
+                    onConfirm:
+                        _folioC.text.trim().isEmpty ||
+                            _selectedTicketIds.isEmpty
+                        ? null
+                        : () {
+                            Navigator.of(context).pop(
+                              _InvoiceDraftResult(
+                                folio: _folioC.text.trim(),
+                                invoiceDate: _invoiceDate,
+                                dueDate: _dueDate,
+                                targetCompany: _targetCompany,
+                                targetBranch: _targetBranch,
+                                notes: _notesC.text.trim(),
+                                selectedTicketIds: _selectedTicketIds,
+                              ),
+                            );
+                          },
+                    confirmLabel: 'Guardar factura',
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -6801,9 +7535,9 @@ class _DateFieldButton extends StatelessWidget {
         child: Ink(
           padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.72),
+            color: tokens.fieldSurface.withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: tokens.border.withValues(alpha: 0.9)),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
           ),
           child: Row(
             children: [
@@ -6834,6 +7568,103 @@ class _DateFieldButton extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProviderPickerOptionTile extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final bool selected;
+  final bool hovered;
+  final ValueChanged<bool>? onHoverChanged;
+  final VoidCallback onTap;
+
+  const _ProviderPickerOptionTile({
+    required this.title,
+    required this.onTap,
+    this.subtitle,
+    this.selected = false,
+    this.hovered = false,
+    this.onHoverChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => onHoverChanged?.call(true),
+      onExit: (_) => onHoverChanged?.call(false),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          onTap: onTap,
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 140),
+            curve: Curves.easeOutCubic,
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: selected
+                  ? tokens.primaryStrong.withValues(alpha: 0.16)
+                  : hovered
+                  ? tokens.primaryStrong.withValues(alpha: 0.12)
+                  : const Color(0xCC171C24),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: selected
+                    ? tokens.primaryStrong.withValues(alpha: 0.54)
+                    : hovered
+                    ? tokens.primaryStrong.withValues(alpha: 0.42)
+                    : Colors.white.withValues(alpha: 0.14),
+              ),
+              boxShadow: selected || hovered
+                  ? [
+                      BoxShadow(
+                        color: tokens.primaryStrong.withValues(
+                          alpha: selected ? 0.16 : 0.10,
+                        ),
+                        blurRadius: 18,
+                        offset: const Offset(0, 8),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w900,
+                    color: selected || hovered
+                        ? tokens.primaryStrong
+                        : kFinanzasInk,
+                  ),
+                ),
+                if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: selected || hovered
+                          ? tokens.onGlass
+                          : kFinanzasMutedInk,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -6877,7 +7708,7 @@ class _FinProviderAccountsHeaderBrand extends StatelessWidget {
         ),
         const SizedBox(width: 20),
         const Text(
-          'Cuentas',
+          'Cuentas por Proveedor',
           maxLines: 1,
           style: TextStyle(
             fontSize: 28,
@@ -7001,8 +7832,8 @@ class _FinHeaderButtonState extends State<_FinHeaderButton> {
                         softWrap: false,
                         style: TextStyle(
                           color: tokens.primaryStrong,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w900,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
                     ),

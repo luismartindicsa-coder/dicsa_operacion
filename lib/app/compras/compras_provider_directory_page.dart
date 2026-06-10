@@ -96,6 +96,7 @@ class ComprasProviderDirectoryPage extends StatefulWidget {
 
 class _ComprasProviderDirectoryPageState
     extends State<ComprasProviderDirectoryPage> {
+  static const List<int> _kDirectoryPageSizeOptions = <int>[25, 40, 60, 100];
   bool _canReturnToDirection = false;
   bool _canAccessFinanzasArea = false;
   bool _menuOpen = false;
@@ -109,6 +110,8 @@ class _ComprasProviderDirectoryPageState
   Set<String> _operationalContactFilters = <String>{};
   Set<String> _phoneFilters = <String>{};
   Set<String> _locationFilters = <String>{};
+  int _currentPage = 0;
+  int _pageSize = 40;
   String? _selectedProviderId;
   List<ComprasProviderDirectoryRecord> _rows =
       <ComprasProviderDirectoryRecord>[];
@@ -137,6 +140,9 @@ class _ComprasProviderDirectoryPageState
       _rows = rows;
       _loading = false;
       _selectedProviderId = _sanitizeSelectedProviderId(_selectedProviderId);
+      if (_currentPage > _totalPages - 1) {
+        _currentPage = _totalPages - 1;
+      }
     });
   }
 
@@ -251,6 +257,20 @@ class _ComprasProviderDirectoryPageState
         .toList(growable: false);
   }
 
+  List<ComprasProviderDirectoryRecord> get _pagedRows {
+    final rows = _visibleRows;
+    if (rows.isEmpty) return const <ComprasProviderDirectoryRecord>[];
+    final start = (_currentPage * _pageSize).clamp(0, rows.length);
+    final end = (start + _pageSize).clamp(0, rows.length);
+    return rows.sublist(start, end);
+  }
+
+  int get _totalPages {
+    final rows = _visibleRows.length;
+    if (rows == 0) return 1;
+    return ((rows - 1) ~/ _pageSize) + 1;
+  }
+
   String? _sanitizeSelectedProviderId(String? id) {
     if (id == null) return null;
     for (final row in _rows) {
@@ -336,6 +356,7 @@ class _ComprasProviderDirectoryPageState
       _hasContainersFilter = null;
       _hasCreditFilter = null;
       _paymentStageFilter = null;
+      _currentPage = 0;
     });
   }
 
@@ -375,7 +396,10 @@ class _ComprasProviderDirectoryPageState
           .toList(growable: false),
     );
     if (!mounted || selected == null) return;
-    setState(() => _providerFilters = selected);
+    setState(() {
+      _providerFilters = selected;
+      _currentPage = 0;
+    });
   }
 
   Future<void> _pickCatalogContactFilter() async {
@@ -391,7 +415,10 @@ class _ComprasProviderDirectoryPageState
           .toList(growable: false),
     );
     if (!mounted || selected == null) return;
-    setState(() => _catalogContactFilters = selected);
+    setState(() {
+      _catalogContactFilters = selected;
+      _currentPage = 0;
+    });
   }
 
   Future<void> _pickOperationalContactFilter() async {
@@ -407,7 +434,10 @@ class _ComprasProviderDirectoryPageState
           .toList(growable: false),
     );
     if (!mounted || selected == null) return;
-    setState(() => _operationalContactFilters = selected);
+    setState(() {
+      _operationalContactFilters = selected;
+      _currentPage = 0;
+    });
   }
 
   Future<void> _pickPhoneFilter() async {
@@ -423,7 +453,10 @@ class _ComprasProviderDirectoryPageState
           .toList(growable: false),
     );
     if (!mounted || selected == null) return;
-    setState(() => _phoneFilters = selected);
+    setState(() {
+      _phoneFilters = selected;
+      _currentPage = 0;
+    });
   }
 
   Future<void> _pickLocationFilter() async {
@@ -439,7 +472,10 @@ class _ComprasProviderDirectoryPageState
           .toList(growable: false),
     );
     if (!mounted || selected == null) return;
-    setState(() => _locationFilters = selected);
+    setState(() {
+      _locationFilters = selected;
+      _currentPage = 0;
+    });
   }
 
   Future<void> _pickContainersFilter() async {
@@ -454,7 +490,10 @@ class _ComprasProviderDirectoryPageState
       ],
     );
     if (!mounted) return;
-    setState(() => _hasContainersFilter = selected);
+    setState(() {
+      _hasContainersFilter = selected;
+      _currentPage = 0;
+    });
   }
 
   Future<void> _pickCreditFilter() async {
@@ -469,7 +508,10 @@ class _ComprasProviderDirectoryPageState
       ],
     );
     if (!mounted) return;
-    setState(() => _hasCreditFilter = selected);
+    setState(() {
+      _hasCreditFilter = selected;
+      _currentPage = 0;
+    });
   }
 
   Future<void> _pickPaymentStageFilter() async {
@@ -488,7 +530,10 @@ class _ComprasProviderDirectoryPageState
           .toList(growable: false),
     );
     if (!mounted) return;
-    setState(() => _paymentStageFilter = selected);
+    setState(() {
+      _paymentStageFilter = selected;
+      _currentPage = 0;
+    });
   }
 
   @override
@@ -619,7 +664,8 @@ class _ComprasProviderDirectoryPageState
   }
 
   Widget _buildBody() {
-    final visibleRows = _visibleRows;
+    final filteredRows = _visibleRows;
+    final visibleRows = _pagedRows;
     final selected = visibleRows.where(
       (row) => row.providerId == _selectedProviderId,
     );
@@ -644,9 +690,9 @@ class _ComprasProviderDirectoryPageState
                         data: InventoryGridTopBarData(
                           metricIcon: Icons.badge_rounded,
                           metricLabel: 'DIRECTORIO',
-                          metricValue: '${_rows.length}',
+                          metricValue: '${filteredRows.length}',
                           metricSubtitle:
-                              '${_rows.where((row) => row.creditDays > 0).length} con crédito definido',
+                              '${filteredRows.where((row) => row.creditDays > 0).length} con crédito definido',
                           exportingCsv: _exportingCsv,
                           gridEditMode: false,
                           canToggleGridEdit: false,
@@ -742,6 +788,36 @@ class _ComprasProviderDirectoryPageState
                                           },
                                         ),
                                       ),
+                                      const SizedBox(height: 12),
+                                      _ComprasDirectoryPager(
+                                        currentPage: _currentPage,
+                                        totalPages: _totalPages,
+                                        pageSize: _pageSize,
+                                        totalRows: filteredRows.length,
+                                        onPrevious: () {
+                                          if (_currentPage == 0) return;
+                                          setState(() {
+                                            _currentPage -= 1;
+                                            _selectedProviderId = null;
+                                          });
+                                        },
+                                        onNext: () {
+                                          if (_currentPage >= _totalPages - 1) {
+                                            return;
+                                          }
+                                          setState(() {
+                                            _currentPage += 1;
+                                            _selectedProviderId = null;
+                                          });
+                                        },
+                                        onPageSizeChanged: (value) {
+                                          setState(() {
+                                            _pageSize = value;
+                                            _currentPage = 0;
+                                            _selectedProviderId = null;
+                                          });
+                                        },
+                                      ),
                                     ],
                                   ),
                           ),
@@ -753,6 +829,122 @@ class _ComprasProviderDirectoryPageState
               },
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ComprasDirectoryPager extends StatelessWidget {
+  final int currentPage;
+  final int totalPages;
+  final int pageSize;
+  final int totalRows;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final ValueChanged<int> onPageSizeChanged;
+
+  const _ComprasDirectoryPager({
+    required this.currentPage,
+    required this.totalPages,
+    required this.pageSize,
+    required this.totalRows,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onPageSizeChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 10,
+      children: [
+        OutlinedButton.icon(
+          style: _directoryPagerButtonStyle(),
+          onPressed: currentPage > 0 ? onPrevious : null,
+          icon: const Icon(Icons.chevron_left_rounded),
+          label: const Text('Anterior'),
+        ),
+        _DirectoryPagerPill(
+          label:
+              'Página ${totalRows == 0 ? 0 : currentPage + 1} de $totalPages',
+        ),
+        SizedBox(
+          width: 148,
+          child: DropdownButtonFormField<int>(
+            initialValue: pageSize,
+            items: _ComprasProviderDirectoryPageState._kDirectoryPageSizeOptions
+                .map(
+                  (value) => DropdownMenuItem<int>(
+                    value: value,
+                    child: Text('$value filas'),
+                  ),
+                )
+                .toList(growable: false),
+            onChanged: (value) {
+              if (value != null) onPageSizeChanged(value);
+            },
+            decoration: contractGlassFieldDecoration(
+              context,
+              hintText: 'Filas / pág',
+            ),
+            dropdownColor: const Color(0xFF232833),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+            iconEnabledColor: comprasAreaTokens.accent,
+          ),
+        ),
+        _DirectoryPagerPill(label: '$totalRows registros'),
+        OutlinedButton.icon(
+          style: _directoryPagerButtonStyle(),
+          onPressed: currentPage < totalPages - 1 ? onNext : null,
+          icon: const Icon(Icons.chevron_right_rounded),
+          label: const Text('Siguiente'),
+        ),
+      ],
+    );
+  }
+}
+
+ButtonStyle _directoryPagerButtonStyle() {
+  return OutlinedButton.styleFrom(
+    foregroundColor: Colors.white,
+    backgroundColor: comprasAreaTokens.fieldSurface.withValues(alpha: 0.66),
+    side: BorderSide(color: comprasAreaTokens.border.withValues(alpha: 0.72)),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+  );
+}
+
+class _DirectoryPagerPill extends StatelessWidget {
+  final String label;
+
+  const _DirectoryPagerPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: comprasAreaTokens.glassSurface.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: comprasAreaTokens.border.withValues(alpha: 0.68),
+        ),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
         ),
       ),
     );

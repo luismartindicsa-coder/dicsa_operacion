@@ -15,7 +15,17 @@ const List<String> kFinFixedPaymentExecutionMethods = <String>[
   'EFECTIVO',
 ];
 
+const List<String> kFinFixedPaymentTargetCompanies = <String>['DICSA', 'VH'];
 const List<String> kFinFixedPaymentBranches = <String>['CELAYA', 'MAZATLAN'];
+
+String finFixedPaymentTargetCompanyLabel(String value) {
+  switch (value.trim().toUpperCase()) {
+    case 'VH':
+      return 'VH';
+    default:
+      return 'DICSA';
+  }
+}
 
 String finFixedPaymentBranchLabel(String value) {
   switch (value) {
@@ -51,6 +61,7 @@ class FinanzasFixedPaymentRecord {
   final DateTime receivedDate;
   final String companyId;
   final String companyNameSnapshot;
+  final String targetCompany;
   final String branch;
   final double amount;
   final DateTime paymentDate;
@@ -67,6 +78,7 @@ class FinanzasFixedPaymentRecord {
     required this.receivedDate,
     required this.companyId,
     required this.companyNameSnapshot,
+    required this.targetCompany,
     required this.branch,
     required this.amount,
     required this.paymentDate,
@@ -84,6 +96,7 @@ class FinanzasFixedPaymentRecord {
     DateTime? receivedDate,
     String? companyId,
     String? companyNameSnapshot,
+    String? targetCompany,
     String? branch,
     double? amount,
     DateTime? paymentDate,
@@ -100,6 +113,7 @@ class FinanzasFixedPaymentRecord {
       receivedDate: receivedDate ?? this.receivedDate,
       companyId: companyId ?? this.companyId,
       companyNameSnapshot: companyNameSnapshot ?? this.companyNameSnapshot,
+      targetCompany: targetCompany ?? this.targetCompany,
       branch: branch ?? this.branch,
       amount: amount ?? this.amount,
       paymentDate: paymentDate ?? this.paymentDate,
@@ -118,6 +132,7 @@ class FinanzasFixedPaymentRecord {
     'received_date': receivedDate.toIso8601String(),
     'company_id': companyId,
     'company_name_snapshot': companyNameSnapshot,
+    'target_company': targetCompany,
     'branch': branch,
     'amount': amount,
     'payment_date': paymentDate.toIso8601String(),
@@ -135,6 +150,7 @@ class FinanzasFixedPaymentRecord {
           _tryParseDateTime(row['received_date'] as String?) ?? DateTime.now(),
       companyId: (row['company_id'] ?? '').toString(),
       companyNameSnapshot: (row['company_name_snapshot'] ?? '').toString(),
+      targetCompany: (row['target_company'] ?? 'DICSA').toString(),
       branch: (row['branch'] ?? 'CELAYA').toString(),
       amount: ((row['amount'] as num?) ?? 0).toDouble(),
       paymentDate:

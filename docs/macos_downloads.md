@@ -22,7 +22,7 @@ Si el repo es publico, puedes compartir este link y siempre bajara la ultima ver
 Con tu repo actual quedaria asi:
 
 - `https://github.com/luismartindicsa-coder/dicsa_operacion/releases/latest/download/DICSA-macOS.zip`
-
+si de a
 ## Como usarlo
 
 La persona descarga el zip, lo descomprime y abre `DICSA.app`.

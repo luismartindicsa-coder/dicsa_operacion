@@ -331,6 +331,27 @@ class ComprasDataStore {
   }
 }
 
+Future<List<Map<String, dynamic>>> _fetchAllRows(
+  PostgrestTransformBuilder<List<Map<String, dynamic>>> Function(
+    int from,
+    int to,
+  )
+  buildQuery,
+) async {
+  const int pageSize = 1000;
+  final List<Map<String, dynamic>> collected = <Map<String, dynamic>>[];
+  var from = 0;
+  while (true) {
+    final rows = await buildQuery(from, from + pageSize - 1);
+    collected.addAll(rows);
+    if (rows.length < pageSize) {
+      break;
+    }
+    from += pageSize;
+  }
+  return collected;
+}
+
 const List<String> _kMayoreoCanonicalGeneralCategories = <String>[
   'CARTON',
   'CHATARRA',
@@ -338,6 +359,9 @@ const List<String> _kMayoreoCanonicalGeneralCategories = <String>[
   'PLASTICO',
   'MADERA',
   'PAPEL',
+  'VIDRIO',
+  'TEXTIL',
+  'OTROS',
 ];
 
 ComprasCatalogSnapshot _normalizeCatalogSnapshot(ComprasCatalogSnapshot input) {
@@ -435,18 +459,46 @@ String _canonicalMayoreoGeneralCategory(
       merged.contains('REVISTA')) {
     return 'PAPEL';
   }
-  return 'METAL';
+  if (merged.contains('VIDRIO') || merged.contains('CRISTAL')) {
+    return 'VIDRIO';
+  }
+  if (merged.contains('TEXTIL') ||
+      merged.contains('TELA') ||
+      merged.contains('TRAPO') ||
+      merged.contains('ROPA')) {
+    return 'TEXTIL';
+  }
+  if (merged.contains('OTRO') || merged.contains('OTROS')) {
+    return 'OTROS';
+  }
+  return 'OTROS';
 }
 
 Future<ComprasCatalogSnapshot?> _loadRemoteCatalogSnapshot() async {
   final supa = Supabase.instance.client;
   final responses = await Future.wait([
-    supa.from(_kComprasCounterpartiesTable).select().order('name'),
-    supa.from(_kComprasMaterialsTable).select().order('level').order('name'),
-    supa
-        .from(_kComprasPricesTable)
-        .select()
-        .order('updated_at', ascending: false),
+    _fetchAllRows(
+      (from, to) => supa
+          .from(_kComprasCounterpartiesTable)
+          .select()
+          .order('name')
+          .range(from, to),
+    ),
+    _fetchAllRows(
+      (from, to) => supa
+          .from(_kComprasMaterialsTable)
+          .select()
+          .order('level')
+          .order('name')
+          .range(from, to),
+    ),
+    _fetchAllRows(
+      (from, to) => supa
+          .from(_kComprasPricesTable)
+          .select()
+          .order('updated_at', ascending: false)
+          .range(from, to),
+    ),
   ]);
   final companiesData = responses[0] as List;
   final materialsData = responses[1] as List;

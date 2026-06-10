@@ -50,6 +50,7 @@ const double _kTicketFacturaW = 160;
 const double _kTicketPagoW = 160;
 const double _kTicketDialogFieldW = 220;
 const double _kTicketDialogWideFieldW = 300;
+const List<int> _kComprasTicketsPageSizeOptions = <int>[25, 40, 60, 100];
 const double _kTicketContentW =
     _kTicketDateW +
     _kTicketNumberW +
@@ -98,6 +99,8 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
   Set<String> _materialFilters = <String>{};
   Set<String> _facturaFilters = <String>{};
   Set<String> _pagoFilters = <String>{};
+  int _currentPage = 0;
+  int _pageSize = 40;
   String? _selectedRowKey;
   String? _selectionAnchorRowKey;
   final Set<String> _bulkSelectedRowKeys = <String>{};
@@ -185,8 +188,22 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
         .toList(growable: false);
   }
 
+  List<ComprasTicketRecord> get _pagedRows {
+    final rows = _visibleRows;
+    if (rows.isEmpty) return const <ComprasTicketRecord>[];
+    final start = (_currentPage * _pageSize).clamp(0, rows.length);
+    final end = (start + _pageSize).clamp(0, rows.length);
+    return rows.sublist(start, end);
+  }
+
+  int get _totalPages {
+    final rows = _visibleRows.length;
+    if (rows == 0) return 1;
+    return ((rows - 1) ~/ _pageSize) + 1;
+  }
+
   List<String> get _visibleRowKeys =>
-      _visibleRows.map((row) => _rowKey(row)).toList(growable: false);
+      _pagedRows.map((row) => _rowKey(row)).toList(growable: false);
 
   String _rowKey(ComprasTicketRecord row) => 'ct:${row.id}';
 
@@ -256,6 +273,14 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
     }
     return null;
   }
+
+  double get _selectedPayableWeightSum => _rows
+      .where((row) => _bulkSelectedRowKeys.contains(_rowKey(row)))
+      .fold<double>(0, (sum, row) => sum + row.payableWeight);
+
+  double get _selectedAmountSum => _rows
+      .where((row) => _bulkSelectedRowKeys.contains(_rowKey(row)))
+      .fold<double>(0, (sum, row) => sum + row.amount);
 
   Future<void> _printSelectedReports() async {
     final selectedRows = _selectedReportRows;
@@ -544,6 +569,27 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
         !validKeys.contains(_selectionAnchorRowKey)) {
       _selectionAnchorRowKey = _selectedRowKey;
     }
+    final totalPages = _totalPages;
+    if (_currentPage > totalPages - 1) {
+      _currentPage = totalPages - 1;
+    }
+  }
+
+  void _goToPreviousPage() {
+    if (_currentPage == 0) return;
+    setState(() => _currentPage -= 1);
+  }
+
+  void _goToNextPage() {
+    if (_currentPage >= _totalPages - 1) return;
+    setState(() => _currentPage += 1);
+  }
+
+  void _changePageSize(int value) {
+    setState(() {
+      _pageSize = value;
+      _currentPage = 0;
+    });
   }
 
   void _selectRange(String targetRowKey, List<String> visibleKeys) {
@@ -1004,7 +1050,10 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
       initialValues: initialValues,
     );
     if (result == null || !mounted) return;
-    setState(() => onSelected(result));
+    setState(() {
+      onSelected(result);
+      _currentPage = 0;
+    });
   }
 
   Future<void> _pickDateFilter() async {
@@ -1026,10 +1075,16 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
     );
     if (picked == null || !mounted) return;
     if (picked == _kClearedTicketDateRange) {
-      setState(() => _dateRangeFilter = null);
+      setState(() {
+        _dateRangeFilter = null;
+        _currentPage = 0;
+      });
       return;
     }
-    setState(() => _dateRangeFilter = picked);
+    setState(() {
+      _dateRangeFilter = picked;
+      _currentPage = 0;
+    });
   }
 
   Future<DateTime?> _showThemedDatePicker({
@@ -1099,6 +1154,7 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
       _materialFilters.clear();
       _facturaFilters.clear();
       _pagoFilters.clear();
+      _currentPage = 0;
     });
   }
 
@@ -1183,7 +1239,8 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final visibleRows = _visibleRows;
+    final filteredRows = _visibleRows;
+    final visibleRows = _pagedRows;
     final selectedRow = _selectedRowKey == null
         ? null
         : _rowByKey(_selectedRowKey!);
@@ -1247,9 +1304,9 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                                   metricIcon:
                                       Icons.confirmation_number_outlined,
                                   metricLabel: 'TICKETS',
-                                  metricValue: '${visibleRows.length}',
+                                  metricValue: '${filteredRows.length}',
                                   metricSubtitle:
-                                      '${_rows.length} registrados · ${visibleRows.where((row) => row.pagoStatus != 'PAGADO').length} abiertos',
+                                      '${_rows.length} registrados · ${filteredRows.where((row) => row.pagoStatus != 'PAGADO').length} abiertos',
                                   exportingCsv: _exportingCsv,
                                   gridEditMode: false,
                                   canToggleGridEdit: false,
@@ -1257,6 +1314,14 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                                       _bulkSelectedRowKeys.isNotEmpty,
                                   deletingSelection: _deletingSelection,
                                   selectedCount: _bulkSelectedRowKeys.length,
+                                  selectedKgSumLabel:
+                                      _bulkSelectedRowKeys.isEmpty
+                                      ? null
+                                      : _weight(_selectedPayableWeightSum),
+                                  selectedSecondaryLabel:
+                                      _bulkSelectedRowKeys.isEmpty
+                                      ? null
+                                      : 'Importe: ${_money(_selectedAmountSum)}',
                                   activeCellLabel: selectedRow?.ticket,
                                   onExportCsv: _exportCsv,
                                   onDeleteSelection: _confirmDeleteSelection,
@@ -1472,6 +1537,18 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
                                                       },
                                                     ),
                                                   ),
+                                                ),
+                                                const SizedBox(height: 12),
+                                                _ComprasTicketsPager(
+                                                  currentPage: _currentPage,
+                                                  totalPages: _totalPages,
+                                                  pageSize: _pageSize,
+                                                  totalRows:
+                                                      filteredRows.length,
+                                                  onPrevious: _goToPreviousPage,
+                                                  onNext: _goToNextPage,
+                                                  onPageSizeChanged:
+                                                      _changePageSize,
                                                 ),
                                               ],
                                             ),
@@ -2038,6 +2115,114 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ComprasTicketsPager extends StatelessWidget {
+  final int currentPage;
+  final int totalPages;
+  final int pageSize;
+  final int totalRows;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final ValueChanged<int> onPageSizeChanged;
+
+  const _ComprasTicketsPager({
+    required this.currentPage,
+    required this.totalPages,
+    required this.pageSize,
+    required this.totalRows,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onPageSizeChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 10,
+      children: [
+        OutlinedButton.icon(
+          style: _comprasRedOutlinedButtonStyle(),
+          onPressed: currentPage > 0 ? onPrevious : null,
+          icon: const Icon(Icons.chevron_left_rounded),
+          label: const Text('Anterior'),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: comprasAreaTokens.glassSurface.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: comprasAreaTokens.border.withValues(alpha: 0.68),
+            ),
+          ),
+          child: Text(
+            'Página ${totalRows == 0 ? 0 : currentPage + 1} de $totalPages',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 148,
+          child: DropdownButtonFormField<int>(
+            initialValue: pageSize,
+            items: _kComprasTicketsPageSizeOptions
+                .map(
+                  (value) => DropdownMenuItem<int>(
+                    value: value,
+                    child: Text('$value filas'),
+                  ),
+                )
+                .toList(growable: false),
+            onChanged: (value) {
+              if (value != null) onPageSizeChanged(value);
+            },
+            decoration: contractGlassFieldDecoration(
+              context,
+              hintText: 'Filas / pág',
+            ),
+            dropdownColor: const Color(0xFF232833),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+            iconEnabledColor: comprasAreaTokens.accent,
+          ),
+        ),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            color: comprasAreaTokens.glassSurface.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: comprasAreaTokens.border.withValues(alpha: 0.68),
+            ),
+          ),
+          child: Text(
+            '$totalRows registros',
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: Colors.white,
+            ),
+          ),
+        ),
+        OutlinedButton.icon(
+          style: _comprasRedOutlinedButtonStyle(),
+          onPressed: currentPage < totalPages - 1 ? onNext : null,
+          icon: const Icon(Icons.chevron_right_rounded),
+          label: const Text('Siguiente'),
+        ),
+      ],
     );
   }
 }
@@ -4343,8 +4528,25 @@ Future<Set<T>?> _showTicketsMultiSelectDialog<T>(
     context: context,
     builder: (dialogContext) {
       final selected = <T>{...initialValues};
+      final searchC = TextEditingController();
+      final searchFocus = FocusNode();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (searchFocus.canRequestFocus) {
+          searchFocus.requestFocus();
+        }
+      });
+      String query = '';
       return StatefulBuilder(
         builder: (context, setDialogState) {
+          final normalizedQuery = query.trim().toUpperCase();
+          final filteredOptions = options
+              .where((option) {
+                if (normalizedQuery.isEmpty) return true;
+                return option.toString().toUpperCase().contains(
+                  normalizedQuery,
+                );
+              })
+              .toList(growable: false);
           return Dialog(
             backgroundColor: Colors.transparent,
             child: ConstrainedBox(
@@ -4363,37 +4565,52 @@ Future<Set<T>?> _showTicketsMultiSelectDialog<T>(
                         color: kComprasInk,
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: searchC,
+                      focusNode: searchFocus,
+                      autofocus: true,
+                      decoration: contractGlassFieldDecoration(
+                        context,
+                        hintText: 'Buscar opción',
+                        prefixIcon: const Icon(Icons.search_rounded),
+                      ),
+                      onChanged: (value) => setDialogState(() => query = value),
+                    ),
                     const SizedBox(height: 14),
                     Expanded(
-                      child: ListView(
-                        children: [
-                          for (final option in options)
-                            CheckboxListTile(
-                              activeColor: comprasAreaTokens.accent,
-                              checkColor: const Color(0xFF0B0E12),
-                              value: selected.contains(option),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              title: Text(
-                                option.toString(),
-                                style: const TextStyle(
-                                  fontSize: 13.5,
-                                  fontWeight: FontWeight.w800,
-                                ),
-                              ),
-                              onChanged: (checked) {
-                                setDialogState(() {
-                                  if (checked == true) {
-                                    selected.add(option);
-                                  } else {
-                                    selected.remove(option);
-                                  }
-                                });
-                              },
+                      child: filteredOptions.isEmpty
+                          ? const Center(child: Text('Sin resultados'))
+                          : ListView(
+                              children: [
+                                for (final option in filteredOptions)
+                                  CheckboxListTile(
+                                    activeColor: comprasAreaTokens.accent,
+                                    checkColor: const Color(0xFF0B0E12),
+                                    value: selected.contains(option),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(14),
+                                    ),
+                                    title: Text(
+                                      option.toString(),
+                                      style: const TextStyle(
+                                        fontSize: 13.5,
+                                        fontWeight: FontWeight.w800,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    onChanged: (checked) {
+                                      setDialogState(() {
+                                        if (checked == true) {
+                                          selected.add(option);
+                                        } else {
+                                          selected.remove(option);
+                                        }
+                                      });
+                                    },
+                                  ),
+                              ],
                             ),
-                        ],
-                      ),
                     ),
                     const SizedBox(height: 12),
                     Row(

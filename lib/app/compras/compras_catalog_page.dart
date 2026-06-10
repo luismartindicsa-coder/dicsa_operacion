@@ -71,7 +71,9 @@ const List<String> _kComprasGeneralCategories = <String>[
   'PAPEL',
   'PLASTICO',
   'MADERA',
-  'OTRO',
+  'VIDRIO',
+  'TEXTIL',
+  'OTROS',
 ];
 
 String _stripAccents(String input) {
@@ -172,10 +174,13 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     with WidgetsBindingObserver {
   static const Duration _backgroundRefreshMinGap = Duration(seconds: 12);
   static const Duration _backgroundRefreshRetryDelay = Duration(seconds: 8);
+  static const List<int> _kCatalogPageSizeOptions = <int>[25, 40, 60, 100];
   bool _canReturnToDirection = false;
   bool _canAccessFinanzasArea = false;
   bool _menuOpen = false;
   int _activeTabIndex = 0;
+  final List<int> _currentPages = <int>[0, 0, 0];
+  int _pageSize = 40;
   String? _editingRowKey;
   bool _multiEditMode = false;
   String? _selectedRowKey;
@@ -318,6 +323,18 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
             ),
           )
           .toList(growable: false);
+      _currentPages[0] = _currentPages[0].clamp(
+        0,
+        _totalPagesForCount(_visibleCompanies.length) - 1,
+      );
+      _currentPages[1] = _currentPages[1].clamp(
+        0,
+        _totalPagesForCount(_visibleMaterials.length) - 1,
+      );
+      _currentPages[2] = _currentPages[2].clamp(
+        0,
+        _totalPagesForCount(_visiblePrices.length) - 1,
+      );
     });
   }
 
@@ -863,6 +880,9 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         .toList(growable: false);
   }
 
+  List<_MayoreoCompany> get _pagedCompanies =>
+      _sliceForPage(_visibleCompanies, _currentPages[0]);
+
   List<_MayoreoMaterial> get _visibleMaterials {
     return _materials
         .where((row) {
@@ -897,6 +917,9 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         .toList(growable: false);
   }
 
+  List<_MayoreoMaterial> get _pagedMaterials =>
+      _sliceForPage(_visibleMaterials, _currentPages[1]);
+
   List<_MayoreoPrice> get _visiblePrices {
     return _prices
         .where((row) {
@@ -914,6 +937,53 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           return true;
         })
         .toList(growable: false);
+  }
+
+  List<_MayoreoPrice> get _pagedPrices =>
+      _sliceForPage(_visiblePrices, _currentPages[2]);
+
+  List<T> _sliceForPage<T>(List<T> rows, int currentPage) {
+    if (rows.isEmpty) return <T>[];
+    final start = (currentPage * _pageSize).clamp(0, rows.length);
+    final end = (start + _pageSize).clamp(0, rows.length);
+    return rows.sublist(start, end);
+  }
+
+  int _totalPagesForCount(int count) {
+    if (count == 0) return 1;
+    return ((count - 1) ~/ _pageSize) + 1;
+  }
+
+  void _resetPageForTab(int tabIndex) {
+    _currentPages[tabIndex] = 0;
+  }
+
+  void _goToPreviousPageForTab(int tabIndex) {
+    if (_currentPages[tabIndex] == 0) return;
+    setState(() {
+      _currentPages[tabIndex] -= 1;
+      _clearSelection();
+    });
+  }
+
+  void _goToNextPageForTab(int tabIndex, int totalRows) {
+    final totalPages = _totalPagesForCount(totalRows);
+    if (_currentPages[tabIndex] >= totalPages - 1) return;
+    setState(() {
+      _currentPages[tabIndex] += 1;
+      _clearSelection();
+    });
+  }
+
+  void _changePageSize(int value) {
+    setState(() {
+      _pageSize = value;
+      _currentPages
+        ..[0] = 0
+        ..[1] = 0
+        ..[2] = 0;
+      _clearSelection();
+    });
   }
 
   void _requestActiveInsertFocus() {
@@ -988,7 +1058,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       ],
     );
     if (!mounted) return;
-    setState(() => _companyActiveFilter = value);
+    setState(() {
+      _companyActiveFilter = value;
+      _resetPageForTab(0);
+    });
   }
 
   Future<void> _pickCompanyNameFilter() async {
@@ -1001,7 +1074,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           .toList(growable: false),
     );
     if (!mounted || selected == null) return;
-    setState(() => _companyNameFilters = selected);
+    setState(() {
+      _companyNameFilters = selected;
+      _resetPageForTab(0);
+    });
   }
 
   Future<void> _pickCompanyContactFilter() async {
@@ -1017,7 +1093,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           .toList(growable: false),
     );
     if (!mounted || selected == null) return;
-    setState(() => _companyContactFilters = selected);
+    setState(() {
+      _companyContactFilters = selected;
+      _resetPageForTab(0);
+    });
   }
 
   Future<void> _pickMaterialUnitFilter() async {
@@ -1031,7 +1110,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       ],
     );
     if (!mounted || selected == null) return;
-    setState(() => _materialLevelFilters = selected);
+    setState(() {
+      _materialLevelFilters = selected;
+      _resetPageForTab(1);
+    });
   }
 
   Future<void> _pickMaterialNameFilter() async {
@@ -1044,7 +1126,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           .toList(growable: false),
     );
     if (!mounted || selected == null) return;
-    setState(() => _materialNameFilters = selected);
+    setState(() {
+      _materialNameFilters = selected;
+      _resetPageForTab(1);
+    });
   }
 
   Future<void> _pickMaterialCategoryFilter() async {
@@ -1057,7 +1142,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           .toList(growable: false),
     );
     if (!mounted || selected == null) return;
-    setState(() => _materialFamilyFilters = selected);
+    setState(() {
+      _materialFamilyFilters = selected;
+      _resetPageForTab(1);
+    });
   }
 
   Future<void> _pickMaterialRelationFilter() async {
@@ -1076,7 +1164,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       ],
     );
     if (!mounted || selected == null) return;
-    setState(() => _materialRelationFilters = selected);
+    setState(() {
+      _materialRelationFilters = selected;
+      _resetPageForTab(1);
+    });
   }
 
   Future<void> _pickMaterialActiveFilter() async {
@@ -1091,7 +1182,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       ],
     );
     if (!mounted) return;
-    setState(() => _materialActiveFilter = value);
+    setState(() {
+      _materialActiveFilter = value;
+      _resetPageForTab(1);
+    });
   }
 
   Future<void> _pickPriceCompanyFilter() async {
@@ -1108,7 +1202,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           .toList(growable: false),
     );
     if (!mounted) return;
-    setState(() => _priceCompanyFilterId = value);
+    setState(() {
+      _priceCompanyFilterId = value;
+      _resetPageForTab(2);
+    });
   }
 
   Future<void> _pickPriceMaterialFilter() async {
@@ -1125,7 +1222,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           .toList(growable: false),
     );
     if (!mounted) return;
-    setState(() => _priceMaterialFilterId = value);
+    setState(() {
+      _priceMaterialFilterId = value;
+      _resetPageForTab(2);
+    });
   }
 
   Future<void> _pickPriceActiveFilter() async {
@@ -1140,7 +1240,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       ],
     );
     if (!mounted) return;
-    setState(() => _priceActiveFilter = value);
+    setState(() {
+      _priceActiveFilter = value;
+      _resetPageForTab(2);
+    });
   }
 
   void _toggleCompanyActive(_MayoreoCompany row) {
@@ -1252,15 +1355,17 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
   List<String> _currentRowKeys() {
     switch (_activeTabIndex) {
       case 0:
-        return _companies
+        return _pagedCompanies
             .map((item) => 'co:${item.id}')
             .toList(growable: false);
       case 1:
-        return _materials
+        return _pagedMaterials
             .map((item) => 'ma:${item.id}')
             .toList(growable: false);
       default:
-        return _prices.map((item) => 'pr:${item.id}').toList(growable: false);
+        return _pagedPrices
+            .map((item) => 'pr:${item.id}')
+            .toList(growable: false);
     }
   }
 
@@ -2177,6 +2282,16 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
                             if (!mounted) return;
                             setState(() {
                               _activeTabIndex = controller.index;
+                              final totalRows = switch (_activeTabIndex) {
+                                0 => _visibleCompanies.length,
+                                1 => _visibleMaterials.length,
+                                _ => _visiblePrices.length,
+                              };
+                              final maxPage =
+                                  _totalPagesForCount(totalRows) - 1;
+                              if (_currentPages[_activeTabIndex] > maxPage) {
+                                _currentPages[_activeTabIndex] = maxPage;
+                              }
                               _clearSelection();
                             });
                           });
@@ -2236,7 +2351,8 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
   }
 
   Widget _buildCompaniesTab() {
-    final visibleCompanies = _visibleCompanies;
+    final filteredCompanies = _visibleCompanies;
+    final visibleCompanies = _pagedCompanies;
     return _CatalogTabSurface(
       child: Column(
         children: [
@@ -2259,6 +2375,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
                     _companyActiveFilter = null;
                     _companyNameFilters = <String>{};
                     _companyContactFilters = <String>{};
+                    _resetPageForTab(0);
                   }),
           ),
           const SizedBox(height: 10),
@@ -2427,13 +2544,24 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          _ComprasCatalogPager(
+            currentPage: _currentPages[0],
+            totalPages: _totalPagesForCount(filteredCompanies.length),
+            pageSize: _pageSize,
+            totalRows: filteredCompanies.length,
+            onPrevious: () => _goToPreviousPageForTab(0),
+            onNext: () => _goToNextPageForTab(0, filteredCompanies.length),
+            onPageSizeChanged: _changePageSize,
+          ),
         ],
       ),
     );
   }
 
   Widget _buildMaterialsTab() {
-    final visibleMaterials = _visibleMaterials;
+    final filteredMaterials = _visibleMaterials;
+    final visibleMaterials = _pagedMaterials;
     return _CatalogTabSurface(
       child: Column(
         children: [
@@ -2500,6 +2628,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
                     _materialFamilyFilters = <String>{};
                     _materialRelationFilters = <String>{};
                     _materialActiveFilter = null;
+                    _resetPageForTab(1);
                   }),
           ),
           const SizedBox(height: 10),
@@ -2675,13 +2804,24 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          _ComprasCatalogPager(
+            currentPage: _currentPages[1],
+            totalPages: _totalPagesForCount(filteredMaterials.length),
+            pageSize: _pageSize,
+            totalRows: filteredMaterials.length,
+            onPrevious: () => _goToPreviousPageForTab(1),
+            onNext: () => _goToNextPageForTab(1, filteredMaterials.length),
+            onPageSizeChanged: _changePageSize,
+          ),
         ],
       ),
     );
   }
 
   Widget _buildPricesTab() {
-    final visiblePrices = _visiblePrices;
+    final filteredPrices = _visiblePrices;
+    final visiblePrices = _pagedPrices;
     return _CatalogTabSurface(
       child: Column(
         children: [
@@ -2729,6 +2869,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
                     _priceCompanyFilterId = null;
                     _priceMaterialFilterId = null;
                     _priceActiveFilter = null;
+                    _resetPageForTab(2);
                   }),
           ),
           const SizedBox(height: 10),
@@ -2886,7 +3027,133 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
               ),
             ),
           ),
+          const SizedBox(height: 12),
+          _ComprasCatalogPager(
+            currentPage: _currentPages[2],
+            totalPages: _totalPagesForCount(filteredPrices.length),
+            pageSize: _pageSize,
+            totalRows: filteredPrices.length,
+            onPrevious: () => _goToPreviousPageForTab(2),
+            onNext: () => _goToNextPageForTab(2, filteredPrices.length),
+            onPageSizeChanged: _changePageSize,
+          ),
         ],
+      ),
+    );
+  }
+}
+
+class _ComprasCatalogPager extends StatelessWidget {
+  final int currentPage;
+  final int totalPages;
+  final int pageSize;
+  final int totalRows;
+  final VoidCallback onPrevious;
+  final VoidCallback onNext;
+  final ValueChanged<int> onPageSizeChanged;
+
+  const _ComprasCatalogPager({
+    required this.currentPage,
+    required this.totalPages,
+    required this.pageSize,
+    required this.totalRows,
+    required this.onPrevious,
+    required this.onNext,
+    required this.onPageSizeChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      alignment: WrapAlignment.center,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 12,
+      runSpacing: 10,
+      children: [
+        OutlinedButton.icon(
+          style: _catalogPagerButtonStyle(),
+          onPressed: currentPage > 0 ? onPrevious : null,
+          icon: const Icon(Icons.chevron_left_rounded),
+          label: const Text('Anterior'),
+        ),
+        _CatalogPagerPill(
+          label:
+              'Página ${totalRows == 0 ? 0 : currentPage + 1} de $totalPages',
+        ),
+        SizedBox(
+          width: 148,
+          child: DropdownButtonFormField<int>(
+            initialValue: pageSize,
+            items: _ComprasCatalogPageState._kCatalogPageSizeOptions
+                .map(
+                  (value) => DropdownMenuItem<int>(
+                    value: value,
+                    child: Text('$value filas'),
+                  ),
+                )
+                .toList(growable: false),
+            onChanged: (value) {
+              if (value != null) onPageSizeChanged(value);
+            },
+            decoration: contractGlassFieldDecoration(
+              context,
+              hintText: 'Filas / pág',
+            ),
+            dropdownColor: const Color(0xFF232833),
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+            iconEnabledColor: comprasAreaTokens.accent,
+          ),
+        ),
+        _CatalogPagerPill(label: '$totalRows registros'),
+        OutlinedButton.icon(
+          style: _catalogPagerButtonStyle(),
+          onPressed: currentPage < totalPages - 1 ? onNext : null,
+          icon: const Icon(Icons.chevron_right_rounded),
+          label: const Text('Siguiente'),
+        ),
+      ],
+    );
+  }
+}
+
+ButtonStyle _catalogPagerButtonStyle() {
+  return OutlinedButton.styleFrom(
+    foregroundColor: Colors.white,
+    backgroundColor: comprasAreaTokens.fieldSurface.withValues(alpha: 0.66),
+    side: BorderSide(color: comprasAreaTokens.border.withValues(alpha: 0.72)),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+  );
+}
+
+class _CatalogPagerPill extends StatelessWidget {
+  final String label;
+
+  const _CatalogPagerPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+      decoration: BoxDecoration(
+        color: comprasAreaTokens.glassSurface.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: comprasAreaTokens.border.withValues(alpha: 0.68),
+        ),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
+        ),
       ),
     );
   }

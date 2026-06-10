@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../compras/compras_tickets_store.dart';
+import 'finanzas_evidence_store.dart';
 import 'finanzas_financial_rules.dart';
 
 const String _kFinSupplierInvoicesTable = 'finanzas_supplier_invoices';
@@ -12,6 +13,8 @@ const String _kFinSupplierAgreementInstallmentsTable =
 const String _kFinSupplierAgreementInvoicesTable =
     'finanzas_supplier_agreement_invoices';
 const String _kFinBankMovementsTable = 'finanzas_bank_movements';
+const String _kFinEvidenceTable = 'finanzas_evidence';
+const String _kFinEvidenceBucket = 'finanzas_evidence';
 
 const List<String> kFinSupplierInvoiceStatuses = <String>[
   'PENDIENTE',
@@ -506,6 +509,76 @@ class FinanzasProviderAccountsStore {
       <Map<String, dynamic>>[invoice.toUpsertJson()],
       onConflict: 'id',
     );
+  }
+
+  static Future<void> deleteInvoice(
+    FinanzasSupplierInvoiceRecord invoice,
+  ) async {
+    final invoiceTicketRows = await Supabase.instance.client
+        .from(_kFinSupplierInvoiceTicketsTable)
+        .select('ticket_id')
+        .eq('invoice_id', invoice.id);
+    final ticketIds = (invoiceTicketRows as List)
+        .map((row) => (row as Map)['ticket_id']?.toString() ?? '')
+        .where((id) => id.isNotEmpty)
+        .toSet();
+
+    if (ticketIds.isNotEmpty) {
+      final tickets = await ComprasTicketsStore.loadTickets();
+      final releasedTickets = tickets
+          .where((ticket) => ticketIds.contains(ticket.id))
+          .map(
+            (ticket) => ticket.copyWith(facturaStatus: 'PENDIENTE_DE_FACTURAR'),
+          )
+          .toList(growable: false);
+      if (releasedTickets.isNotEmpty) {
+        await ComprasTicketsStore.saveTickets(releasedTickets);
+      }
+    }
+
+    final evidenceRows = await Supabase.instance.client
+        .from(_kFinEvidenceTable)
+        .select('id, storage_path')
+        .eq('owner_type', kFinanzasEvidenceOwnerTypeSupplierInvoice)
+        .eq('owner_id', invoice.id);
+    final storagePaths = (evidenceRows as List)
+        .map((row) => (row as Map)['storage_path']?.toString() ?? '')
+        .where((path) => path.isNotEmpty)
+        .toList(growable: false);
+    if (storagePaths.isNotEmpty) {
+      try {
+        await Supabase.instance.client.storage
+            .from(_kFinEvidenceBucket)
+            .remove(storagePaths);
+      } catch (_) {}
+    }
+    await Supabase.instance.client
+        .from(_kFinEvidenceTable)
+        .delete()
+        .eq('owner_type', kFinanzasEvidenceOwnerTypeSupplierInvoice)
+        .eq('owner_id', invoice.id);
+
+    await Supabase.instance.client
+        .from(_kFinSupplierAgreementInvoicesTable)
+        .delete()
+        .eq('invoice_id', invoice.id);
+
+    await Supabase.instance.client
+        .from(_kFinBankMovementsTable)
+        .update(<String, dynamic>{'linked_supplier_invoice_id': null})
+        .eq('linked_supplier_invoice_id', invoice.id);
+
+    await Supabase.instance.client
+        .from(_kFinSupplierInvoiceTicketsTable)
+        .delete()
+        .eq('invoice_id', invoice.id);
+
+    await Supabase.instance.client
+        .from(_kFinSupplierInvoicesTable)
+        .delete()
+        .eq('id', invoice.id);
+
+    await syncAgreementStateForProvider(providerId: invoice.providerId);
   }
 
   static Future<List<FinanzasSupplierAgreementRecord>> loadAgreements() async {

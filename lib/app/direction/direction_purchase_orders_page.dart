@@ -733,6 +733,16 @@ class _DirectionPurchasePendingListCard extends StatelessWidget {
                       fontWeight: FontWeight.w600,
                     ),
                   ),
+                  if (item.lineSummaries.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      'Se pide: ${item.lineSummaries.take(3).join(' · ')}${item.lineSummaries.length > 3 ? '…' : ''}',
+                      style: const TextStyle(
+                        color: kDirectionMutedText,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
                   if (item.missingReasons.isNotEmpty) ...[
                     const SizedBox(height: 6),
                     Text(

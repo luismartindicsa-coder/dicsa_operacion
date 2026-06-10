@@ -12,12 +12,15 @@ import '../shared/app_shell.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/utils/csv_file_save.dart';
+import '../shared/archetypes/grid_editable/row/editable_row_actions_button.dart';
+import '../shared/ui_contract_core/dialogs/contract_menu_surface.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../mayoreo/mayoreo_sorting.dart';
-import '../services/inventory_movements_grid.dart';
 import 'finanzas_bank_accounts_page.dart';
 import 'finanzas_data_store.dart';
 import 'finanzas_dashboard_page.dart';
@@ -101,6 +104,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
   ];
 
   bool _menuOpen = false;
+  bool _exportingCsv = false;
   bool _canReturnToDirection = false;
   bool _canAccessComprasArea = false;
   int _activeTabIndex = 0;
@@ -633,52 +637,119 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
     await _persistCatalogSnapshot();
   }
 
-  InventoryGridTopBarData _buildTopBarData() {
+  int get _currentVisibleCount {
     switch (_activeTabIndex) {
       case 0:
-        return InventoryGridTopBarData(
-          metricIcon: Icons.business_rounded,
-          metricLabel: 'EMPRESAS',
-          metricValue: '${_visibleCompanies.length}',
-          metricSubtitle: 'Filtrado (${_visibleCompanies.length} registros)',
-          exportingCsv: false,
-          gridEditMode: false,
-          canToggleGridEdit: false,
-          canDeleteSelection: _selectedCount > 0,
-          deletingSelection: false,
-          selectedCount: _selectedCount,
-          onDeleteSelection: () async => _toggleSelectedActive(),
-        );
+        return _visibleCompanies.length;
       case 1:
-        return InventoryGridTopBarData(
-          metricIcon: Icons.label_important_outline_rounded,
-          metricLabel: 'CONCEPTOS',
-          metricValue: '${_visibleConcepts.length}',
-          metricSubtitle: 'Filtrado (${_visibleConcepts.length} registros)',
-          exportingCsv: false,
-          gridEditMode: false,
-          canToggleGridEdit: false,
-          canDeleteSelection: _selectedCount > 0,
-          deletingSelection: false,
-          selectedCount: _selectedCount,
-          onDeleteSelection: () async => _toggleSelectedActive(),
-        );
+        return _visibleConcepts.length;
       default:
-        return InventoryGridTopBarData(
-          metricIcon: Icons.account_tree_outlined,
-          metricLabel: 'RELACIONES',
-          metricValue: '${_visibleRelations.length}',
-          metricSubtitle: 'Filtrado (${_visibleRelations.length} registros)',
-          exportingCsv: false,
-          gridEditMode: false,
-          canToggleGridEdit: false,
-          canDeleteSelection: _selectedCount > 0,
-          deletingSelection: false,
-          selectedCount: _selectedCount,
-          onDeleteSelection: () async => _toggleSelectedActive(),
-        );
+        return _visibleRelations.length;
     }
   }
+
+  String get _currentCatalogLabel {
+    switch (_activeTabIndex) {
+      case 0:
+        return 'EMPRESAS';
+      case 1:
+        return 'CONCEPTOS';
+      default:
+        return 'RELACIONES';
+    }
+  }
+
+  String? get _currentActiveLabel {
+    final key = _selectedRowKey;
+    if (key == null) return null;
+    if (key.startsWith('fc:')) {
+      final id = key.substring(3);
+      final row = _companies.cast<_FinanceCompany?>().firstWhere(
+        (item) => item?.id == id,
+        orElse: () => null,
+      );
+      return row?.name;
+    }
+    if (key.startsWith('fn:')) {
+      final id = key.substring(3);
+      final row = _concepts.cast<_FinanceConcept?>().firstWhere(
+        (item) => item?.id == id,
+        orElse: () => null,
+      );
+      return row?.name;
+    }
+    if (key.startsWith('fr:')) {
+      final id = key.substring(3);
+      final row = _relations.cast<_FinanceRelation?>().firstWhere(
+        (item) => item?.id == id,
+        orElse: () => null,
+      );
+      if (row == null) return null;
+      return '${_companyNameById(row.companyId)} • ${_conceptNameById(row.conceptId)}';
+    }
+    return null;
+  }
+
+  Future<void> _exportCsv() async {
+    setState(() => _exportingCsv = true);
+    late final String fileName;
+    late final List<String> rows;
+    switch (_activeTabIndex) {
+      case 0:
+        fileName = 'finanzas_catalogo_empresas.csv';
+        rows = <String>[
+          'empresa,origen,vinculo,estatus,notas',
+          for (final row in _visibleCompanies)
+            [
+              row.name,
+              row.source,
+              row.linkedName,
+              row.active ? 'ACTIVO' : 'INACTIVO',
+              row.notes,
+            ].map(_csvCell).join(','),
+        ];
+        break;
+      case 1:
+        fileName = 'finanzas_catalogo_conceptos.csv';
+        rows = <String>[
+          'concepto,familia,direccion,regla,estatus,notas',
+          for (final row in _visibleConcepts)
+            [
+              row.name,
+              row.family,
+              row.direction,
+              row.requiresCompany ? 'REQUIERE EMPRESA' : 'EMPRESA OPCIONAL',
+              row.active ? 'ACTIVO' : 'INACTIVO',
+              row.notes,
+            ].map(_csvCell).join(','),
+        ];
+        break;
+      default:
+        fileName = 'finanzas_catalogo_relaciones.csv';
+        rows = <String>[
+          'empresa,concepto,modo,estatus,notas',
+          for (final row in _visibleRelations)
+            [
+              _companyNameById(row.companyId),
+              _conceptNameById(row.conceptId),
+              row.mode,
+              row.active ? 'ACTIVO' : 'INACTIVO',
+              row.notes,
+            ].map(_csvCell).join(','),
+        ];
+        break;
+    }
+    try {
+      await saveCsvFile(fileName: fileName, content: rows.join('\n'));
+    } finally {
+      if (mounted) {
+        setState(() => _exportingCsv = false);
+      }
+    }
+  }
+
+  String _csvCell(String value) =>
+      '"${value.replaceAll('"', '""').replaceAll('\n', ' ')}"';
 
   KeyEventResult _handleGridKeyEvent(KeyEvent event, List<String> visibleKeys) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
@@ -1587,8 +1658,13 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
                           children: [
                             Padding(
                               padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
-                              child: InventoryGridTopBar(
-                                data: _buildTopBarData(),
+                              child: _FinCatalogTopBar(
+                                exportingCsv: _exportingCsv,
+                                selectedCount: _selectedCount,
+                                visibleCount: _currentVisibleCount,
+                                catalogLabel: _currentCatalogLabel,
+                                activeLabel: _currentActiveLabel,
+                                onExportCsv: _exportCsv,
                               ),
                             ),
                             const SizedBox(height: 12),
@@ -2290,7 +2366,8 @@ class _FinanceCatalogSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ContractGlassCard(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      borderRadius: BorderRadius.circular(30),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       child: child,
     );
   }
@@ -2305,6 +2382,7 @@ class _FinanceFilterSummaryRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (labels.isEmpty && onClearAll == null) return const SizedBox.shrink();
+    final tokens = AreaThemeScope.of(context);
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -2321,16 +2399,17 @@ class _FinanceFilterSummaryRow extends StatelessWidget {
             ),
             child: Text(
               label,
-              style: const TextStyle(
+              style: TextStyle(
                 fontSize: 11.5,
                 fontWeight: FontWeight.w800,
-                color: kFinanzasInk,
+                color: tokens.onGlass,
               ),
             ),
           ),
         if (onClearAll != null)
           TextButton.icon(
             onPressed: onClearAll,
+            style: contractGhostButtonStyle(context),
             icon: const Icon(Icons.filter_alt_off_rounded, size: 16),
             label: const Text('Limpiar filtros'),
           ),
@@ -2363,85 +2442,86 @@ class _FinanceHeaderRow extends StatelessWidget {
   Widget build(BuildContext context) {
     const textStyle = TextStyle(fontSize: 12, fontWeight: FontWeight.w800);
     final tokens = AreaThemeScope.of(context);
-    return Card(
-      elevation: 0,
-      color: Colors.black.withValues(alpha: 0.03),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            return SizedBox(
-              width: constraints.maxWidth,
-              child: ContractGridScaledRow(
-                child: SizedBox(
-                  width:
-                      contentWidth +
-                      _FinanzasCatalogPageState._kFinanceActionsW,
-                  child: Row(
-                    children: [
-                      for (final column in columns)
-                        SizedBox(
-                          width: column.width,
-                          child: Row(
-                            children: [
-                              if (column.onFilter != null) ...[
-                                InkWell(
-                                  borderRadius: BorderRadius.circular(8),
-                                  onTap: column.onFilter,
-                                  child: AnimatedContainer(
-                                    duration: const Duration(milliseconds: 140),
-                                    curve: Curves.easeOutCubic,
-                                    padding: const EdgeInsets.all(4),
-                                    decoration: BoxDecoration(
+    return ContractGlassCard(
+      borderRadius: BorderRadius.circular(24),
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          return SizedBox(
+            width: constraints.maxWidth,
+            child: ContractGridScaledRow(
+              child: SizedBox(
+                width:
+                    contentWidth + _FinanzasCatalogPageState._kFinanceActionsW,
+                child: Row(
+                  children: [
+                    for (final column in columns)
+                      SizedBox(
+                        width: column.width,
+                        child: Row(
+                          children: [
+                            if (column.onFilter != null) ...[
+                              InkWell(
+                                borderRadius: BorderRadius.circular(10),
+                                onTap: column.onFilter,
+                                child: AnimatedContainer(
+                                  duration: const Duration(milliseconds: 140),
+                                  curve: Curves.easeOutCubic,
+                                  padding: const EdgeInsets.all(5),
+                                  decoration: BoxDecoration(
+                                    color: column.active
+                                        ? tokens.primarySoft.withValues(
+                                            alpha: 0.40,
+                                          )
+                                        : Colors.white.withValues(alpha: 0.08),
+                                    borderRadius: BorderRadius.circular(10),
+                                    border: Border.all(
                                       color: column.active
-                                          ? tokens.primary
-                                          : tokens.badgeBackground,
-                                      borderRadius: BorderRadius.circular(8),
-                                      border: Border.all(
-                                        color: column.active
-                                            ? tokens.primaryStrong
-                                            : tokens.border,
-                                      ),
-                                    ),
-                                    child: Icon(
-                                      column.active
-                                          ? Icons.filter_alt
-                                          : Icons.filter_alt_outlined,
-                                      size: 15,
-                                      color: column.active
-                                          ? Colors.white
-                                          : tokens.badgeText,
+                                          ? tokens.primaryStrong.withValues(
+                                              alpha: 0.72,
+                                            )
+                                          : Colors.white.withValues(
+                                              alpha: 0.16,
+                                            ),
                                     ),
                                   ),
-                                ),
-                                const SizedBox(width: 6),
-                              ],
-                              Expanded(
-                                child: Padding(
-                                  padding: const EdgeInsets.only(right: 10),
-                                  child: Text(
-                                    column.label,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: textStyle.copyWith(
-                                      color: tokens.badgeText,
-                                    ),
+                                  child: Icon(
+                                    column.active
+                                        ? Icons.filter_alt_rounded
+                                        : Icons.filter_alt_outlined,
+                                    size: 18,
+                                    color: column.active
+                                        ? tokens.primaryStrong
+                                        : Colors.white.withValues(alpha: 0.82),
                                   ),
                                 ),
                               ),
+                              const SizedBox(width: 10),
                             ],
-                          ),
+                            Expanded(
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: Text(
+                                  column.label,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: textStyle.copyWith(
+                                    color: tokens.onGlass,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ],
                         ),
-                      const SizedBox(
-                        width: _FinanzasCatalogPageState._kFinanceActionsW,
                       ),
-                    ],
-                  ),
+                    const SizedBox(
+                      width: _FinanzasCatalogPageState._kFinanceActionsW,
+                    ),
+                  ],
                 ),
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -2471,13 +2551,13 @@ class _FinanceInsertRow extends StatelessWidget {
       curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         color: editing
-            ? finanzasAreaTokens.badgeBackground.withValues(alpha: 0.68)
-            : Colors.white.withValues(alpha: 0.34),
+            ? finanzasAreaTokens.badgeBackground.withValues(alpha: 0.72)
+            : const Color(0xCC171B23),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: editing
               ? finanzasAreaTokens.primaryStrong.withValues(alpha: 0.42)
-              : Colors.white.withValues(alpha: 0.28),
+              : Colors.white.withValues(alpha: 0.12),
           width: editing ? 1.4 : 1,
         ),
         boxShadow: editing
@@ -2618,6 +2698,8 @@ class _FinanceTextField extends StatelessWidget {
     return TextField(
       controller: controller,
       textCapitalization: TextCapitalization.characters,
+      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w700),
+      cursorColor: finanzasAreaTokens.primaryStrong,
       decoration: contractGlassFieldDecoration(context, hintText: hintText),
     );
   }
@@ -2659,6 +2741,7 @@ class _FinancePickerField<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     final label = value == null
         ? hint
         : (labelBuilder == null ? value.toString() : labelBuilder!(value as T));
@@ -2677,12 +2760,18 @@ class _FinancePickerField<T> extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 12.5,
                   fontWeight: FontWeight.w700,
-                  color: value == null ? kFinanzasMutedInk : kFinanzasInk,
+                  color: value == null
+                      ? tokens.onGlass.withValues(alpha: 0.58)
+                      : tokens.primaryStrong,
                 ),
               ),
             ),
             const SizedBox(width: 8),
-            const Icon(Icons.keyboard_arrow_down_rounded, size: 18),
+            Icon(
+              Icons.keyboard_arrow_down_rounded,
+              size: 18,
+              color: tokens.primaryStrong,
+            ),
           ],
         ),
       ),
@@ -2703,37 +2792,22 @@ class _FinanceBoolToggle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return InkWell(
       borderRadius: BorderRadius.circular(18),
       onTap: () => onChanged(!value),
       child: InputDecorator(
-        decoration: InputDecoration(
-          filled: true,
-          fillColor: Colors.white.withValues(alpha: 0.72),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: BorderSide(
-              color: finanzasAreaTokens.border.withValues(alpha: 0.9),
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(18),
-            borderSide: BorderSide(color: finanzasAreaTokens.primaryStrong),
-          ),
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 14,
-            vertical: 10,
-          ),
-        ),
+        decoration: contractGlassFieldDecoration(context, hintText: null),
         child: Row(
           children: [
             Switch(value: value, onChanged: onChanged),
             Expanded(
               child: Text(
                 label,
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w800,
+                  color: tokens.onGlass,
                 ),
               ),
             ),
@@ -2777,7 +2851,7 @@ class _FinanceTableCell {
         style: TextStyle(
           fontSize: 12.5,
           fontWeight: bold ? FontWeight.w800 : FontWeight.w700,
-          color: kFinanzasInk,
+          color: Colors.white,
         ),
       ),
     );
@@ -2840,10 +2914,10 @@ class _FinanceTableRowState extends State<_FinanceTableRow> {
       (sum, cell) => sum + cell.width,
     );
     final background = selected
-        ? tokens.badgeBackground.withValues(alpha: 0.94)
+        ? tokens.primaryStrong.withValues(alpha: 0.78)
         : _hovering
-        ? Colors.white.withValues(alpha: 0.84)
-        : Colors.white.withValues(alpha: 0.66);
+        ? const Color(0xE6222732)
+        : const Color(0xCC171B23);
     return MouseRegion(
       onEnter: (_) {
         setState(() => _hovering = true);
@@ -2865,8 +2939,8 @@ class _FinanceTableRowState extends State<_FinanceTableRow> {
             borderRadius: BorderRadius.circular(18),
             side: BorderSide(
               color: selected
-                  ? tokens.primaryStrong.withValues(alpha: 0.52)
-                  : tokens.border.withValues(alpha: 0.72),
+                  ? tokens.primaryStrong
+                  : Colors.white.withValues(alpha: 0.12),
             ),
           ),
           child: Padding(
@@ -2908,92 +2982,50 @@ class _FinanceTableRowState extends State<_FinanceTableRow> {
                                         ._kFinanceActionsW,
                                     trailingWidth: 36,
                                     leading: const SizedBox.shrink(),
-                                    trailing:
-                                        PopupMenuButton<_FinanceRowMenuAction>(
-                                          tooltip: 'Acciones',
-                                          padding: EdgeInsets.zero,
-                                          color: finanzasAreaTokens.surfaceTint
-                                              .withValues(alpha: 0.98),
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.circular(
-                                              16,
-                                            ),
-                                            side: BorderSide(
-                                              color: Colors.white.withValues(
-                                                alpha: 0.70,
+                                    trailing: Container(
+                                      width: 36,
+                                      height: 36,
+                                      decoration: BoxDecoration(
+                                        color: selected
+                                            ? tokens.primarySoft.withValues(
+                                                alpha: 0.42,
+                                              )
+                                            : Colors.white.withValues(
+                                                alpha: 0.05,
                                               ),
-                                            ),
-                                          ),
-                                          onOpened: widget.onSecondarySelection,
-                                          onSelected: (item) => item.onTap(),
-                                          itemBuilder: (context) => [
-                                            for (final item in widget.menuItems)
-                                              PopupMenuItem<
-                                                _FinanceRowMenuAction
-                                              >(
-                                                value: item,
-                                                child: Row(
-                                                  children: [
-                                                    Icon(
-                                                      item.icon,
-                                                      color: finanzasAreaTokens
-                                                          .primaryStrong,
-                                                      size: 18,
-                                                    ),
-                                                    const SizedBox(width: 10),
-                                                    Text(
-                                                      item.label,
-                                                      style: const TextStyle(
-                                                        fontSize: 12.5,
-                                                        fontWeight:
-                                                            FontWeight.w700,
-                                                        color: kFinanzasInk,
-                                                      ),
-                                                    ),
-                                                  ],
+                                        borderRadius: BorderRadius.circular(12),
+                                        border: Border.all(
+                                          color: selected
+                                              ? tokens.primaryStrong.withValues(
+                                                  alpha: 0.36,
+                                                )
+                                              : Colors.white.withValues(
+                                                  alpha: 0.10,
                                                 ),
-                                              ),
-                                          ],
-                                          child: Container(
-                                            width: 36,
-                                            height: 36,
-                                            decoration: BoxDecoration(
-                                              color: selected
-                                                  ? tokens.primarySoft
-                                                        .withValues(alpha: 0.42)
-                                                  : Colors.white.withValues(
-                                                      alpha: 0.88,
-                                                    ),
-                                              borderRadius:
-                                                  BorderRadius.circular(12),
-                                              border: Border.all(
-                                                color: selected
-                                                    ? tokens.primaryStrong
-                                                          .withValues(
-                                                            alpha: 0.36,
-                                                          )
-                                                    : tokens.border.withValues(
-                                                        alpha: 0.82,
-                                                      ),
-                                              ),
-                                              boxShadow: [
-                                                BoxShadow(
-                                                  blurRadius: 10,
-                                                  offset: const Offset(0, 4),
-                                                  color: Colors.black
-                                                      .withValues(alpha: 0.06),
-                                                ),
-                                              ],
-                                            ),
-                                            child: Center(
-                                              child: Icon(
-                                                Icons.more_horiz_rounded,
-                                                color: tokens.primaryStrong,
-                                                size: 20,
-                                              ),
-                                            ),
-                                          ),
                                         ),
+                                      ),
+                                      child:
+                                          EditableRowActionsButton<
+                                            _FinanceRowMenuAction
+                                          >(
+                                            tooltip: 'Acciones',
+                                            iconColor: selected
+                                                ? Colors.white
+                                                : tokens.primaryStrong,
+                                            entries: [
+                                              for (final item
+                                                  in widget.menuItems)
+                                                ContractMenuEntry<
+                                                  _FinanceRowMenuAction
+                                                >(
+                                                  value: item,
+                                                  label: item.label,
+                                                  icon: item.icon,
+                                                ),
+                                            ],
+                                            onSelected: (item) => item.onTap(),
+                                          ),
+                                    ),
                                   ),
                                 ],
                               ),
@@ -3482,7 +3514,7 @@ class _FinanceActionButton extends StatelessWidget {
         decoration: BoxDecoration(
           color: color.withValues(alpha: onTap == null ? 0.28 : 0.92),
           borderRadius: BorderRadius.circular(10),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.52)),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
         ),
         child: Icon(icon, size: 18, color: Colors.white),
       ),
@@ -3622,17 +3654,27 @@ Future<T?> _showFinanceSingleSelectDialog<T>(
                             }
                             return KeyEventResult.ignored;
                           },
-                          child: TextField(
-                            controller: searchC,
-                            focusNode: searchFocus,
-                            autofocus: true,
-                            decoration: contractGlassFieldDecoration(
-                              context,
-                              hintText: 'Buscar',
-                              prefixIcon: const Icon(Icons.search_rounded),
+                          child: Builder(
+                            builder: (themedContext) => TextField(
+                              controller: searchC,
+                              focusNode: searchFocus,
+                              autofocus: true,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              cursorColor: finanzasAreaTokens.primaryStrong,
+                              decoration: contractGlassFieldDecoration(
+                                themedContext,
+                                hintText: 'Buscar opción',
+                                prefixIcon: Icon(
+                                  Icons.search_rounded,
+                                  color: Colors.white.withValues(alpha: 0.56),
+                                ),
+                              ),
+                              onChanged: (value) =>
+                                  setLocalState(() => query = value),
                             ),
-                            onChanged: (value) =>
-                                setLocalState(() => query = value),
                           ),
                         ),
                         if (allowClear) ...[
@@ -3825,17 +3867,27 @@ Future<Set<T>?> _showFinanceMultiSelectDialog<T>(
                             }
                             return KeyEventResult.ignored;
                           },
-                          child: TextField(
-                            controller: searchC,
-                            focusNode: searchFocus,
-                            autofocus: true,
-                            decoration: contractGlassFieldDecoration(
-                              context,
-                              hintText: 'Buscar',
-                              prefixIcon: const Icon(Icons.search_rounded),
+                          child: Builder(
+                            builder: (themedContext) => TextField(
+                              controller: searchC,
+                              focusNode: searchFocus,
+                              autofocus: true,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              cursorColor: finanzasAreaTokens.primaryStrong,
+                              decoration: contractGlassFieldDecoration(
+                                themedContext,
+                                hintText: 'Buscar opción',
+                                prefixIcon: Icon(
+                                  Icons.search_rounded,
+                                  color: Colors.white.withValues(alpha: 0.56),
+                                ),
+                              ),
+                              onChanged: (value) =>
+                                  setLocalState(() => query = value),
                             ),
-                            onChanged: (value) =>
-                                setLocalState(() => query = value),
                           ),
                         ),
                         const SizedBox(height: 6),
@@ -3916,12 +3968,36 @@ Future<Set<T>?> _showFinanceMultiSelectDialog<T>(
                                 ),
                         ),
                         const SizedBox(height: 8),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: FilledButton.tonal(
-                            onPressed: () =>
-                                Navigator.of(dialogContext).pop(selected),
-                            child: const Text('Aplicar'),
+                        Builder(
+                          builder: (themedContext) => Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              OutlinedButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(null),
+                                style: contractSecondaryButtonStyle(
+                                  themedContext,
+                                ),
+                                child: const Text('Cancelar'),
+                              ),
+                              const SizedBox(width: 10),
+                              TextButton(
+                                onPressed: () {
+                                  setLocalState(() => selected.clear());
+                                },
+                                style: contractGhostButtonStyle(themedContext),
+                                child: const Text('Limpiar'),
+                              ),
+                              const SizedBox(width: 10),
+                              FilledButton(
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(selected),
+                                style: contractPrimaryButtonStyle(
+                                  themedContext,
+                                ),
+                                child: const Text('Aplicar'),
+                              ),
+                            ],
                           ),
                         ),
                       ],
@@ -3953,10 +4029,15 @@ class _FinancePickerOptionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final background = selected
-        ? finanzasAreaTokens.badgeBackground.withValues(alpha: 0.90)
+        ? finanzasAreaTokens.primaryStrong.withValues(alpha: 0.26)
         : highlighted
-        ? finanzasAreaTokens.surfaceTint.withValues(alpha: 0.66)
-        : Colors.white.withValues(alpha: 0.44);
+        ? finanzasAreaTokens.primaryStrong.withValues(alpha: 0.18)
+        : const Color(0xFF242932);
+    final borderColor = selected
+        ? finanzasAreaTokens.primaryStrong.withValues(alpha: 0.78)
+        : highlighted
+        ? finanzasAreaTokens.primaryStrong.withValues(alpha: 0.50)
+        : Colors.white.withValues(alpha: 0.10);
     return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
@@ -3965,27 +4046,35 @@ class _FinancePickerOptionTile extends StatelessWidget {
         child: InkWell(
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    label,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w800,
-                      color: kFinanzasInk,
+          child: Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: borderColor),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w800,
+                        color: selected || highlighted
+                            ? finanzasAreaTokens.primaryStrong
+                            : Colors.white,
+                      ),
                     ),
                   ),
-                ),
-                if (selected)
-                  Icon(
-                    Icons.check_rounded,
-                    size: 18,
-                    color: finanzasAreaTokens.primaryStrong,
-                  ),
-              ],
+                  if (selected)
+                    Icon(
+                      Icons.check_rounded,
+                      size: 18,
+                      color: finanzasAreaTokens.primaryStrong,
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -4149,6 +4238,8 @@ Color _financeSourceTone(String source) {
       return const Color(0xFF2563EB);
     case 'COMPRAS':
       return const Color(0xFF8F201A);
+    case 'DIRECTO':
+      return const Color(0xFFE26D1F);
     default:
       return const Color(0xFF7A1914);
   }
@@ -4229,7 +4320,7 @@ class _FinanzasCatalogHeaderBrand extends StatelessWidget {
         ),
         const SizedBox(width: 20),
         Text(
-          'Catálogo',
+          'Catálogo Finanzas',
           maxLines: 1,
           style: TextStyle(
             fontSize: 28,
@@ -4240,6 +4331,114 @@ class _FinanzasCatalogHeaderBrand extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _FinCatalogTopBar extends StatelessWidget {
+  final bool exportingCsv;
+  final int selectedCount;
+  final int visibleCount;
+  final String catalogLabel;
+  final String? activeLabel;
+  final Future<void> Function() onExportCsv;
+
+  const _FinCatalogTopBar({
+    required this.exportingCsv,
+    required this.selectedCount,
+    required this.visibleCount,
+    required this.catalogLabel,
+    required this.activeLabel,
+    required this.onExportCsv,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return ContractGlassCard(
+      borderRadius: BorderRadius.circular(28),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      child: Row(
+        children: [
+          _FinCatalogTopActionButton(
+            label: exportingCsv ? 'Exportando CSV...' : 'Descargar CSV',
+            icon: exportingCsv
+                ? Icons.downloading_rounded
+                : Icons.download_rounded,
+            enabled: !exportingCsv,
+            onTap: onExportCsv,
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$catalogLabel $visibleCount',
+                  style: TextStyle(
+                    color: tokens.primaryStrong,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Filtrado ($visibleCount registros)'
+                  '${activeLabel == null ? '' : ' • Activa: $activeLabel'}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: tokens.onGlass.withValues(alpha: 0.72),
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            selectedCount == 1
+                ? '1 seleccionada'
+                : '$selectedCount seleccionadas',
+            style: TextStyle(
+              color: tokens.onGlass,
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FinCatalogTopActionButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool enabled;
+  final Future<void> Function() onTap;
+
+  const _FinCatalogTopActionButton({
+    required this.label,
+    required this.icon,
+    required this.enabled,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return FilledButton.icon(
+      onPressed: enabled ? () => unawaited(onTap()) : null,
+      style: OutlinedButton.styleFrom(
+        foregroundColor: tokens.primaryStrong,
+        backgroundColor: Colors.white.withValues(alpha: 0.12),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.26)),
+        disabledForegroundColor: tokens.badgeText.withValues(alpha: 0.55),
+      ),
+      icon: Icon(icon, size: 18),
+      label: Text(label),
     );
   }
 }
@@ -4325,7 +4524,9 @@ class _FinanzasHeaderButtonState extends State<_FinanzasHeaderButton> {
                 highlighted ? -2.5 : 0,
                 0,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              width: 176,
+              height: 56,
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,

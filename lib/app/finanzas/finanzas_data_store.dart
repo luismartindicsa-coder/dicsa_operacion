@@ -3,7 +3,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../compras/compras_data_store.dart';
 import '../mayoreo/mayoreo_data_store.dart';
 import '../mayoreo/mayoreo_sorting.dart';
-import 'finanzas_seed_catalog_data.dart';
 
 const String _kFinCompaniesTable = 'finanzas_catalog_companies';
 const String _kFinConceptsTable = 'finanzas_catalog_concepts';
@@ -88,9 +87,9 @@ class FinanzasDataStore {
   static Future<FinanzasCatalogSnapshot> loadCatalogSnapshot() async {
     try {
       final remote = await _loadRemoteCatalogSnapshot();
-      return remote ?? _normalizeSnapshot(kFinanzasSeedCatalogSnapshot);
+      return remote ?? const FinanzasCatalogSnapshot.empty();
     } catch (_) {
-      return _normalizeSnapshot(kFinanzasSeedCatalogSnapshot);
+      return const FinanzasCatalogSnapshot.empty();
     }
   }
 
@@ -105,8 +104,42 @@ class FinanzasDataStore {
   }
 }
 
+Future<List<Map<String, dynamic>>> _fetchAllFinanceRows(
+  PostgrestTransformBuilder<List<Map<String, dynamic>>> Function(
+    int from,
+    int to,
+  )
+  buildQuery,
+) async {
+  const int pageSize = 1000;
+  final List<Map<String, dynamic>> collected = <Map<String, dynamic>>[];
+  var from = 0;
+  while (true) {
+    final rows = await buildQuery(from, from + pageSize - 1);
+    collected.addAll(rows);
+    if (rows.length < pageSize) {
+      break;
+    }
+    from += pageSize;
+  }
+  return collected;
+}
+
 FinanzasCatalogSnapshot _normalizeSnapshot(FinanzasCatalogSnapshot input) {
-  final companies = input.companies.toList(growable: false)
+  final dedupedCompanies = <FinanzasCatalogCompanyRecord>[];
+  final seenCompanyKeys = <String>{};
+  for (final row in input.companies) {
+    final key = _financeCompanyIdentityKey(
+      source: row.source,
+      name: row.name,
+      linkedName: row.linkedName,
+    );
+    if (seenCompanyKeys.contains(key)) continue;
+    seenCompanyKeys.add(key);
+    dedupedCompanies.add(row);
+  }
+
+  final companies = dedupedCompanies.toList(growable: false)
     ..sort((a, b) => compareMayoreoAlpha(a.name, b.name));
   final concepts = input.concepts.toList(growable: false)
     ..sort((a, b) => compareMayoreoAlpha(a.name, b.name));
@@ -127,17 +160,26 @@ FinanzasCatalogSnapshot _normalizeSnapshot(FinanzasCatalogSnapshot input) {
 
 Future<FinanzasCatalogSnapshot?> _loadRemoteCatalogSnapshot() async {
   final supa = Supabase.instance.client;
-  final companiesData =
-      await supa.from(_kFinCompaniesTable).select().order('name') as List;
-  final conceptsData =
-      await supa.from(_kFinConceptsTable).select().order('name') as List;
-  final relationsData =
-      await supa.from(_kFinRelationsTable).select().order('created_at') as List;
+  final companiesData = await _fetchAllFinanceRows(
+    (from, to) =>
+        supa.from(_kFinCompaniesTable).select().order('name').range(from, to),
+  );
+  final conceptsData = await _fetchAllFinanceRows(
+    (from, to) =>
+        supa.from(_kFinConceptsTable).select().order('name').range(from, to),
+  );
+  final relationsData = await _fetchAllFinanceRows(
+    (from, to) => supa
+        .from(_kFinRelationsTable)
+        .select()
+        .order('created_at')
+        .range(from, to),
+  );
   final mayoreoSnapshot = await MayoreoDataStore.loadCatalogSnapshot();
   final comprasSnapshot = await ComprasDataStore.loadCatalogSnapshot();
   if (companiesData.isEmpty && conceptsData.isEmpty && relationsData.isEmpty) {
     final bootstrap = _mergeExternalCompanies(
-      _normalizeSnapshot(kFinanzasSeedCatalogSnapshot),
+      const FinanzasCatalogSnapshot.empty(),
       mayoreoSnapshot: mayoreoSnapshot,
       comprasSnapshot: comprasSnapshot,
     );
@@ -205,12 +247,31 @@ FinanzasCatalogSnapshot _mergeExternalCompanies(
   required MayoreoCatalogSnapshot mayoreoSnapshot,
   required ComprasCatalogSnapshot comprasSnapshot,
 }) {
-  final mergedCompanies = base.companies.toList(growable: true);
+  final mergedCompanies = <FinanzasCatalogCompanyRecord>[];
   final existingIds = mergedCompanies.map((row) => row.id).toSet();
+  final existingCompanyKeys = <String>{};
+
+  for (final row in base.companies) {
+    if (_isAutoSyncedFinanceCompany(row)) continue;
+    final key = _financeCompanyIdentityKey(
+      source: row.source,
+      name: row.name,
+      linkedName: row.linkedName,
+    );
+    if (existingCompanyKeys.contains(key)) continue;
+    mergedCompanies.add(row);
+    existingIds.add(row.id);
+    existingCompanyKeys.add(key);
+  }
 
   for (final company in mayoreoSnapshot.companies) {
     final id = 'ventas_${company.id}';
-    if (existingIds.contains(id)) continue;
+    final key = _financeCompanyIdentityKey(
+      source: 'VENTAS',
+      name: company.name,
+      linkedName: company.name,
+    );
+    if (existingIds.contains(id) || existingCompanyKeys.contains(key)) continue;
     mergedCompanies.add(
       FinanzasCatalogCompanyRecord(
         id: id,
@@ -222,11 +283,17 @@ FinanzasCatalogSnapshot _mergeExternalCompanies(
       ),
     );
     existingIds.add(id);
+    existingCompanyKeys.add(key);
   }
 
   for (final company in comprasSnapshot.companies) {
     final id = 'compras_${company.id}';
-    if (existingIds.contains(id)) continue;
+    final key = _financeCompanyIdentityKey(
+      source: 'COMPRAS',
+      name: company.name,
+      linkedName: company.name,
+    );
+    if (existingIds.contains(id) || existingCompanyKeys.contains(key)) continue;
     mergedCompanies.add(
       FinanzasCatalogCompanyRecord(
         id: id,
@@ -238,6 +305,7 @@ FinanzasCatalogSnapshot _mergeExternalCompanies(
       ),
     );
     existingIds.add(id);
+    existingCompanyKeys.add(key);
   }
 
   return _normalizeSnapshot(
@@ -247,6 +315,28 @@ FinanzasCatalogSnapshot _mergeExternalCompanies(
       relations: base.relations,
     ),
   );
+}
+
+String _financeCompanyIdentityKey({
+  required String source,
+  required String name,
+  required String linkedName,
+}) {
+  final normalizedSource = source.trim().toUpperCase();
+  final normalizedName = (linkedName.trim().isNotEmpty ? linkedName : name)
+      .trim()
+      .toUpperCase();
+  return '$normalizedSource|$normalizedName';
+}
+
+bool _isAutoSyncedFinanceCompany(FinanzasCatalogCompanyRecord row) {
+  final source = row.source.trim().toUpperCase();
+  final notes = row.notes.trim().toUpperCase();
+  return (source == 'COMPRAS' &&
+          notes == 'SINCRONIZADO DESDE COMPRAS MAYOREO') ||
+      (source == 'VENTAS' && notes == 'SINCRONIZADO DESDE VENTAS MAYOREO') ||
+      row.id.startsWith('compras_') ||
+      row.id.startsWith('ventas_');
 }
 
 bool _shouldSyncMergedCompanies(

@@ -244,10 +244,10 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
               AnimatedPositioned(
                 duration: const Duration(milliseconds: 220),
                 curve: Curves.easeOutCubic,
-                left: _menuOpen ? 0 : -402,
+                left: _menuOpen ? 0 : -332,
                 top: 0,
                 bottom: 0,
-                width: 390,
+                width: 320,
                 child: IgnorePointer(
                   ignoring: !_menuOpen,
                   child: FinanzasAreaSidePanel(
@@ -2359,7 +2359,7 @@ class _FinanzasHeaderButtonState extends State<_FinanzasHeaderButton> {
                 highlighted ? -2.5 : 0,
                 0,
               ),
-              width: widget.iconOnly ? 56 : (widget.compact ? 148 : 208),
+              width: widget.iconOnly ? 56 : (widget.compact ? 176 : 176),
               height: 56,
               padding: EdgeInsets.symmetric(
                 horizontal: widget.iconOnly ? 0 : 20,
@@ -2399,16 +2399,16 @@ class _FinanzasHeaderButtonState extends State<_FinanzasHeaderButton> {
                   : Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(widget.icon, size: 22, color: tokens.primary),
-                        const SizedBox(width: 12),
+                        Icon(widget.icon, size: 20, color: tokens.primary),
+                        const SizedBox(width: 10),
                         Flexible(
                           child: Text(
                             widget.label,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                             style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w900,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
                               color: tokens.primary,
                               letterSpacing: 0.1,
                             ),

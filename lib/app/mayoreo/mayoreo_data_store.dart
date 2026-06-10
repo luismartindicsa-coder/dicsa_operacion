@@ -316,6 +316,9 @@ const List<String> _kMayoreoCanonicalGeneralCategories = <String>[
   'PLASTICO',
   'MADERA',
   'PAPEL',
+  'VIDRIO',
+  'TEXTIL',
+  'OTROS',
 ];
 
 MayoreoCatalogSnapshot _normalizeCatalogSnapshot(MayoreoCatalogSnapshot input) {
@@ -413,7 +416,19 @@ String _canonicalMayoreoGeneralCategory(
       merged.contains('REVISTA')) {
     return 'PAPEL';
   }
-  return 'METAL';
+  if (merged.contains('VIDRIO') || merged.contains('CRISTAL')) {
+    return 'VIDRIO';
+  }
+  if (merged.contains('TEXTIL') ||
+      merged.contains('TELA') ||
+      merged.contains('TRAPO') ||
+      merged.contains('ROPA')) {
+    return 'TEXTIL';
+  }
+  if (merged.contains('OTRO') || merged.contains('OTROS')) {
+    return 'OTROS';
+  }
+  return 'OTROS';
 }
 
 Future<MayoreoCatalogSnapshot?> _loadRemoteCatalogSnapshot() async {

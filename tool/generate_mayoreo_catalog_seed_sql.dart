@@ -7,6 +7,9 @@ const List<String> _kCanonicalGeneralCategories = <String>[
   'PLASTICO',
   'MADERA',
   'PAPEL',
+  'VIDRIO',
+  'TEXTIL',
+  'OTROS',
 ];
 
 void main(List<String> args) {
@@ -187,7 +190,19 @@ String _canonicalMayoreoGeneralCategory(String raw) {
       merged.contains('REVISTA')) {
     return 'PAPEL';
   }
-  return 'METAL';
+  if (merged.contains('VIDRIO') || merged.contains('CRISTAL')) {
+    return 'VIDRIO';
+  }
+  if (merged.contains('TEXTIL') ||
+      merged.contains('TELA') ||
+      merged.contains('TRAPO') ||
+      merged.contains('ROPA')) {
+    return 'TEXTIL';
+  }
+  if (merged.contains('OTRO') || merged.contains('OTROS')) {
+    return 'OTROS';
+  }
+  return 'OTROS';
 }
 
 String _stripAccents(String value) {

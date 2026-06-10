@@ -19,6 +19,20 @@ ButtonStyle contractPrimaryButtonStyle(BuildContext context) {
   );
 }
 
+ButtonStyle contractDestructiveButtonStyle(BuildContext context) {
+  final tokens = AreaThemeScope.of(context);
+  return ElevatedButton.styleFrom(
+    foregroundColor: Colors.white,
+    backgroundColor: tokens.primaryStrong,
+    disabledBackgroundColor: tokens.primaryStrong.withValues(alpha: 0.44),
+    disabledForegroundColor: Colors.white.withValues(alpha: 0.72),
+    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
+    shadowColor: tokens.glow.withValues(alpha: 0.14),
+    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+  );
+}
+
 ButtonStyle contractSecondaryButtonStyle(BuildContext context) {
   final tokens = AreaThemeScope.of(context);
   return OutlinedButton.styleFrom(

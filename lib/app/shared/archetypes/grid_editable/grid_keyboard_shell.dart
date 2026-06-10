@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../ui_contract_core/focus/focus_utils.dart';
 import '../../ui_contract_core/keyboard/editable_input_key_guard.dart';
@@ -7,6 +8,7 @@ import 'grid_navigation_controller.dart';
 
 class GridKeyboardShell extends StatelessWidget {
   final GridNavigationController navigationController;
+  final FocusNode? focusNode;
   final Widget child;
   final VoidCallback? onConfirm;
   final VoidCallback? onEscape;
@@ -18,6 +20,7 @@ class GridKeyboardShell extends StatelessWidget {
   const GridKeyboardShell({
     super.key,
     required this.navigationController,
+    this.focusNode,
     required this.child,
     this.onConfirm,
     this.onEscape,
@@ -30,10 +33,36 @@ class GridKeyboardShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Focus(
+      focusNode: focusNode,
       autofocus: true,
       onKeyEvent: (_, event) {
+        final editableTextFocused =
+            isEditingText?.call() ?? isEditableTextFocused();
+        if (!editableTextFocused && event is KeyDownEvent) {
+          final key = event.logicalKey;
+          if (key == LogicalKeyboardKey.arrowLeft) {
+            navigationController.moveLeft();
+            onNavigated?.call(navigationController.active);
+            return KeyEventResult.handled;
+          }
+          if (key == LogicalKeyboardKey.arrowRight) {
+            navigationController.moveRight();
+            onNavigated?.call(navigationController.active);
+            return KeyEventResult.handled;
+          }
+          if (key == LogicalKeyboardKey.arrowUp) {
+            navigationController.moveUp();
+            onNavigated?.call(navigationController.active);
+            return KeyEventResult.handled;
+          }
+          if (key == LogicalKeyboardKey.arrowDown) {
+            navigationController.moveDown();
+            onNavigated?.call(navigationController.active);
+            return KeyEventResult.handled;
+          }
+        }
         return guardEditableInputKeys(
-          editableTextFocused: isEditingText?.call() ?? isEditableTextFocused(),
+          editableTextFocused: editableTextFocused,
           event: event,
           onEscape: () {
             onEscape?.call();

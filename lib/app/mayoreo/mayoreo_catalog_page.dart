@@ -67,7 +67,9 @@ const List<String> _kMayoreoGeneralCategories = <String>[
   'PAPEL',
   'PLASTICO',
   'MADERA',
-  'OTRO',
+  'VIDRIO',
+  'TEXTIL',
+  'OTROS',
 ];
 
 String _stripAccents(String input) {

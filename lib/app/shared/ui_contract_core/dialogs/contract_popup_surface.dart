@@ -22,10 +22,13 @@ class ContractPopupSurface extends StatelessWidget {
   Widget build(BuildContext context) {
     return ConstrainedBox(
       constraints: constraints,
-      child: ContractGlassCard(
-        padding: padding,
-        borderRadius: const BorderRadius.all(Radius.circular(20)),
-        child: child,
+      child: Material(
+        type: MaterialType.transparency,
+        child: ContractGlassCard(
+          padding: padding,
+          borderRadius: const BorderRadius.all(Radius.circular(20)),
+          child: child,
+        ),
       ),
     );
   }

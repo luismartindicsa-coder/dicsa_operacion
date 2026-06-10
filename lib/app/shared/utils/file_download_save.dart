@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:http/http.dart' as http;
@@ -30,6 +31,29 @@ Future<String?> saveRemoteFileAs({
   if (outputPath == null || outputPath.trim().isEmpty) return null;
   final normalized = _normalizeExtension(outputPath, suggestedFileName);
   await File(normalized).writeAsBytes(response.bodyBytes, flush: true);
+  return normalized;
+}
+
+Future<String?> saveBytesAs({
+  required Uint8List bytes,
+  required String suggestedFileName,
+  String dialogTitle = 'Guardar como...',
+}) async {
+  String? outputPath;
+  try {
+    outputPath = await FilePicker.platform.saveFile(
+      dialogTitle: dialogTitle,
+      fileName: suggestedFileName,
+      type: FileType.custom,
+      allowedExtensions: _allowedExtensionsFor(suggestedFileName),
+    );
+  } catch (_) {
+    return null;
+  }
+
+  if (outputPath == null || outputPath.trim().isEmpty) return null;
+  final normalized = _normalizeExtension(outputPath, suggestedFileName);
+  await File(normalized).writeAsBytes(bytes, flush: true);
   return normalized;
 }
 

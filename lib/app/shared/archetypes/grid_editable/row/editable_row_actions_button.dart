@@ -1,17 +1,20 @@
 import 'package:flutter/material.dart';
 
 import '../../../ui_contract_core/dialogs/contract_menu_surface.dart';
+import '../../../ui_contract_core/theme/area_theme_scope.dart';
 
 class EditableRowActionsButton<T> extends StatelessWidget {
   final List<ContractMenuEntry<T>> entries;
   final ValueChanged<T> onSelected;
   final String tooltip;
+  final Color? iconColor;
 
   const EditableRowActionsButton({
     super.key,
     required this.entries,
     required this.onSelected,
     this.tooltip = 'Acciones',
+    this.iconColor,
   });
 
   Future<void> _openMenu(BuildContext context) async {
@@ -37,11 +40,25 @@ class EditableRowActionsButton<T> extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      tooltip: tooltip,
-      visualDensity: VisualDensity.compact,
-      icon: const Icon(Icons.more_horiz_rounded),
-      onPressed: () => _openMenu(context),
+    final tokens = AreaThemeScope.of(context);
+    return Tooltip(
+      message: tooltip,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => _openMenu(context),
+          child: SizedBox.expand(
+            child: Center(
+              child: Icon(
+                Icons.more_horiz_rounded,
+                size: 18,
+                color: iconColor ?? tokens.primaryStrong,
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

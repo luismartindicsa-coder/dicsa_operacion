@@ -895,7 +895,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
           .cast<Map<String, dynamic>?>()
           .firstWhere((row) => row != null, orElse: () => null);
       if (selected != null) {
-        unawaited(_editOrder(selected));
+        unawaited(_openOrderPrimaryAction(selected));
         return KeyEventResult.handled;
       }
     }
@@ -974,13 +974,30 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     await _showOrderDialog();
   }
 
-  Future<void> _editOrder(Map<String, dynamic> order) async {
+  Future<void> _openOrderPrimaryAction(Map<String, dynamic> order) async {
     final status = (order['status'] ?? '').toString();
     if (status == 'authorized' || status == 'purchased') {
-      await _editActualTotal(order);
+      await _showOrderSummary(order);
       return;
     }
     await _showOrderDialog(initial: order);
+  }
+
+  Future<void> _showOrderSummary(Map<String, dynamic> order) async {
+    final lines = List<Map<String, dynamic>>.from(
+      (_linesByOrderId[(order['id'] ?? '').toString()] ?? const []).map(
+        (row) => Map<String, dynamic>.from(row),
+      ),
+    );
+    await _showPurchaseOrdersDialog<void>(
+      context: context,
+      builder: (dialogContext) => _PurchaseOrderSummaryDialog(
+        order: order,
+        lines: lines,
+        estimatedTotal: _estimatedOrderTotal(order),
+        actualTotal: _actualOrderTotal(order),
+      ),
+    );
   }
 
   Future<void> _editActualTotal(Map<String, dynamic> order) async {
@@ -1304,6 +1321,8 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     final canRemoveFromCash = status == 'authorized' && sentToCash;
     final canMarkPurchased = status == 'authorized';
     final canReopenPurchase = status == 'purchased';
+    final canCaptureActualTotal =
+        status == 'authorized' || status == 'purchased';
     final canDelete = _canDeleteOrder(order);
     final overlay = Overlay.of(context).context.findRenderObject();
     RelativeRect position = const RelativeRect.fromLTRB(0, 0, 0, 0);
@@ -1344,14 +1363,23 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
             value: 'edit',
             child: _PurchaseOrderActionMenuLabel(
               icon: status == 'authorized' || status == 'purchased'
-                  ? Icons.attach_money_rounded
+                  ? Icons.receipt_long_rounded
                   : Icons.edit_outlined,
               title: status == 'authorized' || status == 'purchased'
-                  ? 'Capturar total real'
+                  ? 'Ver resumen'
                   : 'Editar',
               subtitle: status == 'authorized' || status == 'purchased'
-                  ? 'Registrar el gasto real de la compra'
+                  ? 'Consultar datos y renglones de la orden'
                   : 'Abrir la captura de la orden',
+            ),
+          ),
+        if (canCaptureActualTotal)
+          const PopupMenuItem<String>(
+            value: 'actual_total',
+            child: _PurchaseOrderActionMenuLabel(
+              icon: Icons.attach_money_rounded,
+              title: 'Total real',
+              subtitle: 'Registrar el gasto real de la compra',
             ),
           ),
         if (canSend)
@@ -1431,7 +1459,10 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     if (!mounted) return;
     switch (action) {
       case 'edit':
-        await _editOrder(order);
+        await _openOrderPrimaryAction(order);
+        break;
+      case 'actual_total':
+        await _editActualTotal(order);
         break;
       case 'send':
         await _sendToDirection(order);
@@ -2245,7 +2276,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                                               );
                                             },
                                             onDoubleTap: () =>
-                                                _editOrder(order),
+                                                _openOrderPrimaryAction(order),
                                             onSecondaryTapDown: (details) {
                                               final normalized =
                                                   orderId?.trim() ?? '';
@@ -3938,6 +3969,323 @@ class _PurchaseOrderDialogSection extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           child,
+        ],
+      ),
+    );
+  }
+}
+
+class _PurchaseOrderSummaryDialog extends StatelessWidget {
+  final Map<String, dynamic> order;
+  final List<Map<String, dynamic>> lines;
+  final double estimatedTotal;
+  final double? actualTotal;
+
+  const _PurchaseOrderSummaryDialog({
+    required this.order,
+    required this.lines,
+    required this.estimatedTotal,
+    required this.actualTotal,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final folio = (order['folio'] ?? '').toString().trim();
+    final target = (order['target_label'] ?? '').toString().trim();
+    final vendor = (order['quote_vendor_name'] ?? '').toString().trim();
+    final contact = (order['quote_contact'] ?? '').toString().trim();
+    final notes = (order['notes'] ?? '').toString().trim();
+    final date = _dateFromAny(order['order_date']);
+    return ContractDialogShell(
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 860, maxHeight: 760),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Wrap(
+                spacing: 10,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  const Text(
+                    'Resumen de orden de compra',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF17324A),
+                    ),
+                  ),
+                  if (folio.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE7F1F8),
+                        borderRadius: BorderRadius.circular(999),
+                      ),
+                      child: Text(
+                        folio,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: Color(0xFF35526A),
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [Color(0xFFF0FBF8), Color(0xFFE8F4FB)],
+                  ),
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: const Color(0xFFB7D7D2)),
+                ),
+                child: Wrap(
+                  spacing: 16,
+                  runSpacing: 10,
+                  children: [
+                    Text(
+                      'Estimado: ${_fmtMoney(estimatedTotal)}',
+                      style: const TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF17324A),
+                      ),
+                    ),
+                    Text(
+                      'Real: ${actualTotal == null ? 'Pendiente' : _fmtMoney(actualTotal!)}',
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF35526A),
+                      ),
+                    ),
+                    Text(
+                      '${lines.length} renglones',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF35526A),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _PurchaseOrderDialogSection(
+                        title: 'Datos generales',
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Wrap(
+                              spacing: 14,
+                              runSpacing: 10,
+                              children: [
+                                _SummaryField(
+                                  label: 'Fecha',
+                                  value: date == null
+                                      ? '-'
+                                      : _fmtDateLabel(date),
+                                ),
+                                _SummaryField(
+                                  label: 'Unidad o área',
+                                  value: target.isEmpty ? '-' : target,
+                                ),
+                                _SummaryField(
+                                  label: 'Proveedor',
+                                  value: vendor.isEmpty ? '-' : vendor,
+                                ),
+                                _SummaryField(
+                                  label: 'Contacto',
+                                  value: contact.isEmpty ? '-' : contact,
+                                ),
+                              ],
+                            ),
+                            if (notes.isNotEmpty) ...[
+                              const SizedBox(height: 12),
+                              _SummaryField(label: 'Notas', value: notes),
+                            ],
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _PurchaseOrderDialogSection(
+                        title: 'Renglones de la orden',
+                        child: lines.isEmpty
+                            ? const Text('Sin renglones.')
+                            : Column(
+                                children: [
+                                  for (
+                                    var index = 0;
+                                    index < lines.length;
+                                    index++
+                                  )
+                                    _PurchaseOrderSummaryLineCard(
+                                      index: index,
+                                      line: lines[index],
+                                    ),
+                                ],
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  FilledButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Cerrar'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SummaryField extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _SummaryField({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minWidth: 170, maxWidth: 360),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF5A7287),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF17324A),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PurchaseOrderSummaryLineCard extends StatelessWidget {
+  final int index;
+  final Map<String, dynamic> line;
+
+  const _PurchaseOrderSummaryLineCard({
+    required this.index,
+    required this.line,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final qty = _toDouble(line['qty']) ?? 0;
+    final amount = _toDouble(line['amount']) ?? 0;
+    final total = (_toDouble(line['line_total']) ?? 0) > 0
+        ? (_toDouble(line['line_total']) ?? 0)
+        : qty * amount;
+    final notes = (line['notes'] ?? '').toString().trim();
+    final lineType =
+        _kPurchaseOrderLineTypeLabel[(line['line_type'] ?? 'material')
+            .toString()] ??
+        'Concepto';
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.86),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFD8E8E5)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 34,
+            height: 34,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE7F1F8),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Text(
+              '${index + 1}',
+              style: const TextStyle(
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF35526A),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$lineType · ${(line['description'] ?? '').toString()}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF17324A),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 4,
+                  children: [
+                    Text(
+                      'Cantidad: ${qty.toStringAsFixed(qty.truncateToDouble() == qty ? 0 : 3)} ${(line['unit'] ?? '').toString()}',
+                    ),
+                    Text('Monto: ${_fmtMoney(amount)}'),
+                    Text(
+                      'Total: ${_fmtMoney(total)}',
+                      style: const TextStyle(fontWeight: FontWeight.w800),
+                    ),
+                  ],
+                ),
+                if (notes.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    notes,
+                    style: const TextStyle(
+                      fontSize: 12,
+                      color: Color(0xFF5A7287),
+                    ),
+                  ),
+                ],
+              ],
+            ),
+          ),
         ],
       ),
     );

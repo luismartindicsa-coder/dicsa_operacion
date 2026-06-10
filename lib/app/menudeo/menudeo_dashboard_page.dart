@@ -317,7 +317,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
       final rows = await _supa
           .from('maintenance_purchase_orders')
           .select(
-            'id,folio,order_date,target_label,quote_vendor_name,sent_to_cash_at,maintenance_purchase_order_lines(line_total,qty,amount)',
+            'id,folio,order_date,target_label,quote_vendor_name,sent_to_cash_at,maintenance_purchase_order_lines(line_total,qty,amount,description)',
           )
           .eq('status', 'authorized')
           .not('sent_to_cash_at', 'is', null)
@@ -3227,6 +3227,7 @@ class _CashReadyPurchaseOrder {
   final String vendorName;
   final DateTime? sentToCashAt;
   final double total;
+  final List<String> lineSummaries;
 
   const _CashReadyPurchaseOrder({
     required this.id,
@@ -3236,6 +3237,7 @@ class _CashReadyPurchaseOrder {
     required this.vendorName,
     required this.sentToCashAt,
     required this.total,
+    required this.lineSummaries,
   });
 
   factory _CashReadyPurchaseOrder.fromMap(Map<String, dynamic> row) {
@@ -3251,6 +3253,11 @@ class _CashReadyPurchaseOrder {
       final amount = double.tryParse((line['amount'] ?? '').toString()) ?? 0;
       return sum + (qty * amount);
     });
+    final lineSummaries = lines
+        .map((line) => (line['description'] ?? '').toString().trim())
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .toList(growable: false);
     return _CashReadyPurchaseOrder(
       id: (row['id'] ?? '').toString(),
       folio: (row['folio'] ?? '').toString(),
@@ -3261,6 +3268,7 @@ class _CashReadyPurchaseOrder {
         (row['sent_to_cash_at'] ?? '').toString(),
       ),
       total: total,
+      lineSummaries: lineSummaries,
     );
   }
 }
@@ -3410,6 +3418,24 @@ class _CashReadyPurchaseOrdersDialog extends StatelessWidget {
                                           color: kMenudeoMutedText,
                                         ),
                                       ),
+                                      if (order.lineSummaries.isNotEmpty) ...[
+                                        const SizedBox(height: 4),
+                                        Text(
+                                          order.lineSummaries
+                                                  .take(3)
+                                                  .join(' · ') +
+                                              (order.lineSummaries.length > 3
+                                                  ? '…'
+                                                  : ''),
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF5A7287),
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),
@@ -3701,6 +3727,24 @@ class _CashReadyPurchaseOrdersSummaryCard extends StatelessWidget {
                                           color: Color(0xFF4B6A68),
                                         ),
                                       ),
+                                      if (order.lineSummaries.isNotEmpty) ...[
+                                        const SizedBox(height: 2),
+                                        Text(
+                                          order.lineSummaries
+                                                  .take(2)
+                                                  .join(' · ') +
+                                              (order.lineSummaries.length > 2
+                                                  ? '…'
+                                                  : ''),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 11,
+                                            fontWeight: FontWeight.w700,
+                                            color: Color(0xFF5A7287),
+                                          ),
+                                        ),
+                                      ],
                                     ],
                                   ),
                                 ),

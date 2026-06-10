@@ -307,17 +307,27 @@ class ComprasTicketsReferenceData {
 class ComprasTicketsStore {
   static Future<List<ComprasTicketRecord>> loadTickets() async {
     try {
-      final rows = await Supabase.instance.client
-          .from(_kComprasTicketsTable)
-          .select()
-          .order('ticket_date', ascending: false)
-          .order('ticket_number', ascending: false);
-      return (rows as List)
-          .map(
-            (row) => ComprasTicketRecord.fromRemoteRow(
-              Map<String, dynamic>.from(row as Map),
-            ),
-          )
+      const int pageSize = 1000;
+      final List<Map<String, dynamic>> collected = <Map<String, dynamic>>[];
+      var from = 0;
+      while (true) {
+        final rows = await Supabase.instance.client
+            .from(_kComprasTicketsTable)
+            .select()
+            .order('ticket_date', ascending: false)
+            .order('ticket_number', ascending: false)
+            .range(from, from + pageSize - 1);
+        final batch = (rows as List)
+            .map((row) => Map<String, dynamic>.from(row as Map))
+            .toList(growable: false);
+        collected.addAll(batch);
+        if (batch.length < pageSize) {
+          break;
+        }
+        from += pageSize;
+      }
+      return collected
+          .map((row) => ComprasTicketRecord.fromRemoteRow(row))
           .toList(growable: false)
         ..sort((a, b) {
           final dateCompare = b.date.compareTo(a.date);

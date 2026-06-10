@@ -1,12 +1,15 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../compras/compras_tickets_store.dart';
+import 'finanzas_evidence_store.dart';
 import 'finanzas_fixed_payments_store.dart';
 import 'finanzas_financial_rules.dart';
 import 'finanzas_provider_accounts_store.dart';
 
 const String _kFinBankMovementsTable = 'finanzas_bank_movements';
 const String _kMayoreoAccountsTable = 'mayoreo_accounts';
+const String _kFinEvidenceTable = 'finanzas_evidence';
+const String _kFinEvidenceBucket = 'finanzas_evidence';
 
 const List<String> kFinBankCompanies = <String>['DICSA', 'VH'];
 const List<String> kFinBankBranches = <String>['CELAYA', 'MAZATLAN'];
@@ -188,6 +191,210 @@ class FinanzasBankAccountsStore {
       <Map<String, dynamic>>[row.toUpsertJson()],
       onConflict: 'id',
     );
+  }
+
+  static Future<void> deleteMovement(String id) async {
+    await Supabase.instance.client
+        .from(_kFinBankMovementsTable)
+        .delete()
+        .eq('id', id);
+  }
+
+  static Future<void> deleteMovementAndReverse(
+    FinanzasBankMovementRecord movement,
+  ) async {
+    if (movement.linkedSupplierInvoiceId != null &&
+        movement.linkedSupplierInvoiceId!.isNotEmpty) {
+      final invoices = await FinanzasProviderAccountsStore.loadInvoices();
+      FinanzasSupplierInvoiceRecord? linkedInvoice;
+      for (final row in invoices) {
+        if (row.id == movement.linkedSupplierInvoiceId) {
+          linkedInvoice = row;
+          break;
+        }
+      }
+      if (linkedInvoice != null) {
+        final reversedAmount = movement.debitAmount
+            .clamp(0, double.infinity)
+            .toDouble();
+        final nextBalanceAmount = (linkedInvoice.balanceAmount + reversedAmount)
+            .clamp(0, linkedInvoice.totalAmount)
+            .toDouble();
+        final updatedInvoice = linkedInvoice.copyWith(
+          balanceAmount: nextBalanceAmount,
+          status: deriveSupplierInvoiceStatus(
+            balanceAmount: nextBalanceAmount,
+            dueDate: linkedInvoice.dueDate,
+          ),
+        );
+        await FinanzasProviderAccountsStore.saveInvoice(updatedInvoice);
+        await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
+          providerId: linkedInvoice.providerId,
+        );
+
+        final invoiceTickets =
+            await FinanzasProviderAccountsStore.loadInvoiceTickets();
+        final linkedTicketIds = invoiceTickets
+            .where((row) => row.invoiceId == updatedInvoice.id)
+            .map((row) => row.ticketId)
+            .toSet();
+        if (linkedTicketIds.isNotEmpty) {
+          final allTickets = await ComprasTicketsStore.loadTickets();
+          final allApplications =
+              await ComprasTicketsStore.loadTicketPaymentApplications();
+          final linkedTickets =
+              allTickets
+                  .where((ticket) => linkedTicketIds.contains(ticket.id))
+                  .toList(growable: false)
+                ..sort((a, b) {
+                  final dateCompare = a.date.compareTo(b.date);
+                  if (dateCompare != 0) return dateCompare;
+                  return a.ticket.compareTo(b.ticket);
+                });
+          final directAppliedByTicketId = <String, double>{};
+          for (final application in allApplications) {
+            if (!linkedTicketIds.contains(application.ticketId)) continue;
+            directAppliedByTicketId.update(
+              application.ticketId,
+              (value) => value + application.appliedAmount,
+              ifAbsent: () => application.appliedAmount,
+            );
+          }
+          var invoicePaidRemaining =
+              (linkedInvoice.totalAmount - nextBalanceAmount)
+                  .clamp(0, linkedInvoice.totalAmount)
+                  .toDouble();
+          final updatedTickets = linkedTickets
+              .map((ticket) {
+                final directApplied = (directAppliedByTicketId[ticket.id] ?? 0)
+                    .clamp(0, ticket.amount)
+                    .toDouble();
+                final pendingAfterDirect = (ticket.amount - directApplied)
+                    .clamp(0, double.infinity)
+                    .toDouble();
+                final invoiceApplied = invoicePaidRemaining > pendingAfterDirect
+                    ? pendingAfterDirect
+                    : invoicePaidRemaining;
+                invoicePaidRemaining = (invoicePaidRemaining - invoiceApplied)
+                    .clamp(0, double.infinity)
+                    .toDouble();
+                final totalApplied = (directApplied + invoiceApplied)
+                    .clamp(0, ticket.amount)
+                    .toDouble();
+                final fullyCovered = totalApplied >= ticket.amount - 0.009;
+                final hasAbono = totalApplied > 0.009 && !fullyCovered;
+                return ticket.copyWith(
+                  pagoStatus: fullyCovered
+                      ? 'PAGADO'
+                      : hasAbono
+                      ? 'ABONO'
+                      : 'PENDIENTE_DE_PAGO',
+                  coverageStatus: fullyCovered
+                      ? 'CUBIERTO'
+                      : hasAbono
+                      ? 'PARCIAL'
+                      : 'SIN_CUBRIR',
+                );
+              })
+              .toList(growable: false);
+          if (updatedTickets.isNotEmpty) {
+            await ComprasTicketsStore.saveTickets(updatedTickets);
+          }
+        }
+      }
+    }
+
+    if (movement.linkedFixedPaymentId != null &&
+        movement.linkedFixedPaymentId!.isNotEmpty) {
+      final payments = await FinanzasFixedPaymentsStore.loadPayments();
+      FinanzasFixedPaymentRecord? linkedPayment;
+      for (final row in payments) {
+        if (row.id == movement.linkedFixedPaymentId) {
+          linkedPayment = row;
+          break;
+        }
+      }
+      if (linkedPayment != null) {
+        await FinanzasFixedPaymentsStore.savePayment(
+          linkedPayment.copyWith(
+            status: deriveFixedPaymentOperationalStatus(
+              persistedStatus: 'PENDIENTE',
+              paymentDate: linkedPayment.paymentDate,
+            ),
+            executionMethod: null,
+            linkedBankMovementId: null,
+            settledAt: null,
+          ),
+        );
+      }
+    }
+
+    if (movement.sourceType == 'VENTA_FACTURA' &&
+        movement.linkedExternalRef != null &&
+        movement.linkedExternalRef!.isNotEmpty) {
+      final rows = await Supabase.instance.client
+          .from(_kMayoreoAccountsTable)
+          .select(
+            'id, approved_amount, paid_amount, status, operation_type, settlement_date',
+          )
+          .eq('id', movement.linkedExternalRef!)
+          .limit(1);
+      if ((rows as List).isNotEmpty) {
+        final row = Map<String, dynamic>.from(rows.first as Map);
+        final approvedAmount = ((row['approved_amount'] as num?) ?? 0)
+            .toDouble();
+        final paidAmount = ((row['paid_amount'] as num?) ?? 0).toDouble();
+        final nextPaidAmount = (paidAmount - movement.creditAmount)
+            .clamp(0, approvedAmount)
+            .toDouble();
+        final operationType = (row['operation_type'] ?? 'factura').toString();
+        final currentStatus = (row['status'] ?? '').toString();
+        String nextStatus = currentStatus;
+        if (nextPaidAmount <= 0.009) {
+          nextStatus = operationType == 'cheque'
+              ? 'chequePendienteCanje'
+              : 'facturadaPendientePago';
+        } else if (nextPaidAmount < approvedAmount - 0.009) {
+          nextStatus = operationType == 'cheque'
+              ? 'chequePendienteCanje'
+              : 'facturadaPendientePago';
+        }
+        await Supabase.instance.client
+            .from(_kMayoreoAccountsTable)
+            .update(<String, dynamic>{
+              'paid_amount': nextPaidAmount,
+              'status': nextStatus,
+              'settlement_date': nextPaidAmount >= approvedAmount - 0.009
+                  ? row['settlement_date']
+                  : null,
+            })
+            .eq('id', movement.linkedExternalRef!);
+      }
+    }
+
+    final evidenceRows = await Supabase.instance.client
+        .from(_kFinEvidenceTable)
+        .select('storage_path')
+        .eq('owner_type', kFinanzasEvidenceOwnerTypeBankMovement)
+        .eq('owner_id', movement.id);
+    final storagePaths = (evidenceRows as List)
+        .map((row) => (row as Map)['storage_path']?.toString() ?? '')
+        .where((path) => path.isNotEmpty)
+        .toList(growable: false);
+    if (storagePaths.isNotEmpty) {
+      try {
+        await Supabase.instance.client.storage
+            .from(_kFinEvidenceBucket)
+            .remove(storagePaths);
+      } catch (_) {}
+    }
+    await Supabase.instance.client
+        .from(_kFinEvidenceTable)
+        .delete()
+        .eq('owner_type', kFinanzasEvidenceOwnerTypeBankMovement)
+        .eq('owner_id', movement.id);
+
+    await deleteMovement(movement.id);
   }
 
   static Future<List<FinanzasClientPaymentAccountRecord>>

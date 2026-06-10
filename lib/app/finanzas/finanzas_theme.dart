@@ -301,7 +301,7 @@ class FinanzasAreaSidePanel extends StatelessWidget {
     ];
 
     return SizedBox(
-      width: 390,
+      width: 320,
       child: Padding(
         padding: const EdgeInsets.only(right: 12),
         child: FinanzasGlassPanel(

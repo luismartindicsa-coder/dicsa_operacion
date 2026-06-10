@@ -29,6 +29,7 @@ class DirectionPurchasePendingItem {
   final double total;
   final double ageHours;
   final List<String> missingReasons;
+  final List<String> lineSummaries;
 
   const DirectionPurchasePendingItem({
     required this.id,
@@ -45,6 +46,7 @@ class DirectionPurchasePendingItem {
     required this.total,
     required this.ageHours,
     required this.missingReasons,
+    required this.lineSummaries,
   });
 }
 
@@ -152,6 +154,7 @@ class DirectionOperationsRepository {
     final invalidDescriptionByOrderId = <String, int>{};
     final invalidQtyByOrderId = <String, int>{};
     final invalidAmountByOrderId = <String, int>{};
+    final lineSummariesByOrderId = <String, List<String>>{};
     if (orderIds.isNotEmpty) {
       final rawLines = await _client
           .from('maintenance_purchase_order_lines')
@@ -169,6 +172,14 @@ class DirectionOperationsRepository {
         if (description.isEmpty) {
           invalidDescriptionByOrderId[orderId] =
               (invalidDescriptionByOrderId[orderId] ?? 0) + 1;
+        } else {
+          final summaries = lineSummariesByOrderId.putIfAbsent(
+            orderId,
+            () => <String>[],
+          );
+          if (!summaries.contains(description)) {
+            summaries.add(description);
+          }
         }
         if (qty <= 0) {
           invalidQtyByOrderId[orderId] =
@@ -230,6 +241,9 @@ class DirectionOperationsRepository {
                   invalidAmount:
                       invalidAmountByOrderId[(row['id'] ?? '').toString()] ?? 0,
                 ),
+                lineSummaries:
+                    lineSummariesByOrderId[(row['id'] ?? '').toString()] ??
+                    const <String>[],
               );
             })
             .toList(growable: false)

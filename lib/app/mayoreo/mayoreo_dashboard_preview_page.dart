@@ -2227,36 +2227,8 @@ class _MayoreoPendingPreviewBlock extends StatelessWidget {
         final preview = tasks
             .take(useTwoColumns ? 8 : 4)
             .toList(growable: false);
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Pendientes por atender',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: kMayoreoInk,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              tasks.isEmpty
-                  ? 'No hay pendientes activos.'
-                  : automaticCount > 0
-                  ? '${tasks.length} pendientes abiertos · $automaticCount automáticos.'
-                  : '${tasks.length} pendientes abiertos.',
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: kMayoreoMutedInk,
-                height: 1.45,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-            const SizedBox(height: 14),
-            if (preview.isEmpty)
-              Container(
+        final previewContent = preview.isEmpty
+            ? Container(
                 width: double.infinity,
                 padding: const EdgeInsets.symmetric(
                   horizontal: 16,
@@ -2285,8 +2257,8 @@ class _MayoreoPendingPreviewBlock extends StatelessWidget {
                   ),
                 ),
               )
-            else if (useTwoColumns)
-              Wrap(
+            : useTwoColumns
+            ? Wrap(
                 spacing: 10,
                 runSpacing: 10,
                 children: [
@@ -2297,13 +2269,48 @@ class _MayoreoPendingPreviewBlock extends StatelessWidget {
                     ),
                 ],
               )
-            else
-              ...preview.map(
-                (task) => Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: _MayoreoPendingPreviewRow(task: task),
-                ),
+            : Column(
+                children: [
+                  for (final task in preview)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 10),
+                      child: _MayoreoPendingPreviewRow(task: task),
+                    ),
+                ],
+              );
+        final canScroll = constraints.hasBoundedHeight;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Pendientes por atender',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: kMayoreoInk,
               ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              tasks.isEmpty
+                  ? 'No hay pendientes activos.'
+                  : automaticCount > 0
+                  ? '${tasks.length} pendientes abiertos · $automaticCount automáticos.'
+                  : '${tasks.length} pendientes abiertos.',
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: kMayoreoMutedInk,
+                height: 1.45,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 14),
+            if (canScroll)
+              Expanded(child: SingleChildScrollView(child: previewContent))
+            else
+              previewContent,
           ],
         );
       },

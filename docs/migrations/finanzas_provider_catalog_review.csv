@@ -1,0 +1,115 @@
+csv_name,count_in_csv,status,match_source,match_name,notes
+ACROMA,1,EXACTO_EXISTE,COMPRAS,ACROMA,Ya existe exactamente en el catálogo actual.
+ADT SEGURIDAD,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+ALONSO MONTOYA,2,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+ALTABRISA RESIDENCIAL,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+AMAZON,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+AMERICAN METAL MARKET,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+ANA MARIA CAMACHO RESENDIZ,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+ATT,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+AVON,1,EXACTO_EXISTE,COMPRAS,AVON,Ya existe exactamente en el catálogo actual.
+BIEN BAJADO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+BIO PAPPEL,1,EXACTO_EXISTE,VENTAS,BIO PAPPEL,Ya existe exactamente en el catálogo actual.
+CARGO PRIMA DE SEGURO/EMPRESA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+CATALINA LOPEZ ESTRADA (MACOCEL),1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+CBICENTENARIO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+CECILIO CARRERA RODRIGUEZ,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+CESAR GAYTAN SALAS,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+CFE,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+CHEQUE DICSA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+CLAUDIA SANDOVAL FLORES (RALOY),1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+COBRO AUTOMATICO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+COMISION BBVA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+COMPENSACION X RETRASO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+CORDEMEX,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+DAVID SALINAS (CAMARE),1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+DECASA,1,EXACTO_EXISTE,COMPRAS,DECASA,Ya existe exactamente en el catálogo actual.
+DEP TERCERO HOST TO HOST,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+DESPERDICIOS QUERETANA,1,EXACTO_EXISTE,VENTAS,DESPERDICIOS QUERETANA,Ya existe exactamente en el catálogo actual.
+DICSA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+EL PALOMAR,1,EXACTO_EXISTE,VENTAS,EL PALOMAR,Ya existe exactamente en el catálogo actual.
+EMPAQUES Y COMPLEMENTOS INDUSTRIALES,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+EXTINGUIDORES ZARAGOZA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+FERNANDO RUBIO,1,EXACTO_EXISTE,VENTAS,FERNANDO RUBIO,Ya existe exactamente en el catálogo actual.
+FONACOT,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+GABRIELA VERA HERNANDEZ,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+GID INDUSTRIES,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+GNP SEGUROS,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+GRUPAK,1,EXACTO_EXISTE,VENTAS,GRUPAK,Ya existe exactamente en el catálogo actual.
+GRUPO AUTOMOTRIZ TORRES CORZO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+GRUPO CONSTRUCTOR PATE,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+GUSTAVO ROTUNNO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+HACIENDA TE DEVUELVE,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+HANWA STEEL,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+HECTOR URIEL SALOMON,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+HUGO ARTURO HERNANDEZ AMBRIS,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+IMPUESTOS ESTATALES,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+IMPUESTOS FEDERALES,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+IMPULSORA AMBIENTAL VELVEL,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+IMSS,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+IN FOCUS,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+IRMA RUIZ HERNANDEZ (HERU),1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+IVA COM SERV BANCA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+IVA COMISION BBVA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+JOSE LUIS PALMA DELGADO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+JUAN ARELLANO RANGEL,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+KENWORTH DEL BAJIO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+KONFIO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+KONFIO PAGO TERMINAL,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+KS,1,EXACTO_EXISTE,VENTAS,KS,Ya existe exactamente en el catálogo actual.
+LICBOX,1,EXACTO_EXISTE,COMPRAS,LICBOX,Ya existe exactamente en el catálogo actual.
+LUB BAJIO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+LUIS PEDRO HERRERA MANRIQUEZ,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+MA MAGDALENA JIMENEZ MONCADA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+MAINCASA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+MARIA ALEJANDRA MARTINEZ ARAUJO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+MARIA DE LOS MILAGROS ANGELES,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+MARIANA RODRIGUEZ RAMIREZ,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+MARTIN GUZMAN,1,EXACTO_EXISTE,COMPRAS,MARTIN GUZMAN,Ya existe exactamente en el catálogo actual.
+MELVAR SOLUTIONS,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+MICROSOFT,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+MIGAVID,1,EXACTO_EXISTE,COMPRAS,MIGAVID,Ya existe exactamente en el catálogo actual.
+MIGUEL ANGEL MENDOZA BARAJAS,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+MIGUEL AYALA,1,EXACTO_EXISTE,COMPRAS,MIGUEL AYALA,Ya existe exactamente en el catálogo actual.
+MONICA CHAVEZ,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+MONROE,1,EXACTO_EXISTE,COMPRAS,MONROE,Ya existe exactamente en el catálogo actual.
+NOMINA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+OPRESA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+PACCAR FINANCIAL,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+PAGO FLOTILLA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+PAGO TARJETA DE CREDITO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+PAGO VIDA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+PEDRIAL MAZATLAN,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+PETRA MORALES GONZALEZ,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+PLASTICOS DE INGENIERIA MEXICANOS,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+PRESTAMO KONFIO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+QUALITAS SEGUROS,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+RECICLA METAL,1,EXACTO_EXISTE,COMPRAS,RECICLA METAL,Ya existe exactamente en el catálogo actual.
+RECICLADORA VELVEL,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+RECICLADOS 2V,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+RECICLADOS INDUSTRIALES VH,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+RENTA MAZATLAN,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+RICARDO MARTIN CALIXTO SOTELO,2,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+RICARDO MORENO ARREGUIN,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+ROCIO CARVAJAL,1,EXACTO_EXISTE,COMPRAS,ROCIO CARVAJAL,Ya existe exactamente en el catálogo actual.
+RODOLFO VERA,1,EXACTO_EXISTE,COMPRAS,RODOLFO VERA,Ya existe exactamente en el catálogo actual.
+SANOH,1,EXACTO_EXISTE,COMPRAS,SANOH,Ya existe exactamente en el catálogo actual.
+SANTIAGO FELIPE RAMIREZ ZUÑIGA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+SAROLLANTAS,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+SELLOS HIDRAULICOS Y COMPLEMENTOS IND.,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+SERINDMONTACARGAS,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+SERVICIO DE BANCA DIGITAL,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+SETEXMES,1,EXACTO_EXISTE,COMPRAS,SETEXMES,Ya existe exactamente en el catálogo actual.
+SOLUCIONES AMBIENTALES TAGA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+SRAMARY,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+TDFA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+TENNECO,1,EXACTO_EXISTE,COMPRAS,TENNECO,Ya existe exactamente en el catálogo actual.
+TENNENCIA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+TOGO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+TRANSPORTES TSEH,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+TRASPASO CUENTA-CUENTA,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+VH,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+VICTOR GARCIA,1,EXACTO_EXISTE,COMPRAS,VICTOR GARCIA,Ya existe exactamente en el catálogo actual.
+VIRGINIA DORA MERINO,1,NUEVO,,,No se encontró coincidencia actual en Compras o Ventas.
+WHIRLPOOL,1,EXACTO_EXISTE,COMPRAS,WHIRLPOOL,Ya existe exactamente en el catálogo actual.
+YOROZU,1,EXACTO_EXISTE,VENTAS,YOROZU,Ya existe exactamente en el catálogo actual.

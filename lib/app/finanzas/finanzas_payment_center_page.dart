@@ -54,9 +54,6 @@ enum _PaymentCenterMode {
   const _PaymentCenterMode(this.label);
 }
 
-const bool _kPaymentCenterPreviewMocks = true;
-const int _kPaymentCenterPreviewMinRowsPerBucket = 2;
-
 class FinanzasPaymentCenterPage extends StatefulWidget {
   final bool instantOpen;
 
@@ -603,7 +600,7 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
           agreementLabel: finFixedPaymentStatusLabel(payment.status),
           amountSuggested: payment.amount,
           amountTotal: payment.amount,
-          targetCompany: _inferCompanyFromSnapshot(payment.companyNameSnapshot),
+          targetCompany: payment.targetCompany,
           targetBranch: payment.branch,
           urgencyLabel: bucket.label,
           recommendation: bucket == _PaymentCenterTab.obligatorio
@@ -885,240 +882,12 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
     return (company, branch);
   }
 
-  String _inferCompanyFromSnapshot(String rawName) {
-    final raw = rawName.toUpperCase();
-    return raw.contains('VH') ? 'VH' : 'DICSA';
-  }
-
   String _resolveComprasProviderId(FinanzasCompanyDirectoryRecord company) {
     if (company.source.trim().toUpperCase() == 'COMPRAS' &&
         company.companyId.startsWith('compras_')) {
       return company.companyId.substring('compras_'.length);
     }
     return company.companyId;
-  }
-
-  List<_PaymentCenterItem> _buildVisualItems(List<_PaymentCenterItem> source) {
-    if (!_kPaymentCenterPreviewMocks) return source;
-    final visual = List<_PaymentCenterItem>.from(source);
-    for (final bucket in _PaymentCenterTab.values) {
-      final currentCount = visual.where((row) => row.bucket == bucket).length;
-      if (currentCount >= _kPaymentCenterPreviewMinRowsPerBucket) continue;
-      final needed = _kPaymentCenterPreviewMinRowsPerBucket - currentCount;
-      visual.addAll(_mockItemsForBucket(bucket).take(needed));
-    }
-    return visual;
-  }
-
-  List<_PaymentCenterItem> _mockItemsForBucket(_PaymentCenterTab bucket) {
-    switch (bucket) {
-      case _PaymentCenterTab.obligatorio:
-        return [
-          _previewItem(
-            providerId: 'preview_whirlpool_obligatorio',
-            providerName: 'WHIRLPOOL',
-            bucket: bucket,
-            itemType: 'Factura',
-            sourceLabel: 'Factura WPL-8821 · Compra mensual comprometida',
-            amountSuggested: 68420,
-            amountTotal: 68420,
-            dueDate: DateTime.now().subtract(const Duration(days: 4)),
-            targetCompany: 'DICSA',
-            targetBranch: 'CELAYA',
-            recommendation: 'Cubrir vencido para liberar presión inmediata.',
-            decisionReasons: const ['Ya venció', 'Monto alto'],
-            executionDecision: _PaymentExecutionDecision.pagarCompleto,
-            executionAmount: 68420,
-            canPayNow: true,
-          ),
-          _previewItem(
-            providerId: 'preview_monroe_obligatorio',
-            providerName: 'MONROE',
-            bucket: bucket,
-            itemType: 'Convenio',
-            sourceLabel: 'Pago 3 de 6 · Convenio operativo',
-            amountSuggested: 22150,
-            amountTotal: 44300,
-            dueDate: DateTime.now().subtract(const Duration(days: 1)),
-            targetCompany: 'DICSA',
-            targetBranch: 'MAZATLAN',
-            recommendation: 'Cumplir convenio vencido sin mover otros pagos.',
-            decisionReasons: const [
-              'Compromiso pactado con proveedor',
-              'Estado sensible',
-            ],
-            executionDecision: _PaymentExecutionDecision.abonar,
-            executionAmount: 22150,
-            canPayNow: true,
-          ),
-        ];
-      case _PaymentCenterTab.urgente:
-        return [
-          _previewItem(
-            providerId: 'preview_avon_urgente',
-            providerName: 'AVON',
-            bucket: bucket,
-            itemType: 'Saldo general',
-            sourceLabel: 'Cuenta abierta · Tickets sin convenio formal',
-            amountSuggested: 27720.90,
-            amountTotal: 27720.90,
-            dueDate: DateTime.now().add(const Duration(days: 2)),
-            targetCompany: 'DICSA',
-            targetBranch: 'CELAYA',
-            recommendation:
-                'Abonar esta semana para sostener flujo con proveedor.',
-            decisionReasons: const [
-              'Proveedor marcado como atrasado',
-              'Vence esta semana',
-            ],
-            executionDecision: _PaymentExecutionDecision.abonar,
-            executionAmount: 18000,
-            canPayNow: true,
-          ),
-          _previewItem(
-            providerId: 'preview_lg_urgente',
-            providerName: 'LG',
-            bucket: bucket,
-            itemType: 'Factura',
-            sourceLabel: 'Factura LG-1092 · Material con prioridad manual alta',
-            amountSuggested: 14380,
-            amountTotal: 14380,
-            dueDate: DateTime.now().add(const Duration(days: 1)),
-            targetCompany: 'VH',
-            targetBranch: 'CELAYA',
-            recommendation: 'Revisar salida hoy si la caja aguanta el bloque.',
-            decisionReasons: const [
-              'Prioridad manual alta en factura',
-              'Monto relevante',
-            ],
-            executionDecision: _PaymentExecutionDecision.esperar,
-            executionAmount: 0,
-            canPayNow: false,
-          ),
-        ];
-      case _PaymentCenterTab.recomendado:
-        return [
-          _previewItem(
-            providerId: 'preview_carton_recomendado',
-            providerName: 'CARTONERA DEL BAJIO',
-            bucket: bucket,
-            itemType: 'Factura',
-            sourceLabel: 'Factura CB-4201 · Compra programable del mes',
-            amountSuggested: 9850,
-            amountTotal: 9850,
-            dueDate: DateTime.now().add(const Duration(days: 8)),
-            targetCompany: 'DICSA',
-            targetBranch: 'CELAYA',
-            recommendation:
-                'Reservar flujo y no adelantar mientras siga al corriente.',
-            decisionReasons: const [
-              'Pago negociable',
-              'Proveedor de pago semanal',
-            ],
-            executionDecision: _PaymentExecutionDecision.esperar,
-            executionAmount: 0,
-            canPayNow: false,
-          ),
-          _previewItem(
-            providerId: 'preview_haier_recomendado',
-            providerName: 'HAIER',
-            bucket: bucket,
-            itemType: 'Pago fijo',
-            sourceLabel: 'Compromiso mensual operativo',
-            amountSuggested: 12000,
-            amountTotal: 12000,
-            dueDate: DateTime.now().add(const Duration(days: 6)),
-            targetCompany: 'VH',
-            targetBranch: 'MAZATLAN',
-            recommendation: 'Programar antes del cierre semanal.',
-            decisionReasons: const ['Compromiso fijo del mes'],
-            executionDecision: _PaymentExecutionDecision.pagarCompleto,
-            executionAmount: 12000,
-            canPayNow: true,
-          ),
-        ];
-      case _PaymentCenterTab.postergable:
-        return [
-          _previewItem(
-            providerId: 'preview_mabe_postergable',
-            providerName: 'MABE',
-            bucket: bucket,
-            itemType: 'Factura',
-            sourceLabel: 'Factura MB-1180 · Sin presión inmediata',
-            amountSuggested: 7350,
-            amountTotal: 7350,
-            dueDate: DateTime.now().add(const Duration(days: 19)),
-            targetCompany: 'DICSA',
-            targetBranch: 'CELAYA',
-            recommendation: 'Mantener en radar sin consumir caja ahora.',
-            decisionReasons: const ['Pago negociable'],
-            executionDecision: _PaymentExecutionDecision.esperar,
-            executionAmount: 0,
-            canPayNow: false,
-          ),
-          _previewItem(
-            providerId: 'preview_samsung_postergable',
-            providerName: 'SAMSUNG',
-            bucket: bucket,
-            itemType: 'Convenio',
-            sourceLabel: 'Pago 1 de 4 · Convenio recién activado',
-            amountSuggested: 8900,
-            amountTotal: 35600,
-            dueDate: DateTime.now().add(const Duration(days: 24)),
-            targetCompany: 'VH',
-            targetBranch: 'CELAYA',
-            recommendation: 'Esperar ventana óptima antes de liberar salida.',
-            decisionReasons: const ['Compromiso pactado con proveedor'],
-            executionDecision: _PaymentExecutionDecision.esperar,
-            executionAmount: 0,
-            canPayNow: false,
-          ),
-        ];
-    }
-  }
-
-  _PaymentCenterItem _previewItem({
-    required String providerId,
-    required String providerName,
-    required _PaymentCenterTab bucket,
-    required String itemType,
-    required String sourceLabel,
-    required double amountSuggested,
-    required double amountTotal,
-    required DateTime? dueDate,
-    required String targetCompany,
-    required String targetBranch,
-    required String recommendation,
-    required List<String> decisionReasons,
-    required _PaymentExecutionDecision executionDecision,
-    required double executionAmount,
-    required bool canPayNow,
-  }) {
-    return _PaymentCenterItem(
-        providerId: providerId,
-        providerName: providerName,
-        bucket: bucket,
-        itemType: itemType,
-        sourceLabel: sourceLabel,
-        dueDate: dueDate,
-        agreementLabel: 'Vista previa',
-        amountSuggested: amountSuggested,
-        amountTotal: amountTotal,
-        targetCompany: targetCompany,
-        targetBranch: targetBranch,
-        urgencyLabel: bucket.label,
-        recommendation: recommendation,
-        decisionReasons: decisionReasons,
-        priorityScore: _bucketBaseScore(bucket) + 5,
-        allowPartialPayment:
-            executionDecision == _PaymentExecutionDecision.abonar,
-      )
-      ..executionDecision = executionDecision
-      ..executionAmount = executionAmount
-      ..executionSummary = recommendation
-      ..canPayNow = canPayNow
-      ..availableBalance = executionAmount
-      ..isPreviewMock = true;
   }
 
   Future<void> _logout() async {
@@ -1322,16 +1091,14 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
       0,
       (sum, value) => sum + value,
     );
-    final visualItems = _buildVisualItems(_items);
-    final usePreviewScaffold = _items.isEmpty && visualItems.isNotEmpty;
-    final displayItems = usePreviewScaffold ? visualItems : _items;
+    final displayItems = _items;
     final totalSuggested = displayItems.fold<double>(
       0,
       (sum, row) => sum + row.amountSuggested,
     );
     final visualItemsByBucket = <_PaymentCenterTab, List<_PaymentCenterItem>>{
       for (final bucket in _PaymentCenterTab.values)
-        bucket: visualItems
+        bucket: displayItems
             .where((row) => row.bucket == bucket)
             .toList(growable: false),
     };
@@ -2659,7 +2426,7 @@ class _FinCenterHeaderButtonState extends State<_FinCenterHeaderButton> {
                 highlighted ? -2.5 : 0,
                 0,
               ),
-              width: 208,
+              width: 176,
               height: 56,
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
               decoration: BoxDecoration(
@@ -2692,16 +2459,16 @@ class _FinCenterHeaderButtonState extends State<_FinCenterHeaderButton> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Icon(widget.icon, size: 22, color: tokens.primary),
-                  const SizedBox(width: 12),
+                  Icon(widget.icon, size: 20, color: tokens.primary),
+                  const SizedBox(width: 10),
                   Flexible(
                     child: Text(
                       widget.label,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w900,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
                         color: tokens.primary,
                         letterSpacing: 0.1,
                       ),

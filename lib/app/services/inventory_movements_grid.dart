@@ -49,6 +49,7 @@ class InventoryGridTopBarData {
   final int selectedCount;
   final String? selectedKgSumLabel;
   final String? selectedKgAvgLabel;
+  final String? selectedSecondaryLabel;
   final String? activeCellLabel;
   final VoidCallback? onExportCsv;
   final VoidCallback? onToggleGridEdit;
@@ -69,6 +70,7 @@ class InventoryGridTopBarData {
     required this.selectedCount,
     this.selectedKgSumLabel,
     this.selectedKgAvgLabel,
+    this.selectedSecondaryLabel,
     this.activeCellLabel,
     this.onExportCsv,
     this.onToggleGridEdit,
@@ -161,13 +163,16 @@ class InventoryGridTopBar extends StatelessWidget {
                 textAlign: TextAlign.right,
               ),
               if (data.selectedKgSumLabel != null ||
-                  data.selectedKgAvgLabel != null)
+                  data.selectedKgAvgLabel != null ||
+                  data.selectedSecondaryLabel != null)
                 Text(
                   [
                     if (data.selectedKgSumLabel != null)
                       'Suma: ${data.selectedKgSumLabel}',
                     if (data.selectedKgAvgLabel != null)
                       'Prom: ${data.selectedKgAvgLabel}',
+                    if (data.selectedSecondaryLabel != null)
+                      data.selectedSecondaryLabel!,
                   ].join(' · '),
                   style: const TextStyle(
                     fontSize: 11,
