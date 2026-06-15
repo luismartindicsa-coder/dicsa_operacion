@@ -252,6 +252,52 @@ class ComprasDataStore {
     await _catalogSaveQueue;
   }
 
+  static Future<void> saveCompanyRecords(
+    List<ComprasCatalogProviderRecord> rows,
+  ) async {
+    final normalized = _normalizeCatalogSnapshot(
+      ComprasCatalogSnapshot(
+        companies: rows,
+        materials: const <ComprasCatalogMaterialRecord>[],
+        prices: const <ComprasCatalogPriceRecord>[],
+      ),
+    );
+    final companies = normalized.companies;
+    if (companies.isNotEmpty) {
+      await Supabase.instance.client
+          .from(_kComprasCounterpartiesTable)
+          .upsert(
+            companies
+                .map(
+                  (row) => <String, dynamic>{
+                    'id': row.id,
+                    'code': row.code,
+                    'name': row.name,
+                    'contact': row.contact,
+                    'is_active': row.active,
+                    'notes': row.notes.isEmpty ? null : row.notes,
+                  },
+                )
+                .toList(growable: false),
+            onConflict: 'id',
+          );
+    }
+    final existingCompanyIds = await _loadRemoteIds(
+      Supabase.instance.client,
+      _kComprasCounterpartiesTable,
+    );
+    final nextCompanyIds = companies.map((row) => row.id).toSet();
+    final deletedCompanyIds = existingCompanyIds
+        .difference(nextCompanyIds)
+        .toList(growable: false);
+    if (deletedCompanyIds.isNotEmpty) {
+      await Supabase.instance.client
+          .from(_kComprasCounterpartiesTable)
+          .delete()
+          .inFilter('id', deletedCompanyIds);
+    }
+  }
+
   static Future<void> savePriceRecords(
     List<ComprasCatalogPriceRecord> rows,
   ) async {

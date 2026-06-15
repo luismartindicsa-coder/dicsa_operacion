@@ -409,6 +409,46 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     }
   }
 
+  Future<void> _persistCompaniesOnly() async {
+    final companies = _companies
+        .map(
+          (row) => ComprasCatalogProviderRecord(
+            id: row.id,
+            code: row.code,
+            name: row.name,
+            contact: row.contact,
+            active: row.active,
+            notes: row.notes,
+          ),
+        )
+        .toList(growable: false);
+    try {
+      _persistingCatalogSnapshot = true;
+      await ComprasDataStore.saveCompanyRecords(companies);
+    } catch (e) {
+      final code = e is PostgrestException ? e.code?.toString() : null;
+      final details = e is PostgrestException ? e.details?.toString() : null;
+      final detail = switch (e) {
+        PostgrestException() => [
+          if (code != null && code.trim().isNotEmpty) 'code $code',
+          e.message,
+          if (details != null && details.trim().isNotEmpty) details,
+        ].join(' · '),
+        _ => e.toString(),
+      };
+      debugPrint('ComprasCatalog companies save failed: $detail');
+      if (mounted) {
+        _toast('No se pudo guardar Proveedores. $detail');
+        await _loadCatalogSnapshot();
+      }
+    } finally {
+      _persistingCatalogSnapshot = false;
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        unawaited(_refreshCatalogIfIdle(force: true));
+      }
+    }
+  }
+
   Future<void> _resolveNavigationAccess() async {
     final profile = await AuthAccess.resolveCurrentProfile();
     if (!mounted) return;
@@ -673,7 +713,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _selectedRowKey = 'co:${company.id}';
       _resetCompanyDraft();
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistCompaniesOnly());
     _companyNameFocus.requestFocus();
   }
 
@@ -706,7 +746,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _selectedRowKey = 'ma:${material.id}';
       _resetMaterialDraft();
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistCompaniesOnly());
     _materialNameFocus.requestFocus();
   }
 
@@ -750,7 +790,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       }
       _resetPriceDraft();
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistCompaniesOnly());
     if (existing != null) {
       _toast('Se actualizó el precio existente para ese proveedor y material');
     }
@@ -1255,7 +1295,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           )
           .toList(growable: false);
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistCompaniesOnly());
   }
 
   void _toggleMaterialActive(_MayoreoMaterial row) {
@@ -1803,7 +1843,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _editingRowKey = null;
       _setSingleSelection('co:${row.id}');
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistCompaniesOnly());
     _focusGridRows();
   }
 
@@ -1952,7 +1992,11 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       }
       _clearSelection();
     });
-    unawaited(_persistCatalogSnapshot());
+    if (_activeTabIndex == 0) {
+      unawaited(_persistCompaniesOnly());
+    } else {
+      unawaited(_persistCatalogSnapshot());
+    }
   }
 
   InventoryGridTopBarData _buildTopBarData() {

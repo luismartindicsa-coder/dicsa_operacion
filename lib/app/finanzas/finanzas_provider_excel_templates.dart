@@ -472,6 +472,9 @@ int? _avonSummaryRowForMaterial(String rawMaterial) {
   if (normalized.contains('PLASTICO LAVADO')) return 16;
   if (normalized.contains('TEXTIL')) return 17;
   if (normalized.contains('ALUMINIO')) return 18;
+  if (normalized.contains('SABADOS') || normalized.contains('VIAJE')) {
+    return 19;
+  }
   if (normalized.contains('AJUSTE')) return 19;
   return null;
 }
