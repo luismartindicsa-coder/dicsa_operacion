@@ -130,7 +130,6 @@ FinanzasCatalogSnapshot _normalizeSnapshot(FinanzasCatalogSnapshot input) {
   final seenCompanyKeys = <String>{};
   for (final row in input.companies) {
     final key = _financeCompanyIdentityKey(
-      source: row.source,
       name: row.name,
       linkedName: row.linkedName,
     );
@@ -250,11 +249,11 @@ FinanzasCatalogSnapshot _mergeExternalCompanies(
   final mergedCompanies = <FinanzasCatalogCompanyRecord>[];
   final existingIds = mergedCompanies.map((row) => row.id).toSet();
   final existingCompanyKeys = <String>{};
+  final companyIndexByKey = <String, int>{};
 
   for (final row in base.companies) {
     if (_isAutoSyncedFinanceCompany(row)) continue;
     final key = _financeCompanyIdentityKey(
-      source: row.source,
       name: row.name,
       linkedName: row.linkedName,
     );
@@ -262,16 +261,32 @@ FinanzasCatalogSnapshot _mergeExternalCompanies(
     mergedCompanies.add(row);
     existingIds.add(row.id);
     existingCompanyKeys.add(key);
+    companyIndexByKey[key] = mergedCompanies.length - 1;
   }
 
   for (final company in mayoreoSnapshot.companies) {
     final id = 'ventas_${company.id}';
     final key = _financeCompanyIdentityKey(
-      source: 'VENTAS',
       name: company.name,
       linkedName: company.name,
     );
-    if (existingIds.contains(id) || existingCompanyKeys.contains(key)) continue;
+    if (existingIds.contains(id)) continue;
+    final existingIndex = companyIndexByKey[key];
+    if (existingIndex != null) {
+      final existing = mergedCompanies[existingIndex];
+      final existingSource = existing.source.trim().toUpperCase();
+      if (existingSource == 'COMPRAS') {
+        mergedCompanies[existingIndex] = FinanzasCatalogCompanyRecord(
+          id: existing.id,
+          name: existing.name,
+          source: 'DIRECTO',
+          linkedName: existing.linkedName,
+          active: existing.active || company.active,
+          notes: 'SINCRONIZADO DESDE COMPRAS MAYOREO Y VENTAS MAYOREO',
+        );
+      }
+      continue;
+    }
     mergedCompanies.add(
       FinanzasCatalogCompanyRecord(
         id: id,
@@ -284,16 +299,32 @@ FinanzasCatalogSnapshot _mergeExternalCompanies(
     );
     existingIds.add(id);
     existingCompanyKeys.add(key);
+    companyIndexByKey[key] = mergedCompanies.length - 1;
   }
 
   for (final company in comprasSnapshot.companies) {
     final id = 'compras_${company.id}';
     final key = _financeCompanyIdentityKey(
-      source: 'COMPRAS',
       name: company.name,
       linkedName: company.name,
     );
-    if (existingIds.contains(id) || existingCompanyKeys.contains(key)) continue;
+    if (existingIds.contains(id)) continue;
+    final existingIndex = companyIndexByKey[key];
+    if (existingIndex != null) {
+      final existing = mergedCompanies[existingIndex];
+      final existingSource = existing.source.trim().toUpperCase();
+      if (existingSource == 'VENTAS') {
+        mergedCompanies[existingIndex] = FinanzasCatalogCompanyRecord(
+          id: existing.id,
+          name: existing.name,
+          source: 'DIRECTO',
+          linkedName: existing.linkedName,
+          active: existing.active || company.active,
+          notes: 'SINCRONIZADO DESDE COMPRAS MAYOREO Y VENTAS MAYOREO',
+        );
+      }
+      continue;
+    }
     mergedCompanies.add(
       FinanzasCatalogCompanyRecord(
         id: id,
@@ -306,6 +337,7 @@ FinanzasCatalogSnapshot _mergeExternalCompanies(
     );
     existingIds.add(id);
     existingCompanyKeys.add(key);
+    companyIndexByKey[key] = mergedCompanies.length - 1;
   }
 
   return _normalizeSnapshot(
@@ -318,15 +350,13 @@ FinanzasCatalogSnapshot _mergeExternalCompanies(
 }
 
 String _financeCompanyIdentityKey({
-  required String source,
   required String name,
   required String linkedName,
 }) {
-  final normalizedSource = source.trim().toUpperCase();
   final normalizedName = (linkedName.trim().isNotEmpty ? linkedName : name)
       .trim()
       .toUpperCase();
-  return '$normalizedSource|$normalizedName';
+  return normalizedName;
 }
 
 bool _isAutoSyncedFinanceCompany(FinanzasCatalogCompanyRecord row) {
@@ -344,10 +374,26 @@ bool _shouldSyncMergedCompanies(
   FinanzasCatalogSnapshot merged,
 ) {
   if (current.companies.length != merged.companies.length) return true;
-  final currentIds = current.companies.map((row) => row.id).toSet();
-  final mergedIds = merged.companies.map((row) => row.id).toSet();
-  return currentIds.length != mergedIds.length ||
-      currentIds.difference(mergedIds).isNotEmpty;
+  final currentById = <String, FinanzasCatalogCompanyRecord>{
+    for (final row in current.companies) row.id: row,
+  };
+  final mergedById = <String, FinanzasCatalogCompanyRecord>{
+    for (final row in merged.companies) row.id: row,
+  };
+  if (currentById.length != mergedById.length) return true;
+  for (final entry in mergedById.entries) {
+    final currentRow = currentById[entry.key];
+    final mergedRow = entry.value;
+    if (currentRow == null ||
+        currentRow.name != mergedRow.name ||
+        currentRow.source != mergedRow.source ||
+        currentRow.linkedName != mergedRow.linkedName ||
+        currentRow.active != mergedRow.active ||
+        currentRow.notes != mergedRow.notes) {
+      return true;
+    }
+  }
+  return false;
 }
 
 Future<void> _saveRemoteCatalogSnapshot(

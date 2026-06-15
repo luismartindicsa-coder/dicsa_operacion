@@ -214,12 +214,6 @@ class FinanzasProviderExcelTemplates {
       bucket.add(ticket);
     }
 
-    if (materialOrder.length > _kGenericTemplateBlocks.length) {
-      throw FinanzasProviderExcelException(
-        'La plantilla genérica soporta hasta ${_kGenericTemplateBlocks.length} materiales por exportación. La selección trae ${materialOrder.length}.',
-      );
-    }
-
     final missingPriceMaterials = <String>[];
     for (final materialName in materialOrder) {
       final firstTicket = groupedTickets[materialName]!.first;
@@ -235,13 +229,45 @@ class FinanzasProviderExcelTemplates {
 
     final oversizedMaterials = <String>[];
     for (final entry in groupedTickets.entries) {
-      if (entry.value.length > _kGenericTemplateRowsPerBlock) {
+      if (entry.value.length > _kGenericTemplateMaxTicketsPerMaterial) {
         oversizedMaterials.add('${entry.key} (${entry.value.length})');
       }
     }
     if (oversizedMaterials.isNotEmpty) {
       throw FinanzasProviderExcelException(
-        'Cada material soporta hasta $_kGenericTemplateRowsPerBlock tickets por exportación. Exceden: ${oversizedMaterials.join(', ')}.',
+        'Cada material soporta hasta $_kGenericTemplateMaxTicketsPerMaterial tickets por exportación. Exceden: ${oversizedMaterials.join(', ')}.',
+      );
+    }
+
+    final blockEntries = <_GenericTemplateBlockEntry>[];
+    for (final materialName in materialOrder) {
+      final materialTickets = groupedTickets[materialName]!;
+      for (
+        var start = 0;
+        start < materialTickets.length;
+        start += _kGenericTemplateRowsPerBlock
+      ) {
+        final end = math.min(
+          start + _kGenericTemplateRowsPerBlock,
+          materialTickets.length,
+        );
+        blockEntries.add(
+          _GenericTemplateBlockEntry(
+            materialName: materialName,
+            tickets: materialTickets.sublist(start, end),
+          ),
+        );
+      }
+    }
+
+    if (materialOrder.length > _kGenericTemplateSummaryRows.length) {
+      throw FinanzasProviderExcelException(
+        'La plantilla genérica soporta hasta ${_kGenericTemplateSummaryRows.length} materiales distintos por exportación. La selección trae ${materialOrder.length}.',
+      );
+    }
+    if (blockEntries.length > _kGenericTemplateBlocks.length) {
+      throw FinanzasProviderExcelException(
+        'La plantilla genérica soporta hasta ${_kGenericTemplateBlocks.length} bloques de tickets por exportación. La selección requiere ${blockEntries.length} bloques.',
       );
     }
 
@@ -264,12 +290,11 @@ class FinanzasProviderExcelTemplates {
       final dataStartRow = startRow + 2;
       final totalRow = startRow + 11;
 
-      final materialName = blockIndex < materialOrder.length
-          ? materialOrder[blockIndex]
-          : '-';
-      final materialTickets = blockIndex < materialOrder.length
-          ? groupedTickets[materialName]!
-          : const <ComprasTicketRecord>[];
+      final blockEntry = blockIndex < blockEntries.length
+          ? blockEntries[blockIndex]
+          : null;
+      final materialName = blockEntry?.materialName ?? '-';
+      final materialTickets = blockEntry?.tickets ?? const <ComprasTicketRecord>[];
       final materialPrice = materialTickets.isEmpty
           ? 0.0
           : pricesByMaterialId[materialTickets.first.materialId]!;
@@ -322,18 +347,25 @@ class FinanzasProviderExcelTemplates {
       sheet.setNumber('F$totalRow', totalNet);
       sheet.setNumber('H$totalRow', totalAmount);
 
-      final summaryRow = 3 + blockIndex;
-      if (materialTickets.isEmpty) {
-        sheet.setBlank('K$summaryRow');
-        sheet.setBlank('L$summaryRow');
-        sheet.setBlank('M$summaryRow');
-        sheet.setNumber('N$summaryRow', 0.0);
-      } else {
-        sheet.setText('K$summaryRow', materialName);
-        sheet.setNumber('L$summaryRow', totalNet);
-        sheet.setNumber('M$summaryRow', materialPrice);
-        sheet.setNumber('N$summaryRow', totalNet * materialPrice);
-      }
+    }
+
+    for (final summaryRow in _kGenericTemplateSummaryRows) {
+      sheet.setBlank('K$summaryRow');
+      sheet.setBlank('L$summaryRow');
+      sheet.setBlank('M$summaryRow');
+      sheet.setNumber('N$summaryRow', 0.0);
+    }
+
+    for (var materialIndex = 0; materialIndex < materialOrder.length; materialIndex++) {
+      final materialName = materialOrder[materialIndex];
+      final rows = groupedTickets[materialName]!;
+      final totalNet = rows.fold<double>(0, (acc, row) => acc + row.netWeight);
+      final materialPrice = pricesByMaterialId[rows.first.materialId] ?? 0.0;
+      final summaryRow = _kGenericTemplateSummaryRows[materialIndex];
+      sheet.setText('K$summaryRow', materialName);
+      sheet.setNumber('L$summaryRow', totalNet);
+      sheet.setNumber('M$summaryRow', materialPrice);
+      sheet.setNumber('N$summaryRow', totalNet * materialPrice);
     }
 
     final grandAmount = materialOrder.fold<double>(0, (sum, name) {
@@ -365,6 +397,31 @@ const List<int> _kGenericTemplateBlocks = <int>[
 ];
 
 const int _kGenericTemplateRowsPerBlock = 9;
+const int _kGenericTemplateMaxTicketsPerMaterial = 20;
+const List<int> _kGenericTemplateSummaryRows = <int>[
+  3,
+  4,
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+];
+
+class _GenericTemplateBlockEntry {
+  final String materialName;
+  final List<ComprasTicketRecord> tickets;
+
+  const _GenericTemplateBlockEntry({
+    required this.materialName,
+    required this.tickets,
+  });
+}
 
 String? _resolveComprasCatalogProviderId({
   required ComprasCatalogSnapshot catalog,

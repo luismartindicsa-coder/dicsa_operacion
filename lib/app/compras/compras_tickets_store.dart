@@ -507,7 +507,6 @@ Future<void> _rebuildProviderMovementApplications(String providerId) async {
       .where((row) => providerTicketIds.contains(row.ticketId))
       .toList(growable: false);
 
-  final externallySettledTicketIds = <String>{};
   final existingAppliedByTicketId = <String, double>{};
   for (final application in providerApplications) {
     existingAppliedByTicketId.update(
@@ -515,14 +514,6 @@ Future<void> _rebuildProviderMovementApplications(String providerId) async {
       (value) => value + application.appliedAmount,
       ifAbsent: () => application.appliedAmount,
     );
-  }
-  for (final ticket in providerTickets) {
-    final existingApplied = existingAppliedByTicketId[ticket.id] ?? 0;
-    if (existingApplied <= 0.009 &&
-        ticket.pagoStatus == 'PAGADO' &&
-        ticket.coverageStatus == 'CUBIERTO') {
-      externallySettledTicketIds.add(ticket.id);
-    }
   }
 
   await Supabase.instance.client
@@ -539,7 +530,6 @@ Future<void> _rebuildProviderMovementApplications(String providerId) async {
     var remaining = providerMovement.amount;
     for (final ticket in providerTickets) {
       if (remaining <= 0) break;
-      if (externallySettledTicketIds.contains(ticket.id)) continue;
       final alreadyApplied = appliedByTicketId[ticket.id] ?? 0;
       final pending = (ticket.amount - alreadyApplied)
           .clamp(0, double.infinity)
@@ -566,9 +556,6 @@ Future<void> _rebuildProviderMovementApplications(String providerId) async {
 
   final updatedTickets = providerTickets
       .map((ticket) {
-        if (externallySettledTicketIds.contains(ticket.id)) {
-          return ticket;
-        }
         final applied = (appliedByTicketId[ticket.id] ?? 0).clamp(
           0,
           double.infinity,

@@ -1,0 +1,7 @@
+issue_type,severity,scope,company_name,details,refs
+CROSS_SOURCE_ALIAS,high,Compras Mayoreo + Ventas Mayoreo,FERNANDO RUBIO,El mismo nombre existe en Compras Mayoreo y Ventas Mayoreo; requiere criterio canónico en Finanzas.,compras=cp_import_fernando_rubio | ventas=co_seed_fernando_rubio
+CROSS_SOURCE_ALIAS,high,Compras Mayoreo + Ventas Mayoreo,KS,El mismo nombre existe en Compras Mayoreo y Ventas Mayoreo; requiere criterio canónico en Finanzas.,compras=cp_import_ks | ventas=co_seed_ks
+CROSS_SOURCE_ALIAS,high,Compras Mayoreo + Ventas Mayoreo,RICARDO GARCIA MENDIETA,El mismo nombre existe en Compras Mayoreo y Ventas Mayoreo; requiere criterio canónico en Finanzas.,compras=cp_import_ricardo_garcia_mendieta | ventas=co_seed_ricardo_garcia_mendieta
+CROSS_SOURCE_ALIAS,high,Compras Mayoreo + Ventas Mayoreo,YOROZU,El mismo nombre existe en Compras Mayoreo y Ventas Mayoreo; requiere criterio canónico en Finanzas.,compras=cp_import_yorozu | ventas=co_seed_yorozu
+INVOICE_AMBIGUOUS_ALIAS,medium,Facturas proveedor,KS,La factura usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el provider_id canónico sea el correcto.,"invoice=fin-invoice-1781549977982706,provider_id=ventas_co_seed_ks,source=VENTAS"
+INVOICE_AMBIGUOUS_ALIAS,medium,Facturas proveedor,KS,La factura usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el provider_id canónico sea el correcto.,"invoice=fin-invoice-1781550497764029,provider_id=ventas_co_seed_ks,source=VENTAS"

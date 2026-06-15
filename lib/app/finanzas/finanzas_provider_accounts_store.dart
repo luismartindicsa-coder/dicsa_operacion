@@ -1,10 +1,11 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../compras/compras_tickets_store.dart';
+import 'finanzas_company_identity.dart';
+import 'finanzas_data_store.dart';
 import 'finanzas_evidence_store.dart';
 import 'finanzas_financial_rules.dart';
 
-const String _kFinCompaniesTable = 'finanzas_catalog_companies';
 const String _kFinSupplierInvoicesTable = 'finanzas_supplier_invoices';
 const String _kFinSupplierInvoiceTicketsTable =
     'finanzas_supplier_invoice_tickets';
@@ -631,7 +632,10 @@ class FinanzasProviderAccountsStore {
       );
     }
 
-    await syncAgreementStateForProvider(providerId: resolvedInvoice.providerId);
+    await syncAgreementStateForProvider(
+      providerId: resolvedInvoice.providerId,
+      providerNameSnapshot: resolvedInvoice.providerNameSnapshot,
+    );
   }
 
   static Future<void> deleteInvoice(
@@ -701,81 +705,21 @@ class FinanzasProviderAccountsStore {
         .delete()
         .eq('id', invoice.id);
 
-    await syncAgreementStateForProvider(providerId: invoice.providerId);
+    await syncAgreementStateForProvider(
+      providerId: invoice.providerId,
+      providerNameSnapshot: invoice.providerNameSnapshot,
+    );
   }
 
   static Future<String> _ensureProviderExistsInFinanzasCatalog({
     required String providerId,
     required String providerNameSnapshot,
   }) async {
-    if (providerId.trim().isEmpty) return providerId.trim();
-    final normalizedId = providerId.trim();
-    final normalizedName = providerNameSnapshot.trim();
-    final client = Supabase.instance.client;
-    final existing = await client
-        .from(_kFinCompaniesTable)
-        .select('id')
-        .eq('id', normalizedId)
-        .maybeSingle();
-    if (existing != null) return (existing['id'] ?? normalizedId).toString();
-
-    if (normalizedName.isNotEmpty) {
-      final existingByName = await client
-          .from(_kFinCompaniesTable)
-          .select('id, source, linked_name, notes, is_active')
-          .eq('name', normalizedName)
-          .maybeSingle();
-      if (existingByName != null) {
-        final resolvedId = (existingByName['id'] ?? '').toString();
-        if (resolvedId.isNotEmpty) {
-          final source = normalizedId.startsWith('compras_')
-              ? 'COMPRAS'
-              : normalizedId.startsWith('ventas_')
-              ? 'VENTAS'
-              : 'DIRECTO';
-          final notes = switch (source) {
-            'COMPRAS' => 'SINCRONIZADO DESDE COMPRAS MAYOREO',
-            'VENTAS' => 'SINCRONIZADO DESDE VENTAS MAYOREO',
-            _ => '',
-          };
-          await client.from(_kFinCompaniesTable).upsert(<Map<String, dynamic>>[
-            <String, dynamic>{
-              'id': resolvedId,
-              'name': normalizedName,
-              'source': existingByName['source'] ?? source,
-              'linked_name': normalizedName,
-              'is_active': existingByName['is_active'] ?? true,
-              'notes': (existingByName['notes'] ?? '').toString().trim().isEmpty
-                  ? (notes.isEmpty ? null : notes)
-                  : existingByName['notes'],
-            },
-          ], onConflict: 'id');
-          return resolvedId;
-        }
-      }
-    }
-
-    final source = normalizedId.startsWith('compras_')
-        ? 'COMPRAS'
-        : normalizedId.startsWith('ventas_')
-        ? 'VENTAS'
-        : 'DIRECTO';
-    final notes = switch (source) {
-      'COMPRAS' => 'SINCRONIZADO DESDE COMPRAS MAYOREO',
-      'VENTAS' => 'SINCRONIZADO DESDE VENTAS MAYOREO',
-      _ => '',
-    };
-    await client.from(_kFinCompaniesTable).upsert(<Map<String, dynamic>>[
-      <String, dynamic>{
-        'id': normalizedId,
-        'name': normalizedName.isEmpty ? normalizedId : normalizedName,
-        'source': source,
-        'linked_name': normalizedName.isEmpty ? null : normalizedName,
-        'is_active': true,
-        'notes': notes.isEmpty ? null : notes,
-      },
-    ], onConflict: 'id');
-    return normalizedId;
+    final resolved = await FinanzasCompanyIdentityResolver.ensureCompanyExists(
+      externalCompanyId: providerId,
+      companyNameSnapshot: providerNameSnapshot,
+    );
+    return (resolved.companyId ?? providerId).trim();
   }
 
   static Future<List<FinanzasSupplierAgreementRecord>> loadAgreements() async {
@@ -975,14 +919,29 @@ class FinanzasProviderAccountsStore {
 
   static Future<void> syncAgreementStateForProvider({
     required String providerId,
+    String providerNameSnapshot = '',
   }) async {
     final agreements = await loadAgreements();
+    final aliasKey = normalizeFinanzasCompanyAliasKey(providerNameSnapshot);
     final providerAgreements = agreements
         .where(
-          (row) => row.providerId == providerId && row.status != 'CANCELADO',
+          (row) =>
+              row.status != 'CANCELADO' &&
+              (row.providerId == providerId ||
+                  (aliasKey.isNotEmpty &&
+                      normalizeFinanzasCompanyAliasKey(
+                            row.providerNameSnapshot,
+                          ) ==
+                          aliasKey)),
         )
         .toList(growable: false);
     if (providerAgreements.isEmpty) return;
+    final relatedProviderIds = <String>{providerId};
+    for (final agreement in providerAgreements) {
+      if (agreement.providerId.trim().isNotEmpty) {
+        relatedProviderIds.add(agreement.providerId);
+      }
+    }
 
     final invoices = await loadInvoices();
     final invoicesById = <String, FinanzasSupplierInvoiceRecord>{
@@ -1000,9 +959,27 @@ class FinanzasProviderAccountsStore {
           )
           .add(link);
     }
-    final comprasProviderId = providerId.startsWith('compras_')
+    var comprasProviderId = providerId.startsWith('compras_')
         ? providerId.substring('compras_'.length)
         : providerId;
+    if (!providerId.startsWith('compras_') && aliasKey.isNotEmpty) {
+      final catalog = await FinanzasDataStore.loadCatalogSnapshot();
+      for (final company in catalog.companies) {
+        final companyAlias = normalizeFinanzasCompanyAliasKey(
+          company.linkedName.trim().isNotEmpty
+              ? company.linkedName
+              : company.name,
+        );
+        if (companyAlias == aliasKey &&
+            company.source.trim().toUpperCase() == 'COMPRAS') {
+          comprasProviderId = company.id.startsWith('compras_')
+              ? company.id.substring('compras_'.length)
+              : company.id;
+          relatedProviderIds.add(company.id);
+          break;
+        }
+      }
+    }
     final cashMovements =
         (await ComprasTicketsStore.loadProviderMovements())
             .where(
@@ -1019,7 +996,7 @@ class FinanzasProviderAccountsStore {
     final bankMovementRows = await Supabase.instance.client
         .from(_kFinBankMovementsTable)
         .select('id, movement_date, counterparty_company_id, debit_amount')
-        .eq('counterparty_company_id', providerId)
+        .inFilter('counterparty_company_id', relatedProviderIds.toList())
         .order('movement_date')
         .order('created_at');
     final bankPayments =

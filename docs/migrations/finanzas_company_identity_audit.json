@@ -1,0 +1,64 @@
+{
+  "summary": {
+    "finanzas_companies": 127,
+    "compras_companies": 42,
+    "ventas_companies": 31,
+    "supplier_invoices": 110,
+    "bank_movements": 13,
+    "issues": 6,
+    "issues_by_type": {
+      "CROSS_SOURCE_ALIAS": 4,
+      "INVOICE_AMBIGUOUS_ALIAS": 2
+    }
+  },
+  "issues": [
+    {
+      "issue_type": "CROSS_SOURCE_ALIAS",
+      "severity": "high",
+      "scope": "Compras Mayoreo + Ventas Mayoreo",
+      "company_name": "FERNANDO RUBIO",
+      "details": "El mismo nombre existe en Compras Mayoreo y Ventas Mayoreo; requiere criterio canónico en Finanzas.",
+      "refs": "compras=cp_import_fernando_rubio | ventas=co_seed_fernando_rubio"
+    },
+    {
+      "issue_type": "CROSS_SOURCE_ALIAS",
+      "severity": "high",
+      "scope": "Compras Mayoreo + Ventas Mayoreo",
+      "company_name": "KS",
+      "details": "El mismo nombre existe en Compras Mayoreo y Ventas Mayoreo; requiere criterio canónico en Finanzas.",
+      "refs": "compras=cp_import_ks | ventas=co_seed_ks"
+    },
+    {
+      "issue_type": "CROSS_SOURCE_ALIAS",
+      "severity": "high",
+      "scope": "Compras Mayoreo + Ventas Mayoreo",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El mismo nombre existe en Compras Mayoreo y Ventas Mayoreo; requiere criterio canónico en Finanzas.",
+      "refs": "compras=cp_import_ricardo_garcia_mendieta | ventas=co_seed_ricardo_garcia_mendieta"
+    },
+    {
+      "issue_type": "CROSS_SOURCE_ALIAS",
+      "severity": "high",
+      "scope": "Compras Mayoreo + Ventas Mayoreo",
+      "company_name": "YOROZU",
+      "details": "El mismo nombre existe en Compras Mayoreo y Ventas Mayoreo; requiere criterio canónico en Finanzas.",
+      "refs": "compras=cp_import_yorozu | ventas=co_seed_yorozu"
+    },
+    {
+      "issue_type": "INVOICE_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Facturas proveedor",
+      "company_name": "KS",
+      "details": "La factura usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el provider_id canónico sea el correcto.",
+      "refs": "invoice=fin-invoice-1781549977982706,provider_id=ventas_co_seed_ks,source=VENTAS"
+    },
+    {
+      "issue_type": "INVOICE_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Facturas proveedor",
+      "company_name": "KS",
+      "details": "La factura usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el provider_id canónico sea el correcto.",
+      "refs": "invoice=fin-invoice-1781550497764029,provider_id=ventas_co_seed_ks,source=VENTAS"
+    }
+  ]
+}

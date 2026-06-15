@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../compras/compras_tickets_store.dart';
+import 'finanzas_company_identity.dart';
 import 'finanzas_evidence_store.dart';
 import 'finanzas_fixed_payments_store.dart';
 import 'finanzas_financial_rules.dart';
@@ -192,10 +193,45 @@ class FinanzasBankAccountsStore {
   }
 
   static Future<void> saveMovement(FinanzasBankMovementRecord row) async {
+    final resolvedCounterpartyId = await _ensureCounterpartyExistsInFinanzas(
+      counterpartyCompanyId: row.counterpartyCompanyId,
+      counterpartyNameSnapshot: row.counterpartyNameSnapshot,
+    );
+    final resolvedRow = FinanzasBankMovementRecord(
+      id: row.id,
+      date: row.date,
+      company: row.company,
+      branch: row.branch,
+      accountKey: row.accountKey,
+      counterpartyCompanyId: resolvedCounterpartyId,
+      counterpartyNameSnapshot: row.counterpartyNameSnapshot,
+      category: row.category,
+      comment: row.comment,
+      reference: row.reference,
+      creditAmount: row.creditAmount,
+      debitAmount: row.debitAmount,
+      sourceType: row.sourceType,
+      linkedSupplierInvoiceId: row.linkedSupplierInvoiceId,
+      linkedFixedPaymentId: row.linkedFixedPaymentId,
+      linkedExternalRef: row.linkedExternalRef,
+      createdAt: row.createdAt,
+      updatedAt: row.updatedAt,
+    );
     await Supabase.instance.client.from(_kFinBankMovementsTable).upsert(
-      <Map<String, dynamic>>[row.toUpsertJson()],
+      <Map<String, dynamic>>[resolvedRow.toUpsertJson()],
       onConflict: 'id',
     );
+  }
+
+  static Future<String?> _ensureCounterpartyExistsInFinanzas({
+    required String? counterpartyCompanyId,
+    required String counterpartyNameSnapshot,
+  }) async {
+    final resolved = await FinanzasCompanyIdentityResolver.ensureCompanyExists(
+      externalCompanyId: counterpartyCompanyId,
+      companyNameSnapshot: counterpartyNameSnapshot,
+    );
+    return resolved.companyId;
   }
 
   static Future<void> deleteMovement(String id) async {
@@ -235,6 +271,7 @@ class FinanzasBankAccountsStore {
         await FinanzasProviderAccountsStore.saveInvoice(updatedInvoice);
         await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
           providerId: linkedInvoice.providerId,
+          providerNameSnapshot: linkedInvoice.providerNameSnapshot,
         );
 
         final invoiceTickets =
@@ -483,6 +520,7 @@ class FinanzasBankAccountsStore {
           movement.sourceType != 'VENTA_FACTURA') {
         await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
           providerId: providerCounterpartyId,
+          providerNameSnapshot: movement.counterpartyNameSnapshot,
         );
       }
       return;
@@ -511,6 +549,7 @@ class FinanzasBankAccountsStore {
     await FinanzasProviderAccountsStore.saveInvoice(updatedInvoice);
     await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
       providerId: linkedSupplierInvoice.providerId,
+      providerNameSnapshot: linkedSupplierInvoice.providerNameSnapshot,
     );
 
     final invoiceTickets =

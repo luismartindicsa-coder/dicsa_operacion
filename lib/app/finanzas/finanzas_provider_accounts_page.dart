@@ -175,11 +175,16 @@ class _FinanzasProviderAccountsPageState
               company.active && company.source.trim().toUpperCase() != 'VENTAS',
         )
         .toList(growable: false);
+    final comprasProviderIdByAlias = <String, String>{};
     final byProviderId = <String, List<ComprasTicketRecord>>{};
     for (final row in tickets) {
       byProviderId
           .putIfAbsent(row.providerId, () => <ComprasTicketRecord>[])
           .add(row);
+      final aliasKey = _normalizedProviderAliasKey(row.providerNameSnapshot);
+      if (aliasKey.isNotEmpty) {
+        comprasProviderIdByAlias.putIfAbsent(aliasKey, () => row.providerId);
+      }
     }
     final ticketsById = <String, ComprasTicketRecord>{
       for (final ticket in tickets) ticket.id: ticket,
@@ -298,7 +303,10 @@ class _FinanzasProviderAccountsPageState
     final accounts =
         providerDirectory
             .map((company) {
-              final comprasProviderId = _resolveComprasProviderId(company);
+              final comprasProviderId = _resolveComprasProviderId(
+                company,
+                comprasProviderIdByAlias,
+              );
               final companyTickets =
                   byProviderId[comprasProviderId]?.toList(growable: false) ??
                   <ComprasTicketRecord>[];
@@ -550,10 +558,22 @@ class _FinanzasProviderAccountsPageState
     return accounts;
   }
 
-  String _resolveComprasProviderId(FinanzasCompanyDirectoryRecord company) {
+  String _resolveComprasProviderId(
+    FinanzasCompanyDirectoryRecord company,
+    Map<String, String> comprasProviderIdByAlias,
+  ) {
     if (company.source.trim().toUpperCase() == 'COMPRAS' &&
         company.companyId.startsWith('compras_')) {
       return company.companyId.substring('compras_'.length);
+    }
+    final aliasKey = _normalizedProviderAliasKey(
+      company.linkedName.trim().isNotEmpty
+          ? company.linkedName
+          : company.companyName,
+    );
+    final aliasMatch = comprasProviderIdByAlias[aliasKey];
+    if (aliasMatch != null && aliasMatch.trim().isNotEmpty) {
+      return aliasMatch;
     }
     return company.companyId;
   }
@@ -1324,7 +1344,15 @@ class _FinanzasProviderAccountsPageState
   Future<void> _registerProviderCashMovementForSelectedProvider() async {
     final account = _selectedAccount;
     if (account == null) return;
-    final comprasProviderId = _resolveComprasProviderId(account.company);
+    final comprasProviderIdByAlias = <String, String>{
+      for (final row in account.tickets)
+        if (_normalizedProviderAliasKey(row.providerNameSnapshot).isNotEmpty)
+          _normalizedProviderAliasKey(row.providerNameSnapshot): row.providerId,
+    };
+    final comprasProviderId = _resolveComprasProviderId(
+      account.company,
+      comprasProviderIdByAlias,
+    );
     final draft = await showDialog<_ProviderCashMovementDraft>(
       context: context,
       barrierDismissible: true,
@@ -4349,9 +4377,6 @@ class _ProviderExcelTicketSelectionDialogState
     setState(() {
       _dragSelectionActive = true;
       _dragSelectionAnchorId = ticketId;
-      _selectedIds
-        ..clear()
-        ..add(ticketId);
     });
   }
 
@@ -4564,7 +4589,7 @@ class _ProviderExcelTicketSelectionDialogState
                             widget.kind ==
                                     FinanzasProviderExcelTemplateKind.avon
                                 ? 'Avon soporta hasta 50 tickets por exportación.'
-                                : 'La plantilla genérica soporta hasta 12 materiales y 9 tickets por material.',
+                                : 'La plantilla genérica soporta hasta 12 materiales y 20 tickets por material.',
                             style: TextStyle(
                               fontSize: 12.5,
                               fontWeight: FontWeight.w700,
@@ -8698,9 +8723,6 @@ class _RegisterSupplierInvoiceDialogState
     setState(() {
       _dragSelectionActive = true;
       _dragSelectionAnchorId = ticketId;
-      _selectedTicketIds
-        ..clear()
-        ..add(ticketId);
     });
   }
 

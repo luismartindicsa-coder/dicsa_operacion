@@ -14,6 +14,7 @@ import '../shared/ui_contract_core/theme/glass_styles.dart';
 import 'finanzas_bank_accounts_page.dart';
 import 'finanzas_bank_accounts_store.dart';
 import 'finanzas_catalog_page.dart';
+import 'finanzas_company_identity.dart';
 import 'finanzas_company_directory_page.dart';
 import 'finanzas_company_directory_store.dart';
 import 'finanzas_dashboard_page.dart';
@@ -524,6 +525,12 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
       ))
         row.companyId: row,
     };
+    final providerByAlias = <String, FinanzasCompanyDirectoryRecord>{
+      for (final row in providerById.values)
+        normalizeFinanzasCompanyAliasKey(
+          row.linkedName.trim().isNotEmpty ? row.linkedName : row.companyName,
+        ): row,
+    };
 
     final installmentsByAgreementId =
         <String, List<FinanzasSupplierAgreementInstallmentRecord>>{};
@@ -553,12 +560,21 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
     final agreementProviderIds = <String>{};
     final today = DateUtils.dateOnly(DateTime.now());
     final directAppliedByTicketId = <String, double>{};
+    final comprasProviderIdByAlias = <String, String>{};
     for (final application in ticketApplications) {
       directAppliedByTicketId.update(
         application.ticketId,
         (value) => value + application.appliedAmount,
         ifAbsent: () => application.appliedAmount,
       );
+    }
+    for (final ticket in tickets) {
+      final aliasKey = normalizeFinanzasCompanyAliasKey(
+        ticket.providerNameSnapshot,
+      );
+      if (aliasKey.isNotEmpty) {
+        comprasProviderIdByAlias.putIfAbsent(aliasKey, () => ticket.providerId);
+      }
     }
 
     for (final payment in fixedPayments.where(
@@ -619,9 +635,13 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
     }
 
     for (final agreement in agreements) {
-      agreementProviderIds.add(agreement.providerId);
-      final provider = providerById[agreement.providerId];
+      final provider =
+          providerById[agreement.providerId] ??
+          providerByAlias[normalizeFinanzasCompanyAliasKey(
+            agreement.providerNameSnapshot,
+          )];
       if (provider == null) continue;
+      agreementProviderIds.add(provider.companyId);
       final agreementInstallments =
           installmentsByAgreementId[agreement.id] ?? const [];
       for (final installment in agreementInstallments) {
@@ -701,11 +721,15 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
     }
 
     for (final invoice in invoices.where((row) => row.status != 'PAGADA')) {
-      final provider = providerById[invoice.providerId];
+      final provider =
+          providerById[invoice.providerId] ??
+          providerByAlias[normalizeFinanzasCompanyAliasKey(
+            invoice.providerNameSnapshot,
+          )];
       if (provider == null) continue;
       final dueDate = invoice.dueDate;
       final dueOnly = dueDate == null ? null : DateUtils.dateOnly(dueDate);
-      final hasAgreement = agreementProviderIds.contains(invoice.providerId);
+      final hasAgreement = agreementProviderIds.contains(provider.companyId);
       final bucket = dueOnly != null && dueOnly.isBefore(today)
           ? _PaymentCenterTab.urgente
           : hasAgreement
@@ -765,7 +789,10 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
 
     for (final provider in providerById.values) {
       if (agreementProviderIds.contains(provider.companyId)) continue;
-      final comprasId = _resolveComprasProviderId(provider);
+      final comprasId = _resolveComprasProviderId(
+        provider,
+        comprasProviderIdByAlias,
+      );
       final openAmount = ticketAmountsByProvider[comprasId] ?? 0;
       if (openAmount <= 0.009) continue;
       if (provider.paymentStage == 'AL_CORRIENTE') continue;
@@ -882,10 +909,22 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
     return (company, branch);
   }
 
-  String _resolveComprasProviderId(FinanzasCompanyDirectoryRecord company) {
+  String _resolveComprasProviderId(
+    FinanzasCompanyDirectoryRecord company,
+    Map<String, String> comprasProviderIdByAlias,
+  ) {
     if (company.source.trim().toUpperCase() == 'COMPRAS' &&
         company.companyId.startsWith('compras_')) {
       return company.companyId.substring('compras_'.length);
+    }
+    final aliasKey = normalizeFinanzasCompanyAliasKey(
+      company.linkedName.trim().isNotEmpty
+          ? company.linkedName
+          : company.companyName,
+    );
+    final aliasMatch = comprasProviderIdByAlias[aliasKey];
+    if (aliasMatch != null && aliasMatch.trim().isNotEmpty) {
+      return aliasMatch;
     }
     return company.companyId;
   }

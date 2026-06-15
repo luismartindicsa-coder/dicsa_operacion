@@ -18,6 +18,7 @@ import '../shared/utils/number_formatters.dart';
 import 'finanzas_bank_accounts_page.dart';
 import 'finanzas_bank_accounts_store.dart';
 import 'finanzas_catalog_page.dart';
+import 'finanzas_company_identity.dart';
 import 'finanzas_company_directory_page.dart';
 import 'finanzas_fixed_payments_page.dart';
 import 'finanzas_fixed_payments_store.dart';
@@ -2723,8 +2724,11 @@ _FinanzasDashboardSummary _buildFinanzasDashboardSummary({
 
   for (final invoice in openInvoices) {
     final dueDate = invoice.source.dueDate;
+    final providerKey = normalizeFinanzasCompanyAliasKey(
+      invoice.source.providerNameSnapshot,
+    );
     final provider =
-        providerAccumulator[invoice.source.providerId] ??
+        providerAccumulator[providerKey] ??
         _MutableProviderBalance(name: invoice.source.providerNameSnapshot);
     provider.balance += invoice.effectiveBalanceAmount;
     provider.invoiceCount += 1;
@@ -2745,7 +2749,7 @@ _FinanzasDashboardSummary _buildFinanzasDashboardSummary({
         monthSupplierCommitments += invoice.effectiveBalanceAmount;
       }
     }
-    providerAccumulator[invoice.source.providerId] = provider;
+    providerAccumulator[providerKey] = provider;
   }
 
   double monthFixedCommitments = 0;
@@ -3153,14 +3157,17 @@ List<_ProviderRiskRow> _buildProviderRiskRows({
   final activeByProvider = <String, int>{};
   for (final agreement in agreements) {
     if (agreement.status == 'CANCELADO') continue;
+    final providerKey = normalizeFinanzasCompanyAliasKey(
+      agreement.providerNameSnapshot,
+    );
     activeByProvider.update(
-      agreement.providerId,
+      providerKey,
       (value) => value + 1,
       ifAbsent: () => 1,
     );
     if (agreement.status == 'ATRASADO') {
       delayedByProvider.update(
-        agreement.providerId,
+        providerKey,
         (value) => value + 1,
         ifAbsent: () => 1,
       );
