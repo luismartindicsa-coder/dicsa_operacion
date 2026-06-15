@@ -29,6 +29,7 @@ import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 import 'finanzas_bank_accounts_store.dart';
 import 'finanzas_catalog_page.dart';
@@ -2061,9 +2062,16 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       builder: (context, child) {
         return AreaThemeScope(
           tokens: finanzasAreaTokens,
@@ -4143,9 +4151,9 @@ Future<DateTimeRange?> _showFinBankDateRangeDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
-      DateTime displayMonth = DateTime(
-        (initialRange?.start ?? firstDate).year,
-        (initialRange?.start ?? firstDate).month,
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: firstDate,
+        lastDate: lastDate,
       );
       DateTime? start = initialRange?.start;
       DateTime? end = initialRange?.end;

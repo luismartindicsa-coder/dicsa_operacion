@@ -24,6 +24,7 @@ import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
 import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 import 'maintenance_page.dart';
 
@@ -4696,9 +4697,16 @@ class _DateFieldButton extends StatelessWidget {
       onTap: () async {
         final picked = await showDatePicker(
           context: context,
-          initialDate: value,
+          initialDate: defaultDatePickerOpenDate(
+            firstDate: DateTime(2024),
+            lastDate: DateTime(2035),
+          ),
           firstDate: DateTime(2024),
           lastDate: DateTime(2035),
+          currentDate: defaultDatePickerOpenDate(
+            firstDate: DateTime(2024),
+            lastDate: DateTime(2035),
+          ),
           locale: const Locale('es', 'MX'),
         );
         onChanged(picked);

@@ -29,6 +29,7 @@ import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart'
     as shared_picker;
 import '../shared/page_routes.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 
 const List<String> _kStatusFlow = [
@@ -8713,9 +8714,16 @@ Future<DateTime?> _showMaintenanceDatePicker(
         content: SizedBox(
           width: 360,
           child: CalendarDatePicker(
-            initialDate: selected,
+            initialDate: defaultDatePickerOpenDate(
+              firstDate: firstDate,
+              lastDate: lastDate,
+            ),
             firstDate: firstDate,
             lastDate: lastDate,
+            currentDate: defaultDatePickerOpenDate(
+              firstDate: firstDate,
+              lastDate: lastDate,
+            ),
             onDateChanged: (v) => selected = v,
           ),
         ),
@@ -8775,9 +8783,9 @@ _showMaintenanceReportDateRangeDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
-      DateTime displayMonth = DateTime(
-        (initialRange?.start ?? DateTime.now()).year,
-        (initialRange?.start ?? DateTime.now()).month,
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
       );
       DateTime? start = initialRange?.start;
       DateTime? end = initialRange?.end;

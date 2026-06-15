@@ -4,6 +4,7 @@ import '../compras/compras_tickets_store.dart';
 import 'finanzas_evidence_store.dart';
 import 'finanzas_financial_rules.dart';
 
+const String _kFinCompaniesTable = 'finanzas_catalog_companies';
 const String _kFinSupplierInvoicesTable = 'finanzas_supplier_invoices';
 const String _kFinSupplierInvoiceTicketsTable =
     'finanzas_supplier_invoice_tickets';
@@ -24,6 +25,8 @@ const List<String> kFinSupplierInvoiceStatuses = <String>[
   'CONVENIO',
 ];
 
+const List<String> kFinSupplierInvoiceOrigins = <String>['TICKETS', 'MANUAL'];
+
 String finSupplierInvoiceStatusLabel(String value) {
   switch (value) {
     case 'PARCIAL':
@@ -36,6 +39,15 @@ String finSupplierInvoiceStatusLabel(String value) {
       return 'Convenio';
     default:
       return 'Pendiente';
+  }
+}
+
+String finSupplierInvoiceOriginLabel(String value) {
+  switch (value) {
+    case 'MANUAL':
+      return 'Manual';
+    default:
+      return 'Tickets';
   }
 }
 
@@ -90,6 +102,7 @@ class FinanzasSupplierInvoiceRecord {
   final String targetCompany;
   final String targetBranch;
   final String folio;
+  final String originType;
   final DateTime invoiceDate;
   final DateTime? dueDate;
   final double totalAmount;
@@ -108,6 +121,7 @@ class FinanzasSupplierInvoiceRecord {
     required this.targetCompany,
     required this.targetBranch,
     required this.folio,
+    required this.originType,
     required this.invoiceDate,
     required this.dueDate,
     required this.totalAmount,
@@ -127,6 +141,7 @@ class FinanzasSupplierInvoiceRecord {
     String? targetCompany,
     String? targetBranch,
     String? folio,
+    String? originType,
     DateTime? invoiceDate,
     DateTime? dueDate,
     double? totalAmount,
@@ -145,6 +160,7 @@ class FinanzasSupplierInvoiceRecord {
       targetCompany: targetCompany ?? this.targetCompany,
       targetBranch: targetBranch ?? this.targetBranch,
       folio: folio ?? this.folio,
+      originType: originType ?? this.originType,
       invoiceDate: invoiceDate ?? this.invoiceDate,
       dueDate: dueDate ?? this.dueDate,
       totalAmount: totalAmount ?? this.totalAmount,
@@ -165,6 +181,7 @@ class FinanzasSupplierInvoiceRecord {
     'target_company': targetCompany,
     'target_branch': targetBranch,
     'invoice_folio': folio,
+    'origin_type': originType,
     'invoice_date': invoiceDate.toIso8601String(),
     'due_date': dueDate?.toIso8601String(),
     'total_amount': totalAmount,
@@ -185,6 +202,7 @@ class FinanzasSupplierInvoiceRecord {
       targetCompany: (row['target_company'] ?? 'DICSA').toString(),
       targetBranch: (row['target_branch'] ?? 'CELAYA').toString(),
       folio: (row['invoice_folio'] ?? '').toString(),
+      originType: (row['origin_type'] ?? 'TICKETS').toString(),
       invoiceDate:
           _tryParseDateTime(row['invoice_date'] as String?) ?? DateTime.now(),
       dueDate: _tryParseDateTime(row['due_date'] as String?),
@@ -474,8 +492,13 @@ class FinanzasProviderAccountsStore {
     required FinanzasSupplierInvoiceRecord invoice,
     required List<ComprasTicketRecord> tickets,
   }) async {
+    final resolvedProviderId = await _ensureProviderExistsInFinanzasCatalog(
+      providerId: invoice.providerId,
+      providerNameSnapshot: invoice.providerNameSnapshot,
+    );
+    final resolvedInvoice = invoice.copyWith(providerId: resolvedProviderId);
     await Supabase.instance.client.from(_kFinSupplierInvoicesTable).upsert(
-      <Map<String, dynamic>>[invoice.toUpsertJson()],
+      <Map<String, dynamic>>[resolvedInvoice.toUpsertJson()],
       onConflict: 'id',
     );
     if (tickets.isNotEmpty) {
@@ -485,8 +508,8 @@ class FinanzasProviderAccountsStore {
             tickets
                 .map(
                   (ticket) => FinanzasSupplierInvoiceTicketRecord(
-                    id: 'fin-inv-ticket-${invoice.id}-${ticket.id}-${DateTime.now().microsecondsSinceEpoch}',
-                    invoiceId: invoice.id,
+                    id: 'fin-inv-ticket-${resolvedInvoice.id}-${ticket.id}-${DateTime.now().microsecondsSinceEpoch}',
+                    invoiceId: resolvedInvoice.id,
                     ticketId: ticket.id,
                     appliedAmount: ticket.amount,
                     createdAt: null,
@@ -505,10 +528,110 @@ class FinanzasProviderAccountsStore {
   }
 
   static Future<void> saveInvoice(FinanzasSupplierInvoiceRecord invoice) async {
+    final resolvedProviderId = await _ensureProviderExistsInFinanzasCatalog(
+      providerId: invoice.providerId,
+      providerNameSnapshot: invoice.providerNameSnapshot,
+    );
+    final resolvedInvoice = invoice.copyWith(providerId: resolvedProviderId);
     await Supabase.instance.client.from(_kFinSupplierInvoicesTable).upsert(
-      <Map<String, dynamic>>[invoice.toUpsertJson()],
+      <Map<String, dynamic>>[resolvedInvoice.toUpsertJson()],
       onConflict: 'id',
     );
+  }
+
+  static Future<void> updateInvoiceWithTickets({
+    required FinanzasSupplierInvoiceRecord invoice,
+    required List<ComprasTicketRecord> tickets,
+  }) async {
+    final client = Supabase.instance.client;
+    final resolvedProviderId = await _ensureProviderExistsInFinanzasCatalog(
+      providerId: invoice.providerId,
+      providerNameSnapshot: invoice.providerNameSnapshot,
+    );
+    final resolvedInvoice = invoice.copyWith(providerId: resolvedProviderId);
+    await client.from(_kFinSupplierInvoicesTable).upsert(<Map<String, dynamic>>[
+      resolvedInvoice.toUpsertJson(),
+    ], onConflict: 'id');
+
+    final currentRows = await client
+        .from(_kFinSupplierInvoiceTicketsTable)
+        .select()
+        .eq('invoice_id', invoice.id);
+    final currentLinks = (currentRows as List)
+        .map(
+          (row) => FinanzasSupplierInvoiceTicketRecord.fromRemoteRow(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(growable: false);
+    final currentTicketIds = currentLinks
+        .map((row) => row.ticketId)
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    final nextTicketIds = tickets.map((row) => row.id).toSet();
+
+    final removedTicketIds = currentTicketIds.difference(nextTicketIds);
+    final addedTickets = tickets
+        .where((row) => !currentTicketIds.contains(row.id))
+        .toList(growable: false);
+
+    if (removedTicketIds.isNotEmpty) {
+      await client
+          .from(_kFinSupplierInvoiceTicketsTable)
+          .delete()
+          .eq('invoice_id', invoice.id)
+          .inFilter('ticket_id', removedTicketIds.toList(growable: false));
+    }
+
+    if (addedTickets.isNotEmpty) {
+      await client
+          .from(_kFinSupplierInvoiceTicketsTable)
+          .upsert(
+            addedTickets
+                .map(
+                  (ticket) => FinanzasSupplierInvoiceTicketRecord(
+                    id: 'fin-inv-ticket-${resolvedInvoice.id}-${ticket.id}-${DateTime.now().microsecondsSinceEpoch}',
+                    invoiceId: resolvedInvoice.id,
+                    ticketId: ticket.id,
+                    appliedAmount: ticket.amount,
+                    createdAt: null,
+                    updatedAt: null,
+                  ).toUpsertJson(),
+                )
+                .toList(growable: false),
+            onConflict: 'ticket_id',
+          );
+    }
+
+    final allTickets = await ComprasTicketsStore.loadTickets();
+    final updates = <ComprasTicketRecord>[];
+    if (removedTicketIds.isNotEmpty) {
+      updates.addAll(
+        allTickets
+            .where((ticket) => removedTicketIds.contains(ticket.id))
+            .map(
+              (ticket) =>
+                  ticket.copyWith(facturaStatus: 'PENDIENTE_DE_FACTURAR'),
+            ),
+      );
+    }
+    if (nextTicketIds.isNotEmpty) {
+      updates.addAll(
+        allTickets
+            .where((ticket) => nextTicketIds.contains(ticket.id))
+            .map((ticket) => ticket.copyWith(facturaStatus: 'FACTURADO')),
+      );
+    }
+    if (updates.isNotEmpty) {
+      final deduped = <String, ComprasTicketRecord>{
+        for (final row in updates) row.id: row,
+      };
+      await ComprasTicketsStore.saveTickets(
+        deduped.values.toList(growable: false),
+      );
+    }
+
+    await syncAgreementStateForProvider(providerId: resolvedInvoice.providerId);
   }
 
   static Future<void> deleteInvoice(
@@ -579,6 +702,80 @@ class FinanzasProviderAccountsStore {
         .eq('id', invoice.id);
 
     await syncAgreementStateForProvider(providerId: invoice.providerId);
+  }
+
+  static Future<String> _ensureProviderExistsInFinanzasCatalog({
+    required String providerId,
+    required String providerNameSnapshot,
+  }) async {
+    if (providerId.trim().isEmpty) return providerId.trim();
+    final normalizedId = providerId.trim();
+    final normalizedName = providerNameSnapshot.trim();
+    final client = Supabase.instance.client;
+    final existing = await client
+        .from(_kFinCompaniesTable)
+        .select('id')
+        .eq('id', normalizedId)
+        .maybeSingle();
+    if (existing != null) return (existing['id'] ?? normalizedId).toString();
+
+    if (normalizedName.isNotEmpty) {
+      final existingByName = await client
+          .from(_kFinCompaniesTable)
+          .select('id, source, linked_name, notes, is_active')
+          .eq('name', normalizedName)
+          .maybeSingle();
+      if (existingByName != null) {
+        final resolvedId = (existingByName['id'] ?? '').toString();
+        if (resolvedId.isNotEmpty) {
+          final source = normalizedId.startsWith('compras_')
+              ? 'COMPRAS'
+              : normalizedId.startsWith('ventas_')
+              ? 'VENTAS'
+              : 'DIRECTO';
+          final notes = switch (source) {
+            'COMPRAS' => 'SINCRONIZADO DESDE COMPRAS MAYOREO',
+            'VENTAS' => 'SINCRONIZADO DESDE VENTAS MAYOREO',
+            _ => '',
+          };
+          await client.from(_kFinCompaniesTable).upsert(<Map<String, dynamic>>[
+            <String, dynamic>{
+              'id': resolvedId,
+              'name': normalizedName,
+              'source': existingByName['source'] ?? source,
+              'linked_name': normalizedName,
+              'is_active': existingByName['is_active'] ?? true,
+              'notes': (existingByName['notes'] ?? '').toString().trim().isEmpty
+                  ? (notes.isEmpty ? null : notes)
+                  : existingByName['notes'],
+            },
+          ], onConflict: 'id');
+          return resolvedId;
+        }
+      }
+    }
+
+    final source = normalizedId.startsWith('compras_')
+        ? 'COMPRAS'
+        : normalizedId.startsWith('ventas_')
+        ? 'VENTAS'
+        : 'DIRECTO';
+    final notes = switch (source) {
+      'COMPRAS' => 'SINCRONIZADO DESDE COMPRAS MAYOREO',
+      'VENTAS' => 'SINCRONIZADO DESDE VENTAS MAYOREO',
+      _ => '',
+    };
+    await client.from(_kFinCompaniesTable).upsert(<Map<String, dynamic>>[
+      <String, dynamic>{
+        'id': normalizedId,
+        'name': normalizedName.isEmpty ? normalizedId : normalizedName,
+        'source': source,
+        'linked_name': normalizedName.isEmpty ? null : normalizedName,
+        'is_active': true,
+        'notes': notes.isEmpty ? null : notes,
+      },
+    ], onConflict: 'id');
+    return normalizedId;
   }
 
   static Future<List<FinanzasSupplierAgreementRecord>> loadAgreements() async {

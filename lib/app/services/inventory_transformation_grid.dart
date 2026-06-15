@@ -14,6 +14,7 @@ import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import 'inventory_movements_grid.dart';
 
 const double _kTrDateColW = 92;
@@ -1277,9 +1278,16 @@ class _InventoryTransformationGridState
                         onTap: () async {
                           final picked = await showDatePicker(
                             context: context,
-                            initialDate: opDate,
+                            initialDate: defaultDatePickerOpenDate(
+                              firstDate: DateTime(2024, 1, 1),
+                              lastDate: DateTime(2035, 12, 31),
+                            ),
                             firstDate: DateTime(2024, 1, 1),
                             lastDate: DateTime(2035, 12, 31),
+                            currentDate: defaultDatePickerOpenDate(
+                              firstDate: DateTime(2024, 1, 1),
+                              lastDate: DateTime(2035, 12, 31),
+                            ),
                           );
                           if (picked == null) return;
                           setLocal(() => opDate = DateUtils.dateOnly(picked));
@@ -2842,9 +2850,16 @@ Future<DateTime?> _showTrKeyboardDatePickerDialog({
                     width: 320,
                     child: CalendarDatePicker(
                       key: ValueKey<DateTime>(tempDate),
-                      initialDate: tempDate,
+                      initialDate: defaultDatePickerOpenDate(
+                        firstDate: firstDate,
+                        lastDate: lastDate,
+                      ),
                       firstDate: firstDate,
                       lastDate: lastDate,
+                      currentDate: defaultDatePickerOpenDate(
+                        firstDate: firstDate,
+                        lastDate: lastDate,
+                      ),
                       onDateChanged: (d) {
                         setInnerState(() {
                           tempDate = DateUtils.dateOnly(d);
@@ -4177,9 +4192,9 @@ Future<_TrDateFilterDialogResult?> _showTrDateRangeFilterDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
-      DateTime displayMonth = DateTime(
-        (initialRange?.start ?? bounds.start).year,
-        (initialRange?.start ?? bounds.start).month,
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: bounds.start,
+        lastDate: bounds.end,
       );
       DateTime? start = initialRange?.start;
       DateTime? end = initialRange?.end;

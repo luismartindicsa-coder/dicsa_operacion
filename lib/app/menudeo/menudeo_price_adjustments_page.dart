@@ -19,6 +19,7 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 import 'menudeo_catalog_page.dart';
 import 'menudeo_dashboard_page.dart';
@@ -800,9 +801,9 @@ class _MenudeoPriceAdjustmentsPageState
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (dialogContext) {
-        DateTime displayMonth = DateTime(
-          (initialRange?.start ?? bounds.end).year,
-          (initialRange?.start ?? bounds.end).month,
+        DateTime displayMonth = defaultDatePickerOpenMonth(
+          firstDate: bounds.start,
+          lastDate: bounds.end,
         );
         DateTime? start = initialRange?.start;
         DateTime? end = initialRange?.end;

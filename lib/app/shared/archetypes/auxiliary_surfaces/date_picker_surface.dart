@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../../ui_contract_core/theme/area_theme_scope.dart';
 import '../../ui_contract_core/theme/contract_tokens.dart';
+import '../../utils/date_picker_defaults.dart';
 
 Future<DateTime?> showContractDatePickerSurface(
   BuildContext context, {
@@ -88,7 +89,10 @@ ThemeData _datePickerTheme(BuildContext context, ContractAreaTokens tokens) {
 }
 
 class _ContractDatePickerDialogState extends State<_ContractDatePickerDialog> {
-  late DateTime _tempDate = DateUtils.dateOnly(widget.initialDate);
+  late DateTime _tempDate = defaultDatePickerOpenDate(
+    firstDate: widget.firstDate,
+    lastDate: widget.lastDate,
+  );
 
   WidgetStateProperty<Color?> _stateColor({
     Color? normal,
@@ -249,6 +253,10 @@ class _ContractDatePickerDialogState extends State<_ContractDatePickerDialog> {
                     initialDate: _tempDate,
                     firstDate: widget.firstDate,
                     lastDate: widget.lastDate,
+                    currentDate: defaultDatePickerOpenDate(
+                      firstDate: widget.firstDate,
+                      lastDate: widget.lastDate,
+                    ),
                     onDateChanged: (value) {
                       setState(() {
                         _tempDate = DateUtils.dateOnly(value);

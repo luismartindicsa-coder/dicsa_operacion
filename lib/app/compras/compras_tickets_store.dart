@@ -179,7 +179,9 @@ class ComprasTicketRecord {
   factory ComprasTicketRecord.fromRemoteRow(Map<String, dynamic> row) {
     return ComprasTicketRecord(
       id: (row['id'] ?? '').toString(),
-      date: _tryParseDateTime(row['ticket_date'] as String?) ?? DateTime.now(),
+      date:
+          _tryParseCalendarDateTime(row['ticket_date'] as String?) ??
+          DateTime.now(),
       ticket: (row['ticket_number'] ?? '').toString(),
       providerId: (row['provider_id'] ?? '').toString(),
       providerNameSnapshot: (row['provider_name_snapshot'] ?? '').toString(),
@@ -667,4 +669,10 @@ ComprasTicketRecord buildComprasTicketDraft({
 DateTime? _tryParseDateTime(String? raw) {
   if (raw == null || raw.trim().isEmpty) return null;
   return DateTime.tryParse(raw);
+}
+
+DateTime? _tryParseCalendarDateTime(String? raw) {
+  final parsed = _tryParseDateTime(raw);
+  if (parsed == null) return null;
+  return DateTime(parsed.year, parsed.month, parsed.day);
 }

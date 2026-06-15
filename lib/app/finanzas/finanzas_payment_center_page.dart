@@ -2498,7 +2498,7 @@ class _FinPaymentCenterSidePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 390,
+      width: 320,
       margin: const EdgeInsets.fromLTRB(28, 56, 0, 56),
       child: FinanzasAreaSidePanel(
         currentLabel: 'Centro de pagos',

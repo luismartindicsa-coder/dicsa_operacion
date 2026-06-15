@@ -23,6 +23,7 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
@@ -1599,9 +1600,16 @@ class _MayoreoElPalomarPageState extends State<MayoreoElPalomarPage>
     final now = DateTime.now();
     return showDatePicker(
       context: context,
-      initialDate: initialDate ?? now,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(now.year - 3),
+        lastDate: DateTime(now.year + 5),
+      ),
       firstDate: DateTime(now.year - 3),
       lastDate: DateTime(now.year + 5),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(now.year - 3),
+        lastDate: DateTime(now.year + 5),
+      ),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: ColorScheme.light(
@@ -6846,9 +6854,9 @@ Future<_PalomarDateFilterResult?> _showPalomarDateRangeFilterDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
-      DateTime displayMonth = DateTime(
-        (initialRange?.start ?? bounds.start).year,
-        (initialRange?.start ?? bounds.start).month,
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: bounds.start,
+        lastDate: bounds.end,
       );
       DateTime? start = initialRange?.start;
       DateTime? end = initialRange?.end;

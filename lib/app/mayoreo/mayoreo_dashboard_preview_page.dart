@@ -14,6 +14,7 @@ import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
@@ -2439,9 +2440,16 @@ class _MayoreoPendingTasksDialogState
     final now = DateTime.now();
     final picked = await showDatePicker(
       context: context,
-      initialDate: _dueDate ?? now,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(now.year - 1),
+        lastDate: DateTime(now.year + 5),
+      ),
       firstDate: DateTime(now.year - 1),
       lastDate: DateTime(now.year + 5),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(now.year - 1),
+        lastDate: DateTime(now.year + 5),
+      ),
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
           colorScheme: ColorScheme.light(

@@ -250,10 +250,11 @@ Map<String, double> computeOpenGeneralAmountsByProvider({
   for (final ticket in tickets.where(
     (row) => row.facturaStatus != 'FACTURADO',
   )) {
+    final openTicketAmount = ticket.amount <= 0 ? 0.0 : ticket.amount;
     final applied = (directAppliedByTicketId[ticket.id] ?? 0)
-        .clamp(0, ticket.amount)
+        .clamp(0, openTicketAmount)
         .toDouble();
-    final remaining = (ticket.amount - applied).clamp(0, double.infinity);
+    final remaining = (openTicketAmount - applied).clamp(0, double.infinity);
     if (remaining <= 0.009) continue;
     result.update(
       ticket.providerId,

@@ -11,6 +11,7 @@ import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 
 class InventoryStockV2Body extends StatefulWidget {
@@ -2169,9 +2170,16 @@ Future<DateTime?> _showInventoryLikeDatePickerDialog({
                     width: 320,
                     child: CalendarDatePicker(
                       key: ValueKey<DateTime>(tempDate),
-                      initialDate: tempDate,
+                      initialDate: defaultDatePickerOpenDate(
+                        firstDate: firstDate,
+                        lastDate: lastDate,
+                      ),
                       firstDate: firstDate,
                       lastDate: lastDate,
+                      currentDate: defaultDatePickerOpenDate(
+                        firstDate: firstDate,
+                        lastDate: lastDate,
+                      ),
                       onDateChanged: (d) {
                         setInnerState(() {
                           tempDate = DateUtils.dateOnly(d);

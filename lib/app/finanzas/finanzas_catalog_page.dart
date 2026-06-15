@@ -4563,14 +4563,18 @@ class _FinanzasHeaderButtonState extends State<_FinanzasHeaderButton> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(widget.icon, color: tokens.primaryStrong),
+                  Icon(widget.icon, color: tokens.primaryStrong, size: 20),
                   const SizedBox(width: 10),
-                  Text(
-                    widget.label,
-                    style: TextStyle(
-                      color: tokens.primaryStrong,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w800,
+                  Flexible(
+                    child: Text(
+                      widget.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: tokens.primaryStrong,
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                   ),
                 ],

@@ -13,6 +13,7 @@ import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
+import '../mayoreo/mayoreo_sorting.dart';
 import '../services/inventory_movements_grid.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
@@ -24,6 +25,7 @@ import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import 'compras_area_chrome.dart';
 import 'compras_dashboard_page.dart';
 import 'compras_catalog_page.dart';
@@ -1837,11 +1839,78 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
     return null;
   }
 
-  ComprasCatalogMaterialRecord? get _selectedMaterial {
+  ComprasCatalogMaterialRecord? _materialById(String? id) {
+    if (id == null || id.isEmpty) return null;
     for (final row in widget.materials) {
-      if (row.id == _materialId) return row;
+      if (row.id == id) return row;
     }
     return null;
+  }
+
+  List<ComprasCatalogMaterialRecord> get _availableMaterials {
+    final activeMaterialsById = <String, ComprasCatalogMaterialRecord>{
+      for (final row in widget.materials)
+        if (row.active && row.level.trim().toUpperCase() == 'COMERCIAL')
+          row.id: row,
+    };
+    final providerId = _providerId;
+    final current = _materialById(_materialId);
+    if (providerId == null || providerId.isEmpty) {
+      final rows = activeMaterialsById.values.toList(growable: false);
+      if (current != null && !rows.any((row) => row.id == current.id)) {
+        return <ComprasCatalogMaterialRecord>[current, ...rows];
+      }
+      return rows;
+    }
+    final allowedMaterialIds = widget.prices
+        .where((row) => row.active && row.companyId == providerId)
+        .map((row) => row.materialId)
+        .toSet();
+    final rows =
+        allowedMaterialIds
+            .map((id) => activeMaterialsById[id])
+            .whereType<ComprasCatalogMaterialRecord>()
+            .toList(growable: false)
+          ..sort((a, b) => compareMayoreoAlpha(a.name, b.name));
+    if (current != null && !rows.any((row) => row.id == current.id)) {
+      return <ComprasCatalogMaterialRecord>[current, ...rows];
+    }
+    return rows;
+  }
+
+  ComprasCatalogMaterialRecord? get _selectedMaterial {
+    for (final row in _availableMaterials) {
+      if (row.id == _materialId) return row;
+    }
+    return _materialById(_materialId);
+  }
+
+  void _handleProviderChanged(ComprasCatalogProviderRecord? item) {
+    final nextProviderId = item?.id;
+    final allowedMaterialIds = widget.prices
+        .where((row) => row.active && row.companyId == nextProviderId)
+        .map((row) => row.materialId)
+        .toSet();
+    setState(() {
+      _providerId = nextProviderId;
+      if (_materialId != null && !allowedMaterialIds.contains(_materialId)) {
+        _materialId = null;
+      }
+      _syncPriceFromSelection();
+      if (_materialId == null) {
+        _priceC.clear();
+      }
+    });
+  }
+
+  void _handleMaterialChanged(ComprasCatalogMaterialRecord? item) {
+    setState(() {
+      _materialId = item?.id;
+      _syncPriceFromSelection();
+      if (_materialId == null) {
+        _priceC.clear();
+      }
+    });
   }
 
   @override
@@ -1948,23 +2017,17 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
                         items: widget.providers,
                         hintText: 'Selecciona proveedor',
                         labelBuilder: (item) => item.name,
-                        onChanged: (item) => setState(() {
-                          _providerId = item?.id;
-                          _syncPriceFromSelection();
-                        }),
+                        onChanged: _handleProviderChanged,
                       ),
                       _TicketPickerField<ComprasCatalogMaterialRecord>(
                         width: _kTicketDialogWideFieldW,
                         label: 'Material',
                         icon: Icons.precision_manufacturing_outlined,
                         value: material,
-                        items: widget.materials,
+                        items: _availableMaterials,
                         hintText: 'Selecciona material',
                         labelBuilder: (item) => item.name,
-                        onChanged: (item) => setState(() {
-                          _materialId = item?.id;
-                          _syncPriceFromSelection();
-                        }),
+                        onChanged: _handleMaterialChanged,
                       ),
                       _TicketPickerField<String>(
                         width: _kTicketDialogFieldW,
@@ -3382,9 +3445,16 @@ Future<DateTime?> _showComprasThemedDatePicker({
 }) {
   return showDatePicker(
     context: context,
-    initialDate: initialDate,
+    initialDate: defaultDatePickerOpenDate(
+      firstDate: firstDate,
+      lastDate: lastDate,
+    ),
     firstDate: firstDate,
     lastDate: lastDate,
+    currentDate: defaultDatePickerOpenDate(
+      firstDate: firstDate,
+      lastDate: lastDate,
+    ),
     builder: (context, child) {
       final theme = Theme.of(context);
       final primary = comprasAreaTokens.accent;
@@ -3466,9 +3536,9 @@ Future<DateTimeRange?> _showTicketDateRangeDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
-      DateTime displayMonth = DateTime(
-        (initialRange?.start ?? firstDate).year,
-        (initialRange?.start ?? firstDate).month,
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: firstDate,
+        lastDate: lastDate,
       );
       DateTime? start = initialRange?.start;
       DateTime? end = initialRange?.end;

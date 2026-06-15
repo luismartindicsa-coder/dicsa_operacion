@@ -126,6 +126,7 @@ class FinanzasClientPaymentAccountRecord {
   final String clientId;
   final String clientName;
   final String documentNumber;
+  final String operationType;
   final double approvedAmount;
   final double paidAmount;
   final String status;
@@ -136,6 +137,7 @@ class FinanzasClientPaymentAccountRecord {
     required this.clientId,
     required this.clientName,
     required this.documentNumber,
+    required this.operationType,
     required this.approvedAmount,
     required this.paidAmount,
     required this.status,
@@ -145,6 +147,7 @@ class FinanzasClientPaymentAccountRecord {
   double get pendingBalance => approvedAmount - paidAmount;
 
   bool get isOpen =>
+      operationType == 'factura' &&
       status != 'pagada' &&
       status != 'chequeCanjeado' &&
       status != 'cancelada' &&
@@ -158,6 +161,8 @@ class FinanzasClientPaymentAccountRecord {
       clientId: (row['client_id'] ?? '').toString(),
       clientName: (row['client_name_snapshot'] ?? '').toString(),
       documentNumber: (row['document_number'] ?? '').toString(),
+      operationType: ((row['operation_type'] ?? 'factura').toString())
+          .toLowerCase(),
       approvedAmount: ((row['approved_amount'] as num?) ?? 0).toDouble(),
       paidAmount: ((row['paid_amount'] as num?) ?? 0).toDouble(),
       status: (row['status'] ?? '').toString(),
@@ -403,7 +408,7 @@ class FinanzasBankAccountsStore {
       final rows = await Supabase.instance.client
           .from(_kMayoreoAccountsTable)
           .select(
-            'id, client_id, client_name_snapshot, document_number, approved_amount, paid_amount, status, settlement_date',
+            'id, client_id, client_name_snapshot, document_number, operation_type, approved_amount, paid_amount, status, settlement_date',
           )
           .order('document_date', ascending: false)
           .order('sale_date', ascending: false);

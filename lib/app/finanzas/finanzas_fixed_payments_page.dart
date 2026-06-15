@@ -28,6 +28,7 @@ import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 import 'finanzas_bank_accounts_page.dart';
 import 'finanzas_catalog_page.dart';
@@ -1464,9 +1465,16 @@ class _FixedPaymentDialogState extends State<_FixedPaymentDialog> {
   Future<void> _pickReceivedDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _receivedDate,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       builder: _buildThemedDatePicker,
     );
     if (picked == null || !mounted) return;
@@ -1476,9 +1484,16 @@ class _FixedPaymentDialogState extends State<_FixedPaymentDialog> {
   Future<void> _pickPaymentDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _paymentDate,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       builder: _buildThemedDatePicker,
     );
     if (picked == null || !mounted) return;
@@ -3373,7 +3388,7 @@ class _SidePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 390,
+      width: 320,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(28, 56, 0, 28),
         child: FinanzasAreaSidePanel(
@@ -3808,9 +3823,9 @@ Future<DateTimeRange?> _showFixedDateRangeDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
-      DateTime displayMonth = DateTime(
-        (initialRange?.start ?? firstDate).year,
-        (initialRange?.start ?? firstDate).month,
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: firstDate,
+        lastDate: lastDate,
       );
       DateTime? start = initialRange?.start;
       DateTime? end = initialRange?.end;

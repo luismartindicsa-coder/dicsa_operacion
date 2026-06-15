@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:math' as math;
 
 import 'package:file_picker/file_picker.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
@@ -18,9 +19,11 @@ import '../shared/archetypes/auxiliary_surfaces/confirmation_dialog.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
 import '../shared/utils/file_download_save.dart';
+import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import 'finanzas_bank_accounts_store.dart';
 import 'finanzas_bank_accounts_page.dart';
 import 'finanzas_catalog_page.dart';
@@ -191,6 +194,8 @@ class _FinanzasProviderAccountsPageState
     }
     final invoicesByProviderId =
         <String, List<FinanzasSupplierInvoiceRecord>>{};
+    final invoicesByProviderNameKey =
+        <String, List<FinanzasSupplierInvoiceRecord>>{};
     for (final invoice in invoices) {
       invoicesByProviderId
           .putIfAbsent(
@@ -198,6 +203,17 @@ class _FinanzasProviderAccountsPageState
             () => <FinanzasSupplierInvoiceRecord>[],
           )
           .add(invoice);
+      final providerNameKey = _normalizedProviderAliasKey(
+        invoice.providerNameSnapshot,
+      );
+      if (providerNameKey.isNotEmpty) {
+        invoicesByProviderNameKey
+            .putIfAbsent(
+              providerNameKey,
+              () => <FinanzasSupplierInvoiceRecord>[],
+            )
+            .add(invoice);
+      }
     }
     final bankMovementByInvoiceId = <String, FinanzasBankMovementRecord>{};
     for (final movement in bankMovements) {
@@ -217,6 +233,8 @@ class _FinanzasProviderAccountsPageState
     }
     final agreementsByProviderId =
         <String, List<FinanzasSupplierAgreementRecord>>{};
+    final agreementsByProviderNameKey =
+        <String, List<FinanzasSupplierAgreementRecord>>{};
     for (final agreement in agreements) {
       agreementsByProviderId
           .putIfAbsent(
@@ -224,6 +242,17 @@ class _FinanzasProviderAccountsPageState
             () => <FinanzasSupplierAgreementRecord>[],
           )
           .add(agreement);
+      final providerNameKey = _normalizedProviderAliasKey(
+        agreement.providerNameSnapshot,
+      );
+      if (providerNameKey.isNotEmpty) {
+        agreementsByProviderNameKey
+            .putIfAbsent(
+              providerNameKey,
+              () => <FinanzasSupplierAgreementRecord>[],
+            )
+            .add(agreement);
+      }
     }
     final invoicesById = <String, FinanzasSupplierInvoiceRecord>{
       for (final invoice in invoices) invoice.id: invoice,
@@ -275,11 +304,26 @@ class _FinanzasProviderAccountsPageState
                   <ComprasTicketRecord>[];
               companyTickets.sort((a, b) => b.date.compareTo(a.date));
               final rows = companyTickets;
+              final companyNameKey = _normalizedProviderAliasKey(
+                company.linkedName.trim().isNotEmpty
+                    ? company.linkedName
+                    : company.companyName,
+              );
               final providerInvoices =
-                  invoicesByProviderId[company.companyId]?.toList(
-                    growable: false,
-                  ) ??
-                  <FinanzasSupplierInvoiceRecord>[];
+                  <FinanzasSupplierInvoiceRecord>[
+                        ...?invoicesByProviderId[company.companyId],
+                        if (companyNameKey.isNotEmpty)
+                          ...?invoicesByProviderNameKey[companyNameKey],
+                      ]
+                      .fold<Map<String, FinanzasSupplierInvoiceRecord>>(
+                        <String, FinanzasSupplierInvoiceRecord>{},
+                        (acc, invoice) {
+                          acc[invoice.id] = invoice;
+                          return acc;
+                        },
+                      )
+                      .values
+                      .toList(growable: false);
               providerInvoices.sort(
                 (a, b) => b.invoiceDate.compareTo(a.invoiceDate),
               );
@@ -316,8 +360,20 @@ class _FinanzasProviderAccountsPageState
                       .toList(growable: false)
                     ..sort((a, b) => b.date.compareTo(a.date));
               final providerAgreements =
-                  agreementsByProviderId[company.companyId]
-                      ?.map(
+                  <FinanzasSupplierAgreementRecord>[
+                        ...?agreementsByProviderId[company.companyId],
+                        if (companyNameKey.isNotEmpty)
+                          ...?agreementsByProviderNameKey[companyNameKey],
+                      ]
+                      .fold<Map<String, FinanzasSupplierAgreementRecord>>(
+                        <String, FinanzasSupplierAgreementRecord>{},
+                        (acc, agreement) {
+                          acc[agreement.id] = agreement;
+                          return acc;
+                        },
+                      )
+                      .values
+                      .map(
                         (agreement) => _ProviderAgreementView(
                           agreement: agreement,
                           installments:
@@ -342,8 +398,7 @@ class _FinanzasProviderAccountsPageState
                               <_ProviderAgreementInvoiceLinkView>[],
                         ),
                       )
-                      .toList(growable: false) ??
-                  <_ProviderAgreementView>[];
+                      .toList(growable: false);
               providerAgreements.sort(
                 (a, b) =>
                     b.agreement.startDate.compareTo(a.agreement.startDate),
@@ -390,6 +445,17 @@ class _FinanzasProviderAccountsPageState
                       coverageStatus: ticket.coverageStatus,
                     );
                 total += ticket.amount;
+                if (ticket.amount <= 0.009) {
+                  open += ticket.amount;
+                  if (ticket.facturaStatus == 'FACTURADO') {
+                    facturado += ticket.amount;
+                  } else if (ticket.facturaStatus == 'SIN_FACTURA') {
+                    sinFactura += ticket.amount;
+                  } else {
+                    pendienteFacturar += ticket.amount;
+                  }
+                  continue;
+                }
                 final dueDate = DateUtils.dateOnly(
                   ticket.date.add(Duration(days: company.creditDays)),
                 );
@@ -413,6 +479,23 @@ class _FinanzasProviderAccountsPageState
                 if (nextCommitment == null ||
                     dueDate.isBefore(nextCommitment)) {
                   nextCommitment = dueDate;
+                }
+              }
+              for (final invoiceRow in providerInvoiceViews) {
+                if (!_isManualSupplierInvoice(invoiceRow)) continue;
+                final invoice = invoiceRow.invoice;
+                total += invoice.totalAmount;
+                if (invoice.status == 'PAGADA') {
+                  pagado += invoice.totalAmount;
+                  continue;
+                }
+                open += invoice.balanceAmount;
+                facturado += invoice.balanceAmount;
+                if (invoice.balanceAmount > 0.009 && invoice.dueDate != null) {
+                  final dueDate = DateUtils.dateOnly(invoice.dueDate!);
+                  if (dueDate.isBefore(today) || dueDate == today) {
+                    vencido += invoice.balanceAmount;
+                  }
                 }
               }
               for (final invoice in providerInvoices) {
@@ -565,6 +648,7 @@ class _FinanzasProviderAccountsPageState
 
   Future<void> _printAccountReportFor(_ProviderAccountView account) async {
     if (account.tickets.isEmpty &&
+        account.invoices.isEmpty &&
         account.movements.isEmpty &&
         account.cashMovements.isEmpty) {
       _toast('Esta cuenta todavía no tiene información para imprimir.');
@@ -612,16 +696,17 @@ class _FinanzasProviderAccountsPageState
     final selectedTickets = await showDialog<List<ComprasTicketRecord>>(
       context: context,
       builder: (dialogContext) {
-        final tokens = AreaThemeScope.of(context);
         return AreaThemeScope(
-          tokens: tokens,
-          child: _ProviderExcelTicketSelectionDialog(
-            providerName: account.company.companyName,
-            tickets: account.tickets,
-            moneyFormatter: _moneyStatic,
-            dateFormatter: (value) =>
-                value == null ? 'Sin fecha' : _dateLabelStatic(value),
-            kind: kind,
+          tokens: finanzasAreaTokens,
+          child: Builder(
+            builder: (_) => _ProviderExcelTicketSelectionDialog(
+              providerName: account.company.companyName,
+              tickets: account.tickets,
+              moneyFormatter: _moneyStatic,
+              dateFormatter: (value) =>
+                  value == null ? 'Sin fecha' : _dateLabelStatic(value),
+              kind: kind,
+            ),
           ),
         );
       },
@@ -698,8 +783,24 @@ class _FinanzasProviderAccountsPageState
                     (row) => _matchesAccountReportPreset(row.date, preset),
                   ))
             .toList(growable: false);
-    if (reportTickets.isEmpty) {
-      throw Exception('No hay tickets en ese rango.');
+    final reportManualInvoices =
+        (preset == null
+                ? account.invoices
+                : account.invoices.where(
+                    (row) =>
+                        _isManualSupplierInvoice(row) &&
+                        _matchesAccountReportPreset(
+                          row.invoice.invoiceDate,
+                          preset,
+                        ),
+                  ))
+            .where(_isManualSupplierInvoice)
+            .toList(growable: false)
+          ..sort(
+            (a, b) => b.invoice.invoiceDate.compareTo(a.invoice.invoiceDate),
+          );
+    if (reportTickets.isEmpty && reportManualInvoices.isEmpty) {
+      throw Exception('No hay tickets ni facturas manuales en ese rango.');
     }
     final reportTicketIds = reportTickets.map((row) => row.id).toSet();
     final now = DateTime.now();
@@ -710,6 +811,10 @@ class _FinanzasProviderAccountsPageState
     final ticketTotal = reportTickets.fold<double>(
       0,
       (sum, row) => sum + row.amount,
+    );
+    final manualInvoiceTotal = reportManualInvoices.fold<double>(
+      0,
+      (sum, row) => sum + row.invoice.totalAmount,
     );
     final directApplicationsByTicketId =
         <String, List<_ProviderTicketSettlementView>>{};
@@ -781,12 +886,16 @@ class _FinanzasProviderAccountsPageState
         0,
         (sum, item) => sum + item.amount,
       );
+      final cappedTicketAmount = ticket.amount < 0 ? 0.0 : ticket.amount;
       final appliedTotal = (appliedFromCash + bankCoverage).clamp(
         0,
-        ticket.amount,
+        cappedTicketAmount,
       );
       paymentTotal += appliedTotal;
-      openTotal += (ticket.amount - appliedTotal).clamp(0, double.infinity);
+      openTotal += (cappedTicketAmount - appliedTotal).clamp(
+        0,
+        double.infinity,
+      );
       for (final item in bankApplications) {
         final id =
             'bank-${ticket.id}-${item.date.microsecondsSinceEpoch}-${item.reference}-${item.amount}';
@@ -802,6 +911,29 @@ class _FinanzasProviderAccountsPageState
           ),
         );
       }
+    }
+    for (final row in reportManualInvoices) {
+      final invoice = row.invoice;
+      final paidPortion = (invoice.totalAmount - invoice.balanceAmount)
+          .clamp(0, invoice.totalAmount)
+          .toDouble();
+      paymentTotal += paidPortion;
+      openTotal += invoice.balanceAmount.clamp(0, double.infinity).toDouble();
+      final movement = row.bankMovement;
+      if (movement == null || paidPortion <= 0.009) continue;
+      final id =
+          'manual-${invoice.id}-${movement.date.microsecondsSinceEpoch}-${movement.reference}-$paidPortion';
+      providerPaymentRowsById.putIfAbsent(
+        id,
+        () => _ProviderAccountPaymentRow(
+          id: id,
+          date: movement.date,
+          sourceLabel: '${movement.company} ${movement.branch}',
+          reference: movement.reference,
+          typeLabel: 'Factura manual',
+          amount: paidPortion,
+        ),
+      );
     }
     final paymentRows = providerPaymentRowsById.values.toList(growable: false)
       ..sort((a, b) => a.date.compareTo(b.date));
@@ -897,169 +1029,110 @@ class _FinanzasProviderAccountsPageState
             children: [
               summaryCard('TICKETS TOTAL', _money(ticketTotal)),
               pw.SizedBox(width: 10),
+              summaryCard('FACT. MANUALES', _money(manualInvoiceTotal)),
+              pw.SizedBox(width: 10),
               summaryCard('ABONOS TOTAL', _money(paymentTotal)),
               pw.SizedBox(width: 10),
               summaryCard('SALDO PENDIENTE', _money(openTotal)),
             ],
           ),
           pw.SizedBox(height: 18),
-          pw.Text(
-            'TICKETS',
-            style: pw.TextStyle(
-              fontSize: 12.5,
-              fontWeight: pw.FontWeight.bold,
-              color: dicsaBlueDeep,
+          if (reportTickets.isNotEmpty) ...[
+            pw.Text(
+              'TICKETS',
+              style: pw.TextStyle(
+                fontSize: 12.5,
+                fontWeight: pw.FontWeight.bold,
+                color: dicsaBlueDeep,
+              ),
             ),
-          ),
-          pw.SizedBox(height: 8),
-          pw.Table(
-            border: pw.TableBorder.all(color: dicsaBorder),
-            columnWidths: {
-              0: const pw.FlexColumnWidth(0.95),
-              1: const pw.FlexColumnWidth(0.95),
-              2: const pw.FlexColumnWidth(1.35),
-              3: const pw.FlexColumnWidth(0.9),
-              4: const pw.FlexColumnWidth(0.95),
-              5: const pw.FlexColumnWidth(0.9),
-              6: const pw.FlexColumnWidth(0.95),
-              7: const pw.FlexColumnWidth(1.9),
-            },
-            children: [
-              pw.TableRow(
-                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
-                children:
-                    [
-                          'TICKET',
-                          'FECHA',
-                          'MATERIAL',
-                          'IMPORTE',
-                          'PAGO',
-                          'COB.',
-                          'APLICADO',
-                          'ABONOS',
-                        ]
-                        .map(
-                          (label) => pw.Padding(
-                            padding: const pw.EdgeInsets.all(7),
-                            child: pw.Text(
-                              label,
-                              style: pw.TextStyle(
-                                fontSize: 9.4,
-                                fontWeight: pw.FontWeight.bold,
-                                color: dicsaBlueDeep,
+            pw.SizedBox(height: 8),
+            pw.Table(
+              border: pw.TableBorder.all(color: dicsaBorder),
+              columnWidths: {
+                0: const pw.FlexColumnWidth(0.95),
+                1: const pw.FlexColumnWidth(0.95),
+                2: const pw.FlexColumnWidth(1.35),
+                3: const pw.FlexColumnWidth(0.9),
+                4: const pw.FlexColumnWidth(0.95),
+                5: const pw.FlexColumnWidth(0.9),
+                6: const pw.FlexColumnWidth(0.95),
+                7: const pw.FlexColumnWidth(1.9),
+              },
+              children: [
+                pw.TableRow(
+                  decoration: pw.BoxDecoration(color: dicsaGreenSoft),
+                  children:
+                      [
+                            'TICKET',
+                            'FECHA',
+                            'MATERIAL',
+                            'IMPORTE',
+                            'PAGO',
+                            'COB.',
+                            'APLICADO',
+                            'ABONOS',
+                          ]
+                          .map(
+                            (label) => pw.Padding(
+                              padding: const pw.EdgeInsets.all(7),
+                              child: pw.Text(
+                                label,
+                                style: pw.TextStyle(
+                                  fontSize: 9.4,
+                                  fontWeight: pw.FontWeight.bold,
+                                  color: dicsaBlueDeep,
+                                ),
                               ),
                             ),
-                          ),
-                        )
-                        .toList(growable: false),
-              ),
-              for (final row in prioritizedTickets)
-                pw.TableRow(
-                  children: () {
-                    final ticketApplications = <_ProviderTicketSettlementView>[
-                      ...?directApplicationsByTicketId[row.id],
-                      ...?bankApplicationsByTicketId[row.id],
-                    ]..sort((a, b) => a.date.compareTo(b.date));
-                    final appliedAmount = ticketApplications.fold<double>(
-                      0,
-                      (sum, item) => sum + item.amount,
-                    );
-                    final fullyCovered = appliedAmount >= row.amount - 0.009;
-                    final effectivePago = fullyCovered
-                        ? 'PAGADO'
-                        : appliedAmount > 0.009
-                        ? 'ABONO'
-                        : 'PENDIENTE_DE_PAGO';
-                    final effectiveCoverage = fullyCovered
-                        ? 'CUBIERTO'
-                        : appliedAmount > 0.009
-                        ? 'PARCIAL'
-                        : 'SIN_CUBRIR';
-                    final references = ticketApplications.isEmpty
-                        ? 'SIN ABONOS'
-                        : ticketApplications
-                              .map((item) {
-                                final reference = item.reference.trim().isEmpty
-                                    ? 'SIN REF'
-                                    : item.reference.trim();
-                                return '$reference ${_money(item.amount)}';
-                              })
-                              .join(' | ');
-                    return <String>[
-                          row.ticket,
-                          _dateLabel(row.date),
-                          row.materialNameSnapshot,
-                          _money(row.amount),
-                          comprasPagoStatusLabel(effectivePago),
-                          comprasCoverageStatusLabel(effectiveCoverage),
-                          appliedAmount <= 0
-                              ? _money(0)
-                              : _money(appliedAmount),
-                          references,
-                        ]
-                        .map(
-                          (value) => pw.Padding(
-                            padding: const pw.EdgeInsets.all(7),
-                            child: pw.Text(
-                              value,
-                              style: const pw.TextStyle(fontSize: 9.2),
-                            ),
-                          ),
-                        )
-                        .toList(growable: false);
-                  }(),
+                          )
+                          .toList(growable: false),
                 ),
-            ],
-          ),
-          pw.SizedBox(height: 18),
-          pw.Text(
-            'ABONOS',
-            style: pw.TextStyle(
-              fontSize: 12.5,
-              fontWeight: pw.FontWeight.bold,
-              color: dicsaBlueDeep,
-            ),
-          ),
-          pw.SizedBox(height: 8),
-          pw.Table(
-            border: pw.TableBorder.all(color: dicsaBorder),
-            columnWidths: {
-              0: const pw.FlexColumnWidth(1.0),
-              1: const pw.FlexColumnWidth(1.2),
-              2: const pw.FlexColumnWidth(1.1),
-              3: const pw.FlexColumnWidth(1.4),
-              4: const pw.FlexColumnWidth(1.0),
-            },
-            children: [
-              pw.TableRow(
-                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
-                children: ['FECHA', 'ORIGEN', 'TIPO', 'REFERENCIA', 'IMPORTE']
-                    .map(
-                      (label) => pw.Padding(
-                        padding: const pw.EdgeInsets.all(7),
-                        child: pw.Text(
-                          label,
-                          style: pw.TextStyle(
-                            fontSize: 9.4,
-                            fontWeight: pw.FontWeight.bold,
-                            color: dicsaBlueDeep,
-                          ),
-                        ),
-                      ),
-                    )
-                    .toList(growable: false),
-              ),
-              for (final row in paymentRows)
-                pw.TableRow(
-                  children:
-                      <String>[
+                for (final row in prioritizedTickets)
+                  pw.TableRow(
+                    children: () {
+                      final ticketApplications =
+                          <_ProviderTicketSettlementView>[
+                            ...?directApplicationsByTicketId[row.id],
+                            ...?bankApplicationsByTicketId[row.id],
+                          ]..sort((a, b) => a.date.compareTo(b.date));
+                      final appliedAmount = ticketApplications.fold<double>(
+                        0,
+                        (sum, item) => sum + item.amount,
+                      );
+                      final fullyCovered = appliedAmount >= row.amount - 0.009;
+                      final effectivePago = fullyCovered
+                          ? 'PAGADO'
+                          : appliedAmount > 0.009
+                          ? 'ABONO'
+                          : 'PENDIENTE_DE_PAGO';
+                      final effectiveCoverage = fullyCovered
+                          ? 'CUBIERTO'
+                          : appliedAmount > 0.009
+                          ? 'PARCIAL'
+                          : 'SIN_CUBRIR';
+                      final references = ticketApplications.isEmpty
+                          ? 'SIN ABONOS'
+                          : ticketApplications
+                                .map((item) {
+                                  final reference =
+                                      item.reference.trim().isEmpty
+                                      ? 'SIN REF'
+                                      : item.reference.trim();
+                                  return '$reference ${_money(item.amount)}';
+                                })
+                                .join(' | ');
+                      return <String>[
+                            row.ticket,
                             _dateLabel(row.date),
-                            row.sourceLabel,
-                            row.typeLabel,
-                            row.reference.isEmpty
-                                ? 'SIN REFERENCIA'
-                                : row.reference,
+                            row.materialNameSnapshot,
                             _money(row.amount),
+                            comprasPagoStatusLabel(effectivePago),
+                            comprasCoverageStatusLabel(effectiveCoverage),
+                            appliedAmount <= 0
+                                ? _money(0)
+                                : _money(appliedAmount),
+                            references,
                           ]
                           .map(
                             (value) => pw.Padding(
@@ -1070,10 +1143,161 @@ class _FinanzasProviderAccountsPageState
                               ),
                             ),
                           )
+                          .toList(growable: false);
+                    }(),
+                  ),
+              ],
+            ),
+            pw.SizedBox(height: 18),
+          ],
+          if (reportManualInvoices.isNotEmpty) ...[
+            pw.Text(
+              'FACTURAS MANUALES',
+              style: pw.TextStyle(
+                fontSize: 12.5,
+                fontWeight: pw.FontWeight.bold,
+                color: dicsaBlueDeep,
+              ),
+            ),
+            pw.SizedBox(height: 8),
+            pw.Table(
+              border: pw.TableBorder.all(color: dicsaBorder),
+              columnWidths: {
+                0: const pw.FlexColumnWidth(1.15),
+                1: const pw.FlexColumnWidth(0.95),
+                2: const pw.FlexColumnWidth(0.95),
+                3: const pw.FlexColumnWidth(0.95),
+                4: const pw.FlexColumnWidth(0.95),
+                5: const pw.FlexColumnWidth(1.6),
+              },
+              children: [
+                pw.TableRow(
+                  decoration: pw.BoxDecoration(color: dicsaGreenSoft),
+                  children:
+                      ['FOLIO', 'FECHA', 'LÍMITE', 'TOTAL', 'SALDO', 'NOTAS']
+                          .map(
+                            (label) => pw.Padding(
+                              padding: const pw.EdgeInsets.all(7),
+                              child: pw.Text(
+                                label,
+                                style: pw.TextStyle(
+                                  fontSize: 9.4,
+                                  fontWeight: pw.FontWeight.bold,
+                                  color: dicsaBlueDeep,
+                                ),
+                              ),
+                            ),
+                          )
                           .toList(growable: false),
                 ),
-            ],
+                for (final row in reportManualInvoices)
+                  pw.TableRow(
+                    children:
+                        <String>[
+                              row.invoice.folio.trim().isEmpty
+                                  ? 'SIN FOLIO'
+                                  : row.invoice.folio.trim(),
+                              _dateLabel(row.invoice.invoiceDate),
+                              row.invoice.dueDate == null
+                                  ? 'SIN FECHA'
+                                  : _dateLabel(row.invoice.dueDate!),
+                              _money(row.invoice.totalAmount),
+                              _money(row.invoice.balanceAmount),
+                              row.invoice.notes.trim().isEmpty
+                                  ? '—'
+                                  : row.invoice.notes.trim(),
+                            ]
+                            .map(
+                              (value) => pw.Padding(
+                                padding: const pw.EdgeInsets.all(7),
+                                child: pw.Text(
+                                  value,
+                                  style: const pw.TextStyle(fontSize: 9.2),
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                  ),
+              ],
+            ),
+            pw.SizedBox(height: 18),
+          ],
+          pw.Text(
+            'ABONOS',
+            style: pw.TextStyle(
+              fontSize: 12.5,
+              fontWeight: pw.FontWeight.bold,
+              color: dicsaBlueDeep,
+            ),
           ),
+          pw.SizedBox(height: 8),
+          paymentRows.isEmpty
+              ? pw.Container(
+                  width: double.infinity,
+                  padding: const pw.EdgeInsets.all(10),
+                  decoration: pw.BoxDecoration(
+                    border: pw.Border.all(color: dicsaBorder),
+                    borderRadius: pw.BorderRadius.circular(10),
+                  ),
+                  child: pw.Text(
+                    'Sin abonos relacionados en este alcance.',
+                    style: pw.TextStyle(fontSize: 9.2, color: dicsaMuted),
+                  ),
+                )
+              : pw.Table(
+                  border: pw.TableBorder.all(color: dicsaBorder),
+                  columnWidths: {
+                    0: const pw.FlexColumnWidth(1.0),
+                    1: const pw.FlexColumnWidth(1.2),
+                    2: const pw.FlexColumnWidth(1.1),
+                    3: const pw.FlexColumnWidth(1.4),
+                    4: const pw.FlexColumnWidth(1.0),
+                  },
+                  children: [
+                    pw.TableRow(
+                      decoration: pw.BoxDecoration(color: dicsaGreenSoft),
+                      children:
+                          ['FECHA', 'ORIGEN', 'TIPO', 'REFERENCIA', 'IMPORTE']
+                              .map(
+                                (label) => pw.Padding(
+                                  padding: const pw.EdgeInsets.all(7),
+                                  child: pw.Text(
+                                    label,
+                                    style: pw.TextStyle(
+                                      fontSize: 9.4,
+                                      fontWeight: pw.FontWeight.bold,
+                                      color: dicsaBlueDeep,
+                                    ),
+                                  ),
+                                ),
+                              )
+                              .toList(growable: false),
+                    ),
+                    for (final row in paymentRows)
+                      pw.TableRow(
+                        children:
+                            <String>[
+                                  _dateLabel(row.date),
+                                  row.sourceLabel,
+                                  row.typeLabel,
+                                  row.reference.isEmpty
+                                      ? 'SIN REFERENCIA'
+                                      : row.reference,
+                                  _money(row.amount),
+                                ]
+                                .map(
+                                  (value) => pw.Padding(
+                                    padding: const pw.EdgeInsets.all(7),
+                                    child: pw.Text(
+                                      value,
+                                      style: const pw.TextStyle(fontSize: 9.2),
+                                    ),
+                                  ),
+                                )
+                                .toList(growable: false),
+                      ),
+                  ],
+                ),
         ],
       ),
     );
@@ -1644,6 +1868,7 @@ class _FinanzasProviderAccountsPageState
       targetCompany: draft.targetCompany,
       targetBranch: draft.targetBranch,
       folio: draft.folio.trim(),
+      originType: 'TICKETS',
       invoiceDate: draft.invoiceDate,
       dueDate: draft.dueDate,
       totalAmount: total,
@@ -1668,6 +1893,200 @@ class _FinanzasProviderAccountsPageState
     } catch (error) {
       if (!mounted) return;
       _toast('No se pudo registrar la factura. $error');
+    }
+  }
+
+  Future<void> _registerManualInvoiceForSelectedProvider() async {
+    final account = _selectedAccount;
+    if (account == null) return;
+    final draft = await showDialog<_InvoiceDraftResult>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _RegisterManualSupplierInvoiceDialog(
+        companyName: account.company.companyName,
+        initialTarget: _suggestTargetForProvider(account.company),
+      ),
+    );
+    if (draft == null) return;
+    final total = (draft.manualAmount ?? 0)
+        .clamp(0, double.infinity)
+        .toDouble();
+    if (total <= 0.009) {
+      _toast('Captura un importe mayor a cero para la factura manual.');
+      return;
+    }
+    final status = _deriveInvoiceStatus(
+      dueDate: draft.dueDate,
+      balanceAmount: total,
+    );
+    final invoice = FinanzasSupplierInvoiceRecord(
+      id: 'fin-invoice-${DateTime.now().microsecondsSinceEpoch}',
+      providerId: account.company.companyId,
+      providerNameSnapshot: account.company.companyName,
+      targetCompany: draft.targetCompany,
+      targetBranch: draft.targetBranch,
+      folio: draft.folio.trim(),
+      originType: 'MANUAL',
+      invoiceDate: draft.invoiceDate,
+      dueDate: draft.dueDate,
+      totalAmount: total,
+      balanceAmount: total,
+      status: status,
+      notes: draft.notes.trim(),
+      manualPriority: 'NORMAL',
+      priorityNote: '',
+      createdAt: null,
+      updatedAt: null,
+    );
+    try {
+      await FinanzasProviderAccountsStore.createInvoice(
+        invoice: invoice,
+        tickets: const <ComprasTicketRecord>[],
+      );
+      if (!mounted) return;
+      _toast('Factura manual registrada.');
+      await _loadPage();
+      if (!mounted) return;
+      setState(() => _activeTab = _ProviderAccountsTab.facturas);
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo registrar la factura manual. $error');
+    }
+  }
+
+  Future<void> _editInvoiceForSelectedProvider(_ProviderInvoiceView row) async {
+    final account = _selectedAccount;
+    if (account == null) return;
+    if (!_canEditSupplierInvoice(row)) {
+      _toast(
+        'Solo puedes editar facturas pendientes sin pagos aplicados ni movimientos bancarios ligados.',
+      );
+      return;
+    }
+
+    if (_isManualSupplierInvoice(row)) {
+      final draft = await showDialog<_InvoiceDraftResult>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => _RegisterManualSupplierInvoiceDialog(
+          companyName: account.company.companyName,
+          initialTarget: _suggestTargetForProvider(account.company),
+          initialDraft: _InvoiceDraftResult(
+            folio: row.invoice.folio,
+            originType: row.invoice.originType,
+            invoiceDate: row.invoice.invoiceDate,
+            dueDate: row.invoice.dueDate,
+            targetCompany: row.invoice.targetCompany,
+            targetBranch: row.invoice.targetBranch,
+            manualAmount: row.invoice.totalAmount,
+            notes: row.invoice.notes,
+            selectedTicketIds: const <String>{},
+          ),
+          title: 'Editar factura manual',
+          confirmLabel: 'Guardar cambios',
+        ),
+      );
+      if (draft == null) return;
+      final total = (draft.manualAmount ?? 0)
+          .clamp(0, double.infinity)
+          .toDouble();
+      if (total <= 0.009) {
+        _toast('Captura un importe mayor a cero para la factura manual.');
+        return;
+      }
+      final updated = row.invoice.copyWith(
+        folio: draft.folio.trim(),
+        invoiceDate: draft.invoiceDate,
+        dueDate: draft.dueDate,
+        targetCompany: draft.targetCompany,
+        targetBranch: draft.targetBranch,
+        totalAmount: total,
+        balanceAmount: total,
+        status: _deriveInvoiceStatus(
+          dueDate: draft.dueDate,
+          balanceAmount: total,
+        ),
+        notes: draft.notes.trim(),
+      );
+      try {
+        await FinanzasProviderAccountsStore.saveInvoice(updated);
+        if (!mounted) return;
+        _toast('Factura manual actualizada.');
+        await _loadPage();
+      } catch (error) {
+        if (!mounted) return;
+        _toast('No se pudo actualizar la factura manual. $error');
+      }
+      return;
+    }
+
+    final currentTicketIds = row.tickets.map((ticket) => ticket.id).toSet();
+    final candidateTickets = account.tickets
+        .where(
+          (ticket) =>
+              ticket.facturaStatus == 'PENDIENTE_DE_FACTURAR' ||
+              currentTicketIds.contains(ticket.id),
+        )
+        .toList(growable: false);
+    final draft = await showDialog<_InvoiceDraftResult>(
+      context: context,
+      barrierDismissible: true,
+      builder: (_) => _RegisterSupplierInvoiceDialog(
+        companyName: account.company.companyName,
+        tickets: candidateTickets,
+        initialTarget: _suggestTargetForProvider(account.company),
+        initialDraft: _InvoiceDraftResult(
+          folio: row.invoice.folio,
+          originType: row.invoice.originType,
+          invoiceDate: row.invoice.invoiceDate,
+          dueDate: row.invoice.dueDate,
+          targetCompany: row.invoice.targetCompany,
+          targetBranch: row.invoice.targetBranch,
+          manualAmount: null,
+          notes: row.invoice.notes,
+          selectedTicketIds: currentTicketIds,
+        ),
+        title: 'Editar factura',
+        confirmLabel: 'Guardar cambios',
+      ),
+    );
+    if (draft == null) return;
+    final selectedTickets = candidateTickets
+        .where((ticket) => draft.selectedTicketIds.contains(ticket.id))
+        .toList(growable: false);
+    if (selectedTickets.isEmpty) {
+      _toast('Selecciona al menos un ticket para la factura.');
+      return;
+    }
+    final total = selectedTickets.fold<double>(
+      0,
+      (sum, ticket) => sum + ticket.amount,
+    );
+    final updated = row.invoice.copyWith(
+      folio: draft.folio.trim(),
+      invoiceDate: draft.invoiceDate,
+      dueDate: draft.dueDate,
+      targetCompany: draft.targetCompany,
+      targetBranch: draft.targetBranch,
+      totalAmount: total,
+      balanceAmount: total,
+      status: _deriveInvoiceStatus(
+        dueDate: draft.dueDate,
+        balanceAmount: total,
+      ),
+      notes: draft.notes.trim(),
+    );
+    try {
+      await FinanzasProviderAccountsStore.updateInvoiceWithTickets(
+        invoice: updated,
+        tickets: selectedTickets,
+      );
+      if (!mounted) return;
+      _toast('Factura actualizada.');
+      await _loadPage();
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo actualizar la factura. $error');
     }
   }
 
@@ -2218,7 +2637,8 @@ class _FinanzasProviderAccountsPageState
   }
 
   String _money(double value) {
-    final fixed = value.toStringAsFixed(2);
+    final negative = value < 0;
+    final fixed = value.abs().toStringAsFixed(2);
     final parts = fixed.split('.');
     final whole = parts.first;
     final fraction = parts[1];
@@ -2230,7 +2650,7 @@ class _FinanzasProviderAccountsPageState
         buffer.write(',');
       }
     }
-    return '\$${buffer.toString()}.$fraction';
+    return '${negative ? '-' : ''}\$${buffer.toString()}.$fraction';
   }
 
   String _providerMovementSourceLabel(String source) {
@@ -2263,6 +2683,7 @@ class _FinanzasProviderAccountsPageState
       tickets.map((row) => row.id).toSet(),
     );
     for (final ticket in tickets) {
+      final cappedTicketAmount = ticket.amount < 0 ? 0.0 : ticket.amount;
       final directApplications =
           ticketApplicationsByTicketId[ticket.id]?.toList(growable: false) ??
           const <_ProviderTicketApplicationView>[];
@@ -2277,10 +2698,18 @@ class _FinanzasProviderAccountsPageState
         0,
         (sum, item) => sum + item.amount,
       );
+      if (cappedTicketAmount <= 0.009) {
+        statusByTicketId[ticket.id] = const _ProviderTicketStatusView(
+          appliedAmount: 0,
+          pagoStatus: 'PAGADO',
+          coverageStatus: 'CUBIERTO',
+        );
+        continue;
+      }
       final appliedAmount = (directApplied + bankApplied)
-          .clamp(0, ticket.amount)
+          .clamp(0, cappedTicketAmount)
           .toDouble();
-      final fullyCovered = appliedAmount >= ticket.amount - 0.009;
+      final fullyCovered = appliedAmount >= cappedTicketAmount - 0.009;
       final hasAbono = appliedAmount > 0.009 && !fullyCovered;
       statusByTicketId[ticket.id] = _ProviderTicketStatusView(
         appliedAmount: appliedAmount,
@@ -2382,6 +2811,8 @@ class _FinanzasProviderAccountsPageState
                                             setState(() => _activeTab = tab),
                                         onRegisterInvoice:
                                             _registerInvoiceForSelectedProvider,
+                                        onRegisterManualInvoice:
+                                            _registerManualInvoiceForSelectedProvider,
                                         onEditProviderPriority:
                                             _editProviderPriorityForSelectedProvider,
                                         onOpenBankAccounts: _openBankAccounts,
@@ -2399,6 +2830,8 @@ class _FinanzasProviderAccountsPageState
                                             _editProviderCashMovementForSelectedProvider,
                                         onDeleteCashMovement:
                                             _deleteProviderCashMovementForSelectedProvider,
+                                        onEditInvoice:
+                                            _editInvoiceForSelectedProvider,
                                         onEditInvoicePriority:
                                             _editInvoicePriority,
                                         onOpenInvoiceEvidence:
@@ -2463,6 +2896,10 @@ class _FinanzasProviderAccountsPageState
   }
 }
 
+String _normalizedProviderAliasKey(String value) {
+  return value.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+}
+
 class _ProviderAccountView {
   final FinanzasCompanyDirectoryRecord company;
   final List<ComprasTicketRecord> tickets;
@@ -2522,6 +2959,19 @@ class _ProviderInvoiceView {
     required this.tickets,
     required this.evidences,
   });
+}
+
+bool _isManualSupplierInvoice(_ProviderInvoiceView row) {
+  return row.invoice.originType == 'MANUAL' || row.tickets.isEmpty;
+}
+
+bool _canEditSupplierInvoice(_ProviderInvoiceView row) {
+  final untouchedBalance =
+      (row.invoice.totalAmount - row.invoice.balanceAmount).abs() <= 0.009;
+  final status = row.invoice.status.trim().toUpperCase();
+  return row.bankMovement == null &&
+      untouchedBalance &&
+      (status == 'PENDIENTE' || status == 'VENCIDA');
 }
 
 class _ProviderTicketApplicationView {
@@ -2587,6 +3037,17 @@ _ProviderAccountMetricsView _computeProviderAccountMetrics(
   for (final ticket in account.tickets) {
     final resolved = _resolveProviderTicketStatus(account, ticket);
     total += ticket.amount;
+    if (ticket.amount <= 0.009) {
+      open += ticket.amount;
+      if (ticket.facturaStatus == 'FACTURADO') {
+        facturado += ticket.amount;
+      } else if (ticket.facturaStatus == 'SIN_FACTURA') {
+        sinFactura += ticket.amount;
+      } else {
+        pendienteFacturar += ticket.amount;
+      }
+      continue;
+    }
     final dueDate = DateUtils.dateOnly(
       ticket.date.add(Duration(days: account.company.creditDays)),
     );
@@ -2609,6 +3070,24 @@ _ProviderAccountMetricsView _computeProviderAccountMetrics(
     }
     if (nextCommitment == null || dueDate.isBefore(nextCommitment)) {
       nextCommitment = dueDate;
+    }
+  }
+
+  for (final invoiceRow in account.invoices) {
+    if (!_isManualSupplierInvoice(invoiceRow)) continue;
+    final invoice = invoiceRow.invoice;
+    total += invoice.totalAmount;
+    if (invoice.status == 'PAGADA') {
+      pagado += invoice.totalAmount;
+      continue;
+    }
+    open += invoice.balanceAmount;
+    facturado += invoice.balanceAmount;
+    if (invoice.balanceAmount > 0.009 && invoice.dueDate != null) {
+      final dueDate = DateUtils.dateOnly(invoice.dueDate!);
+      if (dueDate.isBefore(today) || dueDate == today) {
+        vencido += invoice.balanceAmount;
+      }
     }
   }
 
@@ -2660,6 +3139,7 @@ Map<String, List<_ProviderTicketSettlementView>> _buildBankApplicationsByTicket(
     if (remaining <= 0.009) continue;
     for (final ticket in invoiceTickets) {
       if (remaining <= 0.009) break;
+      if (ticket.amount <= 0.009) continue;
       final applied = remaining > ticket.amount ? ticket.amount : remaining;
       if (applied <= 0.009) continue;
       result
@@ -2682,6 +3162,7 @@ _ProviderTicketStatusView _resolveProviderTicketStatus(
   _ProviderAccountView account,
   ComprasTicketRecord ticket,
 ) {
+  final cappedTicketAmount = ticket.amount < 0 ? 0.0 : ticket.amount;
   final directApplications =
       account.ticketApplicationsByTicketId[ticket.id]?.toList(
         growable: false,
@@ -2701,10 +3182,17 @@ _ProviderTicketStatusView _resolveProviderTicketStatus(
     0,
     (sum, item) => sum + item.amount,
   );
+  if (cappedTicketAmount <= 0.009) {
+    return const _ProviderTicketStatusView(
+      appliedAmount: 0,
+      pagoStatus: 'PAGADO',
+      coverageStatus: 'CUBIERTO',
+    );
+  }
   final appliedAmount = (directApplied + bankApplied)
-      .clamp(0, ticket.amount)
+      .clamp(0, cappedTicketAmount)
       .toDouble();
-  final fullyCovered = appliedAmount >= ticket.amount - 0.009;
+  final fullyCovered = appliedAmount >= cappedTicketAmount - 0.009;
   final hasAbono = appliedAmount > 0.009 && !fullyCovered;
   return _ProviderTicketStatusView(
     appliedAmount: appliedAmount,
@@ -2895,6 +3383,7 @@ class _ProviderAccountsListPane extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final totals = _computeProviderAccountsPaneTotals(rows);
     return ContractGlassCard(
       borderRadius: BorderRadius.circular(30),
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -2934,6 +3423,11 @@ class _ProviderAccountsListPane extends StatelessWidget {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 12),
+          _ProviderAccountsMiniTotalsGrid(
+            moneyFormatter: moneyFormatter,
+            totals: totals,
           ),
           const SizedBox(height: 12),
           TextField(
@@ -2984,6 +3478,162 @@ class _ProviderAccountsListPane extends StatelessWidget {
                       );
                     },
                   ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProviderAccountsPaneTotals {
+  final double facturadoAmount;
+  final double pendienteFacturarAmount;
+  final double sinFacturaAmount;
+
+  const _ProviderAccountsPaneTotals({
+    required this.facturadoAmount,
+    required this.pendienteFacturarAmount,
+    required this.sinFacturaAmount,
+  });
+
+  double get totalAmount =>
+      facturadoAmount + pendienteFacturarAmount + sinFacturaAmount;
+}
+
+_ProviderAccountsPaneTotals _computeProviderAccountsPaneTotals(
+  List<_ProviderAccountView> rows,
+) {
+  double facturado = 0;
+  double pendienteFacturar = 0;
+  double sinFactura = 0;
+  for (final row in rows) {
+    final metrics = _computeProviderAccountMetrics(row);
+    facturado += metrics.facturadoAmount;
+    pendienteFacturar += metrics.pendienteFacturarAmount;
+    sinFactura += metrics.sinFacturaAmount;
+  }
+  return _ProviderAccountsPaneTotals(
+    facturadoAmount: facturado,
+    pendienteFacturarAmount: pendienteFacturar,
+    sinFacturaAmount: sinFactura,
+  );
+}
+
+class _ProviderAccountsMiniTotalsGrid extends StatelessWidget {
+  final String Function(double value) moneyFormatter;
+  final _ProviderAccountsPaneTotals totals;
+
+  const _ProviderAccountsMiniTotalsGrid({
+    required this.moneyFormatter,
+    required this.totals,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final cards = [
+      (
+        'Facturado',
+        moneyFormatter(totals.facturadoAmount),
+        Icons.receipt_long_outlined,
+      ),
+      (
+        'Pend. facturar',
+        moneyFormatter(totals.pendienteFacturarAmount),
+        Icons.pending_actions_outlined,
+      ),
+      (
+        'Sin factura',
+        moneyFormatter(totals.sinFacturaAmount),
+        Icons.description_outlined,
+      ),
+      ('Total', moneyFormatter(totals.totalAmount), Icons.summarize_outlined),
+    ];
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final itemWidth = math.max((constraints.maxWidth - 8) / 2, 0.0);
+        return Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            for (final (label, value, icon) in cards)
+              SizedBox(
+                width: itemWidth,
+                child: _ProviderMiniTotalCard(
+                  label: label,
+                  value: value,
+                  icon: icon,
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+class _ProviderMiniTotalCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+
+  const _ProviderMiniTotalCard({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return FinanzasGlassPanel(
+      borderRadius: BorderRadius.circular(18),
+      padding: const EdgeInsets.fromLTRB(10, 10, 10, 10),
+      fillColor: const Color(0xA0141820),
+      borderColor: Colors.white.withValues(alpha: 0.10),
+      child: Row(
+        children: [
+          Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: tokens.primaryStrong.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(
+                color: tokens.primaryStrong.withValues(alpha: 0.22),
+              ),
+            ),
+            child: Icon(icon, size: 16, color: tokens.primaryStrong),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w800,
+                    color: kFinanzasMutedInk,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  value,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    color: Colors.white,
+                    height: 1.05,
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -3107,6 +3757,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
   final String Function(DateTime? value) dateFormatter;
   final ValueChanged<_ProviderAccountsTab> onTabSelected;
   final Future<void> Function() onRegisterInvoice;
+  final Future<void> Function() onRegisterManualInvoice;
   final Future<void> Function() onEditProviderPriority;
   final Future<void> Function() onOpenBankAccounts;
   final Future<void> Function() onRegisterCashMovement;
@@ -3123,6 +3774,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
   onEditCashMovement;
   final Future<void> Function(ComprasProviderMovementRecord movement)
   onDeleteCashMovement;
+  final Future<void> Function(_ProviderInvoiceView invoice) onEditInvoice;
   final Future<void> Function(_ProviderInvoiceView invoice)
   onEditInvoicePriority;
   final Future<void> Function(_ProviderInvoiceView invoice)
@@ -3140,6 +3792,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
     required this.dateFormatter,
     required this.onTabSelected,
     required this.onRegisterInvoice,
+    required this.onRegisterManualInvoice,
     required this.onEditProviderPriority,
     required this.onOpenBankAccounts,
     required this.onRegisterCashMovement,
@@ -3149,6 +3802,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
     required this.onToggleInstallmentPaid,
     required this.onEditCashMovement,
     required this.onDeleteCashMovement,
+    required this.onEditInvoice,
     required this.onEditInvoicePriority,
     required this.onOpenInvoiceEvidence,
     required this.onDeleteTicket,
@@ -3303,8 +3957,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                 dateFormatter: dateFormatter,
                 onExportProviderExcelTemplate: () =>
                     onExportProviderExcelTemplate(account),
-                canExportProviderExcelTemplate:
-                    account.company.companyName.trim().toUpperCase() == 'AVON',
+                canExportProviderExcelTemplate: true,
                 onDeleteTicket: onDeleteTicket,
               ),
               _ProviderAccountsTab.facturas => _ProviderAccountInvoicesView(
@@ -3312,6 +3965,8 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                 moneyFormatter: moneyFormatter,
                 dateFormatter: dateFormatter,
                 onRegisterInvoice: onRegisterInvoice,
+                onRegisterManualInvoice: onRegisterManualInvoice,
+                onEditInvoice: onEditInvoice,
                 onEditInvoicePriority: onEditInvoicePriority,
                 onOpenInvoiceEvidence: onOpenInvoiceEvidence,
                 onDeleteInvoice: onDeleteInvoice,
@@ -3610,10 +4265,21 @@ class _ProviderExcelTicketSelectionDialogState
     extends State<_ProviderExcelTicketSelectionDialog> {
   late final List<ComprasTicketRecord> _tickets;
   final Set<String> _selectedIds = <String>{};
+  late final TextEditingController _ticketNumberFilterC;
+  final ScrollController _rowsScrollController = ScrollController();
+  final GlobalKey _rowsViewportKey = GlobalKey();
+  final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
+  DateTimeRange? _ticketDateRangeFilter;
+  bool _dragSelectionActive = false;
+  String? _dragSelectionAnchorId;
+  Offset? _dragPointerGlobal;
+  double _dragAutoScrollVelocity = 0;
+  Timer? _dragAutoScrollTimer;
 
   @override
   void initState() {
     super.initState();
+    _ticketNumberFilterC = TextEditingController();
     _tickets = widget.tickets.toList(growable: false)
       ..sort((a, b) {
         final byDate = a.date.compareTo(b.date);
@@ -3623,194 +4289,503 @@ class _ProviderExcelTicketSelectionDialogState
   }
 
   @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    final selectedTickets = _tickets
-        .where((row) => _selectedIds.contains(row.id))
+  void dispose() {
+    _dragAutoScrollTimer?.cancel();
+    _rowsScrollController.dispose();
+    _ticketNumberFilterC.dispose();
+    super.dispose();
+  }
+
+  List<ComprasTicketRecord> get _filteredTickets {
+    final ticketQuery = _ticketNumberFilterC.text.trim().toLowerCase();
+    return _tickets
+        .where((ticket) {
+          if (ticketQuery.isNotEmpty &&
+              !ticket.ticket.toLowerCase().contains(ticketQuery)) {
+            return false;
+          }
+          final ticketDay = DateUtils.dateOnly(ticket.date);
+          if (_ticketDateRangeFilter != null &&
+              (ticketDay.isBefore(
+                    DateUtils.dateOnly(_ticketDateRangeFilter!.start),
+                  ) ||
+                  ticketDay.isAfter(
+                    DateUtils.dateOnly(_ticketDateRangeFilter!.end),
+                  ))) {
+            return false;
+          }
+          return true;
+        })
         .toList(growable: false);
-    final rangeLabel = selectedTickets.isEmpty
-        ? 'Selecciona los tickets de la semana que llenarán la plantilla.'
-        : 'Semana ${_providerExcelSelectionRangeLabel(selectedTickets)}';
+  }
+
+  String _dateRangeLabel(DateTimeRange? value) {
+    if (value == null) return 'Todas las fechas';
+    return '${widget.dateFormatter(value.start)} - ${widget.dateFormatter(value.end)}';
+  }
+
+  Future<void> _pickTicketDateRange() async {
+    final picked = await _showProviderDateRangeDialog(
+      context,
+      title: 'Filtrar fecha',
+      initialRange: _ticketDateRangeFilter,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _ticketDateRangeFilter = picked == _kClearedProviderDateRange
+          ? null
+          : picked;
+    });
+  }
+
+  GlobalKey _rowItemKey(String rowId) => _rowKeys.putIfAbsent(
+    rowId,
+    () => GlobalObjectKey('provider-excel-$rowId'),
+  );
+
+  void _beginDragSelection(String ticketId, List<ComprasTicketRecord> rows) {
+    setState(() {
+      _dragSelectionActive = true;
+      _dragSelectionAnchorId = ticketId;
+      _selectedIds
+        ..clear()
+        ..add(ticketId);
+    });
+  }
+
+  void _updateDragSelection(String ticketId, List<ComprasTicketRecord> rows) {
+    if (!_dragSelectionActive || _dragSelectionAnchorId == null) return;
+    final visibleIds = rows.map((row) => row.id).toList(growable: false);
+    final start = visibleIds.indexOf(_dragSelectionAnchorId!);
+    final end = visibleIds.indexOf(ticketId);
+    if (start == -1 || end == -1) return;
+    final range = visibleIds.sublist(
+      start < end ? start : end,
+      start < end ? end + 1 : start + 1,
+    );
+    setState(() {
+      _selectedIds
+        ..clear()
+        ..addAll(range);
+    });
+  }
+
+  void _endDragSelection() {
+    if (!_dragSelectionActive) return;
+    setState(() {
+      _dragSelectionActive = false;
+      _dragSelectionAnchorId = null;
+      _dragPointerGlobal = null;
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+    });
+  }
+
+  int? _visibleRowIndexAtGlobalPosition(
+    Offset globalPosition,
+    List<ComprasTicketRecord> rows,
+  ) {
+    for (var i = 0; i < rows.length; i++) {
+      final box =
+          _rowItemKey(rows[i].id).currentContext?.findRenderObject()
+              as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      final rect = box.localToGlobal(Offset.zero) & box.size;
+      if (rect.contains(globalPosition)) return i;
+    }
+    return null;
+  }
+
+  int? _mountedEdgeRowIndex(
+    List<ComprasTicketRecord> rows, {
+    required bool last,
+  }) {
+    final indexes = <int>[];
+    for (var i = 0; i < rows.length; i++) {
+      final box =
+          _rowItemKey(rows[i].id).currentContext?.findRenderObject()
+              as RenderBox?;
+      if (box != null && box.hasSize) indexes.add(i);
+    }
+    if (indexes.isEmpty) return null;
+    return last ? indexes.last : indexes.first;
+  }
+
+  void _handleRowsPointerMove(
+    PointerMoveEvent event,
+    List<ComprasTicketRecord> rows,
+  ) {
+    if (!_dragSelectionActive) return;
+    _dragPointerGlobal = event.position;
+    _updateDragAutoScroll(rows);
+    final visibleIndex = _visibleRowIndexAtGlobalPosition(event.position, rows);
+    if (visibleIndex == null) return;
+    _updateDragSelection(rows[visibleIndex].id, rows);
+  }
+
+  void _updateDragAutoScroll(List<ComprasTicketRecord> rows) {
+    if (!_dragSelectionActive || _dragPointerGlobal == null) {
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    final box =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    const edge = 36.0;
+    const maxStep = 18.0;
+    final local = box.globalToLocal(_dragPointerGlobal!);
+    final y = local.dy;
+    if (y < edge) {
+      _dragAutoScrollVelocity = -((edge - y) / edge).clamp(0.0, 1.0) * maxStep;
+    } else if (y > box.size.height - edge) {
+      _dragAutoScrollVelocity =
+          ((y - (box.size.height - edge)) / edge).clamp(0.0, 1.0) * maxStep;
+    } else {
+      _dragAutoScrollVelocity = 0;
+    }
+    if (_dragAutoScrollVelocity == 0) {
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    _dragAutoScrollTimer ??= Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _performDragAutoScroll(rows),
+    );
+  }
+
+  void _performDragAutoScroll(List<ComprasTicketRecord> rows) {
+    if (!_dragSelectionActive ||
+        _dragAutoScrollVelocity == 0 ||
+        !_rowsScrollController.hasClients) {
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    final position = _rowsScrollController.position;
+    final next = (position.pixels + _dragAutoScrollVelocity).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if ((next - position.pixels).abs() < 0.5) return;
+    _rowsScrollController.jumpTo(next);
+    final pointer = _dragPointerGlobal;
+    final viewportBox =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (pointer == null || viewportBox == null || !viewportBox.hasSize) return;
+    final visibleIndex = _visibleRowIndexAtGlobalPosition(pointer, rows);
+    int? targetIndex = visibleIndex;
+    if (targetIndex == null) {
+      final local = viewportBox.globalToLocal(pointer);
+      if (local.dy < 0) {
+        targetIndex = _mountedEdgeRowIndex(rows, last: false);
+      } else if (local.dy > viewportBox.size.height) {
+        targetIndex = _mountedEdgeRowIndex(rows, last: true);
+      }
+    }
+    if (targetIndex == null) return;
+    _updateDragSelection(rows[targetIndex].id, rows);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 22),
-      child: ContractGlassCard(
-        borderRadius: BorderRadius.circular(30),
-        padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
-        child: SizedBox(
-          width: 920,
-          height: 640,
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _DialogHeader(
-                title: 'Exportar Excel proveedor',
-                subtitle:
-                    '${widget.providerName} · $rangeLabel · ${_selectedIds.length} ticket(s) seleccionados.',
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: () => setState(() {
-                      _selectedIds
-                        ..clear()
-                        ..addAll(_tickets.map((row) => row.id));
-                    }),
-                    style: contractSecondaryButtonStyle(context),
-                    icon: const Icon(Icons.done_all_rounded, size: 18),
-                    label: const Text('Seleccionar todos'),
-                  ),
-                  const SizedBox(width: 8),
-                  TextButton.icon(
-                    onPressed: () => setState(_selectedIds.clear),
-                    style: contractGhostButtonStyle(context),
-                    icon: const Icon(Icons.layers_clear_rounded, size: 18),
-                    label: const Text('Limpiar'),
-                  ),
-                  const Spacer(),
-                  FinanzasGlassPanel(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 10,
+      child: AreaThemeScope(
+        tokens: finanzasAreaTokens,
+        child: Builder(
+          builder: (context) {
+            final tokens = AreaThemeScope.of(context);
+            final filteredTickets = _filteredTickets;
+            final selectedTickets = _tickets
+                .where((row) => _selectedIds.contains(row.id))
+                .toList(growable: false);
+            final rangeLabel = selectedTickets.isEmpty
+                ? 'Selecciona los tickets de la semana que llenarán la plantilla.'
+                : 'Semana ${_providerExcelSelectionRangeLabel(selectedTickets)}';
+            return ContractGlassCard(
+              borderRadius: BorderRadius.circular(30),
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+              child: SizedBox(
+                width: 920,
+                height: 640,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _DialogHeader(
+                      title: 'Exportar Excel proveedor',
+                      subtitle:
+                          '${widget.providerName} · $rangeLabel · ${_selectedIds.length} ticket(s) seleccionados.',
                     ),
-                    borderRadius: BorderRadius.circular(18),
-                    fillColor: const Color(0xA0141820),
-                    borderColor: Colors.white.withValues(alpha: 0.10),
-                    child: Text(
-                      widget.kind == FinanzasProviderExcelTemplateKind.avon
-                          ? 'Avon soporta hasta 50 tickets por exportación.'
-                          : 'La plantilla genérica soporta hasta 12 materiales y 9 tickets por material.',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: tokens.onGlass.withValues(alpha: 0.74),
-                      ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: () => setState(() {
+                            _selectedIds
+                              ..clear()
+                              ..addAll(_filteredTickets.map((row) => row.id));
+                          }),
+                          style: contractSecondaryButtonStyle(context),
+                          icon: const Icon(Icons.done_all_rounded, size: 18),
+                          label: const Text('Seleccionar todos'),
+                        ),
+                        const SizedBox(width: 8),
+                        TextButton.icon(
+                          onPressed: () => setState(_selectedIds.clear),
+                          style: contractGhostButtonStyle(context),
+                          icon: const Icon(
+                            Icons.layers_clear_rounded,
+                            size: 18,
+                          ),
+                          label: const Text('Limpiar selección'),
+                        ),
+                        const Spacer(),
+                        FinanzasGlassPanel(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 10,
+                          ),
+                          borderRadius: BorderRadius.circular(18),
+                          fillColor: const Color(0xA0141820),
+                          borderColor: Colors.white.withValues(alpha: 0.10),
+                          child: Text(
+                            widget.kind ==
+                                    FinanzasProviderExcelTemplateKind.avon
+                                ? 'Avon soporta hasta 50 tickets por exportación.'
+                                : 'La plantilla genérica soporta hasta 12 materiales y 9 tickets por material.',
+                            style: TextStyle(
+                              fontSize: 12.5,
+                              fontWeight: FontWeight.w700,
+                              color: tokens.onGlass.withValues(alpha: 0.74),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Expanded(
-                child: ListView.separated(
-                  itemCount: _tickets.length,
-                  separatorBuilder: (_, _) => const SizedBox(height: 10),
-                  itemBuilder: (context, index) {
-                    final row = _tickets[index];
-                    final selected = _selectedIds.contains(row.id);
-                    return MouseRegion(
-                      cursor: SystemMouseCursors.click,
-                      child: GestureDetector(
-                        onTap: () => setState(() {
-                          if (selected) {
-                            _selectedIds.remove(row.id);
-                          } else {
-                            _selectedIds.add(row.id);
-                          }
-                        }),
-                        child: FinanzasGlassPanel(
-                          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-                          borderRadius: BorderRadius.circular(22),
-                          fillColor: selected
-                              ? const Color(0xD89A5C27)
-                              : const Color(0xB8141820),
-                          borderColor: selected
-                              ? const Color(0xFFFF8A3D)
-                              : Colors.white.withValues(alpha: 0.12),
-                          child: Row(
-                            children: [
-                              Icon(
-                                selected
-                                    ? Icons.check_circle_rounded
-                                    : Icons.circle_outlined,
-                                color: selected
-                                    ? Colors.white
-                                    : Colors.white.withValues(alpha: 0.74),
-                              ),
-                              const SizedBox(width: 14),
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '${widget.dateFormatter(row.date)} · Ticket ${row.ticket}',
-                                      style: TextStyle(
-                                        fontSize: 14,
-                                        fontWeight: FontWeight.w900,
-                                        color: Colors.white,
+                    const SizedBox(height: 8),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: _ticketNumberFilterC,
+                            onChanged: (_) => setState(() {}),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            cursorColor: finanzasAreaTokens.primaryStrong,
+                            decoration: contractGlassFieldDecoration(
+                              context,
+                              hintText: 'Filtrar por número de ticket',
+                              prefixIcon: const Icon(Icons.tag_rounded),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _DateFieldButton(
+                            label: 'Rango de fechas',
+                            value: _dateRangeLabel(_ticketDateRangeFilter),
+                            onTap: _pickTicketDateRange,
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        OutlinedButton(
+                          style: contractSecondaryButtonStyle(context),
+                          onPressed: () {
+                            setState(() {
+                              _ticketNumberFilterC.clear();
+                              _ticketDateRangeFilter = null;
+                            });
+                          },
+                          child: const Text('Limpiar filtros'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: Listener(
+                        onPointerMove: (event) =>
+                            _handleRowsPointerMove(event, filteredTickets),
+                        onPointerUp: (_) => _endDragSelection(),
+                        onPointerCancel: (_) => _endDragSelection(),
+                        child: Container(
+                          key: _rowsViewportKey,
+                          child: ListView.separated(
+                            controller: _rowsScrollController,
+                            itemCount: filteredTickets.length,
+                            separatorBuilder: (_, _) =>
+                                const SizedBox(height: 10),
+                            itemBuilder: (context, index) {
+                              final row = filteredTickets[index];
+                              final selected = _selectedIds.contains(row.id);
+                              return KeyedSubtree(
+                                key: _rowItemKey(row.id),
+                                child: MouseRegion(
+                                  cursor: SystemMouseCursors.click,
+                                  onEnter: (_) => _updateDragSelection(
+                                    row.id,
+                                    filteredTickets,
+                                  ),
+                                  child: Listener(
+                                    onPointerDown: (event) {
+                                      if (event.kind ==
+                                              PointerDeviceKind.mouse &&
+                                          event.buttons ==
+                                              kPrimaryMouseButton) {
+                                        _beginDragSelection(
+                                          row.id,
+                                          filteredTickets,
+                                        );
+                                      }
+                                    },
+                                    child: GestureDetector(
+                                      onTap: () => setState(() {
+                                        if (selected) {
+                                          _selectedIds.remove(row.id);
+                                        } else {
+                                          _selectedIds.add(row.id);
+                                        }
+                                      }),
+                                      child: FinanzasGlassPanel(
+                                        padding: const EdgeInsets.fromLTRB(
+                                          16,
+                                          14,
+                                          16,
+                                          14,
+                                        ),
+                                        borderRadius: BorderRadius.circular(22),
+                                        fillColor: selected
+                                            ? const Color(0xD89A5C27)
+                                            : const Color(0xB8141820),
+                                        borderColor: selected
+                                            ? const Color(0xFFFF8A3D)
+                                            : Colors.white.withValues(
+                                                alpha: 0.12,
+                                              ),
+                                        child: Row(
+                                          children: [
+                                            Icon(
+                                              selected
+                                                  ? Icons.check_circle_rounded
+                                                  : Icons.circle_outlined,
+                                              color: selected
+                                                  ? Colors.white
+                                                  : Colors.white.withValues(
+                                                      alpha: 0.74,
+                                                    ),
+                                            ),
+                                            const SizedBox(width: 14),
+                                            Expanded(
+                                              child: Column(
+                                                crossAxisAlignment:
+                                                    CrossAxisAlignment.start,
+                                                children: [
+                                                  Text(
+                                                    '${widget.dateFormatter(row.date)} · Ticket ${row.ticket}',
+                                                    style: const TextStyle(
+                                                      fontSize: 14,
+                                                      fontWeight:
+                                                          FontWeight.w900,
+                                                      color: Colors.white,
+                                                    ),
+                                                  ),
+                                                  const SizedBox(height: 6),
+                                                  Text(
+                                                    row.materialNameSnapshot,
+                                                    style: TextStyle(
+                                                      fontSize: 13,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      color: selected
+                                                          ? Colors.white
+                                                                .withValues(
+                                                                  alpha: 0.94,
+                                                                )
+                                                          : kFinanzasMutedInk,
+                                                    ),
+                                                  ),
+                                                ],
+                                              ),
+                                            ),
+                                            const SizedBox(width: 14),
+                                            SizedBox(
+                                              width: 130,
+                                              child: Text(
+                                                '${row.payableWeight.toStringAsFixed(0)} kg',
+                                                textAlign: TextAlign.right,
+                                                style: const TextStyle(
+                                                  fontSize: 13.5,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                            const SizedBox(width: 14),
+                                            SizedBox(
+                                              width: 120,
+                                              child: Text(
+                                                widget.moneyFormatter(
+                                                  row.amount,
+                                                ),
+                                                textAlign: TextAlign.right,
+                                                style: const TextStyle(
+                                                  fontSize: 13.5,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.white,
+                                                ),
+                                              ),
+                                            ),
+                                          ],
+                                        ),
                                       ),
                                     ),
-                                    const SizedBox(height: 6),
-                                    Text(
-                                      row.materialNameSnapshot,
-                                      style: TextStyle(
-                                        fontSize: 13,
-                                        fontWeight: FontWeight.w700,
-                                        color: selected
-                                            ? Colors.white.withValues(
-                                                alpha: 0.94,
-                                              )
-                                            : kFinanzasMutedInk,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 14),
-                              SizedBox(
-                                width: 130,
-                                child: Text(
-                                  '${row.payableWeight.toStringAsFixed(0)} kg',
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white,
                                   ),
                                 ),
-                              ),
-                              const SizedBox(width: 14),
-                              SizedBox(
-                                width: 120,
-                                child: Text(
-                                  widget.moneyFormatter(row.amount),
-                                  textAlign: TextAlign.right,
-                                  style: TextStyle(
-                                    fontSize: 13.5,
-                                    fontWeight: FontWeight.w900,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ),
-                            ],
+                              );
+                            },
                           ),
                         ),
                       ),
-                    );
-                  },
+                    ),
+                    const SizedBox(height: 16),
+                    _DialogActionsRow(
+                      onCancel: () => Navigator.of(context).pop(),
+                      confirmLabel: 'Generar Excel',
+                      confirmIcon: Icons.table_view_rounded,
+                      onConfirm:
+                          _selectedIds.isEmpty ||
+                              (widget.kind ==
+                                      FinanzasProviderExcelTemplateKind.avon &&
+                                  _selectedIds.length > 50)
+                          ? null
+                          : () {
+                              Navigator.of(context).pop(
+                                _tickets
+                                    .where(
+                                      (row) => _selectedIds.contains(row.id),
+                                    )
+                                    .toList(growable: false),
+                              );
+                            },
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              _DialogActionsRow(
-                onCancel: () => Navigator.of(context).pop(),
-                confirmLabel: 'Generar Excel',
-                confirmIcon: Icons.table_view_rounded,
-                onConfirm:
-                    _selectedIds.isEmpty ||
-                        (widget.kind ==
-                                FinanzasProviderExcelTemplateKind.avon &&
-                            _selectedIds.length > 50)
-                    ? null
-                    : () {
-                        Navigator.of(context).pop(
-                          _tickets
-                              .where((row) => _selectedIds.contains(row.id))
-                              .toList(growable: false),
-                        );
-                      },
-              ),
-            ],
-          ),
+            );
+          },
         ),
       ),
     );
@@ -3834,6 +4809,8 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
   final Future<void> Function() onRegisterInvoice;
+  final Future<void> Function() onRegisterManualInvoice;
+  final Future<void> Function(_ProviderInvoiceView invoice) onEditInvoice;
   final Future<void> Function(_ProviderInvoiceView invoice)
   onEditInvoicePriority;
   final Future<void> Function(_ProviderInvoiceView invoice)
@@ -3845,6 +4822,8 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
     required this.moneyFormatter,
     required this.dateFormatter,
     required this.onRegisterInvoice,
+    required this.onRegisterManualInvoice,
+    required this.onEditInvoice,
     required this.onEditInvoicePriority,
     required this.onOpenInvoiceEvidence,
     required this.onDeleteInvoice,
@@ -3863,7 +4842,7 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                'Relaciona tickets del proveedor a una factura real.',
+                'Registra facturas desde tickets o manuales sin salir del expediente del proveedor.',
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
@@ -3877,6 +4856,12 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
               icon: Icons.receipt_long_rounded,
               onTap: onRegisterInvoice,
             ),
+            const SizedBox(width: 10),
+            _ActionPillButton(
+              label: 'Factura manual',
+              icon: Icons.post_add_rounded,
+              onTap: onRegisterManualInvoice,
+            ),
           ],
         ),
         const SizedBox(height: 14),
@@ -3885,8 +4870,8 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
             child: _ProviderAccountsPendingPane(
               label: 'Sin facturas registradas',
               subtitle: eligibleCount > 0
-                  ? 'Este proveedor tiene tickets pendientes de facturar. Registra la primera factura desde aquí.'
-                  : 'Todavía no hay facturas relacionadas para este proveedor.',
+                  ? 'Este proveedor tiene tickets pendientes de facturar. También puedes registrar una factura manual si no proviene de compras.'
+                  : 'Todavía no hay facturas relacionadas para este proveedor. Puedes registrar una factura manual desde aquí.',
             ),
           )
         else
@@ -3941,6 +4926,14 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                           ],
+                          if (_canEditSupplierInvoice(row)) ...[
+                            _MovementIconAction(
+                              icon: Icons.edit_outlined,
+                              color: tokens.primaryStrong,
+                              onTap: () => onEditInvoice(row),
+                            ),
+                            const SizedBox(width: 8),
+                          ],
                           _MovementIconAction(
                             icon: Icons.flag_outlined,
                             color: _manualPriorityTone(
@@ -3987,8 +4980,16 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                             value: moneyFormatter(row.invoice.balanceAmount),
                           ),
                           _CompactSummaryPill(
+                            label: 'Origen',
+                            value: finSupplierInvoiceOriginLabel(
+                              row.invoice.originType,
+                            ),
+                          ),
+                          _CompactSummaryPill(
                             label: 'Tickets',
-                            value: '${row.tickets.length}',
+                            value: row.invoice.originType == 'MANUAL'
+                                ? 'Manual'
+                                : '${row.tickets.length}',
                           ),
                         ],
                       ),
@@ -5166,9 +6167,16 @@ class _RegisterSupplierAgreementDialogState
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _startDate,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       builder: (context, child) => AreaThemeScope(
         tokens: finanzasAreaTokens,
         child: Theme(
@@ -6319,6 +7327,361 @@ String _dateLabelStatic(DateTime value) {
   return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
 }
 
+final DateTimeRange _kClearedProviderDateRange = DateTimeRange(
+  start: DateTime(1900),
+  end: DateTime(1900),
+);
+
+Future<DateTimeRange?> _showProviderDateRangeDialog(
+  BuildContext context, {
+  required String title,
+  DateTimeRange? initialRange,
+  required DateTime firstDate,
+  required DateTime lastDate,
+}) {
+  return showDialog<DateTimeRange?>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) {
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: firstDate,
+        lastDate: lastDate,
+      );
+      DateTime? start = initialRange?.start;
+      DateTime? end = initialRange?.end;
+      DateTime? hover;
+
+      bool isSameDay(DateTime a, DateTime b) =>
+          a.year == b.year && a.month == b.month && a.day == b.day;
+      DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+
+      return AreaThemeScope(
+        tokens: finanzasAreaTokens,
+        child: StatefulBuilder(
+          builder: (context, setLocalState) {
+            final tokens = AreaThemeScope.of(context);
+            final theme = Theme.of(context);
+            final monthFirst = DateTime(
+              displayMonth.year,
+              displayMonth.month,
+              1,
+            );
+            final leading = (monthFirst.weekday + 6) % 7;
+            final gridStart = monthFirst.subtract(Duration(days: leading));
+            final previewEnd = end ?? hover;
+
+            bool withinBounds(DateTime day) {
+              final d = dateOnly(day);
+              return !d.isBefore(dateOnly(firstDate)) &&
+                  !d.isAfter(dateOnly(lastDate));
+            }
+
+            bool inPreviewRange(DateTime day) {
+              if (start == null || previewEnd == null) return false;
+              final a = dateOnly(start!);
+              final b = dateOnly(previewEnd);
+              final from = a.isBefore(b) ? a : b;
+              final to = a.isBefore(b) ? b : a;
+              final d = dateOnly(day);
+              return !d.isBefore(from) && !d.isAfter(to);
+            }
+
+            DateTimeRange? buildResult() {
+              if (start == null) return null;
+              final s = dateOnly(start!);
+              final e = dateOnly(end ?? start!);
+              final from = s.isBefore(e) ? s : e;
+              final to = s.isBefore(e) ? e : s;
+              return DateTimeRange(start: from, end: to);
+            }
+
+            final colorScheme = theme.colorScheme.copyWith(
+              primary: tokens.primaryStrong,
+              secondary: tokens.primary,
+              surface: tokens.surfaceTint,
+              onSurface: tokens.badgeText,
+            );
+
+            return Theme(
+              data: theme.copyWith(
+                colorScheme: colorScheme,
+                splashColor: tokens.primaryStrong.withValues(alpha: 0.12),
+                highlightColor: tokens.primaryStrong.withValues(alpha: 0.08),
+                hoverColor: tokens.primarySoft.withValues(alpha: 0.12),
+                focusColor: tokens.primarySoft.withValues(alpha: 0.16),
+                iconTheme: IconThemeData(color: tokens.primaryStrong),
+                iconButtonTheme: IconButtonThemeData(
+                  style: IconButton.styleFrom(
+                    foregroundColor: tokens.primaryStrong,
+                    hoverColor: tokens.primarySoft.withValues(alpha: 0.12),
+                    highlightColor: tokens.primaryStrong.withValues(
+                      alpha: 0.08,
+                    ),
+                  ),
+                ),
+                textButtonTheme: TextButtonThemeData(
+                  style: TextButton.styleFrom(
+                    foregroundColor: tokens.primaryStrong,
+                    overlayColor: tokens.primaryStrong.withValues(alpha: 0.08),
+                  ),
+                ),
+                outlinedButtonTheme: OutlinedButtonThemeData(
+                  style: TextButton.styleFrom(
+                    foregroundColor: tokens.primaryStrong,
+                    overlayColor: tokens.primaryStrong.withValues(alpha: 0.08),
+                  ),
+                ),
+              ),
+              child: Dialog(
+                backgroundColor: Colors.transparent,
+                insetPadding: const EdgeInsets.symmetric(
+                  horizontal: 18,
+                  vertical: 24,
+                ),
+                child: ContractPopupSurface(
+                  constraints: const BoxConstraints(
+                    maxWidth: 420,
+                    maxHeight: 516,
+                  ),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        title,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w900,
+                          color: tokens.primaryStrong,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            color: tokens.primaryStrong,
+                            onPressed: () => setLocalState(
+                              () => displayMonth = DateTime(
+                                displayMonth.year,
+                                displayMonth.month - 1,
+                              ),
+                            ),
+                            icon: const Icon(Icons.chevron_left_rounded),
+                          ),
+                          Expanded(
+                            child: Center(
+                              child: Text(
+                                '${_providerMonthNameEs(monthFirst.month)} ${monthFirst.year}',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.w800,
+                                  color: tokens.badgeText,
+                                ),
+                              ),
+                            ),
+                          ),
+                          IconButton(
+                            visualDensity: VisualDensity.compact,
+                            color: tokens.primaryStrong,
+                            onPressed: () => setLocalState(
+                              () => displayMonth = DateTime(
+                                displayMonth.year,
+                                displayMonth.month + 1,
+                              ),
+                            ),
+                            icon: const Icon(Icons.chevron_right_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 6),
+                      Row(
+                        children: [
+                          for (final dayLabel in const [
+                            'L',
+                            'M',
+                            'M',
+                            'J',
+                            'V',
+                            'S',
+                            'D',
+                          ])
+                            Expanded(
+                              child: Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 4,
+                                  ),
+                                  child: Text(
+                                    dayLabel,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w800,
+                                      color: tokens.badgeText,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      GridView.builder(
+                        shrinkWrap: true,
+                        physics: const NeverScrollableScrollPhysics(),
+                        itemCount: 42,
+                        gridDelegate:
+                            const SliverGridDelegateWithFixedCrossAxisCount(
+                              crossAxisCount: 7,
+                              mainAxisSpacing: 4,
+                              crossAxisSpacing: 4,
+                              childAspectRatio: 1.08,
+                            ),
+                        itemBuilder: (_, index) {
+                          final day = gridStart.add(Duration(days: index));
+                          final inMonth = day.month == monthFirst.month;
+                          final allowed = withinBounds(day);
+                          final active =
+                              (start != null && isSameDay(day, start!)) ||
+                              (end != null && isSameDay(day, end!));
+                          final inRange = inPreviewRange(day) && allowed;
+                          return MouseRegion(
+                            onEnter: (_) {
+                              if (start != null && end == null && allowed) {
+                                setLocalState(() => hover = dateOnly(day));
+                              }
+                            },
+                            child: GestureDetector(
+                              onTap: !allowed
+                                  ? null
+                                  : () {
+                                      final picked = dateOnly(day);
+                                      setLocalState(() {
+                                        if (start == null || end != null) {
+                                          start = picked;
+                                          end = null;
+                                          hover = null;
+                                        } else {
+                                          end = picked;
+                                          hover = null;
+                                        }
+                                      });
+                                    },
+                              child: AnimatedContainer(
+                                duration: const Duration(milliseconds: 120),
+                                decoration: BoxDecoration(
+                                  color: active
+                                      ? tokens.primaryStrong.withValues(
+                                          alpha: 0.18,
+                                        )
+                                      : inRange
+                                      ? tokens.primarySoft.withValues(
+                                          alpha: 0.24,
+                                        )
+                                      : Colors.transparent,
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: active
+                                        ? tokens.primaryStrong.withValues(
+                                            alpha: 0.46,
+                                          )
+                                        : Colors.transparent,
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    '${day.day}',
+                                    style: TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: active
+                                          ? FontWeight.w900
+                                          : FontWeight.w700,
+                                      color: !allowed
+                                          ? tokens.badgeText.withValues(
+                                              alpha: 0.28,
+                                            )
+                                          : inMonth
+                                          ? tokens.primaryStrong
+                                          : tokens.badgeText.withValues(
+                                              alpha: 0.55,
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        start == null
+                            ? 'Selecciona fecha inicial'
+                            : end == null
+                            ? 'Selecciona fecha final'
+                            : '${_dateLabelStatic(start!)} - ${_dateLabelStatic(end!)}',
+                        style: TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: tokens.badgeText,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 8),
+                          OutlinedButton(
+                            onPressed: () => Navigator.of(
+                              dialogContext,
+                            ).pop(_kClearedProviderDateRange),
+                            child: const Text('Limpiar'),
+                          ),
+                          const SizedBox(width: 10),
+                          FilledButton(
+                            onPressed: start == null
+                                ? null
+                                : () => Navigator.of(
+                                    dialogContext,
+                                  ).pop(buildResult()),
+                            child: const Text('Aplicar'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      );
+    },
+  );
+}
+
+String _providerMonthNameEs(int month) {
+  const names = <String>[
+    'Enero',
+    'Febrero',
+    'Marzo',
+    'Abril',
+    'Mayo',
+    'Junio',
+    'Julio',
+    'Agosto',
+    'Septiembre',
+    'Octubre',
+    'Noviembre',
+    'Diciembre',
+  ];
+  return names[(month - 1).clamp(0, 11)];
+}
+
 void _syncPickerOptionKeys(List<GlobalKey> keys, int count) {
   while (keys.length < count) {
     keys.add(GlobalKey());
@@ -6810,9 +8173,16 @@ class _RegisterProviderCashMovementDialogState
   Future<void> _pickDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _date,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       builder: (context, child) {
         return AreaThemeScope(
           tokens: finanzasAreaTokens,
@@ -7098,19 +8468,23 @@ class _InlineChoiceField extends StatelessWidget {
 
 class _InvoiceDraftResult {
   final String folio;
+  final String originType;
   final DateTime invoiceDate;
   final DateTime? dueDate;
   final String targetCompany;
   final String targetBranch;
+  final double? manualAmount;
   final String notes;
   final Set<String> selectedTicketIds;
 
   const _InvoiceDraftResult({
     required this.folio,
+    required this.originType,
     required this.invoiceDate,
     required this.dueDate,
     required this.targetCompany,
     required this.targetBranch,
+    required this.manualAmount,
     required this.notes,
     required this.selectedTicketIds,
   });
@@ -7120,11 +8494,17 @@ class _RegisterSupplierInvoiceDialog extends StatefulWidget {
   final String companyName;
   final List<ComprasTicketRecord> tickets;
   final (String, String) initialTarget;
+  final _InvoiceDraftResult? initialDraft;
+  final String title;
+  final String confirmLabel;
 
   const _RegisterSupplierInvoiceDialog({
     required this.companyName,
     required this.tickets,
     required this.initialTarget,
+    this.initialDraft,
+    this.title = 'Registrar factura',
+    this.confirmLabel = 'Guardar factura',
   });
 
   @override
@@ -7138,33 +8518,80 @@ class _RegisterSupplierInvoiceDialogState
   static const List<String> _targetBranches = <String>['CELAYA', 'MAZATLAN'];
   late final TextEditingController _folioC;
   late final TextEditingController _notesC;
+  late final TextEditingController _ticketNumberFilterC;
+  final ScrollController _rowsScrollController = ScrollController();
+  final GlobalKey _rowsViewportKey = GlobalKey();
+  final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
   late DateTime _invoiceDate;
   DateTime? _dueDate;
   late Set<String> _selectedTicketIds;
   late String _targetCompany;
   late String _targetBranch;
+  DateTimeRange? _ticketDateRangeFilter;
+  bool _dragSelectionActive = false;
+  String? _dragSelectionAnchorId;
+  Offset? _dragPointerGlobal;
+  double _dragAutoScrollVelocity = 0;
+  Timer? _dragAutoScrollTimer;
 
   @override
   void initState() {
     super.initState();
     _folioC = TextEditingController();
     _notesC = TextEditingController();
-    _invoiceDate = DateUtils.dateOnly(DateTime.now());
-    _selectedTicketIds = widget.tickets.map((ticket) => ticket.id).toSet();
-    _targetCompany = widget.initialTarget.$1;
-    _targetBranch = widget.initialTarget.$2;
+    _ticketNumberFilterC = TextEditingController();
+    _invoiceDate = DateUtils.dateOnly(
+      widget.initialDraft?.invoiceDate ?? DateTime.now(),
+    );
+    _dueDate = widget.initialDraft?.dueDate == null
+        ? null
+        : DateUtils.dateOnly(widget.initialDraft!.dueDate!);
+    _selectedTicketIds =
+        widget.initialDraft?.selectedTicketIds.toSet() ?? <String>{};
+    _targetCompany =
+        widget.initialDraft?.targetCompany ?? widget.initialTarget.$1;
+    _targetBranch =
+        widget.initialDraft?.targetBranch ?? widget.initialTarget.$2;
+    _folioC.text = widget.initialDraft?.folio ?? '';
+    _notesC.text = widget.initialDraft?.notes ?? '';
   }
 
   @override
   void dispose() {
+    _dragAutoScrollTimer?.cancel();
+    _rowsScrollController.dispose();
     _folioC.dispose();
     _notesC.dispose();
+    _ticketNumberFilterC.dispose();
     super.dispose();
   }
 
   double get _selectedTotal => widget.tickets
       .where((ticket) => _selectedTicketIds.contains(ticket.id))
       .fold<double>(0, (sum, ticket) => sum + ticket.amount);
+
+  List<ComprasTicketRecord> get _filteredTickets {
+    final ticketQuery = _ticketNumberFilterC.text.trim().toLowerCase();
+    return widget.tickets
+        .where((ticket) {
+          if (ticketQuery.isNotEmpty &&
+              !ticket.ticket.toLowerCase().contains(ticketQuery)) {
+            return false;
+          }
+          final ticketDay = DateUtils.dateOnly(ticket.date);
+          if (_ticketDateRangeFilter != null &&
+              (ticketDay.isBefore(
+                    DateUtils.dateOnly(_ticketDateRangeFilter!.start),
+                  ) ||
+                  ticketDay.isAfter(
+                    DateUtils.dateOnly(_ticketDateRangeFilter!.end),
+                  ))) {
+            return false;
+          }
+          return true;
+        })
+        .toList(growable: false);
+  }
 
   String _money(double value) {
     final fixed = value.toStringAsFixed(2);
@@ -7190,9 +8617,16 @@ class _RegisterSupplierInvoiceDialogState
   Future<void> _pickInvoiceDate() async {
     final picked = await showDatePicker(
       context: context,
-      initialDate: _invoiceDate,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       builder: (context, child) {
         return AreaThemeScope(
           tokens: finanzasAreaTokens,
@@ -7208,12 +8642,18 @@ class _RegisterSupplierInvoiceDialogState
   }
 
   Future<void> _pickDueDate() async {
-    final initial = _dueDate ?? _invoiceDate;
     final picked = await showDatePicker(
       context: context,
-      initialDate: initial,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       firstDate: DateTime(2020),
       lastDate: DateTime(2100),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
       builder: (context, child) {
         return AreaThemeScope(
           tokens: finanzasAreaTokens,
@@ -7228,9 +8668,188 @@ class _RegisterSupplierInvoiceDialogState
     setState(() => _dueDate = DateUtils.dateOnly(picked));
   }
 
+  String _dateRangeLabel(DateTimeRange? value) {
+    if (value == null) return 'Todas las fechas';
+    return '${_dateLabel(value.start)} - ${_dateLabel(value.end)}';
+  }
+
+  Future<void> _pickTicketDateRange() async {
+    final picked = await _showProviderDateRangeDialog(
+      context,
+      title: 'Filtrar fecha',
+      initialRange: _ticketDateRangeFilter,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _ticketDateRangeFilter = picked == _kClearedProviderDateRange
+          ? null
+          : picked;
+    });
+  }
+
+  GlobalKey _rowItemKey(String rowId) => _rowKeys.putIfAbsent(
+    rowId,
+    () => GlobalObjectKey('provider-invoice-$rowId'),
+  );
+
+  void _beginDragSelection(String ticketId, List<ComprasTicketRecord> rows) {
+    setState(() {
+      _dragSelectionActive = true;
+      _dragSelectionAnchorId = ticketId;
+      _selectedTicketIds
+        ..clear()
+        ..add(ticketId);
+    });
+  }
+
+  void _updateDragSelection(String ticketId, List<ComprasTicketRecord> rows) {
+    if (!_dragSelectionActive || _dragSelectionAnchorId == null) return;
+    final visibleIds = rows.map((row) => row.id).toList(growable: false);
+    final start = visibleIds.indexOf(_dragSelectionAnchorId!);
+    final end = visibleIds.indexOf(ticketId);
+    if (start == -1 || end == -1) return;
+    final range = visibleIds.sublist(
+      start < end ? start : end,
+      start < end ? end + 1 : start + 1,
+    );
+    setState(() {
+      _selectedTicketIds
+        ..clear()
+        ..addAll(range);
+    });
+  }
+
+  void _endDragSelection() {
+    if (!_dragSelectionActive) return;
+    setState(() {
+      _dragSelectionActive = false;
+      _dragSelectionAnchorId = null;
+      _dragPointerGlobal = null;
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+    });
+  }
+
+  int? _visibleRowIndexAtGlobalPosition(
+    Offset globalPosition,
+    List<ComprasTicketRecord> rows,
+  ) {
+    for (var i = 0; i < rows.length; i++) {
+      final box =
+          _rowItemKey(rows[i].id).currentContext?.findRenderObject()
+              as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      final rect = box.localToGlobal(Offset.zero) & box.size;
+      if (rect.contains(globalPosition)) return i;
+    }
+    return null;
+  }
+
+  int? _mountedEdgeRowIndex(
+    List<ComprasTicketRecord> rows, {
+    required bool last,
+  }) {
+    final indexes = <int>[];
+    for (var i = 0; i < rows.length; i++) {
+      final box =
+          _rowItemKey(rows[i].id).currentContext?.findRenderObject()
+              as RenderBox?;
+      if (box != null && box.hasSize) indexes.add(i);
+    }
+    if (indexes.isEmpty) return null;
+    return last ? indexes.last : indexes.first;
+  }
+
+  void _handleRowsPointerMove(
+    PointerMoveEvent event,
+    List<ComprasTicketRecord> rows,
+  ) {
+    if (!_dragSelectionActive) return;
+    _dragPointerGlobal = event.position;
+    _updateDragAutoScroll(rows);
+    final visibleIndex = _visibleRowIndexAtGlobalPosition(event.position, rows);
+    if (visibleIndex == null) return;
+    _updateDragSelection(rows[visibleIndex].id, rows);
+  }
+
+  void _updateDragAutoScroll(List<ComprasTicketRecord> rows) {
+    if (!_dragSelectionActive || _dragPointerGlobal == null) {
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    final box =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    const edge = 36.0;
+    const maxStep = 18.0;
+    final local = box.globalToLocal(_dragPointerGlobal!);
+    final y = local.dy;
+    if (y < edge) {
+      _dragAutoScrollVelocity = -((edge - y) / edge).clamp(0.0, 1.0) * maxStep;
+    } else if (y > box.size.height - edge) {
+      _dragAutoScrollVelocity =
+          ((y - (box.size.height - edge)) / edge).clamp(0.0, 1.0) * maxStep;
+    } else {
+      _dragAutoScrollVelocity = 0;
+    }
+    if (_dragAutoScrollVelocity == 0) {
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    _dragAutoScrollTimer ??= Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _performDragAutoScroll(rows),
+    );
+  }
+
+  void _performDragAutoScroll(List<ComprasTicketRecord> rows) {
+    if (!_dragSelectionActive ||
+        _dragAutoScrollVelocity == 0 ||
+        !_rowsScrollController.hasClients) {
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    final position = _rowsScrollController.position;
+    final next = (position.pixels + _dragAutoScrollVelocity).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if ((next - position.pixels).abs() < 0.5) return;
+    _rowsScrollController.jumpTo(next);
+    final pointer = _dragPointerGlobal;
+    final viewportBox =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (pointer == null || viewportBox == null || !viewportBox.hasSize) return;
+    final visibleIndex = _visibleRowIndexAtGlobalPosition(pointer, rows);
+    int? targetIndex = visibleIndex;
+    if (targetIndex == null) {
+      final local = viewportBox.globalToLocal(pointer);
+      if (local.dy < 0) {
+        targetIndex = _mountedEdgeRowIndex(rows, last: false);
+      } else if (local.dy > viewportBox.size.height) {
+        targetIndex = _mountedEdgeRowIndex(rows, last: true);
+      }
+    }
+    if (targetIndex == null) return;
+    _updateDragSelection(rows[targetIndex].id, rows);
+  }
+
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final filteredTickets = _filteredTickets;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 28),
@@ -7246,7 +8865,7 @@ class _RegisterSupplierInvoiceDialogState
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   _DialogHeader(
-                    title: 'Registrar factura',
+                    title: widget.title,
                     subtitle: widget.companyName,
                   ),
                   const SizedBox(height: 18),
@@ -7381,55 +9000,83 @@ class _RegisterSupplierInvoiceDialogState
                     ],
                   ),
                   const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _ticketNumberFilterC,
+                          onChanged: (_) => setState(() {}),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          cursorColor: finanzasAreaTokens.primaryStrong,
+                          decoration: contractGlassFieldDecoration(
+                            context,
+                            hintText: 'Filtrar por número de ticket',
+                            prefixIcon: const Icon(Icons.tag_rounded),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DateFieldButton(
+                          label: 'Rango de fechas',
+                          value: _dateRangeLabel(_ticketDateRangeFilter),
+                          onTap: _pickTicketDateRange,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      OutlinedButton(
+                        style: contractSecondaryButtonStyle(context),
+                        onPressed: () {
+                          setState(() {
+                            _ticketNumberFilterC.clear();
+                            _ticketDateRangeFilter = null;
+                          });
+                        },
+                        child: const Text('Limpiar'),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
                   Expanded(
-                    child: ListView.separated(
-                      itemCount: widget.tickets.length,
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (_, index) {
-                        final row = widget.tickets[index];
-                        final selected = _selectedTicketIds.contains(row.id);
-                        return Material(
-                          color: Colors.transparent,
-                          child: InkWell(
-                            onTap: () {
-                              setState(() {
-                                if (selected) {
-                                  _selectedTicketIds.remove(row.id);
-                                } else {
-                                  _selectedTicketIds.add(row.id);
-                                }
-                              });
-                            },
-                            borderRadius: BorderRadius.circular(18),
-                            child: Ink(
-                              padding: const EdgeInsets.fromLTRB(
-                                14,
-                                14,
-                                14,
-                                14,
-                              ),
-                              decoration: BoxDecoration(
-                                color: selected
-                                    ? tokens.badgeBackground.withValues(
-                                        alpha: 0.86,
-                                      )
-                                    : tokens.fieldSurface.withValues(
-                                        alpha: 0.82,
-                                      ),
-                                borderRadius: BorderRadius.circular(18),
-                                border: Border.all(
-                                  color: selected
-                                      ? tokens.primaryStrong.withValues(
-                                          alpha: 0.32,
-                                        )
-                                      : Colors.white.withValues(alpha: 0.14),
+                    child: Listener(
+                      onPointerMove: (event) =>
+                          _handleRowsPointerMove(event, filteredTickets),
+                      onPointerUp: (_) => _endDragSelection(),
+                      onPointerCancel: (_) => _endDragSelection(),
+                      child: Container(
+                        key: _rowsViewportKey,
+                        child: ListView.separated(
+                          controller: _rowsScrollController,
+                          itemCount: filteredTickets.length,
+                          separatorBuilder: (_, _) => const SizedBox(height: 8),
+                          itemBuilder: (_, index) {
+                            final row = filteredTickets[index];
+                            final selected = _selectedTicketIds.contains(
+                              row.id,
+                            );
+                            return KeyedSubtree(
+                              key: _rowItemKey(row.id),
+                              child: MouseRegion(
+                                cursor: SystemMouseCursors.click,
+                                onEnter: (_) => _updateDragSelection(
+                                  row.id,
+                                  filteredTickets,
                                 ),
-                              ),
-                              child: Row(
-                                children: [
-                                  Checkbox(
-                                    value: selected,
-                                    onChanged: (_) {
+                                child: Listener(
+                                  onPointerDown: (event) {
+                                    if (event.kind == PointerDeviceKind.mouse &&
+                                        event.buttons == kPrimaryMouseButton) {
+                                      _beginDragSelection(
+                                        row.id,
+                                        filteredTickets,
+                                      );
+                                    }
+                                  },
+                                  child: GestureDetector(
+                                    onTap: () {
                                       setState(() {
                                         if (selected) {
                                           _selectedTicketIds.remove(row.id);
@@ -7438,47 +9085,84 @@ class _RegisterSupplierInvoiceDialogState
                                         }
                                       });
                                     },
-                                  ),
-                                  Expanded(
-                                    child: Column(
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.start,
-                                      children: [
-                                        Text(
-                                          '${row.ticket} · ${row.materialNameSnapshot}',
-                                          style: TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.w900,
-                                            color: tokens.primaryStrong,
+                                    child: FinanzasGlassPanel(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        16,
+                                        15,
+                                        16,
+                                        15,
+                                      ),
+                                      borderRadius: BorderRadius.circular(22),
+                                      fillColor: selected
+                                          ? const Color(0xD89A5C27)
+                                          : const Color(0xB8141820),
+                                      borderColor: selected
+                                          ? const Color(0xFFFF8A3D)
+                                          : Colors.white.withValues(
+                                              alpha: 0.12,
+                                            ),
+                                      child: Row(
+                                        children: [
+                                          Icon(
+                                            selected
+                                                ? Icons.check_circle_rounded
+                                                : Icons.circle_outlined,
+                                            color: selected
+                                                ? Colors.white
+                                                : Colors.white.withValues(
+                                                    alpha: 0.72,
+                                                  ),
                                           ),
-                                        ),
-                                        const SizedBox(height: 4),
-                                        Text(
-                                          '${_dateLabel(row.date)} · ${row.providerNameSnapshot}',
-                                          style: TextStyle(
-                                            fontSize: 12.5,
-                                            fontWeight: FontWeight.w700,
-                                            color: kFinanzasMutedInk,
+                                          const SizedBox(width: 14),
+                                          Expanded(
+                                            child: Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
+                                              children: [
+                                                Text(
+                                                  '${row.ticket} · ${row.materialNameSnapshot}',
+                                                  style: const TextStyle(
+                                                    fontSize: 14,
+                                                    fontWeight: FontWeight.w900,
+                                                    color: Colors.white,
+                                                  ),
+                                                ),
+                                                const SizedBox(height: 4),
+                                                Text(
+                                                  '${_dateLabel(row.date)} · ${row.providerNameSnapshot}',
+                                                  style: TextStyle(
+                                                    fontSize: 12.5,
+                                                    fontWeight: FontWeight.w700,
+                                                    color: selected
+                                                        ? Colors.white
+                                                              .withValues(
+                                                                alpha: 0.9,
+                                                              )
+                                                        : kFinanzasMutedInk,
+                                                  ),
+                                                ),
+                                              ],
+                                            ),
                                           ),
-                                        ),
-                                      ],
+                                          const SizedBox(width: 12),
+                                          Text(
+                                            _money(row.amount),
+                                            style: const TextStyle(
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w900,
+                                              color: Colors.white,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
-                                  const SizedBox(width: 12),
-                                  Text(
-                                    _money(row.amount),
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w900,
-                                      color: tokens.primaryStrong,
-                                    ),
-                                  ),
-                                ],
+                                ),
                               ),
-                            ),
-                          ),
-                        );
-                      },
+                            );
+                          },
+                        ),
+                      ),
                     ),
                   ),
                   const SizedBox(height: 16),
@@ -7492,16 +9176,383 @@ class _RegisterSupplierInvoiceDialogState
                             Navigator.of(context).pop(
                               _InvoiceDraftResult(
                                 folio: _folioC.text.trim(),
+                                originType: 'TICKETS',
                                 invoiceDate: _invoiceDate,
                                 dueDate: _dueDate,
                                 targetCompany: _targetCompany,
                                 targetBranch: _targetBranch,
+                                manualAmount: null,
                                 notes: _notesC.text.trim(),
                                 selectedTicketIds: _selectedTicketIds,
                               ),
                             );
                           },
-                    confirmLabel: 'Guardar factura',
+                    confirmLabel: widget.confirmLabel,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _RegisterManualSupplierInvoiceDialog extends StatefulWidget {
+  final String companyName;
+  final (String, String) initialTarget;
+  final _InvoiceDraftResult? initialDraft;
+  final String title;
+  final String confirmLabel;
+
+  const _RegisterManualSupplierInvoiceDialog({
+    required this.companyName,
+    required this.initialTarget,
+    this.initialDraft,
+    this.title = 'Registrar factura manual',
+    this.confirmLabel = 'Guardar factura',
+  });
+
+  @override
+  State<_RegisterManualSupplierInvoiceDialog> createState() =>
+      _RegisterManualSupplierInvoiceDialogState();
+}
+
+class _RegisterManualSupplierInvoiceDialogState
+    extends State<_RegisterManualSupplierInvoiceDialog> {
+  static const List<String> _targetCompanies = <String>['DICSA', 'VH'];
+  static const List<String> _targetBranches = <String>['CELAYA', 'MAZATLAN'];
+  late final TextEditingController _folioC;
+  late final TextEditingController _amountC;
+  late final TextEditingController _notesC;
+  late DateTime _invoiceDate;
+  DateTime? _dueDate;
+  late String _targetCompany;
+  late String _targetBranch;
+
+  @override
+  void initState() {
+    super.initState();
+    _folioC = TextEditingController();
+    _amountC = TextEditingController();
+    _notesC = TextEditingController();
+    _invoiceDate = DateUtils.dateOnly(
+      widget.initialDraft?.invoiceDate ?? DateTime.now(),
+    );
+    _dueDate = widget.initialDraft?.dueDate == null
+        ? null
+        : DateUtils.dateOnly(widget.initialDraft!.dueDate!);
+    _targetCompany =
+        widget.initialDraft?.targetCompany ?? widget.initialTarget.$1;
+    _targetBranch =
+        widget.initialDraft?.targetBranch ?? widget.initialTarget.$2;
+    _folioC.text = widget.initialDraft?.folio ?? '';
+    if ((widget.initialDraft?.manualAmount ?? 0) > 0) {
+      _amountC.text = widget.initialDraft!.manualAmount!.toStringAsFixed(2);
+    }
+    _notesC.text = widget.initialDraft?.notes ?? '';
+  }
+
+  @override
+  void dispose() {
+    _folioC.dispose();
+    _amountC.dispose();
+    _notesC.dispose();
+    super.dispose();
+  }
+
+  double _parseAmount() {
+    final sanitized = _amountC.text.replaceAll(',', '').trim();
+    return double.tryParse(sanitized) ?? 0;
+  }
+
+  String _money(double value) {
+    final fixed = value.toStringAsFixed(2);
+    final parts = fixed.split('.');
+    final whole = parts.first;
+    final fraction = parts[1];
+    final buffer = StringBuffer();
+    for (var i = 0; i < whole.length; i++) {
+      final reverseIndex = whole.length - i;
+      buffer.write(whole[i]);
+      if (reverseIndex > 1 && reverseIndex % 3 == 1) {
+        buffer.write(',');
+      }
+    }
+    return '\$${buffer.toString()}.$fraction';
+  }
+
+  String _dateLabel(DateTime? value) {
+    if (value == null) return 'Sin fecha';
+    return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+  }
+
+  Future<void> _pickInvoiceDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
+      builder: (context, child) {
+        return AreaThemeScope(
+          tokens: finanzasAreaTokens,
+          child: Theme(
+            data: _buildFinanzasDatePickerTheme(context),
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _invoiceDate = DateUtils.dateOnly(picked));
+  }
+
+  Future<void> _pickDueDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
+      builder: (context, child) {
+        return AreaThemeScope(
+          tokens: finanzasAreaTokens,
+          child: Theme(
+            data: _buildFinanzasDatePickerTheme(context),
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _dueDate = DateUtils.dateOnly(picked));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final amount = _parseAmount();
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 28),
+      child: AreaThemeScope(
+        tokens: finanzasAreaTokens,
+        child: Builder(
+          builder: (context) => ContractGlassCard(
+            borderRadius: BorderRadius.circular(30),
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 780),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DialogHeader(
+                    title: widget.title,
+                    subtitle:
+                        '${widget.companyName} · Úsala cuando la factura no proviene de tickets de compra.',
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _folioC,
+                          onChanged: (_) => setState(() {}),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          cursorColor: finanzasAreaTokens.primaryStrong,
+                          decoration: contractGlassFieldDecoration(
+                            context,
+                            hintText: 'Folio de factura',
+                            prefixIcon: const Icon(Icons.receipt_long_rounded),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DateFieldButton(
+                          label: 'Fecha factura',
+                          value: _dateLabel(_invoiceDate),
+                          onTap: _pickInvoiceDate,
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DateFieldButton(
+                          label: 'Fecha límite',
+                          value: _dateLabel(_dueDate),
+                          onTap: _pickDueDate,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _InlineChoiceField(
+                          label: 'Empresa objetivo',
+                          value: _targetCompany,
+                          onTap: () async {
+                            final selected = await _showSimpleOptionsDialog(
+                              context: context,
+                              title: 'Seleccionar empresa objetivo',
+                              options: _targetCompanies
+                                  .map(
+                                    (row) => _SimpleOption(
+                                      id: row,
+                                      label: row,
+                                      subtitle: 'Cuenta pagadora esperada',
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                            );
+                            if (selected == null || !mounted) return;
+                            setState(() => _targetCompany = selected.id);
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _InlineChoiceField(
+                          label: 'Cuenta objetivo',
+                          value: _targetBranch == 'MAZATLAN'
+                              ? 'Mazatlan'
+                              : 'Celaya',
+                          onTap: () async {
+                            final selected = await _showSimpleOptionsDialog(
+                              context: context,
+                              title: 'Seleccionar cuenta objetivo',
+                              options: _targetBranches
+                                  .map(
+                                    (row) => _SimpleOption(
+                                      id: row,
+                                      label: row == 'MAZATLAN'
+                                          ? 'Mazatlan'
+                                          : 'Celaya',
+                                      subtitle: 'Sucursal/cuenta objetivo',
+                                    ),
+                                  )
+                                  .toList(growable: false),
+                            );
+                            if (selected == null || !mounted) return;
+                            setState(() => _targetBranch = selected.id);
+                          },
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        flex: 3,
+                        child: TextField(
+                          controller: _amountC,
+                          keyboardType: const TextInputType.numberWithOptions(
+                            decimal: true,
+                            signed: false,
+                          ),
+                          onChanged: (_) => setState(() {}),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          cursorColor: finanzasAreaTokens.primaryStrong,
+                          decoration: contractGlassFieldDecoration(
+                            context,
+                            hintText: 'Importe total de la factura',
+                            prefixIcon: const Icon(Icons.payments_outlined),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        flex: 2,
+                        child: FinanzasGlassPanel(
+                          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                          borderRadius: BorderRadius.circular(18),
+                          fillColor: const Color(0xA0141820),
+                          borderColor: Colors.white.withValues(alpha: 0.10),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'Saldo inicial',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: kFinanzasMutedInk,
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                _money(amount),
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _notesC,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    cursorColor: finanzasAreaTokens.primaryStrong,
+                    minLines: 2,
+                    maxLines: 4,
+                    decoration: contractGlassFieldDecoration(
+                      context,
+                      hintText: 'Notas de factura o convenio',
+                      prefixIcon: const Icon(Icons.note_alt_outlined),
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _DialogActionsRow(
+                    onCancel: () => Navigator.of(context).pop(),
+                    onConfirm: _folioC.text.trim().isEmpty || amount <= 0.009
+                        ? null
+                        : () {
+                            Navigator.of(context).pop(
+                              _InvoiceDraftResult(
+                                folio: _folioC.text.trim(),
+                                originType: 'MANUAL',
+                                invoiceDate: _invoiceDate,
+                                dueDate: _dueDate,
+                                targetCompany: _targetCompany,
+                                targetBranch: _targetBranch,
+                                manualAmount: amount,
+                                notes: _notesC.text.trim(),
+                                selectedTicketIds: const <String>{},
+                              ),
+                            );
+                          },
+                    confirmLabel: widget.confirmLabel,
                   ),
                 ],
               ),

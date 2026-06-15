@@ -27,6 +27,7 @@ import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
@@ -5864,9 +5865,9 @@ Future<_MayoreoSalesDateRangeResult?> _showMayoreoSalesDateRangeDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
-      DateTime displayMonth = DateTime(
-        (initialFrom ?? initialTo ?? firstDate).year,
-        (initialFrom ?? initialTo ?? firstDate).month,
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: firstDate,
+        lastDate: lastDate,
       );
       DateTime? start = initialFrom == null
           ? null

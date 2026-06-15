@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import 'menudeo_sorting.dart';
 import 'menudeo_theme.dart';
 
@@ -499,9 +500,9 @@ Future<MenudeoDateFilterResult?> showMenudeoDateRangeFilterDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
-      DateTime displayMonth = DateTime(
-        (initialRange?.start ?? bounds.start).year,
-        (initialRange?.start ?? bounds.start).month,
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: bounds.start,
+        lastDate: bounds.end,
       );
       DateTime? start = initialRange?.start;
       DateTime? end = initialRange?.end;

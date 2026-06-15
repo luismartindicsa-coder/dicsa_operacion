@@ -26,6 +26,7 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
 import 'mayoreo_catalog_page.dart';
@@ -5180,9 +5181,9 @@ Future<_MayoreoDateFilterResult?> _showMayoreoDateRangeFilterDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
-      DateTime displayMonth = DateTime(
-        (initialRange?.start ?? bounds.start).year,
-        (initialRange?.start ?? bounds.start).month,
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: bounds.start,
+        lastDate: bounds.end,
       );
       DateTime? start = initialRange?.start;
       DateTime? end = initialRange?.end;
@@ -5462,12 +5463,18 @@ Future<_MayoreoDateFilterResult?> _showMayoreoDateRangeFilterDialog(
 }
 
 Future<DateTime?> _pickMayoreoDate(BuildContext context, DateTime? current) {
-  final now = DateTime.now();
   return showDatePicker(
     context: context,
-    initialDate: current ?? now,
+    initialDate: defaultDatePickerOpenDate(
+      firstDate: DateTime(2024),
+      lastDate: DateTime(2030),
+    ),
     firstDate: DateTime(2024),
     lastDate: DateTime(2030),
+    currentDate: defaultDatePickerOpenDate(
+      firstDate: DateTime(2024),
+      lastDate: DateTime(2030),
+    ),
     builder: (dialogContext, child) {
       return Theme(
         data: _mayoreoMaterialTheme(dialogContext),

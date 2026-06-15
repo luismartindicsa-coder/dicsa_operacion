@@ -14,6 +14,7 @@ import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/date_picker_defaults.dart';
 
 const double _kInvActionsW = 168;
 const double _kInvKgColW = 110;
@@ -6538,9 +6539,9 @@ Future<_InvDateFilterDialogResult?> _showInvDateRangeFilterDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
-      DateTime displayMonth = DateTime(
-        (initialRange?.start ?? DateTime.now()).year,
-        (initialRange?.start ?? DateTime.now()).month,
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: DateTime(2024, 1, 1),
+        lastDate: DateTime(2035, 12, 31),
       );
       DateTime? start = initialRange?.start;
       DateTime? end = initialRange?.end;
@@ -6963,9 +6964,16 @@ Future<DateTime?> _showInvKeyboardDatePickerDialog({
                     width: 320,
                     child: CalendarDatePicker(
                       key: ValueKey<DateTime>(tempDate),
-                      initialDate: tempDate,
+                      initialDate: defaultDatePickerOpenDate(
+                        firstDate: firstDate,
+                        lastDate: lastDate,
+                      ),
                       firstDate: firstDate,
                       lastDate: lastDate,
+                      currentDate: defaultDatePickerOpenDate(
+                        firstDate: firstDate,
+                        lastDate: lastDate,
+                      ),
                       onDateChanged: (d) {
                         setInnerState(() {
                           tempDate = DateUtils.dateOnly(d);

@@ -24,6 +24,7 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 import 'inventory_movements_grid.dart';
 import 'inventory_stock_v2_body.dart';
@@ -5346,14 +5347,21 @@ Future<DateTime?> _showMonthPickerDialog(
   BuildContext context, {
   required DateTime initialDate,
 }) {
+  final firstDate = DateTime(2020, 1, 1);
+  final lastDate = DateTime(DateTime.now().year + 2, 12, 31);
+  final openDate = defaultDatePickerOpenDate(
+    firstDate: firstDate,
+    lastDate: lastDate,
+  );
   return showDatePicker(
     context: context,
-    initialDate: DateTime(initialDate.year, initialDate.month, 1),
-    firstDate: DateTime(2020, 1, 1),
-    lastDate: DateTime(DateTime.now().year + 2, 12, 31),
+    initialDate: DateTime(openDate.year, openDate.month, 1),
+    firstDate: firstDate,
+    lastDate: lastDate,
     helpText: 'Selecciona mes y año del corte',
     fieldLabelText: 'Mes de corte',
     initialEntryMode: DatePickerEntryMode.calendarOnly,
+    currentDate: openDate,
   );
 }
 
@@ -7876,9 +7884,9 @@ Future<_DateFilterDialogResult?> _showInventoryDateRangeFilterDialog(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
-      DateTime displayMonth = DateTime(
-        (initialRange?.start ?? DateTime.now()).year,
-        (initialRange?.start ?? DateTime.now()).month,
+      DateTime displayMonth = defaultDatePickerOpenMonth(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
       );
       DateTime? start = initialRange?.start;
       DateTime? end = initialRange?.end;
