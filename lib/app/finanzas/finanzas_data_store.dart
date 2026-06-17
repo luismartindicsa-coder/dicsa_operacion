@@ -97,9 +97,10 @@ class FinanzasDataStore {
     FinanzasCatalogSnapshot snapshot,
   ) async {
     final normalized = _normalizeSnapshot(snapshot);
-    _saveQueue = _saveQueue
-        .catchError((_) {})
-        .then((_) => _saveRemoteCatalogSnapshot(normalized));
+    _saveQueue = _saveQueue.catchError((_) {}).then((_) async {
+      final canonical = await _canonicalizeSnapshotAgainstRemote(normalized);
+      await _saveRemoteCatalogSnapshot(canonical);
+    });
     await _saveQueue;
   }
 }
@@ -239,6 +240,74 @@ Future<FinanzasCatalogSnapshot?> _loadRemoteCatalogSnapshot() async {
     } catch (_) {}
   }
   return merged;
+}
+
+Future<FinanzasCatalogSnapshot> _canonicalizeSnapshotAgainstRemote(
+  FinanzasCatalogSnapshot snapshot,
+) async {
+  final supa = Supabase.instance.client;
+  final remoteRows = await _fetchAllFinanceRows(
+    (from, to) => supa
+        .from(_kFinCompaniesTable)
+        .select('id, name')
+        .order('name')
+        .range(from, to),
+  );
+  final remoteIdByName = <String, String>{};
+  for (final row in remoteRows) {
+    final name = (row['name'] ?? '').toString().trim();
+    final id = (row['id'] ?? '').toString().trim();
+    if (name.isEmpty || id.isEmpty) continue;
+    remoteIdByName.putIfAbsent(name.toUpperCase(), () => id);
+  }
+
+  final nextCompanies = snapshot.companies
+      .map((row) {
+        final remoteId = remoteIdByName[row.name.trim().toUpperCase()];
+        if (remoteId == null || remoteId == row.id) return row;
+        return FinanzasCatalogCompanyRecord(
+          id: remoteId,
+          name: row.name,
+          source: row.source,
+          linkedName: row.linkedName,
+          active: row.active,
+          notes: row.notes,
+        );
+      })
+      .toList(growable: false);
+
+  final companyIdRemap = <String, String>{};
+  for (var i = 0; i < snapshot.companies.length; i++) {
+    final previous = snapshot.companies[i];
+    final current = nextCompanies[i];
+    if (previous.id != current.id) {
+      companyIdRemap[previous.id] = current.id;
+    }
+  }
+
+  final nextRelations = snapshot.relations
+      .map((row) {
+        final remappedCompanyId =
+            companyIdRemap[row.companyId] ?? row.companyId;
+        if (remappedCompanyId == row.companyId) return row;
+        return FinanzasCatalogRelationRecord(
+          id: row.id,
+          companyId: remappedCompanyId,
+          conceptId: row.conceptId,
+          mode: row.mode,
+          active: row.active,
+          notes: row.notes,
+        );
+      })
+      .toList(growable: false);
+
+  return _normalizeSnapshot(
+    FinanzasCatalogSnapshot(
+      companies: nextCompanies,
+      concepts: snapshot.concepts,
+      relations: nextRelations,
+    ),
+  );
 }
 
 FinanzasCatalogSnapshot _mergeExternalCompanies(

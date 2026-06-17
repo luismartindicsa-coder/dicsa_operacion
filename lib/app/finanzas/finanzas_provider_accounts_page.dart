@@ -4300,6 +4300,7 @@ class _ProviderExcelTicketSelectionDialogState
   DateTimeRange? _ticketDateRangeFilter;
   bool _dragSelectionActive = false;
   String? _dragSelectionAnchorId;
+  Offset? _dragStartGlobal;
   Offset? _dragPointerGlobal;
   double _dragAutoScrollVelocity = 0;
   Timer? _dragAutoScrollTimer;
@@ -4375,9 +4376,17 @@ class _ProviderExcelTicketSelectionDialogState
 
   void _beginDragSelection(String ticketId, List<ComprasTicketRecord> rows) {
     setState(() {
-      _dragSelectionActive = true;
       _dragSelectionAnchorId = ticketId;
+      _dragStartGlobal = null;
     });
+  }
+
+  void _activateDragSelection() {
+    if (_dragSelectionActive || _dragSelectionAnchorId == null) return;
+    _dragSelectionActive = true;
+    _selectedIds
+      ..clear()
+      ..add(_dragSelectionAnchorId!);
   }
 
   void _updateDragSelection(String ticketId, List<ComprasTicketRecord> rows) {
@@ -4398,10 +4407,15 @@ class _ProviderExcelTicketSelectionDialogState
   }
 
   void _endDragSelection() {
-    if (!_dragSelectionActive) return;
+    if (!_dragSelectionActive &&
+        _dragSelectionAnchorId == null &&
+        _dragStartGlobal == null) {
+      return;
+    }
     setState(() {
       _dragSelectionActive = false;
       _dragSelectionAnchorId = null;
+      _dragStartGlobal = null;
       _dragPointerGlobal = null;
       _dragAutoScrollVelocity = 0;
       _dragAutoScrollTimer?.cancel();
@@ -4443,7 +4457,13 @@ class _ProviderExcelTicketSelectionDialogState
     PointerMoveEvent event,
     List<ComprasTicketRecord> rows,
   ) {
-    if (!_dragSelectionActive) return;
+    if (_dragSelectionAnchorId == null) return;
+    _dragStartGlobal ??= event.position;
+    if (!_dragSelectionActive) {
+      final delta = (event.position - _dragStartGlobal!).distance;
+      if (delta < 6) return;
+      setState(_activateDragSelection);
+    }
     _dragPointerGlobal = event.position;
     _updateDragAutoScroll(rows);
     final visibleIndex = _visibleRowIndexAtGlobalPosition(event.position, rows);
@@ -8555,6 +8575,7 @@ class _RegisterSupplierInvoiceDialogState
   DateTimeRange? _ticketDateRangeFilter;
   bool _dragSelectionActive = false;
   String? _dragSelectionAnchorId;
+  Offset? _dragStartGlobal;
   Offset? _dragPointerGlobal;
   double _dragAutoScrollVelocity = 0;
   Timer? _dragAutoScrollTimer;
@@ -8721,9 +8742,17 @@ class _RegisterSupplierInvoiceDialogState
 
   void _beginDragSelection(String ticketId, List<ComprasTicketRecord> rows) {
     setState(() {
-      _dragSelectionActive = true;
       _dragSelectionAnchorId = ticketId;
+      _dragStartGlobal = null;
     });
+  }
+
+  void _activateDragSelection() {
+    if (_dragSelectionActive || _dragSelectionAnchorId == null) return;
+    _dragSelectionActive = true;
+    _selectedTicketIds
+      ..clear()
+      ..add(_dragSelectionAnchorId!);
   }
 
   void _updateDragSelection(String ticketId, List<ComprasTicketRecord> rows) {
@@ -8744,10 +8773,15 @@ class _RegisterSupplierInvoiceDialogState
   }
 
   void _endDragSelection() {
-    if (!_dragSelectionActive) return;
+    if (!_dragSelectionActive &&
+        _dragSelectionAnchorId == null &&
+        _dragStartGlobal == null) {
+      return;
+    }
     setState(() {
       _dragSelectionActive = false;
       _dragSelectionAnchorId = null;
+      _dragStartGlobal = null;
       _dragPointerGlobal = null;
       _dragAutoScrollVelocity = 0;
       _dragAutoScrollTimer?.cancel();
@@ -8789,7 +8823,13 @@ class _RegisterSupplierInvoiceDialogState
     PointerMoveEvent event,
     List<ComprasTicketRecord> rows,
   ) {
-    if (!_dragSelectionActive) return;
+    if (_dragSelectionAnchorId == null) return;
+    _dragStartGlobal ??= event.position;
+    if (!_dragSelectionActive) {
+      final delta = (event.position - _dragStartGlobal!).distance;
+      if (delta < 6) return;
+      setState(_activateDragSelection);
+    }
     _dragPointerGlobal = event.position;
     _updateDragAutoScroll(rows);
     final visibleIndex = _visibleRowIndexAtGlobalPosition(event.position, rows);

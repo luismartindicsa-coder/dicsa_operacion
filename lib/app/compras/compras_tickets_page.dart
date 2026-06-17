@@ -1005,7 +1005,7 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
   Future<void> _exportCsv() async {
     setState(() => _exportingCsv = true);
     final lines = <String>[
-      'fecha,ticket,proveedor,material,bruto,tara,neto,humedad,basura,peso,precio,sobreprecio,importe,factura,pago,cobertura',
+      'fecha,ticket,proveedor,material,bruto,tara,neto,humedad_pct,basura,basura_modo,peso,precio,sobreprecio,importe,factura,pago,cobertura',
       for (final row in _visibleRows)
         [
           _dateLabel(row.date),
@@ -1016,7 +1016,9 @@ class _ComprasTicketsPageState extends State<ComprasTicketsPage> {
           row.tareWeight.toStringAsFixed(2),
           row.netWeight.toStringAsFixed(2),
           row.humidityPercent.toStringAsFixed(2),
-          row.trashPercent.toStringAsFixed(2),
+          (row.trashCaptureMode == 'KG' ? row.trashKg : row.trashPercent)
+              .toStringAsFixed(2),
+          row.trashCaptureMode,
           row.payableWeight.toStringAsFixed(2),
           row.price.toStringAsFixed(2),
           row.premium.toStringAsFixed(2),
@@ -1689,6 +1691,7 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
   String? _providerId;
   String? _materialId;
   late String _facturaStatus;
+  late String _trashCaptureMode;
   late final String? _initialProviderId;
   late final String? _initialMaterialId;
 
@@ -1711,8 +1714,14 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
     _humidityC = TextEditingController(
       text: row == null ? '0' : row.humidityPercent.toStringAsFixed(2),
     );
+    _trashCaptureMode =
+        row?.trashCaptureMode.trim().toUpperCase() ??
+        (row == null ? 'KG' : 'PERCENT');
     _trashC = TextEditingController(
-      text: row == null ? '0' : row.trashPercent.toStringAsFixed(2),
+      text: row == null
+          ? '0'
+          : (_trashCaptureMode == 'KG' ? row.trashKg : row.trashPercent)
+                .toStringAsFixed(2),
     );
     _priceC = TextEditingController(
       text: row == null ? '' : row.price.toStringAsFixed(2),
@@ -1803,7 +1812,11 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
       grossWeight: _parseDouble(_grossC.text),
       tareWeight: _parseDouble(_tareC.text),
       humidityPercent: _parseDouble(_humidityC.text),
-      trashPercent: _parseDouble(_trashC.text),
+      trashPercent: _trashCaptureMode == 'PERCENT'
+          ? _parseDouble(_trashC.text)
+          : 0,
+      trashKg: _trashCaptureMode == 'KG' ? _parseDouble(_trashC.text) : 0,
+      trashCaptureMode: _trashCaptureMode,
       price: _parseDouble(_priceC.text),
       premium: _parseDouble(_premiumC.text),
       facturaStatus: _facturaStatus,
@@ -1815,6 +1828,14 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
 
   double _parseDouble(String value) =>
       double.tryParse(value.replaceAll(',', '.').trim()) ?? 0;
+
+  bool get _usesTrashKg => _trashCaptureMode == 'KG';
+
+  String get _trashFieldLabel => _usesTrashKg ? 'Basura kg' : 'Basura %';
+
+  String get _trashFieldHelper => _usesTrashKg
+      ? 'La basura se captura en kilos para tickets nuevos.'
+      : 'Este ticket conserva basura en porcentaje para mantener el histórico.';
 
   bool get _selectionMatchesOriginal =>
       _providerId == _initialProviderId && _materialId == _initialMaterialId;
@@ -1928,7 +1949,11 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
       grossWeight: _parseDouble(_grossC.text),
       tareWeight: _parseDouble(_tareC.text),
       humidityPercent: _parseDouble(_humidityC.text),
-      trashPercent: _parseDouble(_trashC.text),
+      trashPercent: _trashCaptureMode == 'PERCENT'
+          ? _parseDouble(_trashC.text)
+          : 0,
+      trashKg: _trashCaptureMode == 'KG' ? _parseDouble(_trashC.text) : 0,
+      trashCaptureMode: _trashCaptureMode,
       price: _parseDouble(_priceC.text),
       premium: _parseDouble(_premiumC.text),
       facturaStatus: _facturaStatus,
@@ -2122,12 +2147,13 @@ class _ComprasTicketEditDialogState extends State<_ComprasTicketEditDialog> {
                       ),
                       _TicketDialogField(
                         width: _kTicketDialogFieldW,
-                        label: 'Basura %',
+                        label: _trashFieldLabel,
                         icon: Icons.delete_sweep_outlined,
                         controller: _trashC,
                         keyboardType: const TextInputType.numberWithOptions(
                           decimal: true,
                         ),
+                        helperText: _trashFieldHelper,
                       ),
                       _TicketDialogField(
                         width: _kTicketDialogFieldW,
@@ -3133,6 +3159,7 @@ class _TicketDialogField extends StatelessWidget {
   final String? value;
   final bool readOnly;
   final String? hintText;
+  final String? helperText;
   final TextInputType? keyboardType;
   final VoidCallback? onTap;
   final ValueChanged<String>? onChanged;
@@ -3146,6 +3173,7 @@ class _TicketDialogField extends StatelessWidget {
     this.value,
     this.readOnly = false,
     this.hintText,
+    this.helperText,
     this.keyboardType,
     this.onTap,
     this.onChanged,
@@ -3158,6 +3186,7 @@ class _TicketDialogField extends StatelessWidget {
       icon: icon,
       trailingIcon: trailingIcon,
       hintText: hintText,
+      helperText: helperText,
     );
     final textStyle = TextStyle(
       fontWeight: FontWeight.w800,
@@ -3246,6 +3275,7 @@ InputDecoration _ticketDialogFieldDecoration({
   required IconData icon,
   IconData? trailingIcon,
   String? hintText,
+  String? helperText,
 }) {
   return InputDecoration(
     labelText: label,
@@ -3255,6 +3285,12 @@ InputDecoration _ticketDialogFieldDecoration({
     hintText: hintText,
     hintStyle: TextStyle(
       color: comprasAreaTokens.onGlass.withValues(alpha: 0.58),
+    ),
+    helperText: helperText,
+    helperStyle: TextStyle(
+      color: comprasAreaTokens.onGlass.withValues(alpha: 0.62),
+      fontSize: 11.5,
+      fontWeight: FontWeight.w700,
     ),
     floatingLabelBehavior: FloatingLabelBehavior.always,
     filled: true,

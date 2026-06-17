@@ -2,7 +2,7 @@ name: dicsa_operacion
 description: "Sistema operativo Dicsa"
 publish_to: "none"
 
-version: 1.0.41+44
+version: 1.0.42+45
 
 environment:
   sdk: ">=3.10.0 <4.0.0"

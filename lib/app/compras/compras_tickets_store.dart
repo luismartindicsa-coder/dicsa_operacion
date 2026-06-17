@@ -72,6 +72,8 @@ class ComprasTicketRecord {
   final double netWeight;
   final double humidityPercent;
   final double trashPercent;
+  final double trashKg;
+  final String trashCaptureMode;
   final double payableWeight;
   final double price;
   final double premium;
@@ -95,6 +97,8 @@ class ComprasTicketRecord {
     required this.netWeight,
     required this.humidityPercent,
     required this.trashPercent,
+    required this.trashKg,
+    required this.trashCaptureMode,
     required this.payableWeight,
     required this.price,
     required this.premium,
@@ -119,6 +123,8 @@ class ComprasTicketRecord {
     double? netWeight,
     double? humidityPercent,
     double? trashPercent,
+    double? trashKg,
+    String? trashCaptureMode,
     double? payableWeight,
     double? price,
     double? premium,
@@ -142,6 +148,8 @@ class ComprasTicketRecord {
       netWeight: netWeight ?? this.netWeight,
       humidityPercent: humidityPercent ?? this.humidityPercent,
       trashPercent: trashPercent ?? this.trashPercent,
+      trashKg: trashKg ?? this.trashKg,
+      trashCaptureMode: trashCaptureMode ?? this.trashCaptureMode,
       payableWeight: payableWeight ?? this.payableWeight,
       price: price ?? this.price,
       premium: premium ?? this.premium,
@@ -167,6 +175,8 @@ class ComprasTicketRecord {
     'net_weight': netWeight,
     'humidity_percent': humidityPercent,
     'trash_percent': trashPercent,
+    'trash_kg': trashKg,
+    'trash_capture_mode': trashCaptureMode,
     'payable_weight': payableWeight,
     'price': price,
     'premium': premium,
@@ -192,6 +202,10 @@ class ComprasTicketRecord {
       netWeight: ((row['net_weight'] as num?) ?? 0).toDouble(),
       humidityPercent: ((row['humidity_percent'] as num?) ?? 0).toDouble(),
       trashPercent: ((row['trash_percent'] as num?) ?? 0).toDouble(),
+      trashKg: ((row['trash_kg'] as num?) ?? 0).toDouble(),
+      trashCaptureMode: ((row['trash_capture_mode'] as String?) ?? 'PERCENT')
+          .trim()
+          .toUpperCase(),
       payableWeight: ((row['payable_weight'] as num?) ?? 0).toDouble(),
       price: ((row['price'] as num?) ?? 0).toDouble(),
       premium: ((row['premium'] as num?) ?? 0).toDouble(),
@@ -618,6 +632,8 @@ ComprasTicketRecord buildComprasTicketDraft({
   required double tareWeight,
   required double humidityPercent,
   required double trashPercent,
+  required double trashKg,
+  required String trashCaptureMode,
   required double price,
   required double premium,
   required String facturaStatus,
@@ -625,8 +641,17 @@ ComprasTicketRecord buildComprasTicketDraft({
   String coverageStatus = 'SIN_CUBRIR',
 }) {
   final netWeight = (grossWeight - tareWeight).clamp(0, double.infinity);
-  final discountFactor = 1 - ((humidityPercent + trashPercent) / 100);
-  final payableWeight = (netWeight * discountFactor).clamp(0, double.infinity);
+  final safeMode = trashCaptureMode.trim().toUpperCase() == 'KG'
+      ? 'KG'
+      : 'PERCENT';
+  final humidityKg = netWeight * (humidityPercent / 100);
+  final trashDiscountKg = safeMode == 'KG'
+      ? trashKg
+      : netWeight * (trashPercent / 100);
+  final payableWeight = (netWeight - humidityKg - trashDiscountKg).clamp(
+    0,
+    double.infinity,
+  );
   final amount = payableWeight * (price + premium);
   return ComprasTicketRecord(
     id: id,
@@ -641,6 +666,8 @@ ComprasTicketRecord buildComprasTicketDraft({
     netWeight: netWeight.toDouble(),
     humidityPercent: humidityPercent,
     trashPercent: trashPercent,
+    trashKg: trashKg,
+    trashCaptureMode: safeMode,
     payableWeight: payableWeight.toDouble(),
     price: price,
     premium: premium,
