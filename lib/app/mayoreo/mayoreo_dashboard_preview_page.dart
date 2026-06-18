@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 
 import '../auth/auth_access.dart';
+import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
@@ -546,7 +547,7 @@ class _MayoreoDashboardPreviewPageState
               _MayoreoHeaderButton(
                 label: 'Cerrar sesión',
                 icon: Icons.logout_rounded,
-                onTap: () async {},
+                onTap: () => signOutAndRouteToLogin(context),
               ),
             ],
           ),

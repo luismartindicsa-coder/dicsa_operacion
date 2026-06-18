@@ -10,6 +10,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
+import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
@@ -1144,7 +1145,7 @@ class _MayoreoPriceAdjustmentsPageState
           trailingBuilder: (_, _) => _MayoreoPriceHeaderButton(
             label: 'Cerrar sesión',
             icon: Icons.logout_rounded,
-            onTap: () async {},
+            onTap: () => signOutAndRouteToLogin(context),
           ),
           child: Stack(
             children: [

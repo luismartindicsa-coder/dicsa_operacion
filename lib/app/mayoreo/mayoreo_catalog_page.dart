@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
+import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
@@ -1978,7 +1979,7 @@ class _MayoreoCatalogPageState extends State<MayoreoCatalogPage>
           trailingBuilder: (_, _) => _MayoreoHeaderButton(
             label: 'Cerrar sesión',
             icon: Icons.logout_rounded,
-            onTap: () async {},
+            onTap: () => signOutAndRouteToLogin(context),
           ),
           child: Stack(
             children: [
