@@ -25,6 +25,7 @@ class AuthAccess {
   static const String _financeEmail = 'finanzas@dicsamx.com';
   static const String _menudeoEmail = 'menudeo@dicsamx.com';
   static const String _mayoreoEmail = 'mayoreo@dicsamx.com';
+  static const String _commercialContactEmail = 'contacto@dicsamx.com';
 
   static String _normalizeRoleValue(String? raw) {
     final value = (raw ?? '').toLowerCase().trim();
@@ -87,6 +88,10 @@ class AuthAccess {
 
   static bool _isMayoreoEmailValue(String? email) {
     return (email ?? '').toLowerCase().trim() == _mayoreoEmail;
+  }
+
+  static bool _isCommercialContactEmailValue(String? email) {
+    return (email ?? '').toLowerCase().trim() == _commercialContactEmail;
   }
 
   static bool _isDesarrolloComercialRoleValue(String role) {
@@ -169,7 +174,8 @@ class AuthAccess {
   static bool hasDesarrolloComercialAccess(AuthResolvedProfile? profile) {
     if (profile == null || !profile.isActive) return false;
     if (isDirectionRole(profile)) return true;
-    return _isDesarrolloComercialRoleValue(profile.role);
+    return _isDesarrolloComercialRoleValue(profile.role) ||
+        _isCommercialContactEmailValue(profile.email);
   }
 
   static Future<AuthResolvedProfile?> resolveCurrentProfile() async {
@@ -251,7 +257,7 @@ class AuthAccess {
 
   static String routeKeyForProfile(AuthResolvedProfile? profile) {
     if (profile == null || !profile.isActive) return 'blocked';
-    if (isDirectionRole(profile)) return 'dashboard_general';
+    if (canAccessGeneralDashboard(profile)) return 'dashboard_general';
     if (_isAccountingEmailValue(profile.email)) return 'purchase_orders';
     if (canAccessFinanzasArea(profile)) return 'finanzas_dashboard';
     if (hasDesarrolloComercialAccess(profile)) return 'commercial_dashboard';

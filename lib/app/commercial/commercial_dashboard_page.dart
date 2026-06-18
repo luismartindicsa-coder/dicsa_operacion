@@ -44,7 +44,7 @@ class _CommercialDashboardPageState extends State<CommercialDashboardPage> {
     final profile = await AuthAccess.resolveCurrentProfile();
     if (!mounted) return;
     setState(() {
-      _canReturnToDirection = AuthAccess.isDirectionRole(profile);
+      _canReturnToDirection = AuthAccess.canAccessGeneralDashboard(profile);
     });
   }
 
