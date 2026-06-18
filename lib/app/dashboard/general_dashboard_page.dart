@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_navigation.dart';
+import '../commercial/commercial_dashboard_page.dart';
 import '../compras/compras_dashboard_page.dart';
 import '../direction/direction_cash_entries_exits_page.dart';
 import '../direction/direction_cash_taxonomy_page.dart';
@@ -108,6 +109,17 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     await Navigator.of(context).push(
       appPageRoute(
         page: const FinanzasDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openCommercialDashboard() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const CommercialDashboardPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -228,6 +240,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       onOpenMayoreo: _openMayoreoPreviewDashboard,
       onOpenCompras: _openComprasDashboard,
       onOpenFinanzas: _openFinanzasDashboard,
+      onOpenCommercial: _openCommercialDashboard,
       onToggleDirectionExpanded: () =>
           setState(() => _directionExpanded = !_directionExpanded),
       onToggleAreasExpanded: () =>
@@ -245,6 +258,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
             onOpenMenudeoAnalysis: _openDirectionMenudeoAnalysis,
             onOpenPurchaseOrders: _openDirectionPurchaseOrders,
             onOpenMaintenance: _openDirectionMaintenance,
+            onOpenCommercial: _openCommercialDashboard,
           ),
         ),
       ),
@@ -295,12 +309,14 @@ class _DirectionDashboardCanvas extends StatelessWidget {
   final Future<void> Function() onOpenMenudeoAnalysis;
   final Future<void> Function() onOpenPurchaseOrders;
   final Future<void> Function() onOpenMaintenance;
+  final Future<void> Function() onOpenCommercial;
 
   const _DirectionDashboardCanvas({
     required this.onOpenVault,
     required this.onOpenMenudeoAnalysis,
     required this.onOpenPurchaseOrders,
     required this.onOpenMaintenance,
+    required this.onOpenCommercial,
   });
 
   @override
@@ -360,6 +376,17 @@ class _DirectionDashboardCanvas extends StatelessWidget {
                   badge: 'Mercado activo',
                   icon: Icons.storefront_rounded,
                   onTap: onOpenMenudeoAnalysis,
+                ),
+              ),
+              SizedBox(
+                width: 420,
+                child: _DirectionAnalysisEntryCard(
+                  title: 'Desarrollo Comercial',
+                  subtitle:
+                      'Alertas, directorio y contexto comercial segmentado sin tocar origen operativo.',
+                  badge: 'Seguimiento comercial',
+                  icon: Icons.radar_rounded,
+                  onTap: onOpenCommercial,
                 ),
               ),
             ],
@@ -1320,6 +1347,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final Future<void> Function()? onOpenMayoreo;
   final Future<void> Function()? onOpenCompras;
   final Future<void> Function()? onOpenFinanzas;
+  final Future<void> Function()? onOpenCommercial;
 
   const _GeneralDashboardSideMenu({
     required this.directionExpanded,
@@ -1335,6 +1363,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onOpenMayoreo,
     this.onOpenCompras,
     this.onOpenFinanzas,
+    this.onOpenCommercial,
   });
 
   @override
@@ -1459,6 +1488,13 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                       title: 'Finanzas',
                       subtitle: 'Centro preliminar de flujo y pagos',
                       onTap: onOpenFinanzas,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.radar_rounded,
+                      title: 'Desarrollo Comercial',
+                      subtitle: 'Radar y directorio comercial',
+                      onTap: onOpenCommercial,
                     ),
                   ],
                 ),

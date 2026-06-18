@@ -2245,178 +2245,222 @@ class _FinanzasProviderAccountsPageState
               ),
               child: AreaThemeScope(
                 tokens: finanzasAreaTokens,
-                child: ContractGlassCard(
-                  borderRadius: BorderRadius.circular(30),
-                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 760),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Evidencias de factura',
-                                    style: TextStyle(
-                                      fontSize: 24,
-                                      fontWeight: FontWeight.w900,
-                                      color: AreaThemeScope.of(
-                                        context,
-                                      ).primaryStrong,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    row.invoice.folio,
-                                    style: TextStyle(
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w700,
-                                      color: kFinanzasMutedInk,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            FilledButton.icon(
-                              onPressed: () async {
-                                final uploaded = await _pickAndUploadEvidence(
-                                  ownerType:
-                                      kFinanzasEvidenceOwnerTypeSupplierInvoice,
-                                  ownerId: row.invoice.id,
-                                  title: 'Subir evidencia de factura',
-                                );
-                                if (uploaded == null) return;
-                                changed = true;
-                                setLocalState(() {
-                                  localEvidences = <FinanzasEvidenceRecord>[
-                                    uploaded,
-                                    ...localEvidences,
-                                  ];
-                                });
-                              },
-                              icon: const Icon(Icons.upload_file_rounded),
-                              label: const Text('Subir'),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              onPressed: () =>
-                                  Navigator.of(dialogContext).pop(),
-                              icon: const Icon(Icons.close_rounded),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        if (localEvidences.isEmpty)
-                          const _ProviderAccountsPendingPane(
-                            label: 'Sin evidencias',
-                            subtitle:
-                                'Todavía no hay PDF o fotos ligadas a esta factura.',
-                          )
-                        else
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(maxHeight: 380),
-                            child: ListView.separated(
-                              shrinkWrap: true,
-                              itemCount: localEvidences.length,
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(height: 10),
-                              itemBuilder: (_, index) {
-                                final evidence = localEvidences[index];
-                                return Container(
-                                  padding: const EdgeInsets.fromLTRB(
-                                    14,
-                                    12,
-                                    14,
-                                    12,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.74),
-                                    borderRadius: BorderRadius.circular(18),
-                                    border: Border.all(
-                                      color: AreaThemeScope.of(
-                                        context,
-                                      ).border.withValues(alpha: 0.84),
-                                    ),
-                                  ),
-                                  child: Row(
-                                    children: [
-                                      Icon(
-                                        evidence.fileName
-                                                .toLowerCase()
-                                                .endsWith('.pdf')
-                                            ? Icons.picture_as_pdf_outlined
-                                            : Icons.photo_library_outlined,
+                child: Builder(
+                  builder: (scopedContext) => ContractGlassCard(
+                    borderRadius: BorderRadius.circular(30),
+                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 760),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Evidencias de factura',
+                                      style: TextStyle(
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w900,
                                         color: AreaThemeScope.of(
-                                          context,
+                                          scopedContext,
                                         ).primaryStrong,
                                       ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              evidence.fileName,
-                                              style: TextStyle(
-                                                fontSize: 13.5,
-                                                fontWeight: FontWeight.w900,
-                                                color: AreaThemeScope.of(
-                                                  context,
-                                                ).primaryStrong,
-                                              ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      row.invoice.folio,
+                                      style: TextStyle(
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.w700,
+                                        color: finanzasAreaTokens.badgeText,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              FilledButton.icon(
+                                style: contractPrimaryButtonStyle(
+                                  scopedContext,
+                                ),
+                                onPressed: () async {
+                                  final uploaded = await _pickAndUploadEvidence(
+                                    ownerType:
+                                        kFinanzasEvidenceOwnerTypeSupplierInvoice,
+                                    ownerId: row.invoice.id,
+                                    title: 'Subir evidencia de factura',
+                                  );
+                                  if (uploaded == null) return;
+                                  changed = true;
+                                  setLocalState(() {
+                                    localEvidences = <FinanzasEvidenceRecord>[
+                                      uploaded,
+                                      ...localEvidences,
+                                    ];
+                                  });
+                                },
+                                icon: const Icon(Icons.upload_file_rounded),
+                                label: const Text('Subir'),
+                              ),
+                              const SizedBox(width: 8),
+                              IconButton.filledTonal(
+                                style: IconButton.styleFrom(
+                                  backgroundColor: finanzasAreaTokens
+                                      .fieldSurface
+                                      .withValues(alpha: 0.92),
+                                  foregroundColor:
+                                      finanzasAreaTokens.primaryStrong,
+                                ),
+                                onPressed: () =>
+                                    Navigator.of(dialogContext).pop(),
+                                icon: const Icon(Icons.close_rounded),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          if (localEvidences.isEmpty)
+                            const _ProviderAccountsPendingPane(
+                              label: 'Sin evidencias',
+                              subtitle:
+                                  'Todavía no hay PDF o fotos ligadas a esta factura.',
+                            )
+                          else
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxHeight: 380),
+                              child: ListView.separated(
+                                shrinkWrap: true,
+                                itemCount: localEvidences.length,
+                                separatorBuilder: (_, _) =>
+                                    const SizedBox(height: 10),
+                                itemBuilder: (_, index) {
+                                  final evidence = localEvidences[index];
+                                  return Container(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      14,
+                                      12,
+                                      14,
+                                      12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      gradient: kFinanzasPanelGradient,
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(
+                                        color: finanzasAreaTokens.primaryStrong
+                                            .withValues(alpha: 0.34),
+                                      ),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: finanzasAreaTokens.glow
+                                              .withValues(alpha: 0.10),
+                                          blurRadius: 18,
+                                          offset: const Offset(0, 8),
+                                        ),
+                                      ],
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Container(
+                                          width: 42,
+                                          height: 42,
+                                          decoration: BoxDecoration(
+                                            color: finanzasAreaTokens
+                                                .primaryStrong
+                                                .withValues(alpha: 0.14),
+                                            borderRadius: BorderRadius.circular(
+                                              14,
                                             ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              '${_dateLabelStatic(evidence.uploadedAt)} · ${evidence.uploadedByName.isEmpty ? 'Usuario' : evidence.uploadedByName}',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.w700,
-                                                color: kFinanzasMutedInk,
-                                              ),
+                                            border: Border.all(
+                                              color: finanzasAreaTokens
+                                                  .primaryStrong
+                                                  .withValues(alpha: 0.34),
                                             ),
-                                            if (evidence.comment
-                                                .trim()
-                                                .isNotEmpty)
-                                              Padding(
-                                                padding: const EdgeInsets.only(
-                                                  top: 4,
+                                          ),
+                                          child: Icon(
+                                            evidence.fileName
+                                                    .toLowerCase()
+                                                    .endsWith('.pdf')
+                                                ? Icons.picture_as_pdf_outlined
+                                                : Icons.photo_library_outlined,
+                                            color: finanzasAreaTokens
+                                                .primaryStrong,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Column(
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(
+                                                evidence.fileName,
+                                                style: TextStyle(
+                                                  fontSize: 13.5,
+                                                  fontWeight: FontWeight.w900,
+                                                  color: Colors.white,
                                                 ),
-                                                child: Text(
-                                                  evidence.comment.trim(),
-                                                  style: TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w700,
-                                                    color: kFinanzasMutedInk,
+                                              ),
+                                              const SizedBox(height: 4),
+                                              Text(
+                                                '${_dateLabelStatic(evidence.uploadedAt)} · ${evidence.uploadedByName.isEmpty ? 'Usuario' : evidence.uploadedByName}',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: FontWeight.w700,
+                                                  color: finanzasAreaTokens
+                                                      .badgeText
+                                                      .withValues(alpha: 0.78),
+                                                ),
+                                              ),
+                                              if (evidence.comment
+                                                  .trim()
+                                                  .isNotEmpty)
+                                                Padding(
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                        top: 4,
+                                                      ),
+                                                  child: Text(
+                                                    evidence.comment.trim(),
+                                                    style: TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w700,
+                                                      color: finanzasAreaTokens
+                                                          .badgeText
+                                                          .withValues(
+                                                            alpha: 0.78,
+                                                          ),
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                          ],
+                                            ],
+                                          ),
                                         ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      OutlinedButton.icon(
-                                        onPressed: () => unawaited(
-                                          _openEvidenceFile(evidence),
+                                        const SizedBox(width: 12),
+                                        FilledButton.icon(
+                                          style: contractPrimaryButtonStyle(
+                                            scopedContext,
+                                          ),
+                                          onPressed: () => unawaited(
+                                            _openEvidenceFile(evidence),
+                                          ),
+                                          icon: const Icon(
+                                            Icons.download_rounded,
+                                            size: 18,
+                                          ),
+                                          label: const Text('Descargar'),
                                         ),
-                                        icon: const Icon(
-                                          Icons.download_rounded,
-                                          size: 18,
-                                        ),
-                                        label: const Text('Descargar'),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              },
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
                             ),
-                          ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -2449,80 +2493,139 @@ class _FinanzasProviderAccountsPageState
                 backgroundColor: Colors.transparent,
                 child: AreaThemeScope(
                   tokens: finanzasAreaTokens,
-                  child: ContractGlassCard(
-                    borderRadius: BorderRadius.circular(28),
-                    padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 520),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          _DialogHeader(
-                            title: title,
-                            subtitle: 'Adjunta PDF o evidencia fotográfica.',
-                            popContext: dialogContext,
-                          ),
-                          const SizedBox(height: 12),
-                          OutlinedButton.icon(
-                            style: contractSecondaryButtonStyle(context),
-                            onPressed: () async {
-                              try {
-                                final result = await FilePicker.platform
-                                    .pickFiles(
-                                      allowMultiple: false,
-                                      withData: true,
-                                      lockParentWindow: true,
-                                      type: FileType.custom,
-                                      allowedExtensions: const [
-                                        'pdf',
-                                        'jpg',
-                                        'jpeg',
-                                        'png',
-                                        'webp',
-                                        'heic',
-                                      ],
-                                    );
-                                if (result == null || result.files.isEmpty) {
-                                  return;
+                  child: Builder(
+                    builder: (scopedContext) => ContractGlassCard(
+                      borderRadius: BorderRadius.circular(28),
+                      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 520),
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _DialogHeader(
+                              title: title,
+                              subtitle: 'Adjunta PDF o evidencia fotográfica.',
+                              popContext: dialogContext,
+                            ),
+                            const SizedBox(height: 12),
+                            FilledButton.icon(
+                              style: contractPrimaryButtonStyle(scopedContext),
+                              onPressed: () async {
+                                try {
+                                  final result = await FilePicker.platform
+                                      .pickFiles(
+                                        allowMultiple: false,
+                                        withData: true,
+                                        lockParentWindow: true,
+                                        type: FileType.custom,
+                                        allowedExtensions: const [
+                                          'pdf',
+                                          'jpg',
+                                          'jpeg',
+                                          'png',
+                                          'webp',
+                                          'heic',
+                                        ],
+                                      );
+                                  if (result == null || result.files.isEmpty) {
+                                    return;
+                                  }
+                                  setLocalState(
+                                    () => picked = result.files.first,
+                                  );
+                                } catch (error) {
+                                  _toast(
+                                    'No se pudo abrir selector de archivos. $error',
+                                  );
                                 }
-                                setLocalState(
-                                  () => picked = result.files.first,
-                                );
-                              } catch (error) {
-                                _toast(
-                                  'No se pudo abrir selector de archivos. $error',
-                                );
-                              }
-                            },
-                            icon: const Icon(Icons.attach_file_rounded),
-                            label: Text(
-                              picked == null
-                                  ? 'Seleccionar PDF o foto'
-                                  : 'Archivo: ${picked!.name}',
-                              overflow: TextOverflow.ellipsis,
+                              },
+                              icon: const Icon(Icons.attach_file_rounded),
+                              label: Text(
+                                picked == null
+                                    ? 'Seleccionar PDF o foto'
+                                    : 'Archivo: ${picked!.name}',
+                                overflow: TextOverflow.ellipsis,
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 12),
-                          TextField(
-                            controller: commentC,
-                            minLines: 2,
-                            maxLines: 3,
-                            decoration: contractGlassFieldDecoration(
-                              context,
-                              hintText: 'Comentario',
-                              prefixIcon: const Icon(Icons.note_alt_outlined),
+                            if (picked != null) ...[
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.fromLTRB(
+                                  14,
+                                  12,
+                                  14,
+                                  12,
+                                ),
+                                decoration: BoxDecoration(
+                                  gradient: kFinanzasPanelGradient,
+                                  borderRadius: BorderRadius.circular(18),
+                                  border: Border.all(
+                                    color: finanzasAreaTokens.primaryStrong
+                                        .withValues(alpha: 0.34),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Container(
+                                      width: 40,
+                                      height: 40,
+                                      decoration: BoxDecoration(
+                                        color: finanzasAreaTokens.primaryStrong
+                                            .withValues(alpha: 0.14),
+                                        borderRadius: BorderRadius.circular(14),
+                                        border: Border.all(
+                                          color: finanzasAreaTokens
+                                              .primaryStrong
+                                              .withValues(alpha: 0.34),
+                                        ),
+                                      ),
+                                      child: Icon(
+                                        picked!.name.toLowerCase().endsWith(
+                                              '.pdf',
+                                            )
+                                            ? Icons.picture_as_pdf_outlined
+                                            : Icons.photo_library_outlined,
+                                        color: finanzasAreaTokens.primaryStrong,
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Text(
+                                        picked!.name,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 12),
+                            TextField(
+                              controller: commentC,
+                              minLines: 2,
+                              maxLines: 3,
+                              decoration: contractGlassFieldDecoration(
+                                scopedContext,
+                                hintText: 'Comentario de la evidencia',
+                                prefixIcon: const Icon(Icons.note_alt_outlined),
+                              ),
                             ),
-                          ),
-                          const SizedBox(height: 16),
-                          _DialogActionsRow(
-                            onCancel: () =>
-                                Navigator.of(dialogContext).pop(false),
-                            onConfirm: () =>
-                                Navigator.of(dialogContext).pop(true),
-                            confirmLabel: 'Guardar',
-                          ),
-                        ],
+                            const SizedBox(height: 16),
+                            _DialogActionsRow(
+                              onCancel: () =>
+                                  Navigator.of(dialogContext).pop(false),
+                              onConfirm: () =>
+                                  Navigator.of(dialogContext).pop(true),
+                              confirmLabel: 'Guardar',
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

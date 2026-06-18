@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'auth_access.dart';
 import '../maintenance/maintenance_page.dart';
 import '../maintenance/purchase_orders_page.dart';
+import '../commercial/commercial_dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
@@ -39,6 +40,8 @@ class _RoleRouterState extends State<RoleRouter> {
         return const MayoreoDashboardPreviewPage();
       case 'finanzas_dashboard':
         return const FinanzasDashboardPage();
+      case 'commercial_dashboard':
+        return const CommercialDashboardPage();
       case 'services':
         return const ServicesPage();
       case 'purchase_orders':

@@ -284,7 +284,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
       bankMovements = await FinanzasBankAccountsStore.loadMovements();
     } catch (_) {}
 
-    final rows = sourceRows
+    final baseRows = sourceRows
         .map((source) {
           final saved = persistedRows[source.id];
           return saved == null
@@ -292,8 +292,10 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
               : saved.syncOperational(source);
         })
         .toList(growable: false);
+    final rows = _reconcileRowsWithBankMovements(baseRows, bankMovements);
 
     if (!mounted) return;
+    final baseSignature = _rowsSignature(baseRows);
     final signature = _rowsSignature(rows);
     setState(() {
       _rows = rows;
@@ -320,8 +322,65 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
       }
       _currentPage = _effectiveCurrentPageFor(rows.length);
     });
-    _lastPersistedRowsSignature = signature;
-    _lastQueuedRowsSignature = signature;
+    _lastPersistedRowsSignature = baseSignature;
+    _lastQueuedRowsSignature = baseSignature;
+    if (signature != baseSignature) {
+      _persistState();
+    }
+  }
+
+  List<_MayoreoAccountRow> _reconcileRowsWithBankMovements(
+    List<_MayoreoAccountRow> rows,
+    List<FinanzasBankMovementRecord> bankMovements,
+  ) {
+    final creditsByAccountId = <String, double>{};
+    final latestMovementDateByAccountId = <String, DateTime>{};
+    for (final movement in bankMovements) {
+      if (movement.sourceType != 'VENTA_FACTURA') continue;
+      final accountId = (movement.linkedExternalRef ?? '').trim();
+      if (accountId.isEmpty) continue;
+      final appliedAmount = movement.creditAmount.clamp(0, double.infinity);
+      if (appliedAmount <= 0.009) continue;
+      creditsByAccountId.update(
+        accountId,
+        (value) => value + appliedAmount,
+        ifAbsent: () => appliedAmount.toDouble(),
+      );
+      final previousDate = latestMovementDateByAccountId[accountId];
+      if (previousDate == null || movement.date.isAfter(previousDate)) {
+        latestMovementDateByAccountId[accountId] = movement.date;
+      }
+    }
+    return rows
+        .map((row) {
+          final bankPaidAmount = creditsByAccountId[row.id];
+          if (bankPaidAmount == null ||
+              row.operationType != _MayoreoAccountsOperationType.factura) {
+            return row;
+          }
+          final effectivePaidAmount = bankPaidAmount
+              .clamp(0, row.approvedAmount)
+              .toDouble();
+          final effectiveSettlementDate = effectivePaidAmount <= 0.009
+              ? null
+              : latestMovementDateByAccountId[row.id];
+          final effectiveStatus = _normalizeFinancialStatus(
+            baseStatus: row.status,
+            operationType: row.operationType,
+            isPalomarAccount: row.isPalomarAccount,
+            documentNumber: row.documentNumber,
+            documentDate: row.documentDate,
+            settlementDate: effectiveSettlementDate,
+            paidAmount: effectivePaidAmount,
+            approvedAmount: row.approvedAmount,
+          );
+          return row.copyWith(
+            paidAmount: effectivePaidAmount,
+            settlementDate: effectiveSettlementDate,
+            status: effectiveStatus,
+          );
+        })
+        .toList(growable: false);
   }
 
   void _setupAutoRefresh() {

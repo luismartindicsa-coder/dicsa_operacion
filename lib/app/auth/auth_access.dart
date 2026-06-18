@@ -89,6 +89,13 @@ class AuthAccess {
     return (email ?? '').toLowerCase().trim() == _mayoreoEmail;
   }
 
+  static bool _isDesarrolloComercialRoleValue(String role) {
+    return role == 'desarrollo_comercial' ||
+        role == 'commercial_development' ||
+        role.startsWith('desarrollo_comercial_') ||
+        role.endsWith('_desarrollo_comercial');
+  }
+
   static bool _roleIn(AuthResolvedProfile? profile, Set<String> roles) {
     if (profile == null || !profile.isActive) return false;
     return roles.contains(profile.role);
@@ -157,6 +164,12 @@ class AuthAccess {
     if (isDirectionRole(profile)) return true;
     return _isMayoreoRoleValue(profile.role) ||
         _isMayoreoEmailValue(profile.email);
+  }
+
+  static bool hasDesarrolloComercialAccess(AuthResolvedProfile? profile) {
+    if (profile == null || !profile.isActive) return false;
+    if (isDirectionRole(profile)) return true;
+    return _isDesarrolloComercialRoleValue(profile.role);
   }
 
   static Future<AuthResolvedProfile?> resolveCurrentProfile() async {
@@ -241,6 +254,7 @@ class AuthAccess {
     if (isDirectionRole(profile)) return 'dashboard_general';
     if (_isAccountingEmailValue(profile.email)) return 'purchase_orders';
     if (canAccessFinanzasArea(profile)) return 'finanzas_dashboard';
+    if (hasDesarrolloComercialAccess(profile)) return 'commercial_dashboard';
     if (hasMenudeoAccess(profile)) return 'menudeo_dashboard';
     if (hasMayoreoAccess(profile)) return 'mayoreo_dashboard';
 

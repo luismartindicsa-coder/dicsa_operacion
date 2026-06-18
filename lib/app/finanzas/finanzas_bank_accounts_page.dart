@@ -800,7 +800,15 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
     );
     try {
       if (existingRow != null) {
-        await FinanzasBankAccountsStore.saveMovement(movement);
+        if (existingRow.sourceType == 'VENTA_FACTURA' ||
+            movement.sourceType == 'VENTA_FACTURA') {
+          await FinanzasBankAccountsStore.updateMovementAndApplyClientPayment(
+            previousMovement: existingRow,
+            nextMovement: movement,
+          );
+        } else {
+          await FinanzasBankAccountsStore.saveMovement(movement);
+        }
       } else {
         await FinanzasBankAccountsStore.createMovementAndApply(
           movement: movement,

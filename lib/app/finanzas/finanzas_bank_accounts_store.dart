@@ -476,23 +476,11 @@ class FinanzasBankAccountsStore {
     final providerCounterpartyId =
         linkedSupplierInvoice?.providerId ?? movement.counterpartyCompanyId;
     if (linkedClientAccount != null) {
-      final appliedAmount = movement.creditAmount.clamp(0, double.infinity);
-      if (appliedAmount <= 0.009) return;
-      final nextPaidAmount = (linkedClientAccount.paidAmount + appliedAmount)
-          .clamp(0, linkedClientAccount.approvedAmount)
-          .toDouble();
-      final fullySettled =
-          nextPaidAmount >= linkedClientAccount.approvedAmount - 0.009;
-      await Supabase.instance.client
-          .from(_kMayoreoAccountsTable)
-          .update(<String, dynamic>{
-            'paid_amount': nextPaidAmount,
-            'status': fullySettled ? 'pagada' : linkedClientAccount.status,
-            'settlement_date': fullySettled
-                ? movement.date.toIso8601String()
-                : null,
-          })
-          .eq('id', linkedClientAccount.id);
+      await _applyClientPaymentMovementToMayoreoAccount(
+        accountId: linkedClientAccount.id,
+        movementDate: movement.date,
+        appliedAmount: movement.creditAmount,
+      );
       return;
     }
     if (linkedFixedPayment != null) {
@@ -619,6 +607,116 @@ class FinanzasBankAccountsStore {
         .toList(growable: false);
     if (updatedTickets.isEmpty) return;
     await ComprasTicketsStore.saveTickets(updatedTickets);
+  }
+
+  static Future<void> updateMovementAndApplyClientPayment({
+    required FinanzasBankMovementRecord previousMovement,
+    required FinanzasBankMovementRecord nextMovement,
+  }) async {
+    if (previousMovement.sourceType == 'VENTA_FACTURA' &&
+        previousMovement.linkedExternalRef != null &&
+        previousMovement.linkedExternalRef!.isNotEmpty) {
+      await _reverseClientPaymentMovementFromMayoreoAccount(
+        accountId: previousMovement.linkedExternalRef!,
+        reversedAmount: previousMovement.creditAmount,
+      );
+    }
+    await saveMovement(nextMovement);
+    if (nextMovement.sourceType == 'VENTA_FACTURA' &&
+        nextMovement.linkedExternalRef != null &&
+        nextMovement.linkedExternalRef!.isNotEmpty) {
+      await _applyClientPaymentMovementToMayoreoAccount(
+        accountId: nextMovement.linkedExternalRef!,
+        movementDate: nextMovement.date,
+        appliedAmount: nextMovement.creditAmount,
+      );
+    }
+  }
+
+  static Future<void> _applyClientPaymentMovementToMayoreoAccount({
+    required String accountId,
+    required DateTime movementDate,
+    required double appliedAmount,
+  }) async {
+    final normalizedAmount = appliedAmount.clamp(0, double.infinity).toDouble();
+    if (normalizedAmount <= 0.009 || accountId.trim().isEmpty) return;
+    final rows = await Supabase.instance.client
+        .from(_kMayoreoAccountsTable)
+        .select(
+          'id, approved_amount, paid_amount, status, operation_type, settlement_date',
+        )
+        .eq('id', accountId)
+        .limit(1);
+    if ((rows as List).isEmpty) return;
+    final row = Map<String, dynamic>.from(rows.first as Map);
+    final approvedAmount = ((row['approved_amount'] as num?) ?? 0).toDouble();
+    final paidAmount = ((row['paid_amount'] as num?) ?? 0).toDouble();
+    final currentStatus = (row['status'] ?? '').toString();
+    final nextPaidAmount = (paidAmount + normalizedAmount)
+        .clamp(0, approvedAmount)
+        .toDouble();
+    final fullySettled = nextPaidAmount >= approvedAmount - 0.009;
+    final partiallySettled = nextPaidAmount > 0.009 && !fullySettled;
+    await Supabase.instance.client
+        .from(_kMayoreoAccountsTable)
+        .update(<String, dynamic>{
+          'paid_amount': nextPaidAmount,
+          'status': fullySettled
+              ? 'pagada'
+              : partiallySettled
+              ? 'pagoParcial'
+              : currentStatus,
+          'settlement_date': nextPaidAmount > 0.009
+              ? movementDate.toIso8601String()
+              : null,
+        })
+        .eq('id', accountId);
+  }
+
+  static Future<void> _reverseClientPaymentMovementFromMayoreoAccount({
+    required String accountId,
+    required double reversedAmount,
+  }) async {
+    final normalizedAmount = reversedAmount
+        .clamp(0, double.infinity)
+        .toDouble();
+    if (normalizedAmount <= 0.009 || accountId.trim().isEmpty) return;
+    final rows = await Supabase.instance.client
+        .from(_kMayoreoAccountsTable)
+        .select(
+          'id, approved_amount, paid_amount, status, operation_type, settlement_date',
+        )
+        .eq('id', accountId)
+        .limit(1);
+    if ((rows as List).isEmpty) return;
+    final row = Map<String, dynamic>.from(rows.first as Map);
+    final approvedAmount = ((row['approved_amount'] as num?) ?? 0).toDouble();
+    final paidAmount = ((row['paid_amount'] as num?) ?? 0).toDouble();
+    final operationType = (row['operation_type'] ?? 'factura').toString();
+    final nextPaidAmount = (paidAmount - normalizedAmount)
+        .clamp(0, approvedAmount)
+        .toDouble();
+    final nextStatus = nextPaidAmount <= 0.009
+        ? operationType == 'cheque'
+              ? 'chequePendienteCanje'
+              : 'facturadaPendientePago'
+        : nextPaidAmount >= approvedAmount - 0.009
+        ? operationType == 'cheque'
+              ? 'chequeCanjeado'
+              : 'pagada'
+        : operationType == 'cheque'
+        ? 'chequePendienteCanje'
+        : 'pagoParcial';
+    await Supabase.instance.client
+        .from(_kMayoreoAccountsTable)
+        .update(<String, dynamic>{
+          'paid_amount': nextPaidAmount,
+          'status': nextStatus,
+          'settlement_date': nextPaidAmount >= approvedAmount - 0.009
+              ? row['settlement_date']
+              : null,
+        })
+        .eq('id', accountId);
   }
 }
 

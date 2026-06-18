@@ -16,6 +16,7 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
+import '../finanzas/finanzas_bank_accounts_store.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
 import 'mayoreo_data_store.dart';
@@ -97,6 +98,8 @@ class _MayoreoDashboardPreviewPageState
     String? salesRaw;
     String? accountsRaw;
     String? palomarRaw;
+    List<FinanzasBankMovementRecord> bankMovements =
+        const <FinanzasBankMovementRecord>[];
     try {
       final responses = await Future.wait([
         _supa.from(_kMayoreoPendingItemsTable).select().order('due_date'),
@@ -104,6 +107,9 @@ class _MayoreoDashboardPreviewPageState
         _supa.from(_kMayoreoAccountsTable).select(),
         _supa.from(_kMayoreoPalomarMovementsTable).select(),
       ]);
+      try {
+        bankMovements = await FinanzasBankAccountsStore.loadMovements();
+      } catch (_) {}
       tasks = (responses[0] as List)
           .map(
             (item) => _MayoreoPendingTask.fromSupabase(
@@ -159,6 +165,7 @@ class _MayoreoDashboardPreviewPageState
       accountsRaw: accountsRaw,
       palomarRaw: palomarRaw,
       catalogSnapshot: catalogSnapshot,
+      bankMovements: bankMovements,
     );
     if (!mounted) return;
     setState(() {
@@ -1902,6 +1909,8 @@ _MayoreoDashboardSummary _buildDashboardSummary({
   required String? accountsRaw,
   required String? palomarRaw,
   required MayoreoCatalogSnapshot catalogSnapshot,
+  List<FinanzasBankMovementRecord> bankMovements =
+      const <FinanzasBankMovementRecord>[],
 }) {
   const prioritizedPalomarMaterials = <String>[
     'MIXTO',
@@ -1945,6 +1954,19 @@ _MayoreoDashboardSummary _buildDashboardSummary({
   final materialsById = <String, MayoreoCatalogMaterialRecord>{
     for (final row in catalogSnapshot.materials) row.id: row,
   };
+  final bankCreditsByAccountId = <String, double>{};
+  for (final movement in bankMovements) {
+    if (movement.sourceType != 'VENTA_FACTURA') continue;
+    final accountId = (movement.linkedExternalRef ?? '').trim();
+    if (accountId.isEmpty) continue;
+    final appliedAmount = movement.creditAmount.clamp(0, double.infinity);
+    if (appliedAmount <= 0.009) continue;
+    bankCreditsByAccountId.update(
+      accountId,
+      (value) => value + appliedAmount,
+      ifAbsent: () => appliedAmount.toDouble(),
+    );
+  }
   final prioritizedIndex = <String, int>{
     for (var i = 0; i < prioritizedPalomarMaterials.length; i++)
       prioritizedPalomarMaterials[i]: i,
@@ -2015,20 +2037,34 @@ _MayoreoDashboardSummary _buildDashboardSummary({
         final status = ((row['status'] as String?) ?? '').toLowerCase();
         final approvedAmount = ((row['approvedAmount'] as num?) ?? 0)
             .toDouble();
+        final accountId = ((row['id'] as String?) ?? '').trim();
+        final paidAmount = ((row['paidAmount'] as num?) ?? 0).toDouble();
+        final effectivePaidAmount = accountId.isEmpty
+            ? paidAmount
+            : (bankCreditsByAccountId[accountId] ?? paidAmount)
+                  .clamp(0, approvedAmount)
+                  .toDouble();
+        final pendingAmount = (approvedAmount - paidAmount)
+            .clamp(0, double.infinity)
+            .toDouble();
+        final effectivePendingAmount = (approvedAmount - effectivePaidAmount)
+            .clamp(0, double.infinity)
+            .toDouble();
         final estimatedPaymentDate = DateTime.tryParse(
           (row['estimatedPaymentDate'] as String?) ?? '',
         );
         final isOpen =
             status != 'pagada' &&
             status != 'chequecanjeado' &&
-            status != 'cancelada';
+            status != 'cancelada' &&
+            effectivePendingAmount > 0.009;
         if (!isOpen) continue;
         if (operationType != 'cheque' &&
             estimatedPaymentDate != null &&
             !_dateOnly(estimatedPaymentDate).isBefore(weekStart) &&
             !_dateOnly(estimatedPaymentDate).isAfter(weekEnd)) {
           weeklyExpectedPaymentCount += 1;
-          weeklyExpectedPaymentAmount += approvedAmount;
+          weeklyExpectedPaymentAmount += effectivePendingAmount;
           final clientName = ((row['clientName'] as String?) ?? '').trim();
           final documentNumber = ((row['documentNumber'] as String?) ?? '')
               .trim();
@@ -2038,7 +2074,7 @@ _MayoreoDashboardSummary _buildDashboardSummary({
               documentNumber: documentNumber.isEmpty
                   ? 'FACTURA SIN NUMERO'
                   : documentNumber,
-              amount: approvedAmount,
+              amount: effectivePendingAmount,
               estimatedPaymentDate: _dateOnly(estimatedPaymentDate),
             ),
           );
@@ -2048,7 +2084,7 @@ _MayoreoDashboardSummary _buildDashboardSummary({
               estimatedPaymentDate,
             ).isAfter(DateUtils.dateOnly(DateTime.now()))) {
           overdueEstimatedPaymentCount += 1;
-          overdueEstimatedPaymentAmount += approvedAmount;
+          overdueEstimatedPaymentAmount += pendingAmount;
           final clientName = ((row['clientName'] as String?) ?? '').trim();
           final documentNumber = ((row['documentNumber'] as String?) ?? '')
               .trim();
@@ -2056,17 +2092,13 @@ _MayoreoDashboardSummary _buildDashboardSummary({
           final operationLabel = operationType == 'cheque'
               ? 'CHEQUE'
               : 'FACTURA';
-          final pendingAmount =
-              ((((row['approvedAmount'] as num?) ?? 0).toDouble()) -
-                      (((row['paidAmount'] as num?) ?? 0).toDouble()))
-                  .clamp(0, double.infinity);
           final detailParts = <String>[
             if (documentNumber.isNotEmpty)
               documentNumber
             else
               '$operationLabel SIN NUMERO',
             if (remision.isNotEmpty) 'REMISION $remision',
-            _money(pendingAmount),
+            _money(effectivePendingAmount),
           ];
           automaticPendingTasks.add(
             _MayoreoPendingTask(
@@ -2084,10 +2116,10 @@ _MayoreoDashboardSummary _buildDashboardSummary({
         accountsOpenCount += 1;
         if (operationType == 'cheque') {
           pendingCheckCount += 1;
-          pendingCheckAmount += approvedAmount;
+          pendingCheckAmount += effectivePendingAmount;
         } else {
           pendingInvoiceCount += 1;
-          pendingInvoiceAmount += approvedAmount;
+          pendingInvoiceAmount += effectivePendingAmount;
         }
       }
     }
