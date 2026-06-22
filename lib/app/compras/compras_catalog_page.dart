@@ -449,6 +449,91 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     }
   }
 
+  Future<void> _persistMaterialsOnly() async {
+    final materials = _materials
+        .map(
+          (row) => ComprasCatalogMaterialRecord(
+            id: row.id,
+            code: row.code,
+            level: row.level,
+            name: row.name,
+            unit: row.unit,
+            category: row.category,
+            family: row.family,
+            generalMaterialId: row.generalMaterialId,
+            active: row.active,
+            notes: row.notes,
+          ),
+        )
+        .toList(growable: false);
+    try {
+      _persistingCatalogSnapshot = true;
+      await ComprasDataStore.saveMaterialRecords(materials);
+    } catch (e) {
+      final code = e is PostgrestException ? e.code?.toString() : null;
+      final details = e is PostgrestException ? e.details?.toString() : null;
+      final detail = switch (e) {
+        PostgrestException() => [
+          if (code != null && code.trim().isNotEmpty) 'code $code',
+          e.message,
+          if (details != null && details.trim().isNotEmpty) details,
+        ].join(' · '),
+        _ => e.toString(),
+      };
+      debugPrint('ComprasCatalog materials save failed: $detail');
+      if (mounted) {
+        _toast('No se pudo guardar Materiales. $detail');
+        await _loadCatalogSnapshot();
+      }
+    } finally {
+      _persistingCatalogSnapshot = false;
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        unawaited(_refreshCatalogIfIdle(force: true));
+      }
+    }
+  }
+
+  Future<void> _persistPricesOnly() async {
+    final prices = _prices
+        .map(
+          (row) => ComprasCatalogPriceRecord(
+            id: row.id,
+            companyId: row.companyId,
+            materialId: row.materialId,
+            amount: row.amount,
+            active: row.active,
+            notes: row.notes,
+            updatedAt: row.updatedAt,
+          ),
+        )
+        .toList(growable: false);
+    try {
+      _persistingCatalogSnapshot = true;
+      await ComprasDataStore.savePriceRecords(prices);
+    } catch (e) {
+      final code = e is PostgrestException ? e.code?.toString() : null;
+      final details = e is PostgrestException ? e.details?.toString() : null;
+      final detail = switch (e) {
+        PostgrestException() => [
+          if (code != null && code.trim().isNotEmpty) 'code $code',
+          e.message,
+          if (details != null && details.trim().isNotEmpty) details,
+        ].join(' · '),
+        _ => e.toString(),
+      };
+      debugPrint('ComprasCatalog prices save failed: $detail');
+      if (mounted) {
+        _toast('No se pudo guardar Precios. $detail');
+        await _loadCatalogSnapshot();
+      }
+    } finally {
+      _persistingCatalogSnapshot = false;
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        unawaited(_refreshCatalogIfIdle(force: true));
+      }
+    }
+  }
+
   Future<void> _resolveNavigationAccess() async {
     final profile = await AuthAccess.resolveCurrentProfile();
     if (!mounted) return;
@@ -746,7 +831,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _selectedRowKey = 'ma:${material.id}';
       _resetMaterialDraft();
     });
-    unawaited(_persistCompaniesOnly());
+    unawaited(_persistMaterialsOnly());
     _materialNameFocus.requestFocus();
   }
 
@@ -790,7 +875,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       }
       _resetPriceDraft();
     });
-    unawaited(_persistCompaniesOnly());
+    unawaited(_persistPricesOnly());
     if (existing != null) {
       _toast('Se actualizó el precio existente para ese proveedor y material');
     }
@@ -1307,7 +1392,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           )
           .toList(growable: false);
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistMaterialsOnly());
   }
 
   void _togglePriceActive(_MayoreoPrice row) {
@@ -1319,7 +1404,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           )
           .toList(growable: false);
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistPricesOnly());
   }
 
   void _toggleSelectedActive() {
@@ -1355,7 +1440,11 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
               .toList(growable: false);
       }
     });
-    unawaited(_persistCatalogSnapshot());
+    if (_activeTabIndex == 1) {
+      unawaited(_persistMaterialsOnly());
+    } else {
+      unawaited(_persistPricesOnly());
+    }
   }
 
   void _deleteCompany(_MayoreoCompany row) {
@@ -1368,7 +1457,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _companies = _companies.where((item) => item.id != row.id).toList();
       _removeSelectionKey('co:${row.id}');
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistCompaniesOnly());
   }
 
   void _deleteMaterial(_MayoreoMaterial row) {
@@ -1381,7 +1470,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _materials = _materials.where((item) => item.id != row.id).toList();
       _removeSelectionKey('ma:${row.id}');
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistMaterialsOnly());
   }
 
   void _deletePrice(_MayoreoPrice row) {
@@ -1389,7 +1478,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _prices = _prices.where((item) => item.id != row.id).toList();
       _removeSelectionKey('pr:${row.id}');
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistPricesOnly());
   }
 
   List<String> _currentRowKeys() {
@@ -1888,7 +1977,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _editingRowKey = null;
       _setSingleSelection('ma:${row.id}');
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistMaterialsOnly());
     _focusGridRows();
   }
 
@@ -1929,7 +2018,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _editingRowKey = null;
       _setSingleSelection('pr:${row.id}');
     });
-    unawaited(_persistCatalogSnapshot());
+    unawaited(_persistPricesOnly());
     _focusGridRows();
   }
 
@@ -1994,8 +2083,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     });
     if (_activeTabIndex == 0) {
       unawaited(_persistCompaniesOnly());
+    } else if (_activeTabIndex == 1) {
+      unawaited(_persistMaterialsOnly());
     } else {
-      unawaited(_persistCatalogSnapshot());
+      unawaited(_persistPricesOnly());
     }
   }
 
