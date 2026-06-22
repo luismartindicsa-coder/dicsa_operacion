@@ -97,123 +97,126 @@ class _CommercialDashboardPageState extends State<CommercialDashboardPage> {
 
     return AreaThemeScope(
       tokens: commercialAreaTokens,
-      child: Focus(
-        autofocus: true,
-        onKeyEvent: (_, event) {
-          if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          if (event.logicalKey == LogicalKeyboardKey.escape && _menuOpen) {
-            setState(() => _menuOpen = false);
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
-        child: AppShell(
-          background: const CommercialAreaBackground(),
-          wrapBodyInGlass: false,
-          animateHeaderSlots: false,
-          animateBody: !widget.instantOpen,
-          headerBodySpacing: 8,
-          padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
-          leadingBuilder: (_, _) => CommercialAreaHeaderButton(
-            label: _menuOpen ? 'Cerrar panel' : 'Navegación',
-            icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
-            onTapSync: () => setState(() => _menuOpen = !_menuOpen),
-          ),
-          centerBuilder: (_, _) => const _CommercialHeaderBrand(),
-          trailingBuilder: (_, _) => Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CommercialAreaHeaderButton(
-                label: 'Recargar',
-                icon: Icons.refresh_rounded,
-                compact: true,
-                onTap: _loadDashboard,
-              ),
-              const SizedBox(width: 10),
-              CommercialAreaHeaderButton(
-                label: 'Cerrar sesión',
-                icon: Icons.logout_rounded,
-                onTap: _logout,
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1520),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(56, 0, 6, 0),
-                    child: _CommercialDashboardBody(
-                      loading: _loading,
-                      alerts: alerts,
-                      materials: materials,
-                      counterparties: counterparties,
-                      generalMaterials: generalMaterials,
-                      generalCounterparties: generalCounterparties,
-                      catalogPriceRows: catalogPriceRows,
-                      onOpenDirectory: _openDirectory,
-                      onReload: _loadDashboard,
-                    ),
-                  ),
+      child: Theme(
+        data: buildCommercialAreaTheme(Theme.of(context)),
+        child: Focus(
+          autofocus: true,
+          onKeyEvent: (_, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            if (event.logicalKey == LogicalKeyboardKey.escape && _menuOpen) {
+              setState(() => _menuOpen = false);
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: AppShell(
+            background: const CommercialAreaBackground(),
+            wrapBodyInGlass: false,
+            animateHeaderSlots: false,
+            animateBody: !widget.instantOpen,
+            headerBodySpacing: 8,
+            padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
+            leadingBuilder: (_, _) => CommercialAreaHeaderButton(
+              label: _menuOpen ? 'Cerrar panel' : 'Navegación',
+              icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
+              onTapSync: () => setState(() => _menuOpen = !_menuOpen),
+            ),
+            centerBuilder: (_, _) => const _CommercialHeaderBrand(),
+            trailingBuilder: (_, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CommercialAreaHeaderButton(
+                  label: 'Recargar',
+                  icon: Icons.refresh_rounded,
+                  compact: true,
+                  onTap: _loadDashboard,
                 ),
-              ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: _menuOpen ? 1 : 0,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
+                const SizedBox(width: 10),
+                CommercialAreaHeaderButton(
+                  label: 'Cerrar sesión',
+                  icon: Icons.logout_rounded,
+                  onTap: _logout,
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1520),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(56, 0, 6, 0),
+                      child: _CommercialDashboardBody(
+                        loading: _loading,
+                        alerts: alerts,
+                        materials: materials,
+                        counterparties: counterparties,
+                        generalMaterials: generalMaterials,
+                        generalCounterparties: generalCounterparties,
+                        catalogPriceRows: catalogPriceRows,
+                        onOpenDirectory: _openDirectory,
+                        onReload: _loadDashboard,
                       ),
                     ),
                   ),
                 ),
-              ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                left: _menuOpen ? 0 : -332,
-                top: 0,
-                bottom: 0,
-                width: 320,
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: CommercialAreaSidePanel(
-                    label: 'Desarrollo Comercial',
-                    canReturnToDirection: _canReturnToDirection,
-                    areaItems: [
-                      const CommercialAreaNavEntry(
-                        icon: Icons.radar_rounded,
-                        title: 'Radar Comercial',
-                        subtitle: 'Precio, alertas y contexto',
-                        accented: true,
-                      ),
-                      CommercialAreaNavEntry(
-                        icon: Icons.badge_outlined,
-                        title: 'Directorio Comercial',
-                        subtitle: 'Cuentas, contactos y seguimiento',
-                        onTap: _openDirectory,
-                      ),
-                    ],
-                    accessItems: [
-                      if (_canReturnToDirection)
-                        CommercialAreaNavEntry(
-                          icon: Icons.assessment_outlined,
-                          title: 'Dashboard Dirección',
-                          subtitle: 'Vista ejecutiva multiarea',
-                          onTap: _openDirectionDashboard,
+                Positioned.fill(
+                  child: IgnorePointer(
+                    ignoring: !_menuOpen,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 180),
+                      opacity: _menuOpen ? 1 : 0,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _menuOpen = false),
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.12),
                         ),
-                    ],
+                      ),
+                    ),
                   ),
                 ),
-              ),
-            ],
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  left: _menuOpen ? 0 : -332,
+                  top: 0,
+                  bottom: 0,
+                  width: 320,
+                  child: IgnorePointer(
+                    ignoring: !_menuOpen,
+                    child: CommercialAreaSidePanel(
+                      label: 'Desarrollo Comercial',
+                      canReturnToDirection: _canReturnToDirection,
+                      areaItems: [
+                        const CommercialAreaNavEntry(
+                          icon: Icons.radar_rounded,
+                          title: 'Radar Comercial',
+                          subtitle: 'Precio, alertas y contexto',
+                          accented: true,
+                        ),
+                        CommercialAreaNavEntry(
+                          icon: Icons.badge_outlined,
+                          title: 'Directorio Comercial',
+                          subtitle: 'Cuentas, contactos y seguimiento',
+                          onTap: _openDirectory,
+                        ),
+                      ],
+                      accessItems: [
+                        if (_canReturnToDirection)
+                          CommercialAreaNavEntry(
+                            icon: Icons.assessment_outlined,
+                            title: 'Dashboard Dirección',
+                            subtitle: 'Vista ejecutiva multiarea',
+                            onTap: _openDirectionDashboard,
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

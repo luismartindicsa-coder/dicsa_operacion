@@ -239,190 +239,193 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
 
     return AreaThemeScope(
       tokens: commercialAreaTokens,
-      child: Focus(
-        autofocus: true,
-        onKeyEvent: (_, event) {
-          if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          if (event.logicalKey == LogicalKeyboardKey.escape && _menuOpen) {
-            setState(() => _menuOpen = false);
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
-        child: AppShell(
-          background: const CommercialAreaBackground(),
-          wrapBodyInGlass: false,
-          animateHeaderSlots: false,
-          animateBody: !widget.instantOpen,
-          headerBodySpacing: 8,
-          padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
-          leadingBuilder: (_, _) => CommercialAreaHeaderButton(
-            label: _menuOpen ? 'Cerrar panel' : 'Navegación',
-            icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
-            onTapSync: () => setState(() => _menuOpen = !_menuOpen),
-          ),
-          centerBuilder: (_, _) => const _CommercialDirectoryHeaderBrand(
-            title: 'Directorio Comercial',
-            subtitle: 'Gestión de cuentas, segmentos y contexto comercial',
-          ),
-          trailingBuilder: (_, _) => Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              CommercialAreaHeaderButton(
-                label: 'Recargar',
-                icon: Icons.refresh_rounded,
-                compact: true,
-                onTap: _loadDirectory,
-              ),
-              const SizedBox(width: 10),
-              CommercialAreaHeaderButton(
-                label: 'Cerrar sesión',
-                icon: Icons.logout_rounded,
-                onTap: _logout,
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1480),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(56, 0, 6, 0),
-                    child: Column(
-                      children: [
-                        _DirectoryTopBar(
-                          visibleCount: rows.length,
-                          alertCount: allRows
-                              .where((row) => row.activeAlertCount > 0)
-                              .length,
-                          onlyAlerts: _onlyAlerts,
-                          onToggleAlerts: () =>
-                              setState(() => _onlyAlerts = !_onlyAlerts),
-                          onCreateAccount: _saving
-                              ? null
-                              : _createManualAccount,
-                          onQueryChanged: (value) =>
-                              setState(() => _query = value),
-                        ),
-                        const SizedBox(height: 20),
-                        Expanded(
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Expanded(
-                                flex: 32,
-                                child: _DirectoryGlassPanel(
-                                  child: _loading
-                                      ? const Center(
-                                          child: CircularProgressIndicator(),
-                                        )
-                                      : rows.isEmpty
-                                      ? const _DirectoryEmptyList()
-                                      : ListView.separated(
-                                          itemCount: rows.length,
-                                          separatorBuilder: (_, _) =>
-                                              const SizedBox(height: 10),
-                                          itemBuilder: (context, index) {
-                                            final row = rows[index];
-                                            final selectedRow =
-                                                row.id == selected?.id;
-                                            return _AccountTile(
-                                              row: row,
-                                              selected: selectedRow,
-                                              onTap: () => setState(
-                                                () => _selectedId = row.id,
-                                              ),
-                                            );
-                                          },
-                                        ),
-                                ),
-                              ),
-                              const SizedBox(width: 20),
-                              Expanded(
-                                flex: 68,
-                                child: _DirectoryGlassPanel(
-                                  child: selected == null
-                                      ? const _EmptyDetail()
-                                      : _DirectoryDetail(
-                                          row: selected,
-                                          contacts: contacts,
-                                          followUps: followUps,
-                                          alerts: alerts,
-                                          saving: _saving,
-                                          onEditOverlay: () =>
-                                              _editAccountOverlay(selected!),
-                                          onAddContact: () =>
-                                              _createContact(selected!),
-                                          onAddFollowUp: () =>
-                                              _createFollowUp(selected!),
-                                        ),
-                                ),
-                              ),
-                            ],
+      child: Theme(
+        data: buildCommercialAreaTheme(Theme.of(context)),
+        child: Focus(
+          autofocus: true,
+          onKeyEvent: (_, event) {
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            if (event.logicalKey == LogicalKeyboardKey.escape && _menuOpen) {
+              setState(() => _menuOpen = false);
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: AppShell(
+            background: const CommercialAreaBackground(),
+            wrapBodyInGlass: false,
+            animateHeaderSlots: false,
+            animateBody: !widget.instantOpen,
+            headerBodySpacing: 8,
+            padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
+            leadingBuilder: (_, _) => CommercialAreaHeaderButton(
+              label: _menuOpen ? 'Cerrar panel' : 'Navegación',
+              icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
+              onTapSync: () => setState(() => _menuOpen = !_menuOpen),
+            ),
+            centerBuilder: (_, _) => const _CommercialDirectoryHeaderBrand(
+              title: 'Directorio Comercial',
+              subtitle: 'Gestión de cuentas, segmentos y contexto comercial',
+            ),
+            trailingBuilder: (_, _) => Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CommercialAreaHeaderButton(
+                  label: 'Recargar',
+                  icon: Icons.refresh_rounded,
+                  compact: true,
+                  onTap: _loadDirectory,
+                ),
+                const SizedBox(width: 10),
+                CommercialAreaHeaderButton(
+                  label: 'Cerrar sesión',
+                  icon: Icons.logout_rounded,
+                  onTap: _logout,
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1480),
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(56, 0, 6, 0),
+                      child: Column(
+                        children: [
+                          _DirectoryTopBar(
+                            visibleCount: rows.length,
+                            alertCount: allRows
+                                .where((row) => row.activeAlertCount > 0)
+                                .length,
+                            onlyAlerts: _onlyAlerts,
+                            onToggleAlerts: () =>
+                                setState(() => _onlyAlerts = !_onlyAlerts),
+                            onCreateAccount: _saving
+                                ? null
+                                : _createManualAccount,
+                            onQueryChanged: (value) =>
+                                setState(() => _query = value),
                           ),
+                          const SizedBox(height: 20),
+                          Expanded(
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  flex: 32,
+                                  child: _DirectoryGlassPanel(
+                                    child: _loading
+                                        ? const Center(
+                                            child: CircularProgressIndicator(),
+                                          )
+                                        : rows.isEmpty
+                                        ? const _DirectoryEmptyList()
+                                        : ListView.separated(
+                                            itemCount: rows.length,
+                                            separatorBuilder: (_, _) =>
+                                                const SizedBox(height: 10),
+                                            itemBuilder: (context, index) {
+                                              final row = rows[index];
+                                              final selectedRow =
+                                                  row.id == selected?.id;
+                                              return _AccountTile(
+                                                row: row,
+                                                selected: selectedRow,
+                                                onTap: () => setState(
+                                                  () => _selectedId = row.id,
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                  ),
+                                ),
+                                const SizedBox(width: 20),
+                                Expanded(
+                                  flex: 68,
+                                  child: _DirectoryGlassPanel(
+                                    child: selected == null
+                                        ? const _EmptyDetail()
+                                        : _DirectoryDetail(
+                                            row: selected,
+                                            contacts: contacts,
+                                            followUps: followUps,
+                                            alerts: alerts,
+                                            saving: _saving,
+                                            onEditOverlay: () =>
+                                                _editAccountOverlay(selected!),
+                                            onAddContact: () =>
+                                                _createContact(selected!),
+                                            onAddFollowUp: () =>
+                                                _createFollowUp(selected!),
+                                          ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+                Positioned.fill(
+                  child: IgnorePointer(
+                    ignoring: !_menuOpen,
+                    child: AnimatedOpacity(
+                      duration: const Duration(milliseconds: 180),
+                      opacity: _menuOpen ? 1 : 0,
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onTap: () => setState(() => _menuOpen = false),
+                        child: Container(
+                          color: Colors.black.withValues(alpha: 0.12),
                         ),
+                      ),
+                    ),
+                  ),
+                ),
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 220),
+                  curve: Curves.easeOutCubic,
+                  left: _menuOpen ? 0 : -332,
+                  top: 0,
+                  bottom: 0,
+                  width: 320,
+                  child: IgnorePointer(
+                    ignoring: !_menuOpen,
+                    child: CommercialAreaSidePanel(
+                      label: 'Desarrollo Comercial',
+                      canReturnToDirection: _canReturnToDirection,
+                      areaItems: [
+                        CommercialAreaNavEntry(
+                          icon: Icons.radar_rounded,
+                          title: 'Radar Comercial',
+                          subtitle: 'Alertas, materiales y contexto',
+                          onTap: _openDashboard,
+                        ),
+                        const CommercialAreaNavEntry(
+                          icon: Icons.badge_outlined,
+                          title: 'Directorio Comercial',
+                          subtitle: 'Cuentas, contactos y seguimiento',
+                          accented: true,
+                        ),
+                      ],
+                      accessItems: [
+                        if (_canReturnToDirection)
+                          CommercialAreaNavEntry(
+                            icon: Icons.assessment_outlined,
+                            title: 'Dashboard Dirección',
+                            subtitle: 'Vista ejecutiva multiarea',
+                            onTap: _openDirectionDashboard,
+                          ),
                       ],
                     ),
                   ),
                 ),
-              ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: _menuOpen ? 1 : 0,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                left: _menuOpen ? 0 : -332,
-                top: 0,
-                bottom: 0,
-                width: 320,
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: CommercialAreaSidePanel(
-                    label: 'Desarrollo Comercial',
-                    canReturnToDirection: _canReturnToDirection,
-                    areaItems: [
-                      CommercialAreaNavEntry(
-                        icon: Icons.radar_rounded,
-                        title: 'Radar Comercial',
-                        subtitle: 'Alertas, materiales y contexto',
-                        onTap: _openDashboard,
-                      ),
-                      const CommercialAreaNavEntry(
-                        icon: Icons.badge_outlined,
-                        title: 'Directorio Comercial',
-                        subtitle: 'Cuentas, contactos y seguimiento',
-                        accented: true,
-                      ),
-                    ],
-                    accessItems: [
-                      if (_canReturnToDirection)
-                        CommercialAreaNavEntry(
-                          icon: Icons.assessment_outlined,
-                          title: 'Dashboard Dirección',
-                          subtitle: 'Vista ejecutiva multiarea',
-                          onTap: _openDirectionDashboard,
-                        ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
@@ -2247,99 +2250,112 @@ class _CommercialDialogShell extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 860),
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
-          decoration: BoxDecoration(
-            color: const Color(0xE014231C),
-            borderRadius: BorderRadius.circular(30),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-            boxShadow: const [
-              BoxShadow(
-                color: Color(0x5A000000),
-                blurRadius: 54,
-                offset: Offset(0, 20),
-              ),
-            ],
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
+    return Theme(
+      data: buildCommercialAreaTheme(Theme.of(context)),
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(color: kCommercialInk),
+        child: IconTheme(
+          data: const IconThemeData(color: kCommercialInk),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 860),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+                decoration: BoxDecoration(
+                  color: const Color(0xF018211D),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.16),
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x5A000000),
+                      blurRadius: 54,
+                      offset: Offset(0, 20),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            title,
-                            style: TextStyle(
-                              color: tokens.onGlass,
-                              fontSize: 28,
-                              fontWeight: FontWeight.w900,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    color: kCommercialInk,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  subtitle,
+                                  style: const TextStyle(
+                                    color: Color(0xD9F3F1E8),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            subtitle,
-                            style: TextStyle(
-                              color: const Color(0xD9F3F1E8),
-                              fontWeight: FontWeight.w700,
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(
+                              Icons.close_rounded,
+                              color: kCommercialInk,
                             ),
                           ),
                         ],
                       ),
-                    ),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      icon: Icon(Icons.close_rounded, color: tokens.onGlass),
-                    ),
-                  ],
+                      const SizedBox(height: 18),
+                      child,
+                      const SizedBox(height: 18),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text(
+                              'Cancelar',
+                              style: TextStyle(color: Color(0xD9F3F1E8)),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF183826),
+                              foregroundColor: const Color(0xFFF3F1E8),
+                              side: const BorderSide(color: Color(0xFF2D6E49)),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                            onPressed: onSave,
+                            icon: const Icon(
+                              Icons.save_rounded,
+                              color: Color(0xFF41D978),
+                            ),
+                            label: const Text('Guardar'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
-                const SizedBox(height: 18),
-                child,
-                const SizedBox(height: 18),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  children: [
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: Text(
-                        'Cancelar',
-                        style: const TextStyle(color: Color(0xD9F3F1E8)),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    FilledButton.icon(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF183826),
-                        foregroundColor: const Color(0xFFF3F1E8),
-                        side: const BorderSide(color: Color(0xFF2D6E49)),
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 18,
-                          vertical: 14,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                      ),
-                      onPressed: onSave,
-                      icon: const Icon(
-                        Icons.save_rounded,
-                        color: Color(0xFF41D978),
-                      ),
-                      label: const Text('Guardar'),
-                    ),
-                  ],
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -2356,11 +2372,14 @@ Widget _dialogTextField({
 }) {
   return Builder(
     builder: (context) {
-      final tokens = AreaThemeScope.of(context);
       return TextField(
         controller: controller,
         maxLines: maxLines,
-        style: TextStyle(color: tokens.onGlass, fontWeight: FontWeight.w700),
+        cursorColor: kCommercialInk,
+        style: const TextStyle(
+          color: kCommercialInk,
+          fontWeight: FontWeight.w700,
+        ),
         decoration: InputDecoration(
           labelText: label,
           hintText: hintText,
@@ -2371,11 +2390,11 @@ Widget _dialogTextField({
           fillColor: const Color(0x66101713),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(color: tokens.border),
+            borderSide: const BorderSide(color: Color(0xFF7C8F82)),
           ),
           enabledBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
-            borderSide: BorderSide(color: tokens.border),
+            borderSide: const BorderSide(color: Color(0xFF7C8F82)),
           ),
           focusedBorder: OutlineInputBorder(
             borderRadius: BorderRadius.circular(16),
@@ -2409,8 +2428,8 @@ Widget _dialogReadOnlyField({required String label, required String value}) {
             const SizedBox(height: 4),
             Text(
               value.isEmpty ? 'Sin dato' : value,
-              style: TextStyle(
-                color: tokens.onGlass,
+              style: const TextStyle(
+                color: kCommercialInk,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -2434,8 +2453,11 @@ Widget _dialogDropdown({
       return DropdownButtonFormField<String>(
         initialValue: value,
         dropdownColor: const Color(0xFF1B221F),
-        iconEnabledColor: tokens.onGlass,
-        style: TextStyle(color: tokens.onGlass, fontWeight: FontWeight.w800),
+        iconEnabledColor: kCommercialInk,
+        style: const TextStyle(
+          color: kCommercialInk,
+          fontWeight: FontWeight.w800,
+        ),
         decoration: InputDecoration(
           labelText: label,
           labelStyle: const TextStyle(color: Color(0xD9F3F1E8)),
@@ -2455,14 +2477,29 @@ Widget _dialogDropdown({
             borderSide: const BorderSide(color: Color(0xFF2D6E49)),
           ),
         ),
+        selectedItemBuilder: (context) => [
+          for (final item in items)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                labelBuilder?.call(item) ?? item,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: kCommercialInk,
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ),
+        ],
         items: [
           for (final item in items)
             DropdownMenuItem<String>(
               value: item,
               child: Text(
                 labelBuilder?.call(item) ?? item,
-                style: TextStyle(
-                  color: tokens.onGlass,
+                style: const TextStyle(
+                  color: kCommercialInk,
                   fontWeight: FontWeight.w800,
                 ),
               ),
@@ -2513,8 +2550,8 @@ Widget _dialogDateField({
                     const SizedBox(height: 4),
                     Text(
                       value == null ? emptyLabel : _formatDialogDate(value),
-                      style: TextStyle(
-                        color: tokens.onGlass,
+                      style: const TextStyle(
+                        color: kCommercialInk,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
@@ -2524,9 +2561,9 @@ Widget _dialogDateField({
               if (onClear != null)
                 IconButton(
                   onPressed: onClear,
-                  icon: Icon(Icons.clear_rounded, color: tokens.badgeText),
+                  icon: const Icon(Icons.clear_rounded, color: kCommercialInk),
                 ),
-              Icon(Icons.calendar_month_rounded, color: tokens.onGlass),
+              const Icon(Icons.calendar_month_rounded, color: kCommercialInk),
             ],
           ),
         ),

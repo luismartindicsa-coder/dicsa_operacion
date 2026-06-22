@@ -308,8 +308,11 @@ class FinanzasBankAccountsStore {
                   .toDouble();
           final updatedTickets = linkedTickets
               .map((ticket) {
+                final ticketCoverableAmount = ticket.amount < 0
+                    ? 0.0
+                    : ticket.amount;
                 final directApplied = (directAppliedByTicketId[ticket.id] ?? 0)
-                    .clamp(0, ticket.amount)
+                    .clamp(0, ticketCoverableAmount)
                     .toDouble();
                 final pendingAfterDirect = (ticket.amount - directApplied)
                     .clamp(0, double.infinity)
@@ -321,9 +324,10 @@ class FinanzasBankAccountsStore {
                     .clamp(0, double.infinity)
                     .toDouble();
                 final totalApplied = (directApplied + invoiceApplied)
-                    .clamp(0, ticket.amount)
+                    .clamp(0, ticketCoverableAmount)
                     .toDouble();
-                final fullyCovered = totalApplied >= ticket.amount - 0.009;
+                final fullyCovered =
+                    totalApplied >= ticketCoverableAmount - 0.009;
                 final hasAbono = totalApplied > 0.009 && !fullyCovered;
                 return ticket.copyWith(
                   pagoStatus: fullyCovered
@@ -574,8 +578,9 @@ class FinanzasBankAccountsStore {
             .toDouble();
     final updatedTickets = linkedTickets
         .map((ticket) {
+          final ticketCoverableAmount = ticket.amount < 0 ? 0.0 : ticket.amount;
           final directApplied = (directAppliedByTicketId[ticket.id] ?? 0)
-              .clamp(0, ticket.amount)
+              .clamp(0, ticketCoverableAmount)
               .toDouble();
           final pendingAfterDirect = (ticket.amount - directApplied)
               .clamp(0, double.infinity)
@@ -587,9 +592,9 @@ class FinanzasBankAccountsStore {
               .clamp(0, double.infinity)
               .toDouble();
           final totalApplied = (directApplied + invoiceApplied)
-              .clamp(0, ticket.amount)
+              .clamp(0, ticketCoverableAmount)
               .toDouble();
-          final fullyCovered = totalApplied >= ticket.amount - 0.009;
+          final fullyCovered = totalApplied >= ticketCoverableAmount - 0.009;
           final hasAbono = totalApplied > 0.009 && !fullyCovered;
           return ticket.copyWith(
             pagoStatus: fullyCovered
