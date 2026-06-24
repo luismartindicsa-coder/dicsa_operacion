@@ -15,6 +15,7 @@ import '../direction/direction_menudeo_analysis_page.dart';
 import '../direction/direction_operations_repository.dart';
 import '../direction/direction_purchase_orders_page.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
+import '../hr/human_resources_dashboard_page.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../shared/app_shell.dart';
@@ -109,6 +110,17 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     await Navigator.of(context).push(
       appPageRoute(
         page: const FinanzasDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openHumanResourcesDashboard() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const HumanResourcesDashboardPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -240,6 +252,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       onOpenMayoreo: _openMayoreoPreviewDashboard,
       onOpenCompras: _openComprasDashboard,
       onOpenFinanzas: _openFinanzasDashboard,
+      onOpenHumanResources: _openHumanResourcesDashboard,
       onOpenCommercial: _openCommercialDashboard,
       onToggleDirectionExpanded: () =>
           setState(() => _directionExpanded = !_directionExpanded),
@@ -258,6 +271,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
             onOpenMenudeoAnalysis: _openDirectionMenudeoAnalysis,
             onOpenPurchaseOrders: _openDirectionPurchaseOrders,
             onOpenMaintenance: _openDirectionMaintenance,
+            onOpenHumanResources: _openHumanResourcesDashboard,
             onOpenCommercial: _openCommercialDashboard,
           ),
         ),
@@ -309,6 +323,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
   final Future<void> Function() onOpenMenudeoAnalysis;
   final Future<void> Function() onOpenPurchaseOrders;
   final Future<void> Function() onOpenMaintenance;
+  final Future<void> Function() onOpenHumanResources;
   final Future<void> Function() onOpenCommercial;
 
   const _DirectionDashboardCanvas({
@@ -316,6 +331,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
     required this.onOpenMenudeoAnalysis,
     required this.onOpenPurchaseOrders,
     required this.onOpenMaintenance,
+    required this.onOpenHumanResources,
     required this.onOpenCommercial,
   });
 
@@ -376,6 +392,17 @@ class _DirectionDashboardCanvas extends StatelessWidget {
                   badge: 'Mercado activo',
                   icon: Icons.storefront_rounded,
                   onTap: onOpenMenudeoAnalysis,
+                ),
+              ),
+              SizedBox(
+                width: 420,
+                child: _DirectionAnalysisEntryCard(
+                  title: 'Recursos Humanos',
+                  subtitle:
+                      'Nomina, incidencias, vacaciones y cruces de pago con Finanzas bajo formulas trazables.',
+                  badge: 'Area nueva',
+                  icon: Icons.badge_rounded,
+                  onTap: onOpenHumanResources,
                 ),
               ),
               SizedBox(
@@ -1347,6 +1374,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final Future<void> Function()? onOpenMayoreo;
   final Future<void> Function()? onOpenCompras;
   final Future<void> Function()? onOpenFinanzas;
+  final Future<void> Function()? onOpenHumanResources;
   final Future<void> Function()? onOpenCommercial;
 
   const _GeneralDashboardSideMenu({
@@ -1363,6 +1391,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onOpenMayoreo,
     this.onOpenCompras,
     this.onOpenFinanzas,
+    this.onOpenHumanResources,
     this.onOpenCommercial,
   });
 
@@ -1488,6 +1517,13 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                       title: 'Finanzas',
                       subtitle: 'Centro preliminar de flujo y pagos',
                       onTap: onOpenFinanzas,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.badge_rounded,
+                      title: 'Recursos Humanos',
+                      subtitle: 'Dashboard inicial homologado',
+                      onTap: onOpenHumanResources,
                     ),
                     const SizedBox(height: 8),
                     _MenuActionItem(

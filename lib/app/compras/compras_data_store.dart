@@ -282,20 +282,6 @@ class ComprasDataStore {
             onConflict: 'id',
           );
     }
-    final existingCompanyIds = await _loadRemoteIds(
-      Supabase.instance.client,
-      _kComprasCounterpartiesTable,
-    );
-    final nextCompanyIds = companies.map((row) => row.id).toSet();
-    final deletedCompanyIds = existingCompanyIds
-        .difference(nextCompanyIds)
-        .toList(growable: false);
-    if (deletedCompanyIds.isNotEmpty) {
-      await Supabase.instance.client
-          .from(_kComprasCounterpartiesTable)
-          .delete()
-          .inFilter('id', deletedCompanyIds);
-    }
   }
 
   static Future<void> savePriceRecords(
@@ -327,20 +313,6 @@ class ComprasDataStore {
                 .toList(growable: false),
             onConflict: 'id',
           );
-    }
-    final existingPriceIds = await _loadRemoteIds(
-      Supabase.instance.client,
-      _kComprasPricesTable,
-    );
-    final nextPriceIds = prices.map((row) => row.id).toSet();
-    final deletedPriceIds = existingPriceIds
-        .difference(nextPriceIds)
-        .toList(growable: false);
-    if (deletedPriceIds.isNotEmpty) {
-      await Supabase.instance.client
-          .from(_kComprasPricesTable)
-          .delete()
-          .inFilter('id', deletedPriceIds);
     }
   }
 
@@ -378,20 +350,30 @@ class ComprasDataStore {
             onConflict: 'id',
           );
     }
-    final existingMaterialIds = await _loadRemoteIds(
-      Supabase.instance.client,
-      _kComprasMaterialsTable,
-    );
-    final nextMaterialIds = materials.map((row) => row.id).toSet();
-    final deletedMaterialIds = existingMaterialIds
-        .difference(nextMaterialIds)
-        .toList(growable: false);
-    if (deletedMaterialIds.isNotEmpty) {
-      await Supabase.instance.client
-          .from(_kComprasMaterialsTable)
-          .delete()
-          .inFilter('id', deletedMaterialIds);
-    }
+  }
+
+  static Future<void> deleteCompanyRecords(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await Supabase.instance.client
+        .from(_kComprasCounterpartiesTable)
+        .delete()
+        .inFilter('id', ids);
+  }
+
+  static Future<void> deleteMaterialRecords(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await Supabase.instance.client
+        .from(_kComprasMaterialsTable)
+        .delete()
+        .inFilter('id', ids);
+  }
+
+  static Future<void> deletePriceRecords(List<String> ids) async {
+    if (ids.isEmpty) return;
+    await Supabase.instance.client
+        .from(_kComprasPricesTable)
+        .delete()
+        .inFilter('id', ids);
   }
 
   static Future<List<ComprasPriceHistoryRecord>> loadPriceHistory() async {
@@ -742,51 +724,6 @@ Future<void> _saveRemoteCatalogSnapshot(ComprasCatalogSnapshot snapshot) async {
           onConflict: 'id',
         );
   }
-
-  final existingPriceIds = await _loadRemoteIds(supa, _kComprasPricesTable);
-  final nextPriceIds = snapshot.prices.map((row) => row.id).toSet();
-  final deletedPriceIds = existingPriceIds.difference(nextPriceIds).toList();
-  if (deletedPriceIds.isNotEmpty) {
-    await supa
-        .from(_kComprasPricesTable)
-        .delete()
-        .inFilter('id', deletedPriceIds);
-  }
-
-  final existingMaterialIds = await _loadRemoteIds(
-    supa,
-    _kComprasMaterialsTable,
-  );
-  final nextMaterialIds = snapshot.materials.map((row) => row.id).toSet();
-  final deletedMaterialIds = existingMaterialIds
-      .difference(nextMaterialIds)
-      .toList();
-  if (deletedMaterialIds.isNotEmpty) {
-    await supa
-        .from(_kComprasMaterialsTable)
-        .delete()
-        .inFilter('id', deletedMaterialIds);
-  }
-
-  final existingCompanyIds = await _loadRemoteIds(
-    supa,
-    _kComprasCounterpartiesTable,
-  );
-  final nextCompanyIds = snapshot.companies.map((row) => row.id).toSet();
-  final deletedCompanyIds = existingCompanyIds
-      .difference(nextCompanyIds)
-      .toList();
-  if (deletedCompanyIds.isNotEmpty) {
-    await supa
-        .from(_kComprasCounterpartiesTable)
-        .delete()
-        .inFilter('id', deletedCompanyIds);
-  }
-}
-
-Future<Set<String>> _loadRemoteIds(SupabaseClient supa, String table) async {
-  final rows = await supa.from(table).select('id');
-  return (rows as List).map((row) => (row as Map)['id'].toString()).toSet();
 }
 
 List<Map<String, dynamic>> _jsonList(Object? value) {

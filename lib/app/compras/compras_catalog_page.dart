@@ -534,6 +534,90 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     }
   }
 
+  Future<void> _deleteCompaniesRemote(List<String> ids) async {
+    try {
+      _persistingCatalogSnapshot = true;
+      await ComprasDataStore.deleteCompanyRecords(ids);
+    } catch (e) {
+      final code = e is PostgrestException ? e.code?.toString() : null;
+      final details = e is PostgrestException ? e.details?.toString() : null;
+      final detail = switch (e) {
+        PostgrestException() => [
+          if (code != null && code.trim().isNotEmpty) 'code $code',
+          e.message,
+          if (details != null && details.trim().isNotEmpty) details,
+        ].join(' · '),
+        _ => e.toString(),
+      };
+      debugPrint('ComprasCatalog companies delete failed: $detail');
+      if (mounted) {
+        _toast('No se pudo eliminar Proveedores. $detail');
+        await _loadCatalogSnapshot();
+      }
+    } finally {
+      _persistingCatalogSnapshot = false;
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        unawaited(_refreshCatalogIfIdle(force: true));
+      }
+    }
+  }
+
+  Future<void> _deleteMaterialsRemote(List<String> ids) async {
+    try {
+      _persistingCatalogSnapshot = true;
+      await ComprasDataStore.deleteMaterialRecords(ids);
+    } catch (e) {
+      final code = e is PostgrestException ? e.code?.toString() : null;
+      final details = e is PostgrestException ? e.details?.toString() : null;
+      final detail = switch (e) {
+        PostgrestException() => [
+          if (code != null && code.trim().isNotEmpty) 'code $code',
+          e.message,
+          if (details != null && details.trim().isNotEmpty) details,
+        ].join(' · '),
+        _ => e.toString(),
+      };
+      debugPrint('ComprasCatalog materials delete failed: $detail');
+      if (mounted) {
+        _toast('No se pudo eliminar Materiales. $detail');
+        await _loadCatalogSnapshot();
+      }
+    } finally {
+      _persistingCatalogSnapshot = false;
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        unawaited(_refreshCatalogIfIdle(force: true));
+      }
+    }
+  }
+
+  Future<void> _deletePricesRemote(List<String> ids) async {
+    try {
+      _persistingCatalogSnapshot = true;
+      await ComprasDataStore.deletePriceRecords(ids);
+    } catch (e) {
+      final code = e is PostgrestException ? e.code?.toString() : null;
+      final details = e is PostgrestException ? e.details?.toString() : null;
+      final detail = switch (e) {
+        PostgrestException() => [
+          if (code != null && code.trim().isNotEmpty) 'code $code',
+          e.message,
+          if (details != null && details.trim().isNotEmpty) details,
+        ].join(' · '),
+        _ => e.toString(),
+      };
+      debugPrint('ComprasCatalog prices delete failed: $detail');
+      if (mounted) {
+        _toast('No se pudo eliminar Precios. $detail');
+        await _loadCatalogSnapshot();
+      }
+    } finally {
+      _persistingCatalogSnapshot = false;
+      if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
+        unawaited(_refreshCatalogIfIdle(force: true));
+      }
+    }
+  }
+
   Future<void> _resolveNavigationAccess() async {
     final profile = await AuthAccess.resolveCurrentProfile();
     if (!mounted) return;
@@ -1457,7 +1541,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _companies = _companies.where((item) => item.id != row.id).toList();
       _removeSelectionKey('co:${row.id}');
     });
-    unawaited(_persistCompaniesOnly());
+    unawaited(_deleteCompaniesRemote(<String>[row.id]));
   }
 
   void _deleteMaterial(_MayoreoMaterial row) {
@@ -1470,7 +1554,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _materials = _materials.where((item) => item.id != row.id).toList();
       _removeSelectionKey('ma:${row.id}');
     });
-    unawaited(_persistMaterialsOnly());
+    unawaited(_deleteMaterialsRemote(<String>[row.id]));
   }
 
   void _deletePrice(_MayoreoPrice row) {
@@ -1478,7 +1562,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _prices = _prices.where((item) => item.id != row.id).toList();
       _removeSelectionKey('pr:${row.id}');
     });
-    unawaited(_persistPricesOnly());
+    unawaited(_deletePricesRemote(<String>[row.id]));
   }
 
   List<String> _currentRowKeys() {
@@ -2040,6 +2124,9 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
   void _deleteSelectedRows() {
     if (_bulkSelectedRowKeys.isEmpty) return;
     final keys = Set<String>.from(_bulkSelectedRowKeys);
+    final deletedCompanyIds = <String>[];
+    final deletedMaterialIds = <String>[];
+    final deletedPriceIds = <String>[];
     setState(() {
       switch (_activeTabIndex) {
         case 0:
@@ -2047,6 +2134,15 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
               .map((row) => 'co:${row.companyId}')
               .where(keys.contains)
               .toSet();
+          deletedCompanyIds.addAll(
+            _companies
+                .where(
+                  (row) =>
+                      keys.contains('co:${row.id}') &&
+                      !blocked.contains('co:${row.id}'),
+                )
+                .map((row) => row.id),
+          );
           _companies = _companies
               .where(
                 (row) =>
@@ -2063,6 +2159,15 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
               .map((row) => 'ma:${row.materialId}')
               .where(keys.contains)
               .toSet();
+          deletedMaterialIds.addAll(
+            _materials
+                .where(
+                  (row) =>
+                      keys.contains('ma:${row.id}') &&
+                      !blocked.contains('ma:${row.id}'),
+                )
+                .map((row) => row.id),
+          );
           _materials = _materials
               .where(
                 (row) =>
@@ -2075,6 +2180,11 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           }
           break;
         default:
+          deletedPriceIds.addAll(
+            _prices
+                .where((row) => keys.contains('pr:${row.id}'))
+                .map((row) => row.id),
+          );
           _prices = _prices
               .where((row) => !keys.contains('pr:${row.id}'))
               .toList(growable: false);
@@ -2082,11 +2192,11 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _clearSelection();
     });
     if (_activeTabIndex == 0) {
-      unawaited(_persistCompaniesOnly());
+      unawaited(_deleteCompaniesRemote(deletedCompanyIds));
     } else if (_activeTabIndex == 1) {
-      unawaited(_persistMaterialsOnly());
+      unawaited(_deleteMaterialsRemote(deletedMaterialIds));
     } else {
-      unawaited(_persistPricesOnly());
+      unawaited(_deletePricesRemote(deletedPriceIds));
     }
   }
 

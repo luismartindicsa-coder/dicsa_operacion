@@ -26,6 +26,7 @@ class AuthAccess {
   static const String _menudeoEmail = 'menudeo@dicsamx.com';
   static const String _mayoreoEmail = 'mayoreo@dicsamx.com';
   static const String _commercialContactEmail = 'contacto@dicsamx.com';
+  static const String _humanResourcesEmail = 'rh@dicsamx.com';
 
   static String _normalizeRoleValue(String? raw) {
     final value = (raw ?? '').toLowerCase().trim();
@@ -94,11 +95,30 @@ class AuthAccess {
     return (email ?? '').toLowerCase().trim() == _commercialContactEmail;
   }
 
+  static bool _isHumanResourcesEmailValue(String? email) {
+    return (email ?? '').toLowerCase().trim() == _humanResourcesEmail;
+  }
+
   static bool _isDesarrolloComercialRoleValue(String role) {
     return role == 'desarrollo_comercial' ||
         role == 'commercial_development' ||
         role.startsWith('desarrollo_comercial_') ||
         role.endsWith('_desarrollo_comercial');
+  }
+
+  static bool _isHumanResourcesRoleValue(String role) {
+    return role == 'rh' ||
+        role == 'rrhh' ||
+        role == 'human_resources' ||
+        role == 'recursos_humanos' ||
+        role == 'nominas' ||
+        role == 'payroll' ||
+        role.startsWith('rh_') ||
+        role.startsWith('human_resources_') ||
+        role.startsWith('recursos_humanos_') ||
+        role.endsWith('_rh') ||
+        role.endsWith('_human_resources') ||
+        role.endsWith('_recursos_humanos');
   }
 
   static bool _roleIn(AuthResolvedProfile? profile, Set<String> roles) {
@@ -176,6 +196,13 @@ class AuthAccess {
     if (isDirectionRole(profile)) return true;
     return _isDesarrolloComercialRoleValue(profile.role) ||
         _isCommercialContactEmailValue(profile.email);
+  }
+
+  static bool hasHumanResourcesAccess(AuthResolvedProfile? profile) {
+    if (profile == null || !profile.isActive) return false;
+    if (isDirectionRole(profile)) return true;
+    return _isHumanResourcesRoleValue(profile.role) ||
+        _isHumanResourcesEmailValue(profile.email);
   }
 
   static Future<AuthResolvedProfile?> resolveCurrentProfile() async {
@@ -259,6 +286,7 @@ class AuthAccess {
     if (profile == null || !profile.isActive) return 'blocked';
     if (canAccessGeneralDashboard(profile)) return 'dashboard_general';
     if (_isAccountingEmailValue(profile.email)) return 'purchase_orders';
+    if (hasHumanResourcesAccess(profile)) return 'human_resources_dashboard';
     if (canAccessFinanzasArea(profile)) return 'finanzas_dashboard';
     if (hasDesarrolloComercialAccess(profile)) return 'commercial_dashboard';
     if (hasMenudeoAccess(profile)) return 'menudeo_dashboard';

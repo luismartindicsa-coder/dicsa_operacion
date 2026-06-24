@@ -2,7 +2,8 @@ import 'dart:collection';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'friendly_error_message.dart';
 
 final GlobalKey<ScaffoldMessengerState> appScaffoldMessengerKey =
     GlobalKey<ScaffoldMessengerState>();
@@ -13,6 +14,7 @@ class AppErrorReporter {
   static bool _showingMessage = false;
   static String? _lastMessage;
   static DateTime? _lastShownAt;
+  static int _snackBarSerial = 0;
 
   static void report(
     Object error,
@@ -31,6 +33,14 @@ class AppErrorReporter {
     if (_lastMessage == text &&
         _lastShownAt != null &&
         now.difference(_lastShownAt!) < const Duration(seconds: 2)) {
+      return;
+    }
+
+    if (_showingMessage && _lastMessage == text) {
+      return;
+    }
+
+    if (_pendingMessages.contains(text)) {
       return;
     }
 
@@ -60,6 +70,7 @@ class AppErrorReporter {
     messenger
         .showSnackBar(
           SnackBar(
+            key: ValueKey<String>('app-error-${_snackBarSerial++}'),
             content: Text(message),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 6),
@@ -73,30 +84,9 @@ class AppErrorReporter {
   }
 
   static String _messageFrom(Object error, {String? fallbackMessage}) {
-    if (error is PostgrestException) {
-      return _pickFirst(
-        error.message,
-        error.details?.toString(),
-        fallbackMessage,
-      );
-    }
-    if (error is AuthException) {
-      return _pickFirst(error.message, fallbackMessage, null);
-    }
     if (error is FlutterError) {
       return fallbackMessage ?? error.toString();
     }
-    if (error is Exception) {
-      return fallbackMessage ?? error.toString();
-    }
-    return fallbackMessage ?? error.toString();
-  }
-
-  static String _pickFirst(String? a, String? b, String? c) {
-    for (final value in [a, b, c]) {
-      final text = value?.trim() ?? '';
-      if (text.isNotEmpty) return text;
-    }
-    return 'Ocurrio un error inesperado.';
+    return friendlyErrorMessage(error, fallbackMessage: fallbackMessage);
   }
 }

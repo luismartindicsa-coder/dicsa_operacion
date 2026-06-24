@@ -209,6 +209,25 @@ class EmptyAreaDashboardConfig {
   final String contractTitle;
   final String contractSubtitle;
   final String contractFootnote;
+  final Color? heroCardBorderColor;
+  final Gradient? heroCardGradient;
+  final Color? heroEyebrowColor;
+  final Color? heroTitleColor;
+  final Color? heroSubtitleColor;
+  final Color? workspaceBodyColor;
+  final Color? emptyStateSurfaceColor;
+  final Color? emptyStateBorderColor;
+  final Color? emptyStateIconColor;
+  final Color? emptyStateBodyColor;
+  final Color? contractPanelColor;
+  final Color? contractActionColor;
+  final Color? contractActionHoverColor;
+  final Color? contractActionIconColor;
+  final Color? contractFootnoteColor;
+  final Color? placeholderCardColor;
+  final Color? placeholderCardIconColor;
+  final Color? placeholderCardDescriptionColor;
+  final Color? placeholderCardArrowColor;
   final ContractAreaTokens tokens;
   final Color ink;
   final Color mutedInk;
@@ -223,6 +242,7 @@ class EmptyAreaDashboardConfig {
   final List<DashboardNavAction> areaItems;
   final List<DashboardNavAction> accessItems;
   final List<DashboardHeaderAction> headerActions;
+  final List<DashboardPlaceholderCard> placeholderCards;
   final EmptyAreaDashboardSidePanelBuilder? sidePanelBuilder;
 
   const EmptyAreaDashboardConfig({
@@ -237,6 +257,25 @@ class EmptyAreaDashboardConfig {
     required this.contractTitle,
     required this.contractSubtitle,
     required this.contractFootnote,
+    this.heroCardBorderColor,
+    this.heroCardGradient,
+    this.heroEyebrowColor,
+    this.heroTitleColor,
+    this.heroSubtitleColor,
+    this.workspaceBodyColor,
+    this.emptyStateSurfaceColor,
+    this.emptyStateBorderColor,
+    this.emptyStateIconColor,
+    this.emptyStateBodyColor,
+    this.contractPanelColor,
+    this.contractActionColor,
+    this.contractActionHoverColor,
+    this.contractActionIconColor,
+    this.contractFootnoteColor,
+    this.placeholderCardColor,
+    this.placeholderCardIconColor,
+    this.placeholderCardDescriptionColor,
+    this.placeholderCardArrowColor,
     required this.tokens,
     required this.ink,
     required this.mutedInk,
@@ -251,6 +290,26 @@ class EmptyAreaDashboardConfig {
     required this.areaItems,
     this.accessItems = const <DashboardNavAction>[],
     this.headerActions = const <DashboardHeaderAction>[],
+    this.placeholderCards = const <DashboardPlaceholderCard>[
+      DashboardPlaceholderCard(
+        icon: Icons.dashboard_customize_rounded,
+        title: 'Widget reservado',
+        description:
+            'Contenedor listo para funcionalidad real, sin métricas inventadas.',
+      ),
+      DashboardPlaceholderCard(
+        icon: Icons.timeline_rounded,
+        title: 'Superficie futura',
+        description:
+            'Contenedor listo para funcionalidad real, sin métricas inventadas.',
+      ),
+      DashboardPlaceholderCard(
+        icon: Icons.widgets_outlined,
+        title: 'Espacio homologado',
+        description:
+            'Contenedor listo para funcionalidad real, sin métricas inventadas.',
+      ),
+    ],
     this.sidePanelBuilder,
   });
 
@@ -258,6 +317,7 @@ class EmptyAreaDashboardConfig {
     List<DashboardNavAction>? areaItems,
     List<DashboardNavAction>? accessItems,
     List<DashboardHeaderAction>? headerActions,
+    List<DashboardPlaceholderCard>? placeholderCards,
   }) {
     return EmptyAreaDashboardConfig(
       dashboardLabel: dashboardLabel,
@@ -271,6 +331,25 @@ class EmptyAreaDashboardConfig {
       contractTitle: contractTitle,
       contractSubtitle: contractSubtitle,
       contractFootnote: contractFootnote,
+      heroCardBorderColor: heroCardBorderColor,
+      heroCardGradient: heroCardGradient,
+      heroEyebrowColor: heroEyebrowColor,
+      heroTitleColor: heroTitleColor,
+      heroSubtitleColor: heroSubtitleColor,
+      workspaceBodyColor: workspaceBodyColor,
+      emptyStateSurfaceColor: emptyStateSurfaceColor,
+      emptyStateBorderColor: emptyStateBorderColor,
+      emptyStateIconColor: emptyStateIconColor,
+      emptyStateBodyColor: emptyStateBodyColor,
+      contractPanelColor: contractPanelColor,
+      contractActionColor: contractActionColor,
+      contractActionHoverColor: contractActionHoverColor,
+      contractActionIconColor: contractActionIconColor,
+      contractFootnoteColor: contractFootnoteColor,
+      placeholderCardColor: placeholderCardColor,
+      placeholderCardIconColor: placeholderCardIconColor,
+      placeholderCardDescriptionColor: placeholderCardDescriptionColor,
+      placeholderCardArrowColor: placeholderCardArrowColor,
       tokens: tokens,
       ink: ink,
       mutedInk: mutedInk,
@@ -285,9 +364,22 @@ class EmptyAreaDashboardConfig {
       areaItems: areaItems ?? this.areaItems,
       accessItems: accessItems ?? this.accessItems,
       headerActions: headerActions ?? this.headerActions,
+      placeholderCards: placeholderCards ?? this.placeholderCards,
       sidePanelBuilder: sidePanelBuilder,
     );
   }
+}
+
+class DashboardPlaceholderCard {
+  final IconData icon;
+  final String title;
+  final String description;
+
+  const DashboardPlaceholderCard({
+    required this.icon,
+    required this.title,
+    required this.description,
+  });
 }
 
 class DashboardNavAction {
@@ -505,24 +597,14 @@ class _AreaDashboardBody extends StatelessWidget {
                     spacing: spacing,
                     runSpacing: spacing,
                     children: [
-                      _PlaceholderWidgetCard(
-                        width: width,
-                        config: config,
-                        icon: Icons.dashboard_customize_rounded,
-                        title: 'Widget reservado',
-                      ),
-                      _PlaceholderWidgetCard(
-                        width: width,
-                        config: config,
-                        icon: Icons.timeline_rounded,
-                        title: 'Superficie futura',
-                      ),
-                      _PlaceholderWidgetCard(
-                        width: width,
-                        config: config,
-                        icon: Icons.widgets_outlined,
-                        title: 'Espacio homologado',
-                      ),
+                      for (final card in config.placeholderCards)
+                        _PlaceholderWidgetCard(
+                          width: width,
+                          config: config,
+                          icon: card.icon,
+                          title: card.title,
+                          description: card.description,
+                        ),
                     ],
                   );
                 },
@@ -543,61 +625,78 @@ class _AreaHero extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ContractGlassCard(
-      padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
-      child: Row(
-        children: [
-          Container(
-            width: 68,
-            height: 68,
-            decoration: BoxDecoration(
-              gradient: config.heroGradient,
-              borderRadius: BorderRadius.circular(22),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.56)),
-            ),
-            child: Icon(
-              Icons.space_dashboard_rounded,
-              size: 30,
-              color: config.tokens.primaryStrong,
-            ),
+      padding: EdgeInsets.zero,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          gradient: config.heroCardGradient,
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(
+            color:
+                config.heroCardBorderColor ??
+                Colors.white.withValues(alpha: 0.16),
           ),
-          const SizedBox(width: 18),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  config.heroEyebrow,
-                  style: TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: 1.4,
-                    color: config.mutedInk,
+        ),
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(22, 22, 22, 20),
+          child: Row(
+            children: [
+              Container(
+                width: 68,
+                height: 68,
+                decoration: BoxDecoration(
+                  gradient: config.heroGradient,
+                  borderRadius: BorderRadius.circular(22),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.18),
                   ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  config.heroTitle,
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.w900,
-                    color: config.ink,
-                    height: 1.05,
-                  ),
+                child: Icon(
+                  Icons.space_dashboard_rounded,
+                  size: 30,
+                  color:
+                      config.emptyStateIconColor ?? config.tokens.primaryStrong,
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  config.heroSubtitle,
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                    color: config.mutedInk,
-                    height: 1.4,
-                  ),
+              ),
+              const SizedBox(width: 18),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      config.heroEyebrow,
+                      style: TextStyle(
+                        fontSize: 11.5,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 1.4,
+                        color: config.heroEyebrowColor ?? config.mutedInk,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      config.heroTitle,
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w900,
+                        color: config.heroTitleColor ?? config.ink,
+                        height: 1.05,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      config.heroSubtitle,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                        color: config.heroSubtitleColor ?? config.mutedInk,
+                        height: 1.4,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -632,73 +731,91 @@ class _WorkspaceCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
-                color: config.mutedInk,
+                color: config.workspaceBodyColor ?? config.mutedInk,
                 height: 1.45,
               ),
             ),
             const SizedBox(height: 18),
-            Container(
-              constraints: const BoxConstraints(minHeight: 280),
-              decoration: BoxDecoration(
-                gradient: config.panelGradient,
-                borderRadius: BorderRadius.circular(28),
-                border: Border.all(
-                  color: config.tokens.border.withValues(alpha: 0.82),
-                ),
+            CustomPaint(
+              painter: _DashedRoundedRectPainter(
+                color:
+                    config.emptyStateBorderColor ??
+                    config.tokens.border.withValues(alpha: 0.30),
+                radius: 28,
               ),
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 82,
-                        height: 82,
-                        decoration: BoxDecoration(
-                          gradient: config.accentGradient,
-                          borderRadius: BorderRadius.circular(26),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.60),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: config.tokens.glow.withValues(alpha: 0.18),
-                              blurRadius: 20,
-                              offset: const Offset(0, 12),
+              child: Container(
+                constraints: const BoxConstraints(minHeight: 280),
+                decoration: BoxDecoration(
+                  color: config.emptyStateSurfaceColor,
+                  gradient: config.emptyStateSurfaceColor == null
+                      ? config.panelGradient
+                      : null,
+                  borderRadius: BorderRadius.circular(28),
+                ),
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(24),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 82,
+                          height: 82,
+                          decoration: BoxDecoration(
+                            gradient: config.contractActionColor == null
+                                ? config.accentGradient
+                                : null,
+                            color: config.contractActionColor,
+                            borderRadius: BorderRadius.circular(26),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.10),
                             ),
-                          ],
-                        ),
-                        child: Icon(
-                          Icons.widgets_outlined,
-                          size: 34,
-                          color: config.tokens.primaryStrong,
-                        ),
-                      ),
-                      const SizedBox(height: 18),
-                      Text(
-                        'Sin datos simulados',
-                        style: TextStyle(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
-                          color: config.ink,
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxWidth: 520),
-                        child: Text(
-                          'Esta superficie quedó preparada para conectar métricas, alertas y widgets reales cuando la funcionalidad exista.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: config.mutedInk,
-                            height: 1.45,
+                            boxShadow: [
+                              BoxShadow(
+                                color: config.tokens.glow.withValues(
+                                  alpha: 0.18,
+                                ),
+                                blurRadius: 20,
+                                offset: const Offset(0, 12),
+                              ),
+                            ],
+                          ),
+                          child: Icon(
+                            Icons.widgets_outlined,
+                            size: 34,
+                            color:
+                                config.emptyStateIconColor ??
+                                config.tokens.primary,
                           ),
                         ),
-                      ),
-                    ],
+                        const SizedBox(height: 18),
+                        Text(
+                          'Sin datos simulados',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w900,
+                            color: config.ink,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxWidth: 520),
+                          child: Text(
+                            'Esta superficie quedó preparada para conectar métricas, alertas y widgets reales cuando la funcionalidad exista.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
+                              color:
+                                  config.emptyStateBodyColor ??
+                                  config.workspaceBodyColor ??
+                                  config.mutedInk,
+                              height: 1.45,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -721,64 +838,74 @@ class _ContractCard extends StatelessWidget {
     return SizedBox(
       width: width,
       child: ContractGlassCard(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              config.contractTitle,
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w900,
-                color: config.ink,
+        padding: EdgeInsets.zero,
+        child: Container(
+          decoration: BoxDecoration(
+            color: config.contractPanelColor,
+            borderRadius: BorderRadius.circular(24),
+          ),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                config.contractTitle,
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w900,
+                  color: config.ink,
+                ),
               ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              config.contractSubtitle,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w700,
-                color: config.mutedInk,
-                height: 1.4,
+              const SizedBox(height: 8),
+              Text(
+                config.contractSubtitle,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                  color: config.workspaceBodyColor ?? config.mutedInk,
+                  height: 1.4,
+                ),
               ),
-            ),
-            const SizedBox(height: 16),
-            _ContractBadge(
-              config: config,
-              icon: Icons.grid_view_rounded,
-              title: 'Shell y navegación',
-            ),
-            const SizedBox(height: 10),
-            _ContractBadge(
-              config: config,
-              icon: Icons.ads_click_rounded,
-              title: 'Hover, lift y sombras',
-            ),
-            const SizedBox(height: 10),
-            _ContractBadge(
-              config: config,
-              icon: Icons.view_quilt_outlined,
-              title: 'Cards y widgets base',
-            ),
-            const SizedBox(height: 14),
-            Text(
-              config.contractFootnote,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: config.mutedInk,
-                height: 1.35,
+              const SizedBox(height: 16),
+              _ContractBadge(
+                config: config,
+                icon: Icons.grid_view_rounded,
+                title: 'Shell y navegación',
               ),
-            ),
-          ],
+              const SizedBox(height: 10),
+              _ContractBadge(
+                config: config,
+                icon: Icons.ads_click_rounded,
+                title: 'Hover, lift y sombras',
+              ),
+              const SizedBox(height: 10),
+              _ContractBadge(
+                config: config,
+                icon: Icons.view_quilt_outlined,
+                title: 'Cards y widgets base',
+              ),
+              const SizedBox(height: 14),
+              Text(
+                config.contractFootnote,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color:
+                      config.contractFootnoteColor ??
+                      config.workspaceBodyColor ??
+                      config.mutedInk,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 }
 
-class _ContractBadge extends StatelessWidget {
+class _ContractBadge extends StatefulWidget {
   final EmptyAreaDashboardConfig config;
   final IconData icon;
   final String title;
@@ -790,29 +917,71 @@ class _ContractBadge extends StatelessWidget {
   });
 
   @override
+  State<_ContractBadge> createState() => _ContractBadgeState();
+}
+
+class _ContractBadgeState extends State<_ContractBadge> {
+  bool _hovered = false;
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: config.tokens.badgeBackground.withValues(alpha: 0.72),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: config.tokens.border.withValues(alpha: 0.82)),
-      ),
-      child: Row(
-        children: [
-          Icon(icon, size: 18, color: config.tokens.primaryStrong),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Text(
-              title,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: config.ink,
-              ),
+    final config = widget.config;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: _hovered
+              ? (config.contractActionHoverColor ??
+                    config.tokens.badgeBackground.withValues(alpha: 0.82))
+              : (config.contractActionColor ??
+                    config.tokens.badgeBackground.withValues(alpha: 0.72)),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: config.tokens.border.withValues(
+              alpha: _hovered ? 0.22 : 0.12,
             ),
           ),
-        ],
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: _hovered ? 0.22 : 0.12),
+              blurRadius: _hovered ? 20 : 12,
+              offset: Offset(0, _hovered ? 10 : 6),
+            ),
+          ],
+        ),
+        child: Row(
+          children: [
+            Icon(
+              widget.icon,
+              size: 18,
+              color:
+                  config.contractActionIconColor ?? config.tokens.primaryStrong,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(
+                widget.title,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
+                  color: config.ink,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.chevron_right_rounded,
+              size: 20,
+              color:
+                  config.contractActionIconColor ??
+                  config.tokens.primaryStrong.withValues(alpha: 0.92),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -823,12 +992,14 @@ class _PlaceholderWidgetCard extends StatefulWidget {
   final EmptyAreaDashboardConfig config;
   final IconData icon;
   final String title;
+  final String description;
 
   const _PlaceholderWidgetCard({
     required this.width,
     required this.config,
     required this.icon,
     required this.title,
+    required this.description,
   });
 
   @override
@@ -854,47 +1025,90 @@ class _PlaceholderWidgetCardState extends State<_PlaceholderWidgetCard> {
           transform: Matrix4.translationValues(0, _hovered ? -4 : 0, 0),
           width: widget.width,
           child: ContractGlassCard(
-            padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+            padding: EdgeInsets.zero,
             elevation: _hovered ? 22 : 16,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Container(
-                  width: 46,
-                  height: 46,
-                  decoration: BoxDecoration(
-                    gradient: config.accentGradient,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.54),
+            child: Container(
+              decoration: BoxDecoration(
+                color: config.placeholderCardColor,
+                borderRadius: BorderRadius.circular(24),
+              ),
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      gradient: config.contractActionColor == null
+                          ? config.accentGradient
+                          : null,
+                      color: config.contractActionColor,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    child: Icon(
+                      widget.icon,
+                      color:
+                          config.placeholderCardIconColor ??
+                          config.tokens.primary,
+                      size: 22,
                     ),
                   ),
-                  child: Icon(
-                    widget.icon,
-                    color: config.tokens.primaryStrong,
-                    size: 22,
+                  const SizedBox(height: 14),
+                  Text(
+                    widget.title,
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: config.ink,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 14),
-                Text(
-                  widget.title,
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: config.ink,
+                  const SizedBox(height: 6),
+                  Text(
+                    widget.description,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color:
+                          config.placeholderCardDescriptionColor ??
+                          config.workspaceBodyColor ??
+                          config.mutedInk,
+                      height: 1.4,
+                    ),
                   ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  'Contenedor listo para funcionalidad real, sin métricas inventadas.',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: config.mutedInk,
-                    height: 1.4,
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      const Spacer(),
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          gradient: config.contractActionColor == null
+                              ? config.accentGradient
+                              : null,
+                          color: config.contractActionColor,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.10),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.arrow_forward_rounded,
+                          size: 22,
+                          color:
+                              config.placeholderCardArrowColor ??
+                              config.placeholderCardIconColor ??
+                              config.tokens.primary,
+                        ),
+                      ),
+                    ],
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         ),
@@ -975,9 +1189,9 @@ class _AreaHeaderButtonState extends State<_AreaHeaderButton> {
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
                   colors: [
-                    Colors.white.withValues(alpha: highlighted ? 0.32 : 0.22),
+                    Colors.white.withValues(alpha: highlighted ? 0.18 : 0.12),
                     tokens.surfaceTint.withValues(
-                      alpha: highlighted ? 0.42 : 0.26,
+                      alpha: highlighted ? 0.20 : 0.12,
                     ),
                   ],
                 ),
@@ -991,7 +1205,7 @@ class _AreaHeaderButtonState extends State<_AreaHeaderButton> {
                   BoxShadow(
                     blurRadius: highlighted ? 28 : 16,
                     color: Colors.black.withValues(
-                      alpha: highlighted ? 0.16 : 0.08,
+                      alpha: highlighted ? 0.22 : 0.12,
                     ),
                     offset: Offset(0, highlighted ? 14 : 8),
                   ),
@@ -1009,7 +1223,13 @@ class _AreaHeaderButtonState extends State<_AreaHeaderButton> {
                     ? MainAxisAlignment.center
                     : MainAxisAlignment.start,
                 children: [
-                  Icon(widget.icon, size: 20, color: tokens.primaryStrong),
+                  Icon(
+                    widget.icon,
+                    size: 20,
+                    color: tokens.darkGlass
+                        ? tokens.onGlass
+                        : tokens.primaryStrong,
+                  ),
                   if (!widget.compact) ...[
                     const SizedBox(width: 10),
                     Expanded(
@@ -1021,7 +1241,9 @@ class _AreaHeaderButtonState extends State<_AreaHeaderButton> {
                           maxLines: 1,
                           softWrap: false,
                           style: TextStyle(
-                            color: tokens.primaryStrong,
+                            color: tokens.darkGlass
+                                ? tokens.onGlass
+                                : tokens.primaryStrong,
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
                           ),
@@ -1066,7 +1288,9 @@ class _AreaSidePanel extends StatelessWidget {
                 style: TextStyle(
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
-                  color: tokens.primaryStrong,
+                  color: tokens.darkGlass
+                      ? tokens.onGlass
+                      : tokens.primaryStrong,
                 ),
               ),
               const SizedBox(height: 16),
@@ -1085,10 +1309,14 @@ class _AreaSidePanel extends StatelessWidget {
               Container(
                 padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: tokens.primarySoft.withValues(alpha: 0.34),
+                  color: tokens.darkGlass
+                      ? config.contractActionColor
+                      : tokens.primarySoft.withValues(alpha: 0.34),
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
-                    color: tokens.primaryStrong.withValues(alpha: 0.14),
+                    color: tokens.darkGlass
+                        ? Colors.white.withValues(alpha: 0.08)
+                        : tokens.primaryStrong.withValues(alpha: 0.14),
                   ),
                 ),
                 child: Column(
@@ -1149,14 +1377,16 @@ class _AreaSectionHeader extends StatelessWidget {
             fontSize: 11.5,
             fontWeight: FontWeight.w900,
             letterSpacing: 1.6,
-            color: tokens.badgeText,
+            color: tokens.darkGlass ? tokens.primary : tokens.badgeText,
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: Container(
             height: 1,
-            color: tokens.primarySoft.withValues(alpha: 0.32),
+            color: tokens.darkGlass
+                ? Colors.white.withValues(alpha: 0.10)
+                : tokens.primarySoft.withValues(alpha: 0.32),
           ),
         ),
       ],
@@ -1198,8 +1428,10 @@ class _AreaNavItem extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: accented
-                    ? Colors.white.withValues(alpha: 0.72)
-                    : Colors.white.withValues(alpha: 0.58),
+                    ? Colors.white.withValues(alpha: 0.28)
+                    : Colors.white.withValues(
+                        alpha: tokens.darkGlass ? 0.08 : 0.58,
+                      ),
               ),
               boxShadow: accented
                   ? [
@@ -1221,7 +1453,11 @@ class _AreaNavItem extends StatelessWidget {
               children: [
                 Icon(
                   icon,
-                  color: accented ? Colors.white : tokens.primaryStrong,
+                  color: accented
+                      ? Colors.white
+                      : (tokens.darkGlass
+                            ? tokens.primary
+                            : tokens.primaryStrong),
                   size: 22,
                 ),
                 const SizedBox(width: 12),
@@ -1234,7 +1470,11 @@ class _AreaNavItem extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w900,
-                          color: accented ? Colors.white : tokens.primaryStrong,
+                          color: accented
+                              ? Colors.white
+                              : (tokens.darkGlass
+                                    ? tokens.onGlass
+                                    : tokens.primaryStrong),
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1245,7 +1485,9 @@ class _AreaNavItem extends StatelessWidget {
                           fontWeight: FontWeight.w700,
                           color: accented
                               ? Colors.white.withValues(alpha: 0.92)
-                              : tokens.badgeText,
+                              : (tokens.darkGlass
+                                    ? tokens.onGlass.withValues(alpha: 0.58)
+                                    : tokens.badgeText),
                         ),
                       ),
                     ],
@@ -1255,7 +1497,7 @@ class _AreaNavItem extends StatelessWidget {
                   const SizedBox(width: 8),
                   Icon(
                     Icons.chevron_right_rounded,
-                    color: tokens.badgeText,
+                    color: tokens.darkGlass ? tokens.primary : tokens.badgeText,
                     size: 22,
                   ),
                 ],
@@ -1265,5 +1507,41 @@ class _AreaNavItem extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _DashedRoundedRectPainter extends CustomPainter {
+  final Color color;
+  final double radius;
+
+  const _DashedRoundedRectPainter({required this.color, required this.radius});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = RRect.fromRectAndRadius(
+      Offset.zero & size,
+      Radius.circular(radius),
+    );
+    final path = Path()..addRRect(rect);
+    final paint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+
+    const dashWidth = 8.0;
+    const dashGap = 7.0;
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final next = distance + dashWidth;
+        canvas.drawPath(metric.extractPath(distance, next), paint);
+        distance += dashWidth + dashGap;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DashedRoundedRectPainter oldDelegate) {
+    return oldDelegate.color != color || oldDelegate.radius != radius;
   }
 }

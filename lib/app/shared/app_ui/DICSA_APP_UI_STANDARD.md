@@ -147,6 +147,23 @@ Regla especifica para `Direccion`:
   - borde suave
   - highlight o sombra radial contenidos dentro de la misma geometria
 
+Regla especifica para `Recursos Humanos`:
+
+- RH usa `dark glass` institucional en familia morada.
+- RH no puede resolver contraste con cards blancas o fondos lechosos.
+- Si una pantalla nueva de RH se ve "mas limpia" porque aclaro demasiado las superficies, se considera desviacion del contrato.
+- La jerarquia base de RH debe salir de:
+  - fondo profundo
+  - paneles oscuros
+  - acentos morados claros
+  - texto blanco en varias intensidades
+- Los acentos claros de RH se reservan para:
+  - iconos
+  - badges
+  - hover
+  - llamadas de foco
+- No se deben usar como relleno dominante de cards grandes.
+
 ### Contrato de identidad visual por area
 
 Esta regla aplica a cualquier area nueva o futura (`Operacion`, `Dashboard general`, `Ventas`, `Finanzas`, `RH`, `Administracion`, etc.).
@@ -225,6 +242,25 @@ Reglas obligatorias:
 - Ningun popup, picker, date picker, menu contextual, dropdown, tooltip, selector de rango, modal de filtro o surface auxiliar puede caer al color base azul del sistema si la pagina anfitriona pertenece a otra area.
 - Si un componente compartido puede abrirse desde varias areas, su implementacion debe consumir tokens del contexto anfitrion en tiempo de apertura; no puede resolver color por defaults internos.
 - Resolver un problema cromatico local con overrides dentro de una sola pantalla no cierra el contrato: la correccion debe vivir en el componente compartido o en la capa de tema que lo abastece.
+
+Reglas adicionales para `Recursos Humanos`:
+
+- en dashboards de RH, el hero principal debe sentirse premium oscuro, no tarjeta clara resaltada
+- el estado vacio de RH debe verse como contenedor elegante preparado para operacion real; no como placeholder lavado
+- el panel contractual o lateral de RH debe leerse mas cercano a control ejecutivo que a ficha informativa clara
+- las cards inferiores de RH deben diseñarse como destinos o superficies navegables, no como cajas neutras vacias
+- al replicar una pagina de RH, copiar primero:
+  - fondo homologado del area
+  - relacion de contraste entre hero, workspace y side panel
+  - volumen de sombra de cards
+  - pesos de texto
+  - distribucion `oscuro dominante / claro como acento`
+- no reinterpretar RH con:
+  - verdes
+  - azules
+  - naranjas
+  - superficies blancas dominantes
+  - highlights blancos como material principal
 
 Regla adicional para `Direccion`:
 

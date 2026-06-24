@@ -18,6 +18,7 @@ import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/friendly_error_message.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
@@ -155,18 +156,7 @@ class _MenudeoPriceAdjustmentsPageState
   }
 
   String _friendlyDataError(Object error) {
-    if (error is PostgrestException) {
-      return error.message;
-    }
-    if (error is SocketException) {
-      return 'No se pudo conectar con Supabase. Intenta de nuevo en un momento.';
-    }
-    final message = error.toString();
-    if (message.contains('Failed host lookup') ||
-        message.contains('ClientException')) {
-      return 'No se pudo conectar con Supabase. Intenta de nuevo en un momento.';
-    }
-    return message;
+    return friendlyErrorMessage(error);
   }
 
   String _directionLabel(String raw) {

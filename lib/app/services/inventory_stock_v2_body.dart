@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'inventory_movements_grid.dart';
 import '../shared/archetypes/auxiliary_surfaces/confirmation_dialog.dart';
+import '../shared/friendly_error_message.dart';
 import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart';
 import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
@@ -273,7 +274,7 @@ class _InventoryStockV2BodyState extends State<InventoryStockV2Body> {
       });
       _publishTopBarData();
     } catch (e) {
-      _toast('No se pudo cargar inventario v2: $e');
+      _toast('No se pudo cargar inventario v2: ${friendlyErrorMessage(e)}');
     } finally {
       _refreshing = false;
       if (_pendingReload) {

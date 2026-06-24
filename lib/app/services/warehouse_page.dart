@@ -14,6 +14,7 @@ import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../maintenance/purchase_orders_page.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
+import '../shared/friendly_error_message.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
@@ -293,7 +294,7 @@ class _WarehousePageState extends State<WarehousePage>
         setState(() => _cutLines = <Map<String, dynamic>>[]);
       }
     } catch (e) {
-      _toast('No se pudo cargar almacen: $e');
+      _toast('No se pudo cargar almacen: ${friendlyErrorMessage(e)}');
     } finally {
       _refreshing = false;
       if (mounted && _loading) {
@@ -316,7 +317,7 @@ class _WarehousePageState extends State<WarehousePage>
             .toList();
       });
     } catch (e) {
-      _toast('No se pudo cargar lineas de corte: $e');
+      _toast('No se pudo cargar lineas de corte: ${friendlyErrorMessage(e)}');
     }
   }
 

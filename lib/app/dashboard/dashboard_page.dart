@@ -1230,6 +1230,7 @@ class _ServicesSummaryPanelState extends State<_ServicesSummaryPanel>
     _refreshing = true;
     try {
       await _loadDates(showLoader: showLoader);
+      if (!mounted) return;
       if (_datesWithServices.isNotEmpty &&
           !_datesWithServices.contains(_selectedDate)) {
         final today = DateUtils.dateOnly(DateTime.now());
@@ -1240,7 +1241,7 @@ class _ServicesSummaryPanelState extends State<_ServicesSummaryPanel>
       await _loadRowsForSelectedDate(showLoader: showLoader);
     } finally {
       _refreshing = false;
-      if (_pendingReload) {
+      if (mounted && _pendingReload) {
         _pendingReload = false;
         _requestReload();
       }
@@ -1306,7 +1307,7 @@ class _ServicesSummaryPanelState extends State<_ServicesSummaryPanel>
   }
 
   Future<void> _loadDates({bool showLoader = true}) async {
-    if (showLoader) {
+    if (showLoader && mounted) {
       setState(() => _loadingDates = true);
     }
     final data = await _supa
@@ -1323,6 +1324,7 @@ class _ServicesSummaryPanelState extends State<_ServicesSummaryPanel>
     }
 
     final sorted = set.toList()..sort();
+    if (!mounted) return;
     setState(() {
       _datesWithServices = sorted;
       if (showLoader) _loadingDates = false;
@@ -1330,7 +1332,7 @@ class _ServicesSummaryPanelState extends State<_ServicesSummaryPanel>
   }
 
   Future<void> _loadRowsForSelectedDate({bool showLoader = true}) async {
-    if (showLoader) {
+    if (showLoader && mounted) {
       setState(() => _loadingRows = true);
     }
     final data = await _supa
@@ -1360,6 +1362,7 @@ class _ServicesSummaryPanelState extends State<_ServicesSummaryPanel>
       );
     }).toList();
 
+    if (!mounted) return;
     setState(() {
       _items = mapped;
       if (showLoader) _loadingRows = false;

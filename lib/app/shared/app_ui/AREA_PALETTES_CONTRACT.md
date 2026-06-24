@@ -113,15 +113,93 @@ Estas areas ya quedan oficiales con paleta congelada y no deben reinterpretarse 
   - no confundirse con `Menudeo`
   - no confundirse con `Contabilidad`
 - anclas actuales:
-  - `#6F3FE8`
+  - `#9F6BFF`
+  - `#B68CFF`
+  - `#6E47A8`
   - `#2B114F`
-  - `#EEE5FF`
-  - `#A66BFF`
-  - `#F6F1FF`
-  - `#D6C6F4`
-  - `#E9DEFF`
-  - `#5B2AB5`
-  - `#8D63E8`
+  - `#24103D`
+  - `#130B22`
+  - `#34204E`
+  - `#432A65`
+  - `#C79CFF`
+  - `#CFAEFF`
+
+#### Recursos Humanos: contrato visual congelado
+
+- `Recursos Humanos` vive en modo `dark glass`, no en glass lechoso.
+- La lectura dominante debe ser:
+  - fondo oscuro
+  - cards oscuras
+  - acentos morados claros
+- No se permite en RH la lectura:
+  - fondo oscuro
+  - cards blancas
+  - brillos blancos dominantes
+- La mejora de legibilidad en RH se resuelve con:
+  - contraste
+  - profundidad
+  - jerarquia visual
+  - distribucion de color
+- No se resuelve cambiando identidad de area.
+
+#### Recursos Humanos: distribucion cromatica obligatoria
+
+- objetivo de masa visual:
+  - `70%` morado oscuro
+  - `20%` morado medio
+  - `10%` morado claro
+- El morado claro se reserva para:
+  - iconos relevantes
+  - badges
+  - llamados de atencion
+  - acentos de hover
+- Los fondos claros no deben dominar heroes, cards base ni estados vacios.
+
+#### Recursos Humanos: fondo congelado
+
+- base profunda:
+  - `#130B22`
+- gradientes de apoyo:
+  - `#24103D`
+  - `#341A5A`
+- Los blobs o masas decorativas permanecen homologados en geometria, pero su protagonismo baja.
+- Su opacidad visual debe sentirse alrededor de `15%`; decoran, no lideran la lectura.
+
+#### Recursos Humanos: superficies congeladas
+
+- Hero principal:
+  - gradiente oscuro premium
+  - borde morado tenue
+  - titular en blanco puro
+  - subtitulo en blanco translúcido
+  - badge claro `#CFAEFF`
+- Cards base:
+  - fondo oscuro translúcido
+  - borde tenue morado
+  - sombra profunda negra
+- Estado vacio:
+  - contenedor oscuro elegante
+  - borde punteado morado tenue
+  - icono en `#B68CFF`
+- Panel derecho:
+  - card premium oscura
+  - acciones internas en morado medio
+  - hover mas brillante en la misma familia
+- Cards inferiores:
+  - se leen como navegacion futura
+  - icono superior
+  - titulo
+  - descripcion
+  - flecha de avance
+
+#### Recursos Humanos: contraste y texto
+
+- `H1`: blanco puro
+- `H2`: `#F1E7FF`
+- texto normal: blanco con opacidad alta
+- texto secundario: blanco con opacidad media
+- texto apagado: blanco con opacidad baja
+- En RH no se usa gris oscuro sobre superficies oscuras.
 
 ### Menudeo
 

@@ -3,15 +3,19 @@ import 'package:flutter/material.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
 
 const ContractAreaTokens humanResourcesAreaTokens = ContractAreaTokens(
-  primary: Color(0xFF6F3FE8),
+  primary: Color(0xFF9F6BFF),
   primaryStrong: Color(0xFF2B114F),
   primarySoft: Color(0xFFEEE5FF),
-  accent: Color(0xFFA66BFF),
-  surfaceTint: Color(0xFFF6F1FF),
-  border: Color(0xFFD6C6F4),
-  badgeBackground: Color(0xFFE9DEFF),
-  badgeText: Color(0xFF5B2AB5),
-  glow: Color(0xFF8D63E8),
+  accent: Color(0xFFB68CFF),
+  surfaceTint: Color(0xFF6E47A8),
+  border: Color(0xFFB084FF),
+  badgeBackground: Color(0xFF34204E),
+  badgeText: Color(0xFFC79CFF),
+  glow: Color(0xFFB68CFF),
+  darkGlass: true,
+  glassSurface: Color(0xE025163A),
+  fieldSurface: Color(0xD925163A),
+  onGlass: Color(0xFFFFFFFF),
 );
 
 const LinearGradient kHumanResourcesPanelGradient = LinearGradient(
