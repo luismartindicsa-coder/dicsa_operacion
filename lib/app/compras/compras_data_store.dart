@@ -466,20 +466,45 @@ const List<String> _kMayoreoCanonicalGeneralCategories = <String>[
 ];
 
 ComprasCatalogSnapshot _normalizeCatalogSnapshot(ComprasCatalogSnapshot input) {
+  final existingGeneralRows = input.materials
+      .where((row) => row.level.trim().toUpperCase() == 'GENERAL')
+      .map(
+        (row) => ComprasCatalogMaterialRecord(
+          id: row.id,
+          code: row.code,
+          level: 'GENERAL',
+          name: row.name,
+          unit: row.unit,
+          category: _canonicalMayoreoGeneralCategory(
+            row.category,
+            family: row.family,
+            name: row.name,
+          ),
+          family: null,
+          generalMaterialId: null,
+          active: row.active,
+          notes: row.notes,
+        ),
+      )
+      .toList(growable: false);
+  final existingGeneralByCategory = <String, ComprasCatalogMaterialRecord>{
+    for (final row in existingGeneralRows) row.category: row,
+  };
   final canonicalGeneralRows = <ComprasCatalogMaterialRecord>[
     for (final category in _kMayoreoCanonicalGeneralCategories)
-      ComprasCatalogMaterialRecord(
-        id: 'ma_general_${category.toLowerCase()}',
-        code: category,
-        level: 'GENERAL',
-        name: category,
-        unit: 'KG',
-        category: category,
-        family: null,
-        generalMaterialId: null,
-        active: true,
-        notes: 'GENERAL BASE MAYOREO',
-      ),
+      existingGeneralByCategory[category] ??
+          ComprasCatalogMaterialRecord(
+            id: 'ca_general_${category.toLowerCase()}',
+            code: category,
+            level: 'GENERAL',
+            name: category,
+            unit: 'KG',
+            category: category,
+            family: null,
+            generalMaterialId: null,
+            active: true,
+            notes: 'GENERAL BASE COMPRAS',
+          ),
   ];
   final canonicalGeneralIds = <String, String>{
     for (final row in canonicalGeneralRows) row.category: row.id,
@@ -510,9 +535,16 @@ ComprasCatalogSnapshot _normalizeCatalogSnapshot(ComprasCatalogSnapshot input) {
 
   final companies = input.companies.toList(growable: false)
     ..sort((a, b) => compareMayoreoAlpha(a.name, b.name));
+  final extraGeneralRows = existingGeneralRows
+      .where(
+        (row) =>
+            !canonicalGeneralRows.any((canonical) => canonical.id == row.id),
+      )
+      .toList(growable: false);
   final materials =
       <ComprasCatalogMaterialRecord>[
         ...canonicalGeneralRows,
+        ...extraGeneralRows,
         ...normalizedCommercialRows,
       ]..sort((a, b) {
         final levelCompare = compareMayoreoAlpha(a.level, b.level);

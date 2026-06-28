@@ -12,6 +12,7 @@ class ContractAreaTokens {
   final Color badgeText;
   final Color glow;
   final bool darkGlass;
+  final bool accentDarkGlass;
   final Color glassSurface;
   final Color fieldSurface;
   final Color onGlass;
@@ -27,6 +28,7 @@ class ContractAreaTokens {
     required this.badgeText,
     required this.glow,
     this.darkGlass = false,
+    this.accentDarkGlass = false,
     this.glassSurface = const Color(0xB3FFFFFF),
     this.fieldSurface = const Color(0xB8FFFFFF),
     this.onGlass = const Color(0xFF18232C),

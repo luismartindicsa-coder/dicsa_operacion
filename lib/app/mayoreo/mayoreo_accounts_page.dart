@@ -73,6 +73,13 @@ enum _MayoreoAccountsStatus {
 
 enum _AccountsMenuAction { detail, markReview }
 
+enum _AccountsQuickFilter {
+  totalPendiente,
+  totalPagado,
+  porFacturar,
+  chequePendienteCanje,
+}
+
 class MayoreoAccountsPage extends StatefulWidget {
   final bool instantOpen;
 
@@ -111,6 +118,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
   final Set<String> _documentFilters = <String>{};
   final Set<String> _statusFilters = <String>{};
   bool _overdueEstimatedPaymentOnly = false;
+  _AccountsQuickFilter? _quickFilter;
   final ScrollController _rowsScrollController = ScrollController();
   final GlobalKey _rowsViewportKey = GlobalKey();
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
@@ -586,7 +594,68 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     unawaited(_persistRowsQueue);
   }
 
-  List<_MayoreoAccountRow> get _filteredRows {
+  double _pendingContributionForRow(_MayoreoAccountRow row) {
+    if (row.status == _MayoreoAccountsStatus.cancelada) return 0;
+    final effectivePending = row.pendingBalance
+        .clamp(0, double.infinity)
+        .toDouble();
+    return effectivePending <= 0.009 ? 0 : effectivePending;
+  }
+
+  double _paidContributionForRow(_MayoreoAccountRow row) {
+    final effectivePaid = row.paidAmount.clamp(0, double.infinity).toDouble();
+    return effectivePaid <= 0.009 ? 0 : effectivePaid;
+  }
+
+  bool _matchesQuickFilterRow(
+    _MayoreoAccountRow row,
+    _AccountsQuickFilter filter,
+  ) {
+    switch (filter) {
+      case _AccountsQuickFilter.totalPendiente:
+        return _pendingContributionForRow(row) > 0;
+      case _AccountsQuickFilter.totalPagado:
+        return _paidContributionForRow(row) > 0;
+      case _AccountsQuickFilter.porFacturar:
+        return row.operationType == _MayoreoAccountsOperationType.factura &&
+            row.documentNumber.trim().isEmpty;
+      case _AccountsQuickFilter.chequePendienteCanje:
+        return row.operationType == _MayoreoAccountsOperationType.cheque &&
+            row.status != _MayoreoAccountsStatus.chequeCanjeado;
+    }
+  }
+
+  void _toggleQuickFilter(_AccountsQuickFilter filter) {
+    setState(() {
+      _quickFilter = _quickFilter == filter ? null : filter;
+      _currentPage = 0;
+      final nextRows = _filteredRows;
+      if (nextRows.isEmpty) {
+        _selectedRowId = null;
+        _selectedRowIds.clear();
+        _selectionAnchorId = null;
+        return;
+      }
+      final containsSelected =
+          _selectedRowId != null &&
+          nextRows.any((row) => row.id == _selectedRowId);
+      if (!containsSelected) {
+        _selectedRowId = nextRows.first.id;
+        _selectionAnchorId = _selectedRowId;
+      }
+      _selectedRowIds.removeWhere(
+        (id) => nextRows.every((row) => row.id != id),
+      );
+      if (_selectedRowId != null) {
+        _selectedRowIds.add(_selectedRowId!);
+      }
+      if (_selectedRowIds.isEmpty && nextRows.isNotEmpty) {
+        _selectedRowIds.add(nextRows.first.id);
+      }
+    });
+  }
+
+  List<_MayoreoAccountRow> get _baseFilteredRows {
     return _rows
         .where((row) {
           final rowDate = DateUtils.dateOnly(row.saleDate);
@@ -687,6 +756,15 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
           rightFallbackId: b.id,
         ),
       );
+  }
+
+  List<_MayoreoAccountRow> get _filteredRows {
+    final rows = _baseFilteredRows;
+    final quickFilter = _quickFilter;
+    if (quickFilter == null) return rows;
+    return rows
+        .where((row) => _matchesQuickFilterRow(row, quickFilter))
+        .toList(growable: false);
   }
 
   int _effectiveCurrentPageFor(int totalRows) =>
@@ -1907,6 +1985,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
       _documentFilters.clear();
       _statusFilters.clear();
       _overdueEstimatedPaymentOnly = false;
+      _quickFilter = null;
       _currentPage = 0;
     });
     _persistState();
@@ -1926,10 +2005,12 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
       _operationFilters.isNotEmpty ||
       _documentFilters.isNotEmpty ||
       _statusFilters.isNotEmpty ||
-      _overdueEstimatedPaymentOnly;
+      _overdueEstimatedPaymentOnly ||
+      _quickFilter != null;
 
   @override
   Widget build(BuildContext context) {
+    final baseFilteredRows = _baseFilteredRows;
     final filteredRows = _filteredRows;
     final pageRows = _pageRows(filteredRows);
     final currentPage = _effectiveCurrentPageFor(filteredRows.length);
@@ -1937,22 +2018,22 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     final selectedRow = _rows
         .where((row) => row.id == _selectedRowId)
         .firstOrNull;
-    final pendingTotal = filteredRows.fold<double>(
+    final pendingTotal = baseFilteredRows.fold<double>(
       0,
-      (sum, row) => sum + (row.isFinanciallyOpen ? row.pendingBalance : 0),
+      (sum, row) => sum + _pendingContributionForRow(row),
     );
-    final paidTotal = filteredRows.fold<double>(
+    final paidTotal = baseFilteredRows.fold<double>(
       0,
-      (sum, row) => sum + row.paidAmount,
+      (sum, row) => sum + _paidContributionForRow(row),
     );
-    final toInvoiceTotal = filteredRows
+    final toInvoiceTotal = baseFilteredRows
         .where(
           (row) =>
               row.operationType == _MayoreoAccountsOperationType.factura &&
               row.documentNumber.trim().isEmpty,
         )
         .fold<double>(0, (sum, row) => sum + row.approvedAmount);
-    final pendingCheckTotal = filteredRows
+    final pendingCheckTotal = baseFilteredRows
         .where(
           (row) =>
               row.operationType == _MayoreoAccountsOperationType.cheque &&
@@ -2085,6 +2166,8 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
                               paidTotal: paidTotal,
                               toInvoiceTotal: toInvoiceTotal,
                               pendingCheckTotal: pendingCheckTotal,
+                              activeQuickFilter: _quickFilter,
+                              onToggleQuickFilter: _toggleQuickFilter,
                               exportingReportPdf: _exportingReportPdf,
                               exportingCsv: _exportingCsv,
                               onExportReportPdf: _exportAccountsReportPdf,
@@ -2246,6 +2329,8 @@ class _AccountsTopBar extends StatelessWidget {
   final double paidTotal;
   final double toInvoiceTotal;
   final double pendingCheckTotal;
+  final _AccountsQuickFilter? activeQuickFilter;
+  final ValueChanged<_AccountsQuickFilter> onToggleQuickFilter;
   final bool exportingReportPdf;
   final bool exportingCsv;
   final Future<void> Function() onExportReportPdf;
@@ -2259,6 +2344,8 @@ class _AccountsTopBar extends StatelessWidget {
     required this.paidTotal,
     required this.toInvoiceTotal,
     required this.pendingCheckTotal,
+    required this.activeQuickFilter,
+    required this.onToggleQuickFilter,
     required this.exportingReportPdf,
     required this.exportingCsv,
     required this.onExportReportPdf,
@@ -2340,25 +2427,40 @@ class _AccountsTopBar extends StatelessWidget {
               icon: Icons.pending_actions_rounded,
               title: 'TOTAL PENDIENTE',
               value: formatMoney(pendingTotal, decimals: 0),
-              detail: 'Saldo abierto visible',
+              detail: 'Saldo real pendiente visible',
+              active: activeQuickFilter == _AccountsQuickFilter.totalPendiente,
+              onTap: () =>
+                  onToggleQuickFilter(_AccountsQuickFilter.totalPendiente),
             ),
             _AccountsMetricCard(
               icon: Icons.verified_rounded,
               title: 'TOTAL PAGADO',
               value: formatMoney(paidTotal, decimals: 0),
               detail: 'Pagos/canjes registrados',
+              active: activeQuickFilter == _AccountsQuickFilter.totalPagado,
+              onTap: () =>
+                  onToggleQuickFilter(_AccountsQuickFilter.totalPagado),
             ),
             _AccountsMetricCard(
               icon: Icons.receipt_long_rounded,
               title: 'POR FACTURAR',
               value: formatMoney(toInvoiceTotal, decimals: 0),
               detail: 'Factura aún no asignada',
+              active: activeQuickFilter == _AccountsQuickFilter.porFacturar,
+              onTap: () =>
+                  onToggleQuickFilter(_AccountsQuickFilter.porFacturar),
             ),
             _AccountsMetricCard(
               icon: Icons.payments_outlined,
               title: 'CHEQUE PEND./CANJE',
               value: formatMoney(pendingCheckTotal, decimals: 0),
               detail: 'Cheque recibido o pendiente',
+              active:
+                  activeQuickFilter ==
+                  _AccountsQuickFilter.chequePendienteCanje,
+              onTap: () => onToggleQuickFilter(
+                _AccountsQuickFilter.chequePendienteCanje,
+              ),
             ),
           ],
         ),
@@ -2412,84 +2514,110 @@ class _AccountsMetricCard extends StatelessWidget {
   final String title;
   final String value;
   final String detail;
+  final bool active;
+  final VoidCallback onTap;
 
   const _AccountsMetricCard({
     required this.icon,
     required this.title,
     required this.value,
     required this.detail,
+    required this.active,
+    required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return Container(
-      width: 308,
-      height: 72,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
-      decoration: BoxDecoration(
-        color: tokens.badgeBackground.withValues(alpha: 0.56),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.76)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: tokens.primary.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(
-                color: tokens.primaryStrong.withValues(alpha: 0.24),
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 160),
+        width: 308,
+        height: 72,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        decoration: BoxDecoration(
+          color: active
+              ? tokens.primarySoft.withValues(alpha: 0.22)
+              : tokens.badgeBackground.withValues(alpha: 0.56),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: active
+                ? tokens.primaryStrong.withValues(alpha: 0.48)
+                : Colors.white.withValues(alpha: 0.76),
+          ),
+          boxShadow: active
+              ? [
+                  BoxShadow(
+                    color: tokens.primaryStrong.withValues(alpha: 0.10),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ]
+              : null,
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: tokens.primary.withValues(alpha: active ? 0.20 : 0.14),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(
+                  color: tokens.primaryStrong.withValues(
+                    alpha: active ? 0.38 : 0.24,
+                  ),
+                ),
+              ),
+              child: Icon(icon, size: 18, color: tokens.primaryStrong),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                      color: kMayoreoMutedInk,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w900,
+                      color: kMayoreoInk,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 1),
+                  Text(
+                    detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w600,
+                      color: kMayoreoMutedInk,
+                      height: 1.0,
+                    ),
+                  ),
+                ],
               ),
             ),
-            child: Icon(icon, size: 18, color: tokens.primaryStrong),
-          ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    fontSize: 9,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 0.5,
-                    color: kMayoreoMutedInk,
-                    height: 1.0,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  value,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w900,
-                    color: kMayoreoInk,
-                    height: 1.0,
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  detail,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w600,
-                    color: kMayoreoMutedInk,
-                    height: 1.0,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

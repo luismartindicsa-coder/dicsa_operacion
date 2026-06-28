@@ -21,6 +21,7 @@ Solo cambia la gama cromatica mediante tokens semanticos.
 - `Recursos Humanos`
 - `Menudeo`
 - `Mayoreo`
+- `Gerencia`
 - `Gestion Documental`
 - `Finanzas`
 - `Contabilidad`
@@ -200,6 +201,48 @@ Estas areas ya quedan oficiales con paleta congelada y no deben reinterpretarse 
 - texto secundario: blanco con opacidad media
 - texto apagado: blanco con opacidad baja
 - En RH no se usa gris oscuro sobre superficies oscuras.
+
+### Gerencia
+
+- estado: `direccion cromatica inicial aprobada`
+- caracter: ejecutiva, resolutiva, seguimiento transversal
+- familia oficial: rojo corporativo / vino profundo
+- objetivo de diferenciacion:
+  - no confundirse con `Direccion`
+  - no reciclar el morado de `Recursos Humanos`
+  - no verse como alerta destructiva del sistema
+- anclas iniciales:
+  - `#D84B5B`
+  - `#FF8A7A`
+  - `#8F2737`
+  - `#4B0E18`
+  - `#2A0D14`
+  - `#16070B`
+  - `#4A1520`
+  - `#FFC7CF`
+  - `#FFB1BA`
+
+#### Gerencia: direccion visual inicial
+
+- `Gerencia` arranca en modo `dark glass`.
+- La lectura dominante debe ser:
+  - fondo vino oscuro
+  - superficies oscuras elegantes
+  - acentos rojos y coral apagado
+- El rojo no debe sentirse como error del sistema ni como semaforo destructivo.
+- El color sirve para jerarquia ejecutiva, seguimiento y escalamiento, no para saturar toda la interfaz.
+
+#### Gerencia: distribucion cromatica sugerida
+
+- objetivo de masa visual:
+  - `72%` vino profundo
+  - `18%` rojo medio
+  - `10%` rojo claro
+- El rojo claro se reserva para:
+  - iconos
+  - badges
+  - llamadas de atencion
+  - hover y foco
 
 ### Menudeo
 

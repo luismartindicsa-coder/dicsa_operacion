@@ -118,6 +118,85 @@ void assertFullSettlementAmount({
   }
 }
 
+const double kFinSupplierSettlementDifferenceTolerance = 1.0;
+
+const List<String> kFinSupplierSettlementDifferenceReasons = <String>[
+  'REDONDEO_OPERATIVO',
+  'AJUSTE_CENTAVOS_AUTORIZADO',
+  'ERROR_CAPTURA_EN_REVISION',
+];
+
+double resolveEffectiveSupplierAppliedAmount({
+  required double debitAmount,
+  double? appliedSupplierAmount,
+}) {
+  return (appliedSupplierAmount ?? debitAmount)
+      .clamp(0, double.infinity)
+      .toDouble();
+}
+
+double computeSupplierSettlementDifferenceAmount({
+  required double debitAmount,
+  double? appliedSupplierAmount,
+}) {
+  final effectiveAppliedAmount = resolveEffectiveSupplierAppliedAmount(
+    debitAmount: debitAmount,
+    appliedSupplierAmount: appliedSupplierAmount,
+  );
+  return effectiveAppliedAmount - debitAmount;
+}
+
+bool isSupplierSettlementDifferenceAllowed({
+  required double debitAmount,
+  double? appliedSupplierAmount,
+}) {
+  final difference = computeSupplierSettlementDifferenceAmount(
+    debitAmount: debitAmount,
+    appliedSupplierAmount: appliedSupplierAmount,
+  );
+  return difference.abs() <= kFinSupplierSettlementDifferenceTolerance + 0.009;
+}
+
+void assertSupplierSettlementAmountAllowed({
+  required double debitAmount,
+  required double expectedSupplierAmount,
+  double? appliedSupplierAmount,
+  String? differenceReason,
+}) {
+  final effectiveAppliedAmount = resolveEffectiveSupplierAppliedAmount(
+    debitAmount: debitAmount,
+    appliedSupplierAmount: appliedSupplierAmount,
+  );
+  if ((effectiveAppliedAmount - expectedSupplierAmount).abs() > 0.009) {
+    throw StateError(
+      'La factura proveedor debe liquidarse por ${expectedSupplierAmount.toStringAsFixed(2)}.',
+    );
+  }
+  final difference = effectiveAppliedAmount - debitAmount;
+  if (difference.abs() > kFinSupplierSettlementDifferenceTolerance + 0.009) {
+    throw StateError(
+      'La diferencia banco vs factura excede el limite permitido de ${kFinSupplierSettlementDifferenceTolerance.toStringAsFixed(2)}.',
+    );
+  }
+  if (difference.abs() > 0.009 &&
+      (differenceReason == null || differenceReason.trim().isEmpty)) {
+    throw StateError('Selecciona el motivo de la diferencia banco vs factura.');
+  }
+}
+
+String finSupplierSettlementDifferenceReasonLabel(String value) {
+  switch (value) {
+    case 'REDONDEO_OPERATIVO':
+      return 'Redondeo operativo';
+    case 'AJUSTE_CENTAVOS_AUTORIZADO':
+      return 'Ajuste de centavos';
+    case 'ERROR_CAPTURA_EN_REVISION':
+      return 'Error en revision';
+    default:
+      return value.trim().isEmpty ? 'Seleccionar motivo' : value;
+  }
+}
+
 String deriveSupplierInvoiceStatus({
   required double balanceAmount,
   required DateTime? dueDate,

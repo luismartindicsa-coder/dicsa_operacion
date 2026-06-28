@@ -51,6 +51,10 @@ class FinanzasBankMovementRecord {
   final double debitAmount;
   final String sourceType;
   final String? linkedSupplierInvoiceId;
+  final double? appliedSupplierAmount;
+  final double settlementDifferenceAmount;
+  final String? settlementDifferenceReason;
+  final String? settlementDifferenceNote;
   final String? linkedFixedPaymentId;
   final String? linkedExternalRef;
   final DateTime? createdAt;
@@ -71,30 +75,132 @@ class FinanzasBankMovementRecord {
     required this.debitAmount,
     required this.sourceType,
     required this.linkedSupplierInvoiceId,
+    required this.appliedSupplierAmount,
+    required this.settlementDifferenceAmount,
+    required this.settlementDifferenceReason,
+    required this.settlementDifferenceNote,
     required this.linkedFixedPaymentId,
     required this.linkedExternalRef,
     required this.createdAt,
     required this.updatedAt,
   });
 
-  Map<String, dynamic> toUpsertJson() => <String, dynamic>{
-    'id': id,
-    'movement_date': date.toIso8601String(),
-    'company': company,
-    'branch': branch,
-    'account_key': accountKey,
-    'counterparty_company_id': counterpartyCompanyId,
-    'counterparty_name_snapshot': counterpartyNameSnapshot,
-    'category': category,
-    'comment': comment.trim().isEmpty ? null : comment.trim(),
-    'reference': reference.trim().isEmpty ? null : reference.trim(),
-    'credit_amount': creditAmount,
-    'debit_amount': debitAmount,
-    'source_type': sourceType,
-    'linked_supplier_invoice_id': linkedSupplierInvoiceId,
-    'linked_fixed_payment_id': linkedFixedPaymentId,
-    'linked_external_ref': linkedExternalRef,
-  };
+  bool get hasLinkedSupplierInvoice =>
+      sourceType == 'COMPRA_FACTURA' &&
+      linkedSupplierInvoiceId != null &&
+      linkedSupplierInvoiceId!.trim().isNotEmpty;
+
+  double get effectiveSupplierAppliedAmount =>
+      resolveEffectiveSupplierAppliedAmount(
+        debitAmount: debitAmount,
+        appliedSupplierAmount: appliedSupplierAmount,
+      );
+
+  double get effectiveSettlementDifferenceAmount => hasLinkedSupplierInvoice
+      ? computeSupplierSettlementDifferenceAmount(
+          debitAmount: debitAmount,
+          appliedSupplierAmount: appliedSupplierAmount,
+        )
+      : 0;
+
+  FinanzasBankMovementRecord copyWith({
+    String? id,
+    DateTime? date,
+    String? company,
+    String? branch,
+    String? accountKey,
+    String? counterpartyCompanyId,
+    String? counterpartyNameSnapshot,
+    String? category,
+    String? comment,
+    String? reference,
+    double? creditAmount,
+    double? debitAmount,
+    String? sourceType,
+    String? linkedSupplierInvoiceId,
+    double? appliedSupplierAmount,
+    bool clearAppliedSupplierAmount = false,
+    double? settlementDifferenceAmount,
+    String? settlementDifferenceReason,
+    bool clearSettlementDifferenceReason = false,
+    String? settlementDifferenceNote,
+    bool clearSettlementDifferenceNote = false,
+    String? linkedFixedPaymentId,
+    String? linkedExternalRef,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return FinanzasBankMovementRecord(
+      id: id ?? this.id,
+      date: date ?? this.date,
+      company: company ?? this.company,
+      branch: branch ?? this.branch,
+      accountKey: accountKey ?? this.accountKey,
+      counterpartyCompanyId:
+          counterpartyCompanyId ?? this.counterpartyCompanyId,
+      counterpartyNameSnapshot:
+          counterpartyNameSnapshot ?? this.counterpartyNameSnapshot,
+      category: category ?? this.category,
+      comment: comment ?? this.comment,
+      reference: reference ?? this.reference,
+      creditAmount: creditAmount ?? this.creditAmount,
+      debitAmount: debitAmount ?? this.debitAmount,
+      sourceType: sourceType ?? this.sourceType,
+      linkedSupplierInvoiceId:
+          linkedSupplierInvoiceId ?? this.linkedSupplierInvoiceId,
+      appliedSupplierAmount: clearAppliedSupplierAmount
+          ? null
+          : appliedSupplierAmount ?? this.appliedSupplierAmount,
+      settlementDifferenceAmount:
+          settlementDifferenceAmount ?? this.settlementDifferenceAmount,
+      settlementDifferenceReason: clearSettlementDifferenceReason
+          ? null
+          : settlementDifferenceReason ?? this.settlementDifferenceReason,
+      settlementDifferenceNote: clearSettlementDifferenceNote
+          ? null
+          : settlementDifferenceNote ?? this.settlementDifferenceNote,
+      linkedFixedPaymentId: linkedFixedPaymentId ?? this.linkedFixedPaymentId,
+      linkedExternalRef: linkedExternalRef ?? this.linkedExternalRef,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
+  Map<String, dynamic> toUpsertJson() {
+    final json = <String, dynamic>{
+      'id': id,
+      'movement_date': date.toIso8601String(),
+      'company': company,
+      'branch': branch,
+      'account_key': accountKey,
+      'counterparty_company_id': counterpartyCompanyId,
+      'counterparty_name_snapshot': counterpartyNameSnapshot,
+      'category': category,
+      'comment': comment.trim().isEmpty ? null : comment.trim(),
+      'reference': reference.trim().isEmpty ? null : reference.trim(),
+      'credit_amount': creditAmount,
+      'debit_amount': debitAmount,
+      'source_type': sourceType,
+      'linked_supplier_invoice_id': linkedSupplierInvoiceId,
+      'linked_fixed_payment_id': linkedFixedPaymentId,
+      'linked_external_ref': linkedExternalRef,
+    };
+    final hasSupplierDeltaMetadata =
+        (appliedSupplierAmount != null &&
+            (appliedSupplierAmount! - debitAmount).abs() > 0.009) ||
+        settlementDifferenceAmount.abs() > 0.009 ||
+        (settlementDifferenceReason != null &&
+            settlementDifferenceReason!.trim().isNotEmpty) ||
+        (settlementDifferenceNote != null &&
+            settlementDifferenceNote!.trim().isNotEmpty);
+    if (hasSupplierDeltaMetadata) {
+      json['applied_supplier_amount'] = appliedSupplierAmount;
+      json['settlement_difference_amount'] = settlementDifferenceAmount;
+      json['settlement_difference_reason'] = settlementDifferenceReason;
+      json['settlement_difference_note'] = settlementDifferenceNote;
+    }
+    return json;
+  }
 
   factory FinanzasBankMovementRecord.fromRemoteRow(Map<String, dynamic> row) {
     return FinanzasBankMovementRecord(
@@ -114,6 +220,13 @@ class FinanzasBankMovementRecord {
       debitAmount: ((row['debit_amount'] as num?) ?? 0).toDouble(),
       sourceType: (row['source_type'] ?? 'MANUAL').toString(),
       linkedSupplierInvoiceId: row['linked_supplier_invoice_id']?.toString(),
+      appliedSupplierAmount: (row['applied_supplier_amount'] as num?)
+          ?.toDouble(),
+      settlementDifferenceAmount:
+          ((row['settlement_difference_amount'] as num?) ?? 0).toDouble(),
+      settlementDifferenceReason: row['settlement_difference_reason']
+          ?.toString(),
+      settlementDifferenceNote: row['settlement_difference_note']?.toString(),
       linkedFixedPaymentId: row['linked_fixed_payment_id']?.toString(),
       linkedExternalRef: row['linked_external_ref']?.toString(),
       createdAt: _tryParseDateTime(row['created_at'] as String?),
@@ -197,6 +310,24 @@ class FinanzasBankAccountsStore {
       counterpartyCompanyId: row.counterpartyCompanyId,
       counterpartyNameSnapshot: row.counterpartyNameSnapshot,
     );
+    final hasLinkedSupplierInvoice =
+        row.sourceType == 'COMPRA_FACTURA' &&
+        row.linkedSupplierInvoiceId != null &&
+        row.linkedSupplierInvoiceId!.trim().isNotEmpty;
+    final appliedSupplierAmount = hasLinkedSupplierInvoice
+        ? row.effectiveSupplierAppliedAmount
+        : null;
+    final settlementDifferenceAmount = hasLinkedSupplierInvoice
+        ? row.effectiveSettlementDifferenceAmount
+        : 0.0;
+    final settlementDifferenceReason =
+        hasLinkedSupplierInvoice && settlementDifferenceAmount.abs() > 0.009
+        ? row.settlementDifferenceReason?.trim()
+        : null;
+    final settlementDifferenceNote =
+        hasLinkedSupplierInvoice && settlementDifferenceAmount.abs() > 0.009
+        ? row.settlementDifferenceNote?.trim()
+        : null;
     final resolvedRow = FinanzasBankMovementRecord(
       id: row.id,
       date: row.date,
@@ -212,6 +343,17 @@ class FinanzasBankAccountsStore {
       debitAmount: row.debitAmount,
       sourceType: row.sourceType,
       linkedSupplierInvoiceId: row.linkedSupplierInvoiceId,
+      appliedSupplierAmount: appliedSupplierAmount,
+      settlementDifferenceAmount: settlementDifferenceAmount,
+      settlementDifferenceReason:
+          settlementDifferenceReason == null ||
+              settlementDifferenceReason.isEmpty
+          ? null
+          : settlementDifferenceReason,
+      settlementDifferenceNote:
+          settlementDifferenceNote == null || settlementDifferenceNote.isEmpty
+          ? null
+          : settlementDifferenceNote,
       linkedFixedPaymentId: row.linkedFixedPaymentId,
       linkedExternalRef: row.linkedExternalRef,
       createdAt: row.createdAt,
@@ -241,112 +383,138 @@ class FinanzasBankAccountsStore {
         .eq('id', id);
   }
 
+  static Future<FinanzasSupplierInvoiceRecord?> _loadSupplierInvoiceById(
+    String? invoiceId,
+  ) async {
+    if (invoiceId == null || invoiceId.trim().isEmpty) return null;
+    final invoices = await FinanzasProviderAccountsStore.loadInvoices();
+    for (final row in invoices) {
+      if (row.id == invoiceId) return row;
+    }
+    return null;
+  }
+
+  static Future<void> _persistSupplierInvoiceBalanceAndCoverage(
+    FinanzasSupplierInvoiceRecord invoice, {
+    required double nextBalanceAmount,
+  }) async {
+    final updatedInvoice = invoice.copyWith(
+      balanceAmount: nextBalanceAmount,
+      status: deriveSupplierInvoiceStatus(
+        balanceAmount: nextBalanceAmount,
+        dueDate: invoice.dueDate,
+      ),
+    );
+    await FinanzasProviderAccountsStore.saveInvoice(updatedInvoice);
+    await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
+      providerId: updatedInvoice.providerId,
+      providerNameSnapshot: updatedInvoice.providerNameSnapshot,
+    );
+
+    final invoiceTickets =
+        await FinanzasProviderAccountsStore.loadInvoiceTickets();
+    final linkedTicketIds = invoiceTickets
+        .where((row) => row.invoiceId == updatedInvoice.id)
+        .map((row) => row.ticketId)
+        .toSet();
+    if (linkedTicketIds.isEmpty) return;
+
+    final allTickets = await ComprasTicketsStore.loadTickets();
+    final allApplications =
+        await ComprasTicketsStore.loadTicketPaymentApplications();
+    final linkedTickets = allTickets
+        .where((ticket) => linkedTicketIds.contains(ticket.id))
+        .toList(growable: false);
+    if (linkedTickets.isEmpty) return;
+
+    final directAppliedByTicketId = <String, double>{};
+    for (final application in allApplications) {
+      if (!linkedTicketIds.contains(application.ticketId)) continue;
+      directAppliedByTicketId.update(
+        application.ticketId,
+        (value) => value + application.appliedAmount,
+        ifAbsent: () => application.appliedAmount,
+      );
+    }
+
+    final coverageByTicketId = computeInvoiceTicketCoverage(
+      invoiceTotalAmount: updatedInvoice.totalAmount,
+      invoiceBalanceAmount: updatedInvoice.balanceAmount,
+      tickets: linkedTickets
+          .map(
+            (ticket) => InvoiceTicketSnapshot(
+              ticketId: ticket.id,
+              ticketAmount: ticket.amount < 0 ? 0.0 : ticket.amount,
+              ticketDate: ticket.date,
+              ticketNumber: ticket.ticket,
+            ),
+          )
+          .toList(growable: false),
+      directAppliedByTicketId: directAppliedByTicketId,
+    );
+
+    final updatedTickets = linkedTickets
+        .map((ticket) {
+          final coverage = coverageByTicketId[ticket.id];
+          if (coverage == null) return ticket;
+          return ticket.copyWith(
+            pagoStatus: coverage.pagoStatus,
+            coverageStatus: coverage.coverageStatus,
+          );
+        })
+        .toList(growable: false);
+    await ComprasTicketsStore.saveTickets(updatedTickets);
+  }
+
+  static Future<void> _applySupplierInvoiceSettlement({
+    required FinanzasSupplierInvoiceRecord linkedInvoice,
+    required FinanzasBankMovementRecord movement,
+  }) async {
+    final appliedAmount = movement.effectiveSupplierAppliedAmount;
+    if (appliedAmount <= 0.009) return;
+    assertSupplierSettlementAmountAllowed(
+      debitAmount: movement.debitAmount.clamp(0, double.infinity).toDouble(),
+      expectedSupplierAmount: linkedInvoice.balanceAmount,
+      appliedSupplierAmount: movement.appliedSupplierAmount,
+      differenceReason: movement.settlementDifferenceReason,
+    );
+    final nextBalanceAmount = (linkedInvoice.balanceAmount - appliedAmount)
+        .clamp(0, linkedInvoice.totalAmount)
+        .toDouble();
+    await _persistSupplierInvoiceBalanceAndCoverage(
+      linkedInvoice,
+      nextBalanceAmount: nextBalanceAmount,
+    );
+  }
+
+  static Future<void> _reverseSupplierInvoiceSettlement({
+    required FinanzasSupplierInvoiceRecord linkedInvoice,
+    required FinanzasBankMovementRecord movement,
+  }) async {
+    final reversedAmount = movement.effectiveSupplierAppliedAmount;
+    if (reversedAmount <= 0.009) return;
+    final nextBalanceAmount = (linkedInvoice.balanceAmount + reversedAmount)
+        .clamp(0, linkedInvoice.totalAmount)
+        .toDouble();
+    await _persistSupplierInvoiceBalanceAndCoverage(
+      linkedInvoice,
+      nextBalanceAmount: nextBalanceAmount,
+    );
+  }
+
   static Future<void> deleteMovementAndReverse(
     FinanzasBankMovementRecord movement,
   ) async {
     if (movement.linkedSupplierInvoiceId != null &&
         movement.linkedSupplierInvoiceId!.isNotEmpty) {
-      final invoices = await FinanzasProviderAccountsStore.loadInvoices();
-      FinanzasSupplierInvoiceRecord? linkedInvoice;
-      for (final row in invoices) {
-        if (row.id == movement.linkedSupplierInvoiceId) {
-          linkedInvoice = row;
-          break;
-        }
-      }
+      final linkedInvoice = await _loadSupplierInvoiceById(
+        movement.linkedSupplierInvoiceId,
+      );
       if (linkedInvoice != null) {
-        final reversedAmount = movement.debitAmount
-            .clamp(0, double.infinity)
-            .toDouble();
-        final nextBalanceAmount = (linkedInvoice.balanceAmount + reversedAmount)
-            .clamp(0, linkedInvoice.totalAmount)
-            .toDouble();
-        final updatedInvoice = linkedInvoice.copyWith(
-          balanceAmount: nextBalanceAmount,
-          status: deriveSupplierInvoiceStatus(
-            balanceAmount: nextBalanceAmount,
-            dueDate: linkedInvoice.dueDate,
-          ),
+        await _reverseSupplierInvoiceSettlement(
+          linkedInvoice: linkedInvoice,
+          movement: movement,
         );
-        await FinanzasProviderAccountsStore.saveInvoice(updatedInvoice);
-        await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
-          providerId: linkedInvoice.providerId,
-          providerNameSnapshot: linkedInvoice.providerNameSnapshot,
-        );
-
-        final invoiceTickets =
-            await FinanzasProviderAccountsStore.loadInvoiceTickets();
-        final linkedTicketIds = invoiceTickets
-            .where((row) => row.invoiceId == updatedInvoice.id)
-            .map((row) => row.ticketId)
-            .toSet();
-        if (linkedTicketIds.isNotEmpty) {
-          final allTickets = await ComprasTicketsStore.loadTickets();
-          final allApplications =
-              await ComprasTicketsStore.loadTicketPaymentApplications();
-          final linkedTickets =
-              allTickets
-                  .where((ticket) => linkedTicketIds.contains(ticket.id))
-                  .toList(growable: false)
-                ..sort((a, b) {
-                  final dateCompare = a.date.compareTo(b.date);
-                  if (dateCompare != 0) return dateCompare;
-                  return a.ticket.compareTo(b.ticket);
-                });
-          final directAppliedByTicketId = <String, double>{};
-          for (final application in allApplications) {
-            if (!linkedTicketIds.contains(application.ticketId)) continue;
-            directAppliedByTicketId.update(
-              application.ticketId,
-              (value) => value + application.appliedAmount,
-              ifAbsent: () => application.appliedAmount,
-            );
-          }
-          var invoicePaidRemaining =
-              (linkedInvoice.totalAmount - nextBalanceAmount)
-                  .clamp(0, linkedInvoice.totalAmount)
-                  .toDouble();
-          final updatedTickets = linkedTickets
-              .map((ticket) {
-                final ticketCoverableAmount = ticket.amount < 0
-                    ? 0.0
-                    : ticket.amount;
-                final directApplied = (directAppliedByTicketId[ticket.id] ?? 0)
-                    .clamp(0, ticketCoverableAmount)
-                    .toDouble();
-                final pendingAfterDirect = (ticket.amount - directApplied)
-                    .clamp(0, double.infinity)
-                    .toDouble();
-                final invoiceApplied = invoicePaidRemaining > pendingAfterDirect
-                    ? pendingAfterDirect
-                    : invoicePaidRemaining;
-                invoicePaidRemaining = (invoicePaidRemaining - invoiceApplied)
-                    .clamp(0, double.infinity)
-                    .toDouble();
-                final totalApplied = (directApplied + invoiceApplied)
-                    .clamp(0, ticketCoverableAmount)
-                    .toDouble();
-                final fullyCovered =
-                    totalApplied >= ticketCoverableAmount - 0.009;
-                final hasAbono = totalApplied > 0.009 && !fullyCovered;
-                return ticket.copyWith(
-                  pagoStatus: fullyCovered
-                      ? 'PAGADO'
-                      : hasAbono
-                      ? 'ABONO'
-                      : 'PENDIENTE_DE_PAGO',
-                  coverageStatus: fullyCovered
-                      ? 'CUBIERTO'
-                      : hasAbono
-                      ? 'PARCIAL'
-                      : 'SIN_CUBRIR',
-                );
-              })
-              .toList(growable: false);
-          if (updatedTickets.isNotEmpty) {
-            await ComprasTicketsStore.saveTickets(updatedTickets);
-          }
-        }
       }
     }
 
@@ -476,10 +644,10 @@ class FinanzasBankAccountsStore {
     FinanzasClientPaymentAccountRecord? linkedClientAccount,
     FinanzasFixedPaymentRecord? linkedFixedPayment,
   }) async {
-    await saveMovement(movement);
     final providerCounterpartyId =
         linkedSupplierInvoice?.providerId ?? movement.counterpartyCompanyId;
     if (linkedClientAccount != null) {
+      await saveMovement(movement);
       await _applyClientPaymentMovementToMayoreoAccount(
         accountId: linkedClientAccount.id,
         movementDate: movement.date,
@@ -496,6 +664,7 @@ class FinanzasBankAccountsStore {
         expectedAmount: linkedFixedPayment.amount,
         contextLabel: 'El pago fijo',
       );
+      await saveMovement(movement);
       await FinanzasFixedPaymentsStore.savePayment(
         linkedFixedPayment.copyWith(
           status: 'PAGADO',
@@ -507,6 +676,7 @@ class FinanzasBankAccountsStore {
       return;
     }
     if (linkedSupplierInvoice == null) {
+      await saveMovement(movement);
       if (providerCounterpartyId != null &&
           movement.debitAmount > 0.009 &&
           movement.sourceType != 'VENTA_FACTURA') {
@@ -518,100 +688,17 @@ class FinanzasBankAccountsStore {
       return;
     }
 
-    final appliedAmount = movement.debitAmount
-        .clamp(0, double.infinity)
-        .toDouble();
-    if (appliedAmount <= 0.009) return;
-    assertFullSettlementAmount(
-      appliedAmount: appliedAmount,
-      expectedAmount: linkedSupplierInvoice.balanceAmount,
-      contextLabel: 'La factura proveedor',
+    assertSupplierSettlementAmountAllowed(
+      debitAmount: movement.debitAmount.clamp(0, double.infinity).toDouble(),
+      expectedSupplierAmount: linkedSupplierInvoice.balanceAmount,
+      appliedSupplierAmount: movement.appliedSupplierAmount,
+      differenceReason: movement.settlementDifferenceReason,
     );
-    final nextBalanceAmount =
-        (linkedSupplierInvoice.balanceAmount - appliedAmount)
-            .clamp(0, linkedSupplierInvoice.totalAmount)
-            .toDouble();
-    final updatedInvoice = linkedSupplierInvoice.copyWith(
-      balanceAmount: nextBalanceAmount,
-      status: deriveSupplierInvoiceStatus(
-        balanceAmount: nextBalanceAmount,
-        dueDate: linkedSupplierInvoice.dueDate,
-      ),
+    await saveMovement(movement);
+    await _applySupplierInvoiceSettlement(
+      linkedInvoice: linkedSupplierInvoice,
+      movement: movement,
     );
-    await FinanzasProviderAccountsStore.saveInvoice(updatedInvoice);
-    await FinanzasProviderAccountsStore.syncAgreementStateForProvider(
-      providerId: linkedSupplierInvoice.providerId,
-      providerNameSnapshot: linkedSupplierInvoice.providerNameSnapshot,
-    );
-
-    final invoiceTickets =
-        await FinanzasProviderAccountsStore.loadInvoiceTickets();
-    final linkedTicketIds = invoiceTickets
-        .where((row) => row.invoiceId == linkedSupplierInvoice.id)
-        .map((row) => row.ticketId)
-        .toSet();
-    if (linkedTicketIds.isEmpty) return;
-    final allTickets = await ComprasTicketsStore.loadTickets();
-    final allApplications =
-        await ComprasTicketsStore.loadTicketPaymentApplications();
-    final linkedTickets =
-        allTickets
-            .where((ticket) => linkedTicketIds.contains(ticket.id))
-            .toList(growable: false)
-          ..sort((a, b) {
-            final dateCompare = a.date.compareTo(b.date);
-            if (dateCompare != 0) return dateCompare;
-            return a.ticket.compareTo(b.ticket);
-          });
-    final directAppliedByTicketId = <String, double>{};
-    for (final application in allApplications) {
-      if (!linkedTicketIds.contains(application.ticketId)) continue;
-      directAppliedByTicketId.update(
-        application.ticketId,
-        (value) => value + application.appliedAmount,
-        ifAbsent: () => application.appliedAmount,
-      );
-    }
-    var invoicePaidRemaining =
-        (linkedSupplierInvoice.totalAmount - nextBalanceAmount)
-            .clamp(0, linkedSupplierInvoice.totalAmount)
-            .toDouble();
-    final updatedTickets = linkedTickets
-        .map((ticket) {
-          final ticketCoverableAmount = ticket.amount < 0 ? 0.0 : ticket.amount;
-          final directApplied = (directAppliedByTicketId[ticket.id] ?? 0)
-              .clamp(0, ticketCoverableAmount)
-              .toDouble();
-          final pendingAfterDirect = (ticket.amount - directApplied)
-              .clamp(0, double.infinity)
-              .toDouble();
-          final invoiceApplied = invoicePaidRemaining > pendingAfterDirect
-              ? pendingAfterDirect
-              : invoicePaidRemaining;
-          invoicePaidRemaining = (invoicePaidRemaining - invoiceApplied)
-              .clamp(0, double.infinity)
-              .toDouble();
-          final totalApplied = (directApplied + invoiceApplied)
-              .clamp(0, ticketCoverableAmount)
-              .toDouble();
-          final fullyCovered = totalApplied >= ticketCoverableAmount - 0.009;
-          final hasAbono = totalApplied > 0.009 && !fullyCovered;
-          return ticket.copyWith(
-            pagoStatus: fullyCovered
-                ? 'PAGADO'
-                : hasAbono
-                ? 'ABONO'
-                : 'PENDIENTE_DE_PAGO',
-            coverageStatus: fullyCovered
-                ? 'CUBIERTO'
-                : hasAbono
-                ? 'PARCIAL'
-                : 'SIN_CUBRIR',
-          );
-        })
-        .toList(growable: false);
-    if (updatedTickets.isEmpty) return;
-    await ComprasTicketsStore.saveTickets(updatedTickets);
   }
 
   static Future<void> updateMovementAndApplyClientPayment({
@@ -636,6 +723,52 @@ class FinanzasBankAccountsStore {
         appliedAmount: nextMovement.creditAmount,
       );
     }
+  }
+
+  static Future<void> updateMovementAndApplySupplierSettlement({
+    required FinanzasBankMovementRecord previousMovement,
+    required FinanzasBankMovementRecord nextMovement,
+  }) async {
+    if (!previousMovement.hasLinkedSupplierInvoice ||
+        !nextMovement.hasLinkedSupplierInvoice) {
+      throw StateError(
+        'La edicion protegida solo aplica a movimientos ligados a factura proveedor.',
+      );
+    }
+    if (previousMovement.linkedSupplierInvoiceId !=
+        nextMovement.linkedSupplierInvoiceId) {
+      throw StateError(
+        'No se puede cambiar la factura ligada desde esta edicion protegida.',
+      );
+    }
+    assertSupplierSettlementAmountAllowed(
+      debitAmount: nextMovement.debitAmount
+          .clamp(0, double.infinity)
+          .toDouble(),
+      expectedSupplierAmount: previousMovement.effectiveSupplierAppliedAmount,
+      appliedSupplierAmount: nextMovement.appliedSupplierAmount,
+      differenceReason: nextMovement.settlementDifferenceReason,
+    );
+    final linkedInvoice = await _loadSupplierInvoiceById(
+      previousMovement.linkedSupplierInvoiceId,
+    );
+    if (linkedInvoice == null) {
+      await saveMovement(nextMovement);
+      return;
+    }
+    await _reverseSupplierInvoiceSettlement(
+      linkedInvoice: linkedInvoice,
+      movement: previousMovement,
+    );
+    await saveMovement(nextMovement);
+    final refreshedInvoice = await _loadSupplierInvoiceById(
+      nextMovement.linkedSupplierInvoiceId,
+    );
+    if (refreshedInvoice == null) return;
+    await _applySupplierInvoiceSettlement(
+      linkedInvoice: refreshedInvoice,
+      movement: nextMovement,
+    );
   }
 
   static Future<void> _applyClientPaymentMovementToMayoreoAccount({

@@ -285,6 +285,12 @@ class ComprasAreaSidePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final returnToDirectionEntry = accessItems
+        .cast<ComprasAreaNavEntry?>()
+        .firstWhere(
+          (item) => item?.title == 'Dashboard Dirección',
+          orElse: () => null,
+        );
     return Padding(
       padding: const EdgeInsets.only(right: 12),
       child: ContractGlassCard(
@@ -302,12 +308,13 @@ class ComprasAreaSidePanel extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              if (canReturnToDirection && accessItems.isNotEmpty) ...[
+              if (canReturnToDirection &&
+                  returnToDirectionEntry?.onTap != null) ...[
                 ComprasAreaNavItem(
                   icon: Icons.arrow_back_rounded,
                   title: 'Volver a Dirección',
                   subtitle: 'Regresar a la vista ejecutiva',
-                  onTap: accessItems.first.onTap,
+                  onTap: returnToDirectionEntry!.onTap,
                 ),
                 const SizedBox(height: 10),
               ],

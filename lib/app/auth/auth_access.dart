@@ -27,6 +27,7 @@ class AuthAccess {
   static const String _mayoreoEmail = 'mayoreo@dicsamx.com';
   static const String _commercialContactEmail = 'contacto@dicsamx.com';
   static const String _humanResourcesEmail = 'rh@dicsamx.com';
+  static const String _managementEmail = 'gerencia@dicsamx.com';
 
   static String _normalizeRoleValue(String? raw) {
     final value = (raw ?? '').toLowerCase().trim();
@@ -99,6 +100,10 @@ class AuthAccess {
     return (email ?? '').toLowerCase().trim() == _humanResourcesEmail;
   }
 
+  static bool _isManagementEmailValue(String? email) {
+    return (email ?? '').toLowerCase().trim() == _managementEmail;
+  }
+
   static bool _isDesarrolloComercialRoleValue(String role) {
     return role == 'desarrollo_comercial' ||
         role == 'commercial_development' ||
@@ -119,6 +124,16 @@ class AuthAccess {
         role.endsWith('_rh') ||
         role.endsWith('_human_resources') ||
         role.endsWith('_recursos_humanos');
+  }
+
+  static bool _isManagementRoleValue(String role) {
+    return role == 'gerencia' ||
+        role == 'management' ||
+        role == 'gerencia_general' ||
+        role.startsWith('gerencia_') ||
+        role.startsWith('management_') ||
+        role.endsWith('_gerencia') ||
+        role.endsWith('_management');
   }
 
   static bool _roleIn(AuthResolvedProfile? profile, Set<String> roles) {
@@ -205,6 +220,13 @@ class AuthAccess {
         _isHumanResourcesEmailValue(profile.email);
   }
 
+  static bool hasManagementAccess(AuthResolvedProfile? profile) {
+    if (profile == null || !profile.isActive) return false;
+    if (isDirectionRole(profile)) return true;
+    return _isManagementRoleValue(profile.role) ||
+        _isManagementEmailValue(profile.email);
+  }
+
   static Future<AuthResolvedProfile?> resolveCurrentProfile() async {
     final user = _supa.auth.currentUser;
     if (user == null) return null;
@@ -286,6 +308,7 @@ class AuthAccess {
     if (profile == null || !profile.isActive) return 'blocked';
     if (canAccessGeneralDashboard(profile)) return 'dashboard_general';
     if (_isAccountingEmailValue(profile.email)) return 'purchase_orders';
+    if (hasManagementAccess(profile)) return 'gerencia_dashboard';
     if (hasHumanResourcesAccess(profile)) return 'human_resources_dashboard';
     if (canAccessFinanzasArea(profile)) return 'finanzas_dashboard';
     if (hasDesarrolloComercialAccess(profile)) return 'commercial_dashboard';

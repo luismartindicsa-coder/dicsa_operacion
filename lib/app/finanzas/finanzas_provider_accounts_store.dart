@@ -473,16 +473,24 @@ class FinanzasProviderAccountsStore {
   static Future<List<FinanzasSupplierInvoiceTicketRecord>>
   loadInvoiceTickets() async {
     try {
-      final rows = await Supabase.instance.client
-          .from(_kFinSupplierInvoiceTicketsTable)
-          .select()
-          .order('created_at');
-      return (rows as List)
-          .map(
-            (row) => FinanzasSupplierInvoiceTicketRecord.fromRemoteRow(
-              Map<String, dynamic>.from(row as Map),
-            ),
-          )
+      const int pageSize = 1000;
+      final List<Map<String, dynamic>> collected = <Map<String, dynamic>>[];
+      var from = 0;
+      while (true) {
+        final rows = await Supabase.instance.client
+            .from(_kFinSupplierInvoiceTicketsTable)
+            .select()
+            .order('created_at')
+            .range(from, from + pageSize - 1);
+        final batch = (rows as List)
+            .map((row) => Map<String, dynamic>.from(row as Map))
+            .toList(growable: false);
+        collected.addAll(batch);
+        if (batch.length < pageSize) break;
+        from += pageSize;
+      }
+      return collected
+          .map(FinanzasSupplierInvoiceTicketRecord.fromRemoteRow)
           .toList(growable: false);
     } catch (_) {
       return const <FinanzasSupplierInvoiceTicketRecord>[];

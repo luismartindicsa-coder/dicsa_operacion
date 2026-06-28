@@ -1521,7 +1521,7 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
           headerBodySpacing: 6,
           padding: const EdgeInsets.fromLTRB(28, 14, 18, 18),
           leadingBuilder: (_, anim) => _MenudeoHeaderButton(
-            label: _menuOpen ? 'Cerrar panel' : 'Menú',
+            label: _menuOpen ? 'Cerrar panel' : 'Navegación',
             icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
             onTapSync: () => setState(() => _menuOpen = !_menuOpen),
           ),

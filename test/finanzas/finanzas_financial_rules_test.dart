@@ -105,6 +105,55 @@ void main() {
     );
 
     test(
+      'supplier settlement allows exact and cent differences with reason',
+      () {
+        expect(
+          () => assertSupplierSettlementAmountAllowed(
+            debitAmount: 9383.00,
+            expectedSupplierAmount: 9383.01,
+            appliedSupplierAmount: 9383.01,
+            differenceReason: 'REDONDEO_OPERATIVO',
+          ),
+          returnsNormally,
+        );
+
+        expect(
+          () => assertSupplierSettlementAmountAllowed(
+            debitAmount: 13850.01,
+            expectedSupplierAmount: 13850.00,
+            appliedSupplierAmount: 13850.00,
+            differenceReason: 'AJUSTE_CENTAVOS_AUTORIZADO',
+          ),
+          returnsNormally,
+        );
+      },
+    );
+
+    test('supplier settlement requires reason when there is delta', () {
+      expect(
+        () => assertSupplierSettlementAmountAllowed(
+          debitAmount: 9383.00,
+          expectedSupplierAmount: 9383.01,
+          appliedSupplierAmount: 9383.01,
+          differenceReason: null,
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test('supplier settlement blocks differences over phase one tolerance', () {
+      expect(
+        () => assertSupplierSettlementAmountAllowed(
+          debitAmount: 49995.00,
+          expectedSupplierAmount: 50000.00,
+          appliedSupplierAmount: 50000.00,
+          differenceReason: 'AJUSTE_CENTAVOS_AUTORIZADO',
+        ),
+        throwsA(isA<StateError>()),
+      );
+    });
+
+    test(
       'recomputes agreement summary and installment status realistically',
       () {
         final today = DateTime(2026, 5, 28);
@@ -475,6 +524,8 @@ ComprasTicketRecord _ticket({
     netWeight: 0,
     humidityPercent: 0,
     trashPercent: 0,
+    trashKg: 0,
+    trashCaptureMode: 'PERCENT',
     payableWeight: 0,
     price: 0,
     premium: 0,

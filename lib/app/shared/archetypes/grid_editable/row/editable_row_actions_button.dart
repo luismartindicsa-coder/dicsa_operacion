@@ -8,6 +8,7 @@ class EditableRowActionsButton<T> extends StatelessWidget {
   final ValueChanged<T> onSelected;
   final String tooltip;
   final Color? iconColor;
+  final VoidCallback? onBeforeOpen;
 
   const EditableRowActionsButton({
     super.key,
@@ -15,9 +16,11 @@ class EditableRowActionsButton<T> extends StatelessWidget {
     required this.onSelected,
     this.tooltip = 'Acciones',
     this.iconColor,
+    this.onBeforeOpen,
   });
 
   Future<void> _openMenu(BuildContext context) async {
+    onBeforeOpen?.call();
     final overlay = Overlay.maybeOf(context)?.context.findRenderObject();
     final box = context.findRenderObject() as RenderBox?;
     if (overlay is! RenderBox || box == null) return;

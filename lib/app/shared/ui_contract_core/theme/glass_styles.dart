@@ -33,13 +33,19 @@ class ContractGlassCard extends StatelessWidget {
             borderRadius: borderRadius,
             border: Border.all(
               color: tokens.darkGlass
-                  ? Colors.white.withValues(alpha: 0.18)
+                  ? tokens.accentDarkGlass
+                        ? tokens.border.withValues(alpha: 0.42)
+                        : Colors.white.withValues(alpha: 0.18)
                   : tokens.border.withValues(alpha: 0.7),
             ),
             boxShadow: [
               BoxShadow(
                 color: tokens.glow.withValues(
-                  alpha: tokens.darkGlass ? 0.12 : 0.14,
+                  alpha: tokens.darkGlass
+                      ? tokens.accentDarkGlass
+                            ? 0.22
+                            : 0.12
+                      : 0.14,
                 ),
                 blurRadius: tokens.darkGlass ? elevation + 8 : elevation,
                 offset: Offset(0, tokens.darkGlass ? 14 : 10),
@@ -56,14 +62,25 @@ class ContractGlassCard extends StatelessWidget {
             decoration: BoxDecoration(
               borderRadius: borderRadius,
               gradient: tokens.darkGlass
-                  ? LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        Colors.white.withValues(alpha: 0.08),
-                        Colors.transparent,
-                      ],
-                    )
+                  ? (tokens.accentDarkGlass
+                        ? LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              tokens.primary.withValues(alpha: 0.12),
+                              tokens.accent.withValues(alpha: 0.08),
+                              Colors.transparent,
+                            ],
+                            stops: const [0.0, 0.28, 1.0],
+                          )
+                        : LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.08),
+                              Colors.transparent,
+                            ],
+                          ))
                   : null,
             ),
             child: Padding(padding: padding, child: child),
@@ -84,7 +101,9 @@ InputDecoration contractGlassFieldDecoration(
     borderRadius: BorderRadius.circular(18),
     borderSide: BorderSide(
       color: tokens.darkGlass
-          ? Colors.white.withValues(alpha: 0.16)
+          ? tokens.accentDarkGlass
+                ? tokens.border.withValues(alpha: 0.36)
+                : Colors.white.withValues(alpha: 0.16)
           : tokens.border.withValues(alpha: 0.9),
     ),
   );

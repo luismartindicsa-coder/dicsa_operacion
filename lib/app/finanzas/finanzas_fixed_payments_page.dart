@@ -1024,11 +1024,11 @@ class _FinanzasFixedPaymentsPageState extends State<FinanzasFixedPaymentsPage> {
   Color _statusTone(String value) {
     switch (value) {
       case 'PAGADO':
-        return const Color(0xFF0F766E);
+        return kFinanzasSage;
       case 'VENCIDO':
-        return const Color(0xFFB42318);
+        return kFinanzasBurnt;
       default:
-        return const Color(0xFF8B5E00);
+        return kFinanzasBronze;
     }
   }
 
@@ -1126,7 +1126,7 @@ class _FinanzasFixedPaymentsPageState extends State<FinanzasFixedPaymentsPage> {
                                   _FixedMetricCardData(
                                     label: 'Pendiente',
                                     value: _money(pendingAmount),
-                                    tone: const Color(0xFFFF8A2B),
+                                    tone: kFinanzasAmber,
                                     icon: Icons.hourglass_empty_rounded,
                                     footerTitle: 'Aun no pagado',
                                     footerSubtitle: 'Importe por cubrir',
@@ -1135,7 +1135,7 @@ class _FinanzasFixedPaymentsPageState extends State<FinanzasFixedPaymentsPage> {
                                   _FixedMetricCardData(
                                     label: 'Pagado',
                                     value: _money(paidAmount),
-                                    tone: const Color(0xFF48B7A9),
+                                    tone: kFinanzasSage,
                                     icon: Icons.check_circle_outline_rounded,
                                     footerTitle: 'Total pagado',
                                     footerSubtitle: 'Importe completado',
@@ -1145,7 +1145,7 @@ class _FinanzasFixedPaymentsPageState extends State<FinanzasFixedPaymentsPage> {
                                   _FixedMetricCardData(
                                     label: 'Vencido',
                                     value: _money(overdueAmount),
-                                    tone: const Color(0xFFF45F4E),
+                                    tone: kFinanzasBurnt,
                                     icon: Icons.calendar_month_outlined,
                                     footerTitle: 'Pagos vencidos',
                                     footerSubtitle: 'Importe en atraso',
@@ -1336,7 +1336,7 @@ class _FinanzasFixedPaymentsPageState extends State<FinanzasFixedPaymentsPage> {
                       behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => _menuOpen = false),
                       child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
+                        color: kFinanzasBgDeep.withValues(alpha: 0.14),
                       ),
                     ),
                   ),
@@ -1508,16 +1508,16 @@ class _FixedPaymentDialogState extends State<_FixedPaymentDialog> {
           colorScheme: ColorScheme.dark(
             primary: finanzasAreaTokens.primaryStrong,
             onPrimary: Colors.white,
-            surface: const Color(0xFF171C24),
+            surface: const Color(0xFF2A1609),
             onSurface: kFinanzasInk,
           ),
           dialogTheme: const DialogThemeData(
-            backgroundColor: Color(0xFF171C24),
+            backgroundColor: Color(0xFF2A1609),
           ),
           datePickerTheme: DatePickerThemeData(
-            backgroundColor: const Color(0xFF171C24),
+            backgroundColor: const Color(0xFF2A1609),
             surfaceTintColor: Colors.transparent,
-            headerBackgroundColor: const Color(0xFF171C24),
+            headerBackgroundColor: const Color(0xFF2A1609),
             headerForegroundColor: kFinanzasInk,
             weekdayStyle: const TextStyle(color: kFinanzasMutedInk),
             dayForegroundColor: WidgetStateProperty.resolveWith((states) {
@@ -1572,16 +1572,16 @@ class _FixedPaymentDialogState extends State<_FixedPaymentDialog> {
                   onPrimary: Colors.white,
                   secondary: tokens.primarySoft,
                   onSecondary: tokens.onGlass,
-                  surface: const Color(0xFF171C24),
+                  surface: const Color(0xFF2A1609),
                   onSurface: kFinanzasInk,
                 ),
               ),
               child: FinanzasGlassPanel(
                 borderRadius: BorderRadius.circular(34),
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
-                fillColor: const Color(0x1813171F),
-                borderColor: Colors.white.withValues(alpha: 0.22),
-                edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
+                fillColor: kFinanzasPanelSurface,
+                borderColor: tokens.border.withValues(alpha: 0.38),
+                edgeHighlightColor: kFinanzasLightGlow.withValues(alpha: 0.12),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
                     maxWidth: 1080,
@@ -1624,7 +1624,7 @@ class _FixedPaymentDialogState extends State<_FixedPaymentDialog> {
                             height: 54,
                             padding: EdgeInsets.zero,
                             borderRadius: BorderRadius.circular(999),
-                            fillColor: const Color(0x14161B23),
+                            fillColor: kFinanzasPanelSurfaceSoft,
                             borderColor: Colors.white.withValues(alpha: 0.20),
                             child: Center(
                               child: IconButton(
@@ -1982,9 +1982,9 @@ class _FixedTopBar extends StatelessWidget {
     return FinanzasGlassPanel(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       borderRadius: BorderRadius.circular(26),
-      fillColor: const Color(0x12161A22),
-      borderColor: Colors.white.withValues(alpha: 0.24),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.20),
+      fillColor: kFinanzasPanelSurfaceSoft,
+      borderColor: kFinanzasBorder.withValues(alpha: 0.42),
+      edgeHighlightColor: kFinanzasLightGlow.withValues(alpha: 0.12),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final actions = Wrap(
@@ -2084,7 +2084,7 @@ class _FinanzasGridPager extends StatelessWidget {
         child: FinanzasGlassPanel(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           borderRadius: BorderRadius.circular(22),
-          fillColor: const Color(0x12161A22),
+          fillColor: const Color(0x120C0300),
           borderColor: Colors.white.withValues(alpha: 0.18),
           edgeHighlightColor: Colors.white.withValues(alpha: 0.16),
           child: Wrap(
@@ -2124,7 +2124,7 @@ class _FinanzasGridPager extends StatelessWidget {
                 child: DropdownButtonFormField<int>(
                   initialValue: pageSize,
                   isDense: true,
-                  dropdownColor: const Color(0xFF171C24),
+                  dropdownColor: const Color(0xFF140500),
                   iconEnabledColor: tokens.badgeText,
                   style: TextStyle(
                     fontWeight: FontWeight.w700,
@@ -2133,7 +2133,7 @@ class _FinanzasGridPager extends StatelessWidget {
                   decoration: InputDecoration(
                     isDense: true,
                     filled: true,
-                    fillColor: const Color(0xCC171C24),
+                    fillColor: kFinanzasPanelSurfaceStrong,
                     contentPadding: const EdgeInsets.symmetric(
                       horizontal: 12,
                       vertical: 10,
@@ -2144,7 +2144,7 @@ class _FinanzasGridPager extends StatelessWidget {
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(14),
                       borderSide: BorderSide(
-                        color: Colors.white.withValues(alpha: 0.22),
+                        color: tokens.border.withValues(alpha: 0.34),
                       ),
                     ),
                     focusedBorder: OutlineInputBorder(
@@ -2242,41 +2242,36 @@ class _FixedMetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tone = data.tone;
     return FinanzasGlassPanel(
+      borderRadius: BorderRadius.circular(28),
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
-      borderRadius: BorderRadius.circular(26),
-      fillColor: const Color(0x14161A21),
-      borderColor: Colors.white.withValues(alpha: 0.24),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.20),
-      glowColor: tone.withValues(alpha: 0.12),
+      fillColor: kFinanzasPanelSurface,
+      borderColor: tone.withValues(alpha: 0.30),
+      glowColor: tone.withValues(alpha: 0.22),
+      edgeHighlightColor: kFinanzasOrange.withValues(alpha: 0.12),
       child: SizedBox(
         height: 240,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Container(
-              width: 74,
-              height: 74,
+              width: 58,
+              height: 58,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: tone.withValues(alpha: 0.10),
-                border: Border.all(color: tone.withValues(alpha: 0.26)),
-                boxShadow: [
-                  BoxShadow(
-                    color: tone.withValues(alpha: 0.18),
-                    blurRadius: 20,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
+                color: tone.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: tone.withValues(alpha: 0.16)),
               ),
-              child: Icon(data.icon, color: tone, size: 36),
+              child: Icon(data.icon, color: tone, size: 30),
             ),
-            const Spacer(flex: 2),
+            const SizedBox(height: 18),
             Text(
               data.label,
-              style: const TextStyle(
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
                 fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: kFinanzasInk,
+                fontWeight: FontWeight.w800,
+                color: Colors.white.withValues(alpha: 0.84),
               ),
             ),
             const SizedBox(height: 10),
@@ -2290,60 +2285,52 @@ class _FixedMetricCard extends StatelessWidget {
                   fontSize: 40,
                   fontWeight: FontWeight.w900,
                   color: tone,
+                  height: 1,
                 ),
               ),
             ),
             const Spacer(),
-            Divider(
-              height: 1,
-              thickness: 1,
-              color: Colors.white.withValues(alpha: 0.08),
-            ),
-            const SizedBox(height: 16),
             Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Container(
-                  width: 52,
-                  height: 52,
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    color: tone.withValues(alpha: 0.14),
-                    border: Border.all(color: tone.withValues(alpha: 0.22)),
-                    boxShadow: [
-                      BoxShadow(
-                        color: tone.withValues(alpha: 0.16),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
+                    color: Colors.white.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(12),
                   ),
-                  child: Icon(data.footerIcon, color: tone, size: 28),
+                  child: Icon(
+                    data.footerIcon,
+                    size: 18,
+                    color: kFinanzasMutedInk,
+                  ),
                 ),
-                const SizedBox(width: 14),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         data.footerTitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: kFinanzasInk,
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w800,
+                          color: kFinanzasMutedInk,
                         ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         data.footerSubtitle,
-                        maxLines: 1,
+                        maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w700,
                           color: kFinanzasMutedInk,
+                          height: 1.3,
                         ),
                       ),
                     ],
@@ -2368,10 +2355,10 @@ class _FixedTabSurface extends StatelessWidget {
     return FinanzasGlassPanel(
       borderRadius: BorderRadius.circular(32),
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-      fillColor: const Color(0x14141920),
+      fillColor: kFinanzasPanelSurfaceSubtle,
       borderColor: Colors.white.withValues(alpha: 0.28),
       edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
-      glowColor: const Color(0x1FFF7A1F),
+      glowColor: kFinanzasGlowSoft.withValues(alpha: 0.40),
       child: child,
     );
   }
@@ -2518,7 +2505,7 @@ class _FixedHeaderRow extends StatelessWidget {
     return FinanzasGlassPanel(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       borderRadius: BorderRadius.circular(18),
-      fillColor: const Color(0x10151A22),
+      fillColor: const Color(0x102C1809),
       borderColor: Colors.white.withValues(alpha: 0.16),
       edgeHighlightColor: Colors.white.withValues(alpha: 0.16),
       child: LayoutBuilder(
@@ -2855,8 +2842,8 @@ class _FixedPaymentRowState extends State<_FixedPaymentRow> {
                 alpha: widget.active ? 0.24 : 0.18,
               )
             : _hovering
-            ? const Color(0xE01D222B)
-            : const Color(0xCC171B23),
+            ? const Color(0xE61A0600)
+            : kFinanzasPanelSurfaceStrong,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(22),
           side: BorderSide(
@@ -3053,7 +3040,7 @@ class _FixedPaymentRowState extends State<_FixedPaymentRow> {
                                           height: 36,
                                           decoration: BoxDecoration(
                                             color: widget.selected
-                                                ? const Color(0xCC1D2129)
+                                                ? const Color(0xCC160500)
                                                 : Colors.white.withValues(
                                                     alpha: 0.06,
                                                   ),
@@ -3170,7 +3157,7 @@ class _FixedEmptyPane extends StatelessWidget {
         width: 420,
         padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
         borderRadius: BorderRadius.circular(24),
-        fillColor: const Color(0x12161A22),
+        fillColor: const Color(0x120C0300),
         borderColor: Colors.white.withValues(alpha: 0.18),
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -3214,26 +3201,37 @@ class _HeaderBrand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 68,
-          height: 68,
+          width: 56,
+          height: 56,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.18),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.38)),
+            color: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kFinanzasBorder.withValues(alpha: 0.92)),
+            boxShadow: [
+              BoxShadow(
+                color: tokens.glow.withValues(alpha: 0.24),
+                blurRadius: 28,
+                spreadRadius: 1,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          alignment: Alignment.center,
-          child: const DicsaLogoD(size: 42),
+          child: const Center(child: DicsaLogoD(size: 40, progress: 1)),
         ),
-        const SizedBox(width: 18),
+        const SizedBox(width: 20),
         Text(
           title,
+          maxLines: 1,
           style: const TextStyle(
-            fontSize: 30,
+            fontSize: 28,
             fontWeight: FontWeight.w900,
+            letterSpacing: 0.25,
+            height: 1.0,
             color: kFinanzasInk,
           ),
         ),
@@ -3260,105 +3258,82 @@ class _HeaderButton extends StatefulWidget {
 }
 
 class _HeaderButtonState extends State<_HeaderButton> {
-  bool _hovered = false;
-
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final enabled = widget.onTap != null || widget.onTapSync != null;
-    final highlighted = enabled && _hovered;
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        scale: highlighted ? 1.026 : 1,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-            splashColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            splashFactory: NoSplash.splashFactory,
-            onTap: !enabled
-                ? null
-                : () async {
-                    if (widget.onTap != null) {
-                      await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
-                    }
-                  },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              transform: Matrix4.translationValues(
-                0,
-                highlighted ? -2.5 : 0,
-                0,
-              ),
-              width: 176,
-              height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withValues(alpha: highlighted ? 0.36 : 0.24),
-                    tokens.surfaceTint.withValues(
-                      alpha: highlighted ? 0.46 : 0.28,
-                    ),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: highlighted
-                      ? Colors.white.withValues(alpha: 0.76)
-                      : Colors.white.withValues(alpha: 0.48),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: highlighted ? 28 : 16,
-                    color: Colors.black.withValues(
-                      alpha: highlighted ? 0.16 : 0.08,
-                    ),
-                    offset: Offset(0, highlighted ? 14 : 8),
-                  ),
-                  BoxShadow(
-                    blurRadius: highlighted ? 20 : 10,
-                    color: tokens.glow.withValues(
-                      alpha: highlighted ? 0.12 : 0.05,
-                    ),
-                  ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
+          splashColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
+          onTap: !enabled
+              ? null
+              : () async {
+                  if (widget.onTap != null) {
+                    await widget.onTap!();
+                  } else {
+                    widget.onTapSync?.call();
+                  }
+                },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            width: 176,
+            height: 56,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  kFinanzasOrange.withValues(alpha: 0.26),
+                  kFinanzasOrangeIntense.withValues(alpha: 0.18),
                 ],
               ),
-              child: Row(
-                children: [
-                  Icon(widget.icon, size: 20, color: tokens.primaryStrong),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        widget.label,
-                        maxLines: 1,
-                        softWrap: false,
-                        style: TextStyle(
-                          color: tokens.primaryStrong,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                        ),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: kFinanzasBorder.withValues(alpha: 0.90),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: 16,
+                  color: kFinanzasOrange.withValues(alpha: 0.14),
+                  offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  blurRadius: 10,
+                  color: tokens.glow.withValues(alpha: 0.05),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Icon(widget.icon, size: 20, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      widget.label,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -3388,7 +3363,7 @@ class _SidePanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 320,
+      width: 360,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(28, 56, 0, 28),
         child: FinanzasAreaSidePanel(
@@ -3492,7 +3467,7 @@ Future<_SimpleOption?> _showSimpleOptionsDialog({
                 child: FinanzasGlassPanel(
                   borderRadius: BorderRadius.circular(28),
                   padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                  fillColor: const Color(0x1813171F),
+                  fillColor: kFinanzasPanelSurface,
                   borderColor: Colors.white.withValues(alpha: 0.18),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(
@@ -3655,9 +3630,9 @@ class _FixedChoiceField extends StatelessWidget {
     return FinanzasGlassPanel(
       padding: EdgeInsets.zero,
       borderRadius: BorderRadius.circular(20),
-      fillColor: const Color(0x18161A22),
-      borderColor: Colors.white.withValues(alpha: 0.22),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.22),
+      fillColor: kFinanzasPanelSurfaceSoft,
+      borderColor: tokens.border.withValues(alpha: 0.38),
+      edgeHighlightColor: kFinanzasLightGlow.withValues(alpha: 0.12),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -3752,7 +3727,7 @@ class _FixedPickerOptionTileState extends State<_FixedPickerOptionTile> {
                   ? tokens.primaryStrong.withValues(alpha: 0.16)
                   : hovered
                   ? tokens.primaryStrong.withValues(alpha: 0.12)
-                  : const Color(0xCC171C24),
+                  : kFinanzasPanelSurfaceStrong,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: selected
@@ -3821,7 +3796,7 @@ Future<DateTimeRange?> _showFixedDateRangeDialog(
 }) {
   return showDialog<DateTimeRange?>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.28),
+    barrierColor: kFinanzasBgDeep.withValues(alpha: 0.72),
     builder: (dialogContext) {
       DateTime displayMonth = defaultDatePickerOpenMonth(
         firstDate: firstDate,
@@ -4204,7 +4179,7 @@ InputDecoration _fixedDialogFieldDecoration(
     prefixIcon: prefixIcon,
   ).copyWith(
     filled: true,
-    fillColor: const Color(0xCC171C24),
+    fillColor: kFinanzasPanelSurfaceStrong,
     hintStyle: TextStyle(color: tokens.onGlass.withValues(alpha: 0.54)),
     enabledBorder: border,
     focusedBorder: border.copyWith(

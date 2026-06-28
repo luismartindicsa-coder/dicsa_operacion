@@ -34,6 +34,13 @@ typedef EmptyAreaDashboardSidePanelBuilder =
       List<DashboardNavAction> areaItems,
     );
 
+typedef EmptyAreaDashboardWorkspaceBuilder =
+    Widget Function(
+      BuildContext context,
+      EmptyAreaDashboardConfig config,
+      double width,
+    );
+
 class _EmptyAreaDashboardPageState extends State<EmptyAreaDashboardPage> {
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
@@ -244,6 +251,9 @@ class EmptyAreaDashboardConfig {
   final List<DashboardHeaderAction> headerActions;
   final List<DashboardPlaceholderCard> placeholderCards;
   final EmptyAreaDashboardSidePanelBuilder? sidePanelBuilder;
+  final EmptyAreaDashboardWorkspaceBuilder? workspaceBuilder;
+  final bool showContractPanel;
+  final bool showPlaceholderCards;
 
   const EmptyAreaDashboardConfig({
     required this.dashboardLabel,
@@ -311,6 +321,9 @@ class EmptyAreaDashboardConfig {
       ),
     ],
     this.sidePanelBuilder,
+    this.workspaceBuilder,
+    this.showContractPanel = true,
+    this.showPlaceholderCards = true,
   });
 
   EmptyAreaDashboardConfig copyWith({
@@ -318,6 +331,9 @@ class EmptyAreaDashboardConfig {
     List<DashboardNavAction>? accessItems,
     List<DashboardHeaderAction>? headerActions,
     List<DashboardPlaceholderCard>? placeholderCards,
+    EmptyAreaDashboardWorkspaceBuilder? workspaceBuilder,
+    bool? showContractPanel,
+    bool? showPlaceholderCards,
   }) {
     return EmptyAreaDashboardConfig(
       dashboardLabel: dashboardLabel,
@@ -366,6 +382,9 @@ class EmptyAreaDashboardConfig {
       headerActions: headerActions ?? this.headerActions,
       placeholderCards: placeholderCards ?? this.placeholderCards,
       sidePanelBuilder: sidePanelBuilder,
+      workspaceBuilder: workspaceBuilder ?? this.workspaceBuilder,
+      showContractPanel: showContractPanel ?? this.showContractPanel,
+      showPlaceholderCards: showPlaceholderCards ?? this.showPlaceholderCards,
     );
   }
 }
@@ -555,6 +574,12 @@ class _AreaDashboardBody extends StatelessWidget {
               LayoutBuilder(
                 builder: (context, constraints) {
                   final availableWidth = constraints.maxWidth;
+                  if (!config.showContractPanel) {
+                    return _WorkspaceCard(
+                      width: availableWidth,
+                      config: config,
+                    );
+                  }
                   final isWide = availableWidth >= 1180;
                   final rightWidth = isWide ? 360.0 : availableWidth;
                   final leftWidth = isWide
@@ -579,36 +604,39 @@ class _AreaDashboardBody extends StatelessWidget {
                   );
                 },
               ),
-              const SizedBox(height: 16),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final availableWidth = constraints.maxWidth;
-                  final wide = availableWidth >= 1240;
-                  final medium = availableWidth >= 860;
-                  final spacing = 16.0;
-                  final columns = wide
-                      ? 3
-                      : medium
-                      ? 2
-                      : 1;
-                  final width =
-                      (availableWidth - spacing * (columns - 1)) / columns;
-                  return Wrap(
-                    spacing: spacing,
-                    runSpacing: spacing,
-                    children: [
-                      for (final card in config.placeholderCards)
-                        _PlaceholderWidgetCard(
-                          width: width,
-                          config: config,
-                          icon: card.icon,
-                          title: card.title,
-                          description: card.description,
-                        ),
-                    ],
-                  );
-                },
-              ),
+              if (config.showPlaceholderCards &&
+                  config.placeholderCards.isNotEmpty) ...[
+                const SizedBox(height: 16),
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final availableWidth = constraints.maxWidth;
+                    final wide = availableWidth >= 1240;
+                    final medium = availableWidth >= 860;
+                    final spacing = 16.0;
+                    final columns = wide
+                        ? 3
+                        : medium
+                        ? 2
+                        : 1;
+                    final width =
+                        (availableWidth - spacing * (columns - 1)) / columns;
+                    return Wrap(
+                      spacing: spacing,
+                      runSpacing: spacing,
+                      children: [
+                        for (final card in config.placeholderCards)
+                          _PlaceholderWidgetCard(
+                            width: width,
+                            config: config,
+                            icon: card.icon,
+                            title: card.title,
+                            description: card.description,
+                          ),
+                      ],
+                    );
+                  },
+                ),
+              ],
             ],
           ),
         ),
@@ -710,6 +738,12 @@ class _WorkspaceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (config.workspaceBuilder != null) {
+      return SizedBox(
+        width: width,
+        child: config.workspaceBuilder!(context, config, width),
+      );
+    }
     return SizedBox(
       width: width,
       child: ContractGlassCard(

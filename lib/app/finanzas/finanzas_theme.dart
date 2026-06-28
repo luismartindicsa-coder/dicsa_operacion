@@ -2,44 +2,85 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
+import '../shared/dicsa_logo_mark.dart';
+import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
 
+const Color kFinanzasBg = Color(0xFF050201);
+const Color kFinanzasBgDeep = Color(0xFF0B0301);
+const Color kFinanzasBgWarm = Color(0xFF160702);
+
+const Color kFinanzasOrange = Color(0xFFFF7A18);
+const Color kFinanzasOrangeElectric = Color(0xFFFF8A00);
+const Color kFinanzasOrangeIntense = Color(0xFFFF5A00);
+const Color kFinanzasAmberHighlight = Color(0xFFFFA347);
+const Color kFinanzasLightGlow = Color(0xFFFFC27C);
+
+const Color kFinanzasInk = Color(0xFFFFF7EF);
+const Color kFinanzasMutedInk = Color(0xC7FFEFE0);
+const Color kFinanzasSubtleInk = Color(0x8CFFE1CC);
+
+const Color kFinanzasSurfaceGlass = Color(0xB8180903);
+const Color kFinanzasSurfaceElevated = Color(0xC62C1005);
+const Color kFinanzasSurfaceHover = Color(0x24FF6F18);
+const Color kFinanzasSurfaceActive = Color(0x38FF7A18);
+const Color kFinanzasBorder = Color(0x3DFF7A18);
+const Color kFinanzasBorderHover = Color(0x73FF8A00);
+const Color kFinanzasBorderActive = Color(0xB3FF8A00);
+const Color kFinanzasGlowSoft = Color(0x47FF7A18);
+const Color kFinanzasGlowStrong = Color(0x73FF6600);
+
+const Color kFinanzasPearl = Color(0xFFFFE3C3);
+const Color kFinanzasAmber = kFinanzasOrangeElectric;
+const Color kFinanzasCopper = kFinanzasOrange;
+const Color kFinanzasBurnt = kFinanzasOrangeIntense;
+const Color kFinanzasCoral = Color(0xFFFF6610);
+const Color kFinanzasSage = Color(0xFFFF7A18);
+const Color kFinanzasTaupe = Color(0xFFFF9735);
+const Color kFinanzasBronze = Color(0xFFFFAE48);
+
+const Color kFinanzasDialogSurface = kFinanzasBgWarm;
+const Color kFinanzasPanelSurface = kFinanzasSurfaceGlass;
+const Color kFinanzasPanelSurfaceStrong = kFinanzasSurfaceElevated;
+const Color kFinanzasPanelSurfaceSoft = Color(0xA3200B04);
+const Color kFinanzasPanelSurfaceSubtle = Color(0x96130502);
+const Color kFinanzasPanelSurfaceLight = Color(0xC6341307);
+const Color kFinanzasSelectionFill = kFinanzasSurfaceActive;
+
 const ContractAreaTokens finanzasAreaTokens = ContractAreaTokens(
-  primary: Color(0xFFFF9A3D),
-  primaryStrong: Color(0xFFFF6A1A),
-  primarySoft: Color(0xFFFFC58A),
-  accent: Color(0xFFFFB36B),
-  surfaceTint: Color(0xFF1B1E24),
-  border: Color(0xFF8C96A3),
-  badgeBackground: Color(0xFF232831),
-  badgeText: Color(0xFFD6DCE4),
-  glow: Color(0xFFFF7A1F),
+  primary: kFinanzasOrange,
+  primaryStrong: kFinanzasOrange,
+  primarySoft: Color(0xFFFFA85B),
+  accent: kFinanzasOrangeIntense,
+  surfaceTint: Color(0xFF351105),
+  border: kFinanzasBorderHover,
+  badgeBackground: Color(0x99100502),
+  badgeText: Color(0xFFFFD7B5),
+  glow: kFinanzasOrange,
   darkGlass: true,
-  glassSurface: Color(0x66212731),
-  fieldSurface: Color(0xB31A1F27),
-  onGlass: Color(0xFFF3F5F7),
+  accentDarkGlass: true,
+  glassSurface: kFinanzasSurfaceGlass,
+  fieldSurface: Color(0xC2140602),
+  onGlass: kFinanzasInk,
 );
 
 const LinearGradient kFinanzasHeroGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  colors: [Color(0xFF1A1D23), Color(0xFF111318), Color(0xFF080A0E)],
+  colors: [kFinanzasBg, kFinanzasBgDeep, Color(0xFF1A0701)],
 );
 
 const LinearGradient kFinanzasPanelGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  colors: [Color(0x26FFFFFF), Color(0x12FF8C2B), Color(0x14101820)],
+  colors: [Color(0x16FF8A00), Color(0x1AFF7A18), Color(0x18FF5A00)],
 );
 
 const LinearGradient kFinanzasAccentGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  colors: [Color(0xFFFF9A3D), Color(0xFFFF6A1A), Color(0xFF2B1308)],
+  colors: [kFinanzasOrangeElectric, kFinanzasOrange, kFinanzasOrangeIntense],
 );
-
-const Color kFinanzasInk = Color(0xFFF3F5F7);
-const Color kFinanzasMutedInk = Color(0xFFBDC5D0);
 
 class FinanzasAreaNavEntry {
   final IconData icon;
@@ -55,6 +96,339 @@ class FinanzasAreaNavEntry {
     this.current = false,
     this.onTap,
   });
+}
+
+class FinanzasPageHeaderBrand extends StatelessWidget {
+  final String title;
+
+  const FinanzasPageHeaderBrand({super.key, required this.title});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 56,
+          height: 56,
+          decoration: BoxDecoration(
+            color: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kFinanzasBorder.withValues(alpha: 0.92)),
+            boxShadow: [
+              BoxShadow(
+                color: tokens.glow.withValues(alpha: 0.24),
+                blurRadius: 28,
+                spreadRadius: 1,
+                offset: const Offset(0, 8),
+              ),
+            ],
+          ),
+          child: const Center(child: DicsaLogoD(size: 40, progress: 1)),
+        ),
+        const SizedBox(width: 20),
+        Text(
+          title,
+          maxLines: 1,
+          style: const TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.25,
+            height: 1.0,
+            color: kFinanzasInk,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class FinanzasPageHeaderButton extends StatefulWidget {
+  final String label;
+  final IconData icon;
+  final Future<void> Function()? onTap;
+  final VoidCallback? onTapSync;
+  final bool iconOnly;
+
+  const FinanzasPageHeaderButton({
+    super.key,
+    required this.label,
+    required this.icon,
+    this.onTap,
+    this.onTapSync,
+    this.iconOnly = false,
+  });
+
+  @override
+  State<FinanzasPageHeaderButton> createState() =>
+      _FinanzasPageHeaderButtonState();
+}
+
+class _FinanzasPageHeaderButtonState extends State<FinanzasPageHeaderButton> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final enabled = widget.onTap != null || widget.onTapSync != null;
+    final highlighted = enabled && _hovered;
+    return MouseRegion(
+      cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        scale: highlighted ? 1.026 : 1,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            overlayColor: WidgetStateProperty.all(Colors.transparent),
+            splashColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            splashFactory: NoSplash.splashFactory,
+            onTap: !enabled
+                ? null
+                : () async {
+                    if (widget.onTap != null) {
+                      await widget.onTap!();
+                    } else {
+                      widget.onTapSync?.call();
+                    }
+                  },
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              transform: Matrix4.translationValues(
+                0,
+                highlighted ? -2.5 : 0,
+                0,
+              ),
+              width: widget.iconOnly ? 56 : 176,
+              height: 56,
+              padding: EdgeInsets.symmetric(
+                horizontal: widget.iconOnly ? 0 : 20,
+                vertical: 16,
+              ),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    kFinanzasOrange.withValues(
+                      alpha: highlighted ? 0.42 : 0.26,
+                    ),
+                    kFinanzasOrangeIntense.withValues(
+                      alpha: highlighted ? 0.34 : 0.18,
+                    ),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: highlighted
+                      ? kFinanzasLightGlow.withValues(alpha: 0.70)
+                      : kFinanzasBorder.withValues(alpha: 0.90),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    blurRadius: highlighted ? 32 : 22,
+                    color: Colors.black.withValues(
+                      alpha: highlighted ? 0.40 : 0.24,
+                    ),
+                    offset: Offset(0, highlighted ? 14 : 8),
+                  ),
+                  BoxShadow(
+                    blurRadius: highlighted ? 30 : 18,
+                    color: tokens.glow.withValues(
+                      alpha: highlighted ? 0.36 : 0.20,
+                    ),
+                  ),
+                ],
+              ),
+              child: widget.iconOnly
+                  ? Center(
+                      child: Icon(widget.icon, size: 22, color: Colors.white),
+                    )
+                  : Row(
+                      children: [
+                        Icon(widget.icon, size: 20, color: Colors.white),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              widget.label,
+                              maxLines: 1,
+                              softWrap: false,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class FinanzasSummaryMetricCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color? accent;
+  final Color? valueColor;
+  final String? subtitle;
+  final int subtitleMaxLines;
+  final double? width;
+  final double height;
+  final bool centered;
+  final double valueFontSize;
+  final double labelFontSize;
+  final double subtitleFontSize;
+  final double iconBoxSize;
+  final double iconSize;
+  final EdgeInsetsGeometry padding;
+  final double? progress;
+
+  const FinanzasSummaryMetricCard({
+    super.key,
+    required this.label,
+    required this.value,
+    required this.icon,
+    this.accent,
+    this.valueColor,
+    this.subtitle,
+    this.subtitleMaxLines = 3,
+    this.width,
+    this.height = 168,
+    this.centered = false,
+    this.valueFontSize = 24,
+    this.labelFontSize = 12,
+    this.subtitleFontSize = 12,
+    this.iconBoxSize = 42,
+    this.iconSize = 20,
+    this.padding = const EdgeInsets.fromLTRB(16, 16, 16, 16),
+    this.progress,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final resolvedAccent = accent ?? tokens.primaryStrong;
+    final resolvedValueColor = valueColor ?? kFinanzasOrange;
+    final alignment = centered
+        ? CrossAxisAlignment.center
+        : CrossAxisAlignment.start;
+    final textAlign = centered ? TextAlign.center : TextAlign.start;
+    return FinanzasGlassPanel(
+      width: width,
+      padding: padding,
+      borderRadius: BorderRadius.circular(22),
+      fillColor: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.94),
+      borderColor: resolvedAccent.withValues(alpha: 0.34),
+      glowColor: resolvedAccent.withValues(alpha: 0.28),
+      edgeHighlightColor: kFinanzasOrange.withValues(alpha: 0.14),
+      child: SizedBox(
+        height: height,
+        child: Column(
+          crossAxisAlignment: alignment,
+          children: [
+            Container(
+              width: iconBoxSize,
+              height: iconBoxSize,
+              decoration: BoxDecoration(
+                color: resolvedAccent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(
+                  color: resolvedAccent.withValues(alpha: 0.34),
+                ),
+              ),
+              child: Icon(icon, color: resolvedAccent, size: iconSize),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              label,
+              maxLines: 2,
+              textAlign: textAlign,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: labelFontSize,
+                fontWeight: FontWeight.w800,
+                color: kFinanzasInk,
+              ),
+            ),
+            const SizedBox(height: 8),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: centered ? Alignment.center : Alignment.centerLeft,
+              child: Text(
+                value,
+                maxLines: 1,
+                textAlign: textAlign,
+                style: TextStyle(
+                  fontSize: valueFontSize,
+                  fontWeight: FontWeight.w900,
+                  color: resolvedValueColor,
+                  height: 1,
+                ),
+              ),
+            ),
+            if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Text(
+                subtitle!,
+                maxLines: subtitleMaxLines,
+                overflow: TextOverflow.ellipsis,
+                textAlign: textAlign,
+                style: TextStyle(
+                  fontSize: subtitleFontSize,
+                  fontWeight: FontWeight.w700,
+                  color: kFinanzasMutedInk,
+                  height: 1.3,
+                ),
+              ),
+            ],
+            if (progress != null) ...[
+              const Spacer(),
+              Container(
+                height: 6,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color: kFinanzasBgWarm.withValues(alpha: 0.88),
+                ),
+                child: FractionallySizedBox(
+                  alignment: Alignment.centerLeft,
+                  widthFactor: progress!.clamp(0.0, 1.0),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(999),
+                      gradient: LinearGradient(
+                        colors: [
+                          resolvedAccent.withValues(alpha: 0.58),
+                          resolvedAccent.withValues(alpha: 0.92),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class FinanzasGlassPanel extends StatelessWidget {
@@ -77,12 +451,12 @@ class FinanzasGlassPanel extends StatelessWidget {
     this.padding = const EdgeInsets.all(16),
     this.borderRadius = const BorderRadius.all(Radius.circular(20)),
     this.blurSigma = 22,
-    this.fillColor = const Color(0x1410151C),
-    this.borderColor = const Color(0x45FFFFFF),
-    this.shadowColor = const Color(0x16000000),
-    this.edgeHighlightColor = const Color(0xAAFFFFFF),
-    this.bevelShadowColor = const Color(0x18000000),
-    this.glowColor = const Color(0x22FF8A2B),
+    this.fillColor = kFinanzasPanelSurface,
+    this.borderColor = kFinanzasBorder,
+    this.shadowColor = const Color(0x8C000000),
+    this.edgeHighlightColor = const Color(0x3DFF8A00),
+    this.bevelShadowColor = const Color(0x3B160702),
+    this.glowColor = kFinanzasGlowSoft,
     this.width,
     this.height,
   });
@@ -104,21 +478,23 @@ class FinanzasGlassPanel extends StatelessWidget {
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
               colors: [
-                Colors.white.withValues(alpha: 0.10),
-                const Color(0xFFFF9A3D).withValues(alpha: 0.05),
-                const Color(0xFF1A1F27).withValues(alpha: 0.20),
+                kFinanzasOrange.withValues(alpha: 0.10),
+                kFinanzasOrangeElectric.withValues(alpha: 0.08),
+                kFinanzasOrangeIntense.withValues(alpha: 0.10),
+                Colors.transparent,
               ],
-              stops: const [0.0, 0.34, 1.0],
+              stops: const [0.0, 0.16, 0.48, 1.0],
             ),
             boxShadow: [
               BoxShadow(
-                blurRadius: 18,
-                offset: const Offset(0, 8),
+                blurRadius: 50,
+                offset: const Offset(0, 18),
                 color: shadowColor,
               ),
               BoxShadow(
-                blurRadius: 18,
-                offset: const Offset(-2, -2),
+                blurRadius: 32,
+                spreadRadius: 1,
+                offset: const Offset(0, 0),
                 color: glowColor,
               ),
             ],
@@ -135,10 +511,10 @@ class FinanzasGlassPanel extends StatelessWidget {
                         end: Alignment.bottomRight,
                         colors: [
                           edgeHighlightColor,
-                          const Color(0xFFFFB36B).withValues(alpha: 0.08),
+                          kFinanzasOrangeElectric.withValues(alpha: 0.08),
                           Colors.transparent,
                         ],
-                        stops: const [0.0, 0.20, 0.56],
+                        stops: const [0.0, 0.16, 0.52],
                       ),
                     ),
                   ),
@@ -157,8 +533,8 @@ class FinanzasGlassPanel extends StatelessWidget {
                         begin: Alignment.topCenter,
                         end: Alignment.bottomCenter,
                         colors: [
-                          Colors.white.withValues(alpha: 0.16),
-                          Colors.white.withValues(alpha: 0.04),
+                          kFinanzasOrangeElectric.withValues(alpha: 0.10),
+                          kFinanzasOrange.withValues(alpha: 0.04),
                           Colors.transparent,
                         ],
                       ),
@@ -173,12 +549,12 @@ class FinanzasGlassPanel extends StatelessWidget {
                       borderRadius: borderRadius,
                       boxShadow: [
                         BoxShadow(
-                          color: edgeHighlightColor.withValues(alpha: 0.10),
+                          color: edgeHighlightColor.withValues(alpha: 0.18),
                           blurRadius: 0,
                           spreadRadius: 0.6,
                         ),
                         BoxShadow(
-                          color: bevelShadowColor.withValues(alpha: 0.14),
+                          color: bevelShadowColor.withValues(alpha: 0.18),
                           blurRadius: 12,
                           offset: const Offset(0, 6),
                         ),
@@ -307,12 +683,12 @@ class FinanzasAreaSidePanel extends StatelessWidget {
         child: FinanzasGlassPanel(
           borderRadius: BorderRadius.circular(28),
           blurSigma: 30,
-          fillColor: const Color(0xFF10151C).withValues(alpha: 0.22),
-          borderColor: Colors.white.withValues(alpha: 0.30),
-          shadowColor: Colors.black.withValues(alpha: 0.18),
-          edgeHighlightColor: Colors.white.withValues(alpha: 0.76),
+          fillColor: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.82),
+          borderColor: kFinanzasBorder.withValues(alpha: 0.92),
+          shadowColor: Colors.black.withValues(alpha: 0.34),
+          edgeHighlightColor: kFinanzasLightGlow.withValues(alpha: 0.18),
           bevelShadowColor: Colors.black.withValues(alpha: 0.20),
-          glowColor: const Color(0xFFFF8E2C).withValues(alpha: 0.16),
+          glowColor: kFinanzasGlowStrong.withValues(alpha: 0.42),
           padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
           child: SingleChildScrollView(
             child: Column(
@@ -321,7 +697,7 @@ class FinanzasAreaSidePanel extends StatelessWidget {
                 Text(
                   title,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: kFinanzasPearl,
                     fontSize: 16,
                     fontWeight: FontWeight.w900,
                   ),
@@ -330,7 +706,7 @@ class FinanzasAreaSidePanel extends StatelessWidget {
                 Text(
                   subtitle,
                   style: const TextStyle(
-                    color: Color(0xB8E2E7EF),
+                    color: Color(0xB8FFD5AB),
                     fontSize: 12,
                     fontWeight: FontWeight.w600,
                   ),
@@ -390,25 +766,25 @@ class _FinanzasSidePanelBlock extends StatelessWidget {
     return FinanzasGlassPanel(
       borderRadius: BorderRadius.circular(20),
       blurSigma: 24,
-      fillColor: const Color(0xFF151A21).withValues(alpha: 0.18),
-      borderColor: Colors.white.withValues(alpha: 0.26),
-      shadowColor: Colors.black.withValues(alpha: 0.14),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.66),
+      fillColor: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.68),
+      borderColor: kFinanzasBorder.withValues(alpha: 0.80),
+      shadowColor: Colors.black.withValues(alpha: 0.24),
+      edgeHighlightColor: kFinanzasLightGlow.withValues(alpha: 0.14),
       bevelShadowColor: Colors.black.withValues(alpha: 0.18),
-      glowColor: const Color(0xFFFF8A2B).withValues(alpha: 0.10),
+      glowColor: kFinanzasGlowSoft.withValues(alpha: 0.22),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Icon(icon, size: 18, color: Colors.white),
+              Icon(icon, size: 18, color: kFinanzasPearl),
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   title,
                   style: const TextStyle(
-                    color: Colors.white,
+                    color: kFinanzasPearl,
                     fontSize: 14,
                     fontWeight: FontWeight.w900,
                   ),
@@ -443,31 +819,60 @@ class _FinanzasSidePanelActionState extends State<_FinanzasSidePanelAction> {
   @override
   Widget build(BuildContext context) {
     final highlighted = widget.entry.current || _hovered;
+    final current = widget.entry.current;
+    final gradient = current
+        ? const LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [kFinanzasOrange, kFinanzasOrangeIntense],
+          )
+        : null;
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
       child: InkWell(
         borderRadius: BorderRadius.circular(18),
         onTap: widget.entry.current ? null : widget.entry.onTap,
-        child: FinanzasGlassPanel(
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-          borderRadius: BorderRadius.circular(18),
-          blurSigma: 24,
-          fillColor: highlighted
-              ? const Color(0xFFFF8A2B).withValues(alpha: 0.14)
-              : const Color(0xFF171C24).withValues(alpha: 0.14),
-          borderColor: Colors.white.withValues(
-            alpha: highlighted ? 0.30 : 0.20,
+          decoration: BoxDecoration(
+            gradient: gradient,
+            color: current
+                ? null
+                : highlighted
+                ? kFinanzasSurfaceHover
+                : kFinanzasPanelSurfaceStrong.withValues(alpha: 0.72),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: current
+                  ? kFinanzasBorderActive
+                  : highlighted
+                  ? kFinanzasBorderHover
+                  : kFinanzasBorder.withValues(alpha: 0.72),
+            ),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: current ? 28 : 18,
+                offset: const Offset(0, 10),
+                color: Colors.black.withValues(alpha: current ? 0.28 : 0.18),
+              ),
+              BoxShadow(
+                blurRadius: current ? 28 : 16,
+                spreadRadius: current ? 1 : 0,
+                color: (current ? kFinanzasGlowStrong : kFinanzasGlowSoft)
+                    .withValues(alpha: current ? 0.52 : 0.20),
+              ),
+            ],
           ),
-          shadowColor: Colors.black.withValues(alpha: 0.08),
-          edgeHighlightColor: Colors.white.withValues(alpha: 0.70),
-          bevelShadowColor: Colors.black.withValues(alpha: 0.14),
-          glowColor: highlighted
-              ? const Color(0xFFFF8A2B).withValues(alpha: 0.18)
-              : const Color(0xFFFF8A2B).withValues(alpha: 0.08),
           child: Row(
             children: [
-              Icon(widget.entry.icon, size: 18, color: Colors.white),
+              Icon(
+                widget.entry.icon,
+                size: 18,
+                color: current ? Colors.white : kFinanzasAmberHighlight,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -475,8 +880,8 @@ class _FinanzasSidePanelActionState extends State<_FinanzasSidePanelAction> {
                   children: [
                     Text(
                       widget.entry.title,
-                      style: const TextStyle(
-                        color: kFinanzasInk,
+                      style: TextStyle(
+                        color: current ? Colors.white : kFinanzasInk,
                         fontWeight: FontWeight.w800,
                         fontSize: 14,
                       ),
@@ -484,8 +889,10 @@ class _FinanzasSidePanelActionState extends State<_FinanzasSidePanelAction> {
                     const SizedBox(height: 4),
                     Text(
                       widget.entry.subtitle,
-                      style: const TextStyle(
-                        color: kFinanzasMutedInk,
+                      style: TextStyle(
+                        color: current
+                            ? Colors.white.withValues(alpha: 0.88)
+                            : kFinanzasMutedInk,
                         fontWeight: FontWeight.w600,
                         fontSize: 12,
                       ),
@@ -494,15 +901,13 @@ class _FinanzasSidePanelActionState extends State<_FinanzasSidePanelAction> {
                 ),
               ),
               if (widget.entry.current)
-                Icon(
-                  Icons.check_circle_rounded,
-                  color: finanzasAreaTokens.primarySoft,
-                  size: 20,
-                )
+                Icon(Icons.check_circle_rounded, color: Colors.white, size: 20)
               else
-                const Icon(
+                Icon(
                   Icons.chevron_right_rounded,
-                  color: kFinanzasMutedInk,
+                  color: highlighted
+                      ? kFinanzasAmberHighlight
+                      : kFinanzasMutedInk,
                   size: 20,
                 ),
             ],
@@ -519,64 +924,53 @@ class FinanzasAreaBackground extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Stack(
-      fit: StackFit.expand,
       children: [
         const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF1A1D23), Color(0xFF111318), Color(0xFF080A0E)],
+          decoration: BoxDecoration(gradient: kFinanzasHeroGradient),
+          child: SizedBox.expand(),
+        ),
+        Positioned(
+          left: -250,
+          top: -140,
+          child: _FinanzasBubbleCircle(
+            size: 760,
+            gradient: const LinearGradient(
+              colors: [Color(0x66FF7A18), Color(0x14FF7A18)],
             ),
           ),
         ),
         Positioned(
-          left: -220,
-          top: -140,
-          child: _FinanzasBackgroundBlob(
-            size: 760,
-            colors: [
-              Colors.white.withValues(alpha: 0.10),
-              const Color(0xFFFFD0A3).withValues(alpha: 0.10),
-            ],
-          ),
-        ),
-        Positioned(
           right: -180,
-          top: -80,
-          child: _FinanzasBackgroundBlob(
-            size: 560,
-            colors: [
-              const Color(0xFFFF7A1F).withValues(alpha: 0.30),
-              const Color(0x14090B0F),
-            ],
+          top: -110,
+          child: _FinanzasBubbleCircle(
+            size: 620,
+            gradient: const LinearGradient(
+              colors: [Color(0x5CFF5A00), Color(0x18FF5A00)],
+            ),
           ),
         ),
         Positioned(
-          left: -60,
-          bottom: -240,
-          child: _FinanzasBackgroundBlob(
-            size: 560,
-            colors: [const Color(0x22111720), const Color(0x20D0D7E2)],
+          left: -160,
+          bottom: -260,
+          child: _FinanzasBubbleCircle(
+            size: 620,
+            gradient: const LinearGradient(
+              colors: [Color(0x70FF8A00), Color(0x18FF8A00)],
+            ),
           ),
         ),
         Positioned(
-          right: -100,
-          bottom: -130,
+          right: -120,
+          bottom: -120,
           child: IgnorePointer(
-            child: Container(
-              width: 300,
+            child: _FinanzasBubblePill(
+              width: 320,
               height: 520,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(220),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    const Color(0xFFFF6A1A).withValues(alpha: 0.68),
-                    const Color(0xFF14181F).withValues(alpha: 0.94),
-                  ],
-                ),
+              radius: 220,
+              gradient: const LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x7AFF8A00), Color(0x1AFF8A00)],
               ),
             ),
           ),
@@ -586,33 +980,208 @@ class FinanzasAreaBackground extends StatelessWidget {
   }
 }
 
-class _FinanzasBackgroundBlob extends StatelessWidget {
+class _FinanzasBubbleCircle extends StatelessWidget {
   final double size;
-  final List<Color> colors;
+  final Gradient gradient;
 
-  const _FinanzasBackgroundBlob({required this.size, required this.colors});
+  const _FinanzasBubbleCircle({required this.size, required this.gradient});
 
   @override
   Widget build(BuildContext context) {
+    final lead = _finanzasGradientLead(gradient);
+    final trail = _finanzasGradientTrail(gradient);
     return IgnorePointer(
-      child: DecoratedBox(
+      child: Container(
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: colors,
-          ),
           boxShadow: [
             BoxShadow(
-              blurRadius: size * 0.10,
-              spreadRadius: size * 0.015,
-              color: Colors.white.withValues(alpha: 0.04),
+              blurRadius: 130,
+              spreadRadius: 14,
+              color: lead.withValues(alpha: 0.17),
+            ),
+            BoxShadow(
+              blurRadius: 78,
+              spreadRadius: 0,
+              color: trail.withValues(alpha: 0.10),
             ),
           ],
         ),
-        child: SizedBox(width: size, height: size),
+        child: ClipOval(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
+                    width: 1.1,
+                  ),
+                  gradient: RadialGradient(
+                    center: const Alignment(0.18, 0.10),
+                    radius: 0.98,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.02),
+                      lead.withValues(alpha: 0.10),
+                      trail.withValues(alpha: 0.18),
+                      trail.withValues(alpha: 0.06),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.14, 0.42, 0.78, 1.0],
+                  ),
+                ),
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    center: const Alignment(-0.22, -0.28),
+                    radius: 0.52,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.12),
+                      Colors.white.withValues(alpha: 0.035),
+                      Colors.transparent,
+                    ],
+                    stops: const [0.0, 0.36, 1.0],
+                  ),
+                ),
+              ),
+              DecoratedBox(
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  gradient: RadialGradient(
+                    center: const Alignment(0.34, 0.42),
+                    radius: 0.88,
+                    colors: [
+                      Colors.transparent,
+                      Colors.transparent,
+                      Colors.black.withValues(alpha: 0.10),
+                    ],
+                    stops: const [0.0, 0.58, 1.0],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }
+}
+
+class _FinanzasBubblePill extends StatelessWidget {
+  final double width;
+  final double height;
+  final double radius;
+  final Gradient gradient;
+
+  const _FinanzasBubblePill({
+    required this.width,
+    required this.height,
+    required this.radius,
+    required this.gradient,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final lead = _finanzasGradientLead(gradient);
+    final trail = _finanzasGradientTrail(gradient);
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 120,
+            spreadRadius: 8,
+            color: lead.withValues(alpha: 0.16),
+          ),
+          BoxShadow(
+            blurRadius: 72,
+            spreadRadius: 0,
+            color: trail.withValues(alpha: 0.10),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(radius),
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radius),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+                gradient: RadialGradient(
+                  center: const Alignment(0.0, -0.04),
+                  radius: 1.04,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.015),
+                    lead.withValues(alpha: 0.05),
+                    trail.withValues(alpha: 0.16),
+                    trail.withValues(alpha: 0.04),
+                  ],
+                  stops: const [0.0, 0.22, 0.72, 1.0],
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radius),
+                gradient: RadialGradient(
+                  center: const Alignment(-0.10, -0.92),
+                  radius: 0.44,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.10),
+                    Colors.white.withValues(alpha: 0.025),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.34, 1.0],
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(radius),
+                gradient: RadialGradient(
+                  center: const Alignment(0.28, 0.90),
+                  radius: 1.05,
+                  colors: [
+                    Colors.transparent,
+                    Colors.transparent,
+                    kFinanzasBgDeep.withValues(alpha: 0.10),
+                  ],
+                  stops: const [0.0, 0.62, 1.0],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+Color _finanzasGradientLead(Gradient gradient) {
+  if (gradient is LinearGradient && gradient.colors.isNotEmpty) {
+    return gradient.colors.first;
+  }
+  if (gradient is RadialGradient && gradient.colors.isNotEmpty) {
+    return gradient.colors.first;
+  }
+  return kFinanzasAmber;
+}
+
+Color _finanzasGradientTrail(Gradient gradient) {
+  if (gradient is LinearGradient && gradient.colors.isNotEmpty) {
+    return gradient.colors.last;
+  }
+  if (gradient is RadialGradient && gradient.colors.isNotEmpty) {
+    return gradient.colors.last;
+  }
+  return kFinanzasBurnt;
 }

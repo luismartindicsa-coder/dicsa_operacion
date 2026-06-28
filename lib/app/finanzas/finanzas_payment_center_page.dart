@@ -1234,6 +1234,7 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
                                                 .account_balance_wallet_rounded,
                                             tone: finanzasAreaTokens
                                                 .primaryStrong,
+                                            progress: 0.84,
                                           ),
                                         ),
                                         const SizedBox(width: spacing),
@@ -1245,7 +1246,8 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
                                             subtitle:
                                                 '$criticalCount críticos · $urgentCount urgentes',
                                             icon: Icons.layers_rounded,
-                                            tone: const Color(0xFFFFB36B),
+                                            tone: kFinanzasAmber,
+                                            progress: 0.58,
                                           ),
                                         ),
                                         const SizedBox(width: spacing),
@@ -1257,7 +1259,8 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
                                             subtitle:
                                                 '$actionableCount salidas listas para revisión',
                                             icon: Icons.rule_folder_outlined,
-                                            tone: const Color(0xFFFF7A1F),
+                                            tone: kFinanzasCopper,
+                                            progress: 0.72,
                                           ),
                                         ),
                                         const SizedBox(width: spacing),
@@ -1271,10 +1274,15 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
                                                 'Pago ejecutable hoy: ${_money(payableNowAmount)}',
                                             icon: Icons.radar_rounded,
                                             tone: coverageRatio >= 0.85
-                                                ? const Color(0xFF22C55E)
+                                                ? kFinanzasSage
                                                 : coverageRatio >= 0.55
-                                                ? const Color(0xFFFFB36B)
-                                                : const Color(0xFFEF4444),
+                                                ? kFinanzasAmber
+                                                : kFinanzasCoral,
+                                            progress: coverageRatio >= 0.85
+                                                ? 1
+                                                : coverageRatio >= 0.55
+                                                ? 0.58
+                                                : 0.32,
                                           ),
                                         ),
                                       ],
@@ -1406,7 +1414,7 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
                       behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => _menuOpen = false),
                       child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
+                        color: const Color(0xFF8B4A1A).withValues(alpha: 0.08),
                       ),
                     ),
                   ),
@@ -1499,6 +1507,7 @@ class _CenterMetricCard extends StatelessWidget {
   final String subtitle;
   final IconData icon;
   final Color tone;
+  final double progress;
 
   const _CenterMetricCard({
     required this.label,
@@ -1506,18 +1515,19 @@ class _CenterMetricCard extends StatelessWidget {
     required this.subtitle,
     required this.icon,
     required this.tone,
+    required this.progress,
   });
 
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     return FinanzasGlassPanel(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       borderRadius: BorderRadius.circular(24),
-      fillColor: const Color(0x10FFFFFF),
-      borderColor: Colors.white.withValues(alpha: 0.24),
-      glowColor: Colors.white.withValues(alpha: 0.06),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      fillColor: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.94),
+      borderColor: tone.withValues(alpha: 0.30),
+      glowColor: tone.withValues(alpha: 0.22),
+      edgeHighlightColor: kFinanzasOrange.withValues(alpha: 0.12),
       child: SizedBox(
         height: 170,
         child: Column(
@@ -1527,21 +1537,22 @@ class _CenterMetricCard extends StatelessWidget {
               width: 48,
               height: 48,
               decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: tone.withValues(alpha: 0.10),
-                border: Border.all(color: tone.withValues(alpha: 0.26)),
+                color: tone.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(15),
+                border: Border.all(color: tone.withValues(alpha: 0.30)),
               ),
               child: Icon(icon, color: tone, size: 24),
             ),
-            const SizedBox(height: 10),
+            const SizedBox(height: 12),
             Text(
               label,
-              maxLines: 1,
+              maxLines: 2,
               textAlign: TextAlign.center,
+              overflow: TextOverflow.ellipsis,
               style: TextStyle(
                 fontSize: 12.5,
                 fontWeight: FontWeight.w800,
-                color: tokens.badgeText,
+                color: kFinanzasInk,
               ),
             ),
             const SizedBox(height: 8),
@@ -1555,38 +1566,34 @@ class _CenterMetricCard extends StatelessWidget {
                   fontSize: 24,
                   fontWeight: FontWeight.w900,
                   color: tone,
-                  letterSpacing: -0.5,
+                  height: 1,
                 ),
               ),
             ),
             const SizedBox(height: 10),
-            Text(
-              subtitle,
-              maxLines: 1,
-              textAlign: TextAlign.center,
-              style: const TextStyle(
-                fontSize: 11.8,
-                fontWeight: FontWeight.w700,
-                color: kFinanzasMutedInk,
-                height: 1.2,
+            Expanded(
+              child: Text(
+                subtitle,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 11.8,
+                  fontWeight: FontWeight.w700,
+                  color: kFinanzasMutedInk,
+                  height: 1.3,
+                ),
               ),
             ),
-            const SizedBox(height: 14),
             Container(
               height: 6,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(999),
-                color: Colors.white.withValues(alpha: 0.08),
+                color: tokens.badgeBackground.withValues(alpha: 0.42),
               ),
               child: FractionallySizedBox(
                 alignment: Alignment.centerLeft,
-                widthFactor: tone == const Color(0xFF22C55E)
-                    ? 1
-                    : tone == const Color(0xFFFFB36B)
-                    ? 0.58
-                    : tone == const Color(0xFFEF4444)
-                    ? 0.32
-                    : 0.72,
+                widthFactor: progress.clamp(0.0, 1.0),
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(999),
@@ -1649,6 +1656,15 @@ class _PaymentCenterLearningView extends StatelessWidget {
             ),
             OutlinedButton.icon(
               onPressed: onCaptureSnapshot,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: kFinanzasInk,
+                side: BorderSide(
+                  color: kFinanzasBorder.withValues(alpha: 0.54),
+                ),
+                backgroundColor: kFinanzasPanelSurfaceStrong.withValues(
+                  alpha: 0.92,
+                ),
+              ),
               icon: const Icon(Icons.camera_alt_outlined, size: 18),
               label: const Text('Capturar corte actual'),
             ),
@@ -1673,14 +1689,16 @@ class _PaymentCenterLearningView extends StatelessWidget {
               value: '$pendingCount',
               subtitle: 'Cortes capturados pendientes de decisión humana',
               icon: Icons.pending_actions_rounded,
-              tone: const Color(0xFFFFB36B),
+              tone: kFinanzasOrangeElectric,
+              progress: 0.58,
             ),
             _CenterMetricCard(
               label: 'Decisiones registradas',
               value: '$registeredCount',
               subtitle: 'Historial ya validado contra la operación',
               icon: Icons.fact_check_outlined,
-              tone: const Color(0xFF22C55E),
+              tone: kFinanzasOrange,
+              progress: 0.88,
             ),
             _CenterMetricCard(
               label: 'Coincidencia con sistema',
@@ -1688,6 +1706,7 @@ class _PaymentCenterLearningView extends StatelessWidget {
               subtitle: 'Qué tanto coincide el motor con la decisión real',
               icon: Icons.hub_outlined,
               tone: finanzasAreaTokens.primaryStrong,
+              progress: matchRatio.clamp(0.0, 1.0),
             ),
           ],
         ),
@@ -1701,10 +1720,10 @@ class _PaymentCenterLearningView extends StatelessWidget {
                 )
               : Container(
                   decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.58),
+                    color: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.96),
                     borderRadius: BorderRadius.circular(26),
                     border: Border.all(
-                      color: tokens.border.withValues(alpha: 0.82),
+                      color: tokens.border.withValues(alpha: 0.48),
                     ),
                   ),
                   child: ListView.separated(
@@ -1762,8 +1781,8 @@ class _PaymentLearningRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final statusTone = row.status == 'REGISTRADO'
-        ? const Color(0xFF0F766E)
-        : const Color(0xFF8B5E00);
+        ? kFinanzasSage
+        : kFinanzasAmber;
     return Padding(
       padding: const EdgeInsets.fromLTRB(4, 12, 4, 12),
       child: Column(
@@ -1846,6 +1865,13 @@ class _PaymentLearningRow extends StatelessWidget {
               const SizedBox(width: 10),
               OutlinedButton.icon(
                 onPressed: onRegisterDecision,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kFinanzasAmber,
+                  side: BorderSide(
+                    color: kFinanzasAmber.withValues(alpha: 0.58),
+                  ),
+                  backgroundColor: kFinanzasPanelSurfaceSoft,
+                ),
                 icon: const Icon(Icons.edit_note_rounded, size: 18),
                 label: Text(
                   row.status == 'REGISTRADO'
@@ -1889,10 +1915,10 @@ class _PaymentCenterPriorityColumn extends StatelessWidget {
     return FinanzasGlassPanel(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       borderRadius: BorderRadius.circular(30),
-      fillColor: const Color(0x08FFFFFF),
-      borderColor: Colors.white.withValues(alpha: 0.16),
-      glowColor: Colors.white.withValues(alpha: 0.04),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.12),
+      fillColor: kFinanzasPanelSurfaceSoft,
+      borderColor: Colors.white.withValues(alpha: 0.18),
+      glowColor: tone.withValues(alpha: 0.14),
+      edgeHighlightColor: tone.withValues(alpha: 0.20),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2046,18 +2072,25 @@ class _PaymentCenterCompactCard extends StatelessWidget {
         featured ? 16 : 14,
       ),
       decoration: BoxDecoration(
-        color: featured ? const Color(0xD4141920) : const Color(0xB3131820),
+        color: featured ? kFinanzasPanelSurfaceStrong : kFinanzasPanelSurface,
         borderRadius: BorderRadius.circular(featured ? 24 : 22),
         border: Border.all(
           color: row.isPreviewMock
               ? tone.withValues(alpha: 0.26)
-              : Colors.white.withValues(alpha: 0.08),
+              : Colors.white.withValues(alpha: 0.10),
         ),
         boxShadow: [
           BoxShadow(
             blurRadius: featured ? 18 : 12,
             offset: const Offset(0, 8),
-            color: Colors.black.withValues(alpha: featured ? 0.16 : 0.10),
+            color: const Color(
+              0xFF060100,
+            ).withValues(alpha: featured ? 0.20 : 0.12),
+          ),
+          BoxShadow(
+            blurRadius: featured ? 22 : 14,
+            offset: const Offset(0, 0),
+            color: tone.withValues(alpha: featured ? 0.12 : 0.06),
           ),
         ],
       ),
@@ -2158,6 +2191,13 @@ class _PaymentCenterCompactCard extends StatelessWidget {
                 onPressed: row.itemType == 'Pago fijo'
                     ? onOpenFixedPayments
                     : onOpenProviderAccounts,
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kFinanzasAmber,
+                  side: BorderSide(
+                    color: kFinanzasAmber.withValues(alpha: 0.58),
+                  ),
+                  backgroundColor: kFinanzasPanelSurfaceSoft,
+                ),
                 icon: Icon(
                   row.itemType == 'Pago fijo'
                       ? Icons.receipt_long_outlined
@@ -2168,6 +2208,12 @@ class _PaymentCenterCompactCard extends StatelessWidget {
               ),
               FilledButton.icon(
                 onPressed: onOpenBankAccounts,
+                style: FilledButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: kFinanzasCoral,
+                  shadowColor: kFinanzasCoral.withValues(alpha: 0.46),
+                  elevation: 8,
+                ),
                 icon: const Icon(Icons.account_balance_outlined, size: 18),
                 label: Text(switch (row.executionDecision) {
                   _PaymentExecutionDecision.pagarCompleto => 'Pagar',
@@ -2235,7 +2281,7 @@ class _CenterEmptyMiniColumn extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
       borderRadius: BorderRadius.circular(20),
-      fillColor: const Color(0xA3121820),
+      fillColor: kFinanzasPanelSurfaceLight,
       child: Text(
         'Sin pendientes en esta prioridad.',
         style: TextStyle(
@@ -2285,9 +2331,9 @@ class _PreviewLabelChip extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.08),
+        color: kFinanzasPearl.withValues(alpha: 0.06),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        border: Border.all(color: kFinanzasAmber.withValues(alpha: 0.18)),
       ),
       child: Text(
         label,
@@ -2311,16 +2357,12 @@ class _CenterEmptyPane extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     return Center(
-      child: Container(
+      child: FinanzasGlassPanel(
         width: 460,
         padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.62),
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(
-            color: tokens.primaryStrong.withValues(alpha: 0.10),
-          ),
-        ),
+        borderRadius: BorderRadius.circular(24),
+        fillColor: kFinanzasPanelSurfaceSoft,
+        borderColor: Colors.white.withValues(alpha: 0.18),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -2364,42 +2406,39 @@ class _FinPaymentCenterHeaderBrand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
-          width: 72,
-          height: 72,
+          width: 56,
+          height: 56,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.14),
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.34)),
+            color: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.82),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: kFinanzasBorder.withValues(alpha: 0.92)),
+            boxShadow: [
+              BoxShadow(
+                color: tokens.glow.withValues(alpha: 0.24),
+                blurRadius: 28,
+                spreadRadius: 1,
+                offset: const Offset(0, 8),
+              ),
+            ],
           ),
-          child: const Center(child: DicsaLogoD(size: 48)),
+          child: const Center(child: DicsaLogoD(size: 40, progress: 1)),
         ),
-        const SizedBox(width: 30),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Centro de pagos',
-              style: TextStyle(
-                fontSize: 26,
-                fontWeight: FontWeight.w900,
-                color: kFinanzasInk,
-                letterSpacing: -0.6,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              'Motor preliminar de prioridades y capacidad',
-              style: TextStyle(
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-                color: kFinanzasMutedInk,
-              ),
-            ),
-          ],
+        const SizedBox(width: 20),
+        Text(
+          'Centro de pagos',
+          maxLines: 1,
+          style: const TextStyle(
+            fontSize: 28,
+            fontWeight: FontWeight.w900,
+            letterSpacing: 0.25,
+            height: 1.0,
+            color: kFinanzasInk,
+          ),
         ),
       ],
     );
@@ -2424,97 +2463,82 @@ class _FinCenterHeaderButton extends StatefulWidget {
 }
 
 class _FinCenterHeaderButtonState extends State<_FinCenterHeaderButton> {
-  bool _hovered = false;
-
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final enabled = widget.onTap != null || widget.onTapSync != null;
-    final highlighted = enabled && _hovered;
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        scale: highlighted ? 1.026 : 1,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-            splashColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            splashFactory: NoSplash.splashFactory,
-            onTap: !enabled
-                ? null
-                : () async {
-                    if (widget.onTap != null) {
-                      await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
-                    }
-                  },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              transform: Matrix4.translationValues(
-                0,
-                highlighted ? -2.5 : 0,
-                0,
-              ),
-              width: 176,
-              height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withValues(alpha: highlighted ? 0.36 : 0.24),
-                    tokens.surfaceTint.withValues(
-                      alpha: highlighted ? 0.46 : 0.28,
-                    ),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: Colors.white.withValues(
-                    alpha: highlighted ? 0.56 : 0.42,
-                  ),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: tokens.primaryStrong.withValues(
-                      alpha: highlighted ? 0.18 : 0.10,
-                    ),
-                    blurRadius: highlighted ? 24 : 18,
-                    offset: const Offset(0, 10),
-                  ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
+          splashColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
+          onTap: !enabled
+              ? null
+              : () async {
+                  if (widget.onTap != null) {
+                    await widget.onTap!();
+                  } else {
+                    widget.onTapSync?.call();
+                  }
+                },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            width: 176,
+            height: 56,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  kFinanzasOrange.withValues(alpha: 0.26),
+                  kFinanzasOrangeIntense.withValues(alpha: 0.18),
                 ],
               ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(widget.icon, size: 20, color: tokens.primary),
-                  const SizedBox(width: 10),
-                  Flexible(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: kFinanzasBorder.withValues(alpha: 0.90),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: 16,
+                  color: kFinanzasOrange.withValues(alpha: 0.14),
+                  offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  blurRadius: 10,
+                  color: tokens.glow.withValues(alpha: 0.05),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Icon(widget.icon, size: 20, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
                     child: Text(
                       widget.label,
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
                       style: TextStyle(
+                        color: Colors.white,
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
-                        color: tokens.primary,
-                        letterSpacing: 0.1,
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -2552,13 +2576,13 @@ class _FinPaymentCenterSidePanel extends StatelessWidget {
 Color _paymentCenterBucketTone(_PaymentCenterTab bucket) {
   switch (bucket) {
     case _PaymentCenterTab.obligatorio:
-      return const Color(0xFFEF4444);
+      return kFinanzasOrangeIntense;
     case _PaymentCenterTab.urgente:
-      return const Color(0xFFFFB36B);
+      return kFinanzasOrange;
     case _PaymentCenterTab.recomendado:
-      return const Color(0xFF22C55E);
+      return kFinanzasOrangeElectric;
     case _PaymentCenterTab.postergable:
-      return const Color(0xFF94A3B8);
+      return kFinanzasBronze;
   }
 }
 

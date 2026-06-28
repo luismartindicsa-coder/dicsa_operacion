@@ -236,7 +236,7 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
                       behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => _menuOpen = false),
                       child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
+                        color: const Color(0xFF8B4A1A).withValues(alpha: 0.08),
                       ),
                     ),
                   ),
@@ -412,7 +412,7 @@ class _DashboardTopStrip extends StatelessWidget {
                 label: loading
                     ? 'Cargando'
                     : '${summary.openInvoiceCount} facturas abiertas',
-                accent: const Color(0xFF66D7FF),
+                accent: kFinanzasCopper,
               ),
               _RefreshBadge(onTap: onRefresh),
             ],
@@ -440,7 +440,7 @@ class _FinanceMetricCardsRow extends StatelessWidget {
         value: loading ? 'Cargando...' : formatMoney(summary.availableBalance),
         detail: loading ? 'Leyendo movimientos' : summary.availableDetail,
         icon: Icons.account_balance_wallet_outlined,
-        accent: const Color(0xFF65D97A),
+        accent: kFinanzasSage,
       ),
       _FinanceMetricCardData(
         title: 'Cuentas por pagar',
@@ -449,7 +449,7 @@ class _FinanceMetricCardsRow extends StatelessWidget {
             ? 'Leyendo facturas'
             : '${summary.openInvoiceCount} facturas abiertas',
         icon: Icons.receipt_long_outlined,
-        accent: const Color(0xFFFFB36B),
+        accent: kFinanzasAmber,
       ),
       _FinanceMetricCardData(
         title: 'Vencido',
@@ -458,7 +458,7 @@ class _FinanceMetricCardsRow extends StatelessWidget {
             ? 'Revisando vencimientos'
             : '${summary.overdueInvoiceCount} facturas fuera de tiempo',
         icon: Icons.warning_amber_rounded,
-        accent: const Color(0xFFFF6A6A),
+        accent: kFinanzasCoral,
       ),
       _FinanceMetricCardData(
         title: 'Compromisos del mes',
@@ -467,7 +467,7 @@ class _FinanceMetricCardsRow extends StatelessWidget {
             ? 'Calculando calendario'
             : summary.monthCommitmentsDetail,
         icon: Icons.event_note_rounded,
-        accent: const Color(0xFF7C8FFF),
+        accent: kFinanzasBronze,
       ),
       _FinanceMetricCardData(
         title: 'Flujo neto proyectado',
@@ -476,7 +476,7 @@ class _FinanceMetricCardsRow extends StatelessWidget {
             ? 'Calculando corto plazo'
             : summary.projectedNetFlowDetail,
         icon: Icons.ssid_chart_rounded,
-        accent: const Color(0xFF66D7FF),
+        accent: kFinanzasCopper,
       ),
       _FinanceMetricCardData(
         title: 'Presión de caja',
@@ -537,74 +537,70 @@ class _FinanceMetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return ContractGlassCard(
+    return FinanzasGlassPanel(
+      borderRadius: BorderRadius.circular(26),
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 66,
-            height: 66,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: data.accent.withValues(alpha: 0.10),
-              border: Border.all(color: data.accent.withValues(alpha: 0.28)),
-              boxShadow: [
-                BoxShadow(
-                  color: data.accent.withValues(alpha: 0.14),
-                  blurRadius: 20,
-                  spreadRadius: 1,
-                ),
-              ],
+      fillColor: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.94),
+      borderColor: data.accent.withValues(alpha: 0.30),
+      glowColor: data.accent.withValues(alpha: 0.22),
+      edgeHighlightColor: kFinanzasOrange.withValues(alpha: 0.12),
+      child: SizedBox(
+        height: 164,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 54,
+              height: 54,
+              decoration: BoxDecoration(
+                color: data.accent.withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: data.accent.withValues(alpha: 0.30)),
+              ),
+              child: Icon(data.icon, color: data.accent, size: 26),
             ),
-            child: Icon(data.icon, color: data.accent, size: 32),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  data.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                    color: tokens.onGlass.withValues(alpha: 0.94),
-                  ),
-                ),
-                const SizedBox(height: 14),
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    data.value,
-                    maxLines: 1,
-                    style: TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      color: tokens.onGlass,
-                      height: 1,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  data.detail,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: tokens.badgeText,
-                    height: 1.3,
-                  ),
-                ),
-              ],
+            const SizedBox(height: 14),
+            Text(
+              data.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w800,
+                color: kFinanzasInk,
+              ),
             ),
-          ),
-        ],
+            const SizedBox(height: 8),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Text(
+                data.value,
+                maxLines: 1,
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: tokens.primaryStrong,
+                  height: 1,
+                ),
+              ),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: Text(
+                data.detail,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: kFinanzasMutedInk,
+                  height: 1.3,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -775,7 +771,7 @@ class _LiquidityBlock extends StatelessWidget {
                       child: _BarRow(
                         label: row.label,
                         share: row.share,
-                        accent: const Color(0xFFFF9A3D),
+                        accent: kFinanzasCopper,
                         value: formatMoney(row.balance),
                         secondary:
                             '${row.company} · ${row.branch} · ${row.accountKey}',
@@ -858,7 +854,7 @@ class _PayablesBlock extends StatelessWidget {
                     Text(
                       '${summary.overdueInvoiceCount} vencidas',
                       style: TextStyle(
-                        color: const Color(0xFFFF8D8D),
+                        color: kFinanzasCoral,
                         fontSize: 14,
                         fontWeight: FontWeight.w900,
                       ),
@@ -872,22 +868,10 @@ class _PayablesBlock extends StatelessWidget {
                   spacing: 18,
                   runSpacing: 10,
                   children: [
-                    _LegendDot(
-                      label: 'Vencido',
-                      color: const Color(0xFFFF6A6A),
-                    ),
-                    _LegendDot(
-                      label: '0-7 días',
-                      color: const Color(0xFFFFA14B),
-                    ),
-                    _LegendDot(
-                      label: '8-30 días',
-                      color: const Color(0xFF67C8FF),
-                    ),
-                    _LegendDot(
-                      label: 'Más adelante',
-                      color: const Color(0xFF8B93A3),
-                    ),
+                    _LegendDot(label: 'Vencido', color: kFinanzasCoral),
+                    _LegendDot(label: '0-7 días', color: kFinanzasAmber),
+                    _LegendDot(label: '8-30 días', color: kFinanzasCopper),
+                    _LegendDot(label: 'Más adelante', color: kFinanzasTaupe),
                   ],
                 ),
               ],
@@ -895,7 +879,7 @@ class _PayablesBlock extends StatelessWidget {
           ),
           const SizedBox(height: 14),
           _InsightHeroCard(
-            accent: const Color(0xFFFF8D8D),
+            accent: kFinanzasCoral,
             ringValue: summary.accountsPayable <= 0.009
                 ? 0
                 : (summary.overdueBalance / summary.accountsPayable).clamp(
@@ -958,8 +942,8 @@ class _PayablesBlock extends StatelessWidget {
                         label: row.providerName,
                         share: row.share,
                         accent: row.overdueAmount > 0.009
-                            ? const Color(0xFFFF8A7A)
-                            : const Color(0xFFFFC370),
+                            ? kFinanzasCoral
+                            : finanzasAreaTokens.primarySoft,
                         value: formatMoney(row.balance),
                         secondary: row.overdueAmount > 0.009
                             ? '${formatMoney(row.overdueAmount)} vencidos'
@@ -1027,7 +1011,7 @@ class _ExecutionBlock extends StatelessWidget {
           ),
           const SizedBox(height: 16),
           _InsightHeroCard(
-            accent: const Color(0xFF7C8FFF),
+            accent: kFinanzasBronze,
             ringValue: summary.monthCommitments <= 0.009
                 ? 0
                 : (summary.executedPaymentsMonth / summary.monthCommitments)
@@ -1144,7 +1128,7 @@ class _ProviderRiskBlock extends StatelessWidget {
           const SizedBox(height: 16),
           _InsightHeroCard(
             accent: summary.providerRiskRows.isEmpty
-                ? const Color(0xFF66D7FF)
+                ? kFinanzasCopper
                 : summary.providerRiskRows.first.riskColor,
             ringValue: summary.providerRiskRows.isEmpty
                 ? 0
@@ -1270,7 +1254,7 @@ class _PurchasesCrossBlock extends StatelessWidget {
                 if (summary.purchaseProviderRows.isNotEmpty)
                   Expanded(
                     child: _MiniInsightCard(
-                      accent: const Color(0xFFFF9A3D),
+                      accent: kFinanzasCopper,
                       title: 'Proveedor líder',
                       ringValue:
                           (summary.purchaseProviderRows.first.share / 100)
@@ -1289,7 +1273,7 @@ class _PurchasesCrossBlock extends StatelessWidget {
                 if (summary.purchaseMaterialRows.isNotEmpty)
                   Expanded(
                     child: _MiniInsightCard(
-                      accent: const Color(0xFF66D7FF),
+                      accent: kFinanzasTaupe,
                       title: 'Material líder',
                       ringValue:
                           (summary.purchaseMaterialRows.first.share / 100)
@@ -1339,7 +1323,7 @@ class _PurchasesCrossBlock extends StatelessWidget {
                       label:
                           'Proveedor líder · ${summary.purchaseProviderRows.first.label}',
                       share: summary.purchaseProviderRows.first.share,
-                      accent: const Color(0xFFFF9A3D),
+                      accent: kFinanzasCopper,
                       value: formatMoney(
                         summary.purchaseProviderRows.first.amount,
                       ),
@@ -1352,7 +1336,7 @@ class _PurchasesCrossBlock extends StatelessWidget {
                     label:
                         'Material líder · ${summary.purchaseMaterialRows.first.label}',
                     share: summary.purchaseMaterialRows.first.share,
-                    accent: const Color(0xFF66D7FF),
+                    accent: kFinanzasTaupe,
                     value: formatMoney(
                       summary.purchaseMaterialRows.first.amount,
                     ),
@@ -1945,22 +1929,22 @@ class _AgingBar extends StatelessWidget {
         children: [
           Expanded(
             flex: overdueFlex,
-            child: Container(color: const Color(0xFFFF6A6A)),
+            child: Container(color: kFinanzasCoral),
           ),
           const SizedBox(width: 3),
           Expanded(
             flex: due7Flex,
-            child: Container(color: const Color(0xFFFFA14B)),
+            child: Container(color: kFinanzasAmber),
           ),
           const SizedBox(width: 3),
           Expanded(
             flex: due30Flex,
-            child: Container(color: const Color(0xFF67C8FF)),
+            child: Container(color: kFinanzasCopper),
           ),
           const SizedBox(width: 3),
           Expanded(
             flex: futureFlex,
-            child: Container(color: const Color(0xFF8B93A3)),
+            child: Container(color: kFinanzasTaupe),
           ),
         ],
       ),
@@ -2266,13 +2250,13 @@ class _FinanzasDashboardHeaderBrand extends StatelessWidget {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.24),
+            color: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.44)),
+            border: Border.all(color: kFinanzasBorder.withValues(alpha: 0.92)),
             boxShadow: [
               BoxShadow(
-                color: tokens.primaryStrong.withValues(alpha: 0.16),
-                blurRadius: 24,
+                color: tokens.glow.withValues(alpha: 0.24),
+                blurRadius: 28,
                 spreadRadius: 1,
                 offset: const Offset(0, 8),
               ),
@@ -2281,10 +2265,10 @@ class _FinanzasDashboardHeaderBrand extends StatelessWidget {
           child: const Center(child: DicsaLogoD(size: 40, progress: 1)),
         ),
         const SizedBox(width: 20),
-        const Text(
+        Text(
           'Dashboard Finanzas',
           maxLines: 1,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.w900,
             letterSpacing: 0.25,
@@ -2319,105 +2303,94 @@ class _FinanzasHeaderButton extends StatefulWidget {
 }
 
 class _FinanzasHeaderButtonState extends State<_FinanzasHeaderButton> {
-  bool _hovered = false;
-
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final enabled = widget.onTap != null || widget.onTapSync != null;
-    final highlighted = enabled && _hovered;
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        scale: highlighted ? 1.026 : 1,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-            splashColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            splashFactory: NoSplash.splashFactory,
-            onTap: !enabled
-                ? null
-                : () async {
-                    if (widget.onTap != null) {
-                      await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
-                    }
-                  },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              transform: Matrix4.translationValues(
-                0,
-                highlighted ? -2.5 : 0,
-                0,
-              ),
-              width: widget.iconOnly ? 56 : (widget.compact ? 176 : 176),
-              height: 56,
-              padding: EdgeInsets.symmetric(
-                horizontal: widget.iconOnly ? 0 : 20,
-                vertical: 16,
-              ),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withValues(alpha: highlighted ? 0.36 : 0.24),
-                    tokens.surfaceTint.withValues(
-                      alpha: highlighted ? 0.46 : 0.28,
-                    ),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: Colors.white.withValues(
-                    alpha: highlighted ? 0.56 : 0.42,
-                  ),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: tokens.primaryStrong.withValues(
-                      alpha: highlighted ? 0.18 : 0.10,
-                    ),
-                    blurRadius: highlighted ? 24 : 18,
-                    offset: const Offset(0, 10),
-                  ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
+          splashColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
+          onTap: !enabled
+              ? null
+              : () async {
+                  if (widget.onTap != null) {
+                    await widget.onTap!();
+                  } else {
+                    widget.onTapSync?.call();
+                  }
+                },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            width: widget.iconOnly ? 56 : 176,
+            height: 56,
+            padding: EdgeInsets.symmetric(
+              horizontal: widget.iconOnly ? 0 : 20,
+              vertical: 16,
+            ),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  kFinanzasOrange.withValues(alpha: 0.26),
+                  kFinanzasOrangeIntense.withValues(alpha: 0.18),
                 ],
               ),
-              child: widget.iconOnly
-                  ? Center(
-                      child: Icon(widget.icon, size: 22, color: tokens.primary),
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(widget.icon, size: 20, color: tokens.primary),
-                        const SizedBox(width: 10),
-                        Flexible(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: kFinanzasBorder.withValues(alpha: 0.90),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: 16,
+                  color: kFinanzasOrange.withValues(alpha: 0.14),
+                  offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  blurRadius: 10,
+                  color: tokens.glow.withValues(alpha: 0.05),
+                ),
+              ],
+            ),
+            child: widget.iconOnly
+                ? Center(
+                    child: Icon(
+                      widget.icon,
+                      size: 22,
+                      color: tokens.primaryStrong,
+                    ),
+                  )
+                : Row(
+                    children: [
+                      Icon(widget.icon, size: 20, color: Colors.white),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: Alignment.centerLeft,
                           child: Text(
                             widget.label,
                             maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
                             style: TextStyle(
+                              color: Colors.white,
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
-                              color: tokens.primary,
-                              letterSpacing: 0.1,
                             ),
                           ),
                         ),
-                      ],
-                    ),
-            ),
+                      ),
+                    ],
+                  ),
           ),
         ),
       ),
@@ -2647,7 +2620,7 @@ class _FinanzasDashboardSummary {
       projectedNetFlowDetail = 'Sin base de corto plazo',
       cashPressureLabel = 'Baja',
       cashPressureDetail = 'Sin presión visible',
-      cashPressureAccent = const Color(0xFF65D97A),
+      cashPressureAccent = kFinanzasSage,
       shortTermCoverageProgress = 0,
       shortTermCoverageLabel = 'Sin presión',
       bankBalances = const <_BankBalanceBreakdown>[],
@@ -2797,7 +2770,14 @@ _FinanzasDashboardSummary _buildFinanzasDashboardSummary({
             (row.linkedSupplierInvoiceId != null ||
                 row.linkedFixedPaymentId != null);
       })
-      .fold<double>(0, (sum, row) => sum + row.debitAmount);
+      .fold<double>(
+        0,
+        (sum, row) =>
+            sum +
+            (row.hasLinkedSupplierInvoice
+                ? row.effectiveSupplierAppliedAmount
+                : row.debitAmount),
+      );
   final pendingPaymentsMonth = (monthCommitments - executedPaymentsMonth).clamp(
     0.0,
     double.infinity,
@@ -2819,19 +2799,19 @@ _FinanzasDashboardSummary _buildFinanzasDashboardSummary({
   if (shortTermCommitments <= 0.009) {
     cashPressureLabel = 'Baja';
     cashPressureDetail = 'Sin urgencias inmediatas visibles';
-    cashPressureAccent = const Color(0xFF65D97A);
+    cashPressureAccent = kFinanzasSage;
   } else if (coverageRatio < 1) {
     cashPressureLabel = 'Alta';
     cashPressureDetail = 'La caja no cubre el frente inmediato';
-    cashPressureAccent = const Color(0xFFFF7272);
+    cashPressureAccent = kFinanzasCoral;
   } else if (coverageRatio < 1.4) {
     cashPressureLabel = 'Media';
     cashPressureDetail = 'La caja cubre con margen corto';
-    cashPressureAccent = const Color(0xFFFFB24C);
+    cashPressureAccent = kFinanzasAmber;
   } else {
     cashPressureLabel = 'Baja';
     cashPressureDetail = 'La caja soporta el frente inmediato';
-    cashPressureAccent = const Color(0xFF65D97A);
+    cashPressureAccent = kFinanzasSage;
   }
 
   final totalBankBalanceMagnitude = bankAccumulator.values.fold<double>(
@@ -3067,10 +3047,10 @@ List<_PaymentSuggestionRow> _buildPaymentSuggestions({
         amount: invoice.effectiveBalanceAmount,
         icon: Icons.receipt_long_outlined,
         tone: invoice.source.manualPriority == 'CRITICA'
-            ? const Color(0xFFFF7272)
+            ? kFinanzasCoral
             : invoice.source.manualPriority == 'ALTA'
-            ? const Color(0xFFFFB24C)
-            : const Color(0xFF66D7FF),
+            ? kFinanzasAmber
+            : kFinanzasCopper,
         score: score,
       ),
     );
@@ -3096,9 +3076,7 @@ List<_PaymentSuggestionRow> _buildPaymentSuggestions({
             'Pago fijo · ${finFixedPaymentStatusLabel(payment.status)} · vence ${dueOnly.day.toString().padLeft(2, '0')}/${dueOnly.month.toString().padLeft(2, '0')}',
         amount: payment.amount,
         icon: Icons.event_note_rounded,
-        tone: dueOnly.isBefore(today)
-            ? const Color(0xFFFF7272)
-            : const Color(0xFFFFB24C),
+        tone: dueOnly.isBefore(today) ? kFinanzasCoral : kFinanzasAmber,
         score: score,
       ),
     );
@@ -3116,7 +3094,9 @@ List<_EffectiveSupplierInvoice> _buildEffectiveSupplierInvoices({
   for (final row in movements) {
     final invoiceId = row.linkedSupplierInvoiceId;
     if (invoiceId == null || invoiceId.isEmpty) continue;
-    final applied = row.debitAmount > 0.009 ? row.debitAmount : 0.0;
+    final applied = row.effectiveSupplierAppliedAmount > 0.009
+        ? row.effectiveSupplierAppliedAmount
+        : 0.0;
     if (applied <= 0.009) continue;
     debitByInvoiceId.update(
       invoiceId,
@@ -3189,10 +3169,10 @@ List<_ProviderRiskRow> _buildProviderRiskRows({
                 ? 'Riesgo medio'
                 : 'Seguimiento';
             final riskColor = riskScore >= 90
-                ? const Color(0xFFFF7272)
+                ? kFinanzasCoral
                 : riskScore >= 55
-                ? const Color(0xFFFFB24C)
-                : const Color(0xFF66D7FF);
+                ? kFinanzasAmber
+                : kFinanzasCopper;
             final fragments = <String>[
               row.shareLabel,
               if (row.overdueAmount > 0.009)
@@ -3273,7 +3253,7 @@ List<_ExecutiveAlertRow> _buildExecutiveAlerts({
         subtitle:
             '${formatMoney(availableBalance)} disponibles contra ${formatMoney(shortTermCommitments)} comprometidos a corto plazo.',
         icon: Icons.warning_amber_rounded,
-        tone: const Color(0xFFFF7272),
+        tone: kFinanzasCoral,
         severity: 100,
       ),
     );
@@ -3285,7 +3265,7 @@ List<_ExecutiveAlertRow> _buildExecutiveAlerts({
         subtitle:
             '${formatMoney(overdueBalance)} ya está fuera de tiempo y requiere atención prioritaria.',
         icon: Icons.schedule_send_rounded,
-        tone: const Color(0xFFFFA14B),
+        tone: kFinanzasAmber,
         severity: 90,
       ),
     );
@@ -3297,7 +3277,7 @@ List<_ExecutiveAlertRow> _buildExecutiveAlerts({
         subtitle:
             '$delayedAgreementCount convenios muestran estatus atrasado y pueden tensionar la relación con proveedor.',
         icon: Icons.handshake_outlined,
-        tone: const Color(0xFFFFB24C),
+        tone: kFinanzasAmber,
         severity: 80,
       ),
     );
@@ -3309,7 +3289,7 @@ List<_ExecutiveAlertRow> _buildExecutiveAlerts({
         subtitle:
             '$noInvoiceTicketCount tickets del mes siguen sin factura y todavía no consolidan bien el pasivo operativo.',
         icon: Icons.receipt_outlined,
-        tone: const Color(0xFF66D7FF),
+        tone: kFinanzasCopper,
         severity: 72,
       ),
     );
@@ -3321,7 +3301,7 @@ List<_ExecutiveAlertRow> _buildExecutiveAlerts({
         subtitle:
             '$pendingPaymentTicketCount tickets del mes siguen pendientes de pago y aún cargan flujo financiero.',
         icon: Icons.payments_outlined,
-        tone: const Color(0xFFFF9A3D),
+        tone: kFinanzasCopper,
         severity: 68,
       ),
     );
@@ -3333,7 +3313,7 @@ List<_ExecutiveAlertRow> _buildExecutiveAlerts({
         subtitle:
             '${providerBalances.first.providerName} concentra ${providerBalances.first.share.toStringAsFixed(1)}% del pasivo abierto.',
         icon: Icons.account_tree_outlined,
-        tone: const Color(0xFFFF8E7A),
+        tone: kFinanzasCoral,
         severity: 84,
       ),
     );
@@ -3345,7 +3325,7 @@ List<_ExecutiveAlertRow> _buildExecutiveAlerts({
         subtitle:
             'Compras del mes por ${formatMoney(monthPurchaseAmount)} ya están presionando lectura financiera y tesorería.',
         icon: Icons.shopping_bag_outlined,
-        tone: const Color(0xFF67C8FF),
+        tone: kFinanzasTaupe,
         severity: 60,
       ),
     );

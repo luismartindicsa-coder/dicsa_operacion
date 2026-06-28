@@ -6,6 +6,7 @@ import '../maintenance/purchase_orders_page.dart';
 import '../commercial/commercial_dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
+import '../gerencia/gerencia_dashboard_page.dart';
 import '../hr/human_resources_dashboard_page.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
@@ -41,6 +42,8 @@ class _RoleRouterState extends State<RoleRouter> {
         return const MayoreoDashboardPreviewPage();
       case 'finanzas_dashboard':
         return const FinanzasDashboardPage();
+      case 'gerencia_dashboard':
+        return const GerenciaDashboardPage();
       case 'human_resources_dashboard':
         return const HumanResourcesDashboardPage();
       case 'commercial_dashboard':

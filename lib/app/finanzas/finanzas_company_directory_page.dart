@@ -75,13 +75,13 @@ String _finPaymentStageLabel(String stage) {
 Color _finPaymentStageTone(String stage) {
   switch (stage) {
     case 'ATRASADO':
-      return const Color(0xFFB42318);
+      return kFinanzasBurnt;
     case 'CONVENIO':
-      return const Color(0xFF7A1914);
+      return kFinanzasBronze;
     case 'PAGO_SEMANAL':
-      return const Color(0xFF8B5E00);
+      return kFinanzasSage;
     default:
-      return const Color(0xFF0F766E);
+      return kFinanzasAmber;
   }
 }
 
@@ -1036,7 +1036,7 @@ class _FinanzasCompanyDirectoryPageState
                       behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => _menuOpen = false),
                       child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
+                        color: kFinanzasBgDeep.withValues(alpha: 0.14),
                       ),
                     ),
                   ),
@@ -1481,9 +1481,9 @@ class _FinDirectoryEditDialogState extends State<_FinDirectoryEditDialog> {
                                 Switch(
                                   value: _hasContainers,
                                   activeThumbColor: Colors.white,
-                                  activeTrackColor: const Color(0xFFB12720),
+                                  activeTrackColor: kFinanzasBurnt,
                                   inactiveThumbColor: Colors.white,
-                                  inactiveTrackColor: const Color(0xFFD3D5DA),
+                                  inactiveTrackColor: const Color(0xFFFFD8B1),
                                   onChanged: (value) {
                                     setState(() {
                                       _hasContainers = value;
@@ -2105,8 +2105,8 @@ class _FinDirectoryDataRowState extends State<_FinDirectoryDataRow> {
     final fill = selected
         ? tokens.primary.withValues(alpha: 0.78)
         : _hovering
-        ? const Color(0xE2171B23)
-        : const Color(0xCC171B23);
+        ? kFinanzasSurfaceHover.withValues(alpha: 0.78)
+        : kFinanzasPanelSurfaceStrong;
     return MouseRegion(
       onEnter: (_) {
         setState(() => _hovering = true);
@@ -2225,13 +2225,17 @@ class _FinDirectoryDataRowState extends State<_FinDirectoryDataRow> {
                               height: 42,
                               decoration: BoxDecoration(
                                 color: selected
-                                    ? Colors.black.withValues(alpha: 0.3)
-                                    : Colors.white.withValues(alpha: 0.06),
+                                    ? tokens.primary.withValues(alpha: 0.18)
+                                    : kFinanzasSurfaceHover.withValues(
+                                        alpha: 0.32,
+                                      ),
                                 borderRadius: BorderRadius.circular(14),
                                 border: Border.all(
                                   color: selected
-                                      ? Colors.white.withValues(alpha: 0.22)
-                                      : Colors.white.withValues(alpha: 0.12),
+                                      ? tokens.primarySoft.withValues(
+                                          alpha: 0.42,
+                                        )
+                                      : tokens.border.withValues(alpha: 0.24),
                                 ),
                               ),
                               child: EditableRowActionsButton<String>(
@@ -2441,9 +2445,13 @@ Future<T?> _showFinDirectorySingleSelectDialog<T>(
                 child: FinanzasGlassPanel(
                   borderRadius: BorderRadius.circular(28),
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                  fillColor: const Color(0x1813171F),
-                  borderColor: Colors.white.withValues(alpha: 0.22),
-                  edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
+                  fillColor: kFinanzasPanelSurface,
+                  borderColor: finanzasAreaTokens.border.withValues(
+                    alpha: 0.48,
+                  ),
+                  edgeHighlightColor: kFinanzasLightGlow.withValues(
+                    alpha: 0.12,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2554,9 +2562,13 @@ Future<Set<T>?> _showFinDirectoryMultiSelectDialog<T>(
                 child: FinanzasGlassPanel(
                   borderRadius: BorderRadius.circular(28),
                   padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
-                  fillColor: const Color(0x1813171F),
-                  borderColor: Colors.white.withValues(alpha: 0.22),
-                  edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
+                  fillColor: kFinanzasPanelSurface,
+                  borderColor: finanzasAreaTokens.border.withValues(
+                    alpha: 0.48,
+                  ),
+                  edgeHighlightColor: kFinanzasLightGlow.withValues(
+                    alpha: 0.12,
+                  ),
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -2711,7 +2723,7 @@ class _FinDirectoryPickerOptionTileState
                   ? tokens.primaryStrong.withValues(alpha: 0.16)
                   : hovered
                   ? tokens.primaryStrong.withValues(alpha: 0.12)
-                  : const Color(0xCC171C24),
+                  : kFinanzasPanelSurfaceStrong,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: selected
@@ -2885,13 +2897,13 @@ class _FinDirectoryHeaderBrand extends StatelessWidget {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.24),
+            color: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.44)),
+            border: Border.all(color: kFinanzasBorder.withValues(alpha: 0.92)),
             boxShadow: [
               BoxShadow(
-                color: tokens.primaryStrong.withValues(alpha: 0.16),
-                blurRadius: 24,
+                color: tokens.glow.withValues(alpha: 0.24),
+                blurRadius: 28,
                 spreadRadius: 1,
                 offset: const Offset(0, 8),
               ),
@@ -2900,10 +2912,10 @@ class _FinDirectoryHeaderBrand extends StatelessWidget {
           child: const Center(child: DicsaLogoD(size: 40, progress: 1)),
         ),
         const SizedBox(width: 20),
-        const Text(
+        Text(
           'Directorio Empresas',
           maxLines: 1,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.w900,
             letterSpacing: 0.25,
@@ -2955,96 +2967,82 @@ class _FinDirectoryHeaderButton extends StatefulWidget {
 }
 
 class _FinDirectoryHeaderButtonState extends State<_FinDirectoryHeaderButton> {
-  bool _hovered = false;
-
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final enabled = widget.onTap != null || widget.onTapSync != null;
-    final highlighted = enabled && _hovered;
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        scale: highlighted ? 1.026 : 1,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-            splashColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            splashFactory: NoSplash.splashFactory,
-            onTap: !enabled
-                ? null
-                : () async {
-                    if (widget.onTap != null) {
-                      await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
-                    }
-                  },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              transform: Matrix4.translationValues(
-                0,
-                highlighted ? -2.5 : 0,
-                0,
-              ),
-              width: 176,
-              height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withValues(alpha: highlighted ? 0.32 : 0.22),
-                    tokens.surfaceTint.withValues(
-                      alpha: highlighted ? 0.42 : 0.26,
-                    ),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: highlighted
-                      ? Colors.white.withValues(alpha: 0.76)
-                      : Colors.white.withValues(alpha: 0.48),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: highlighted ? 28 : 16,
-                    color: Colors.black.withValues(
-                      alpha: highlighted ? 0.16 : 0.08,
-                    ),
-                    offset: Offset(0, highlighted ? 14 : 8),
-                  ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
+          splashColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
+          onTap: !enabled
+              ? null
+              : () async {
+                  if (widget.onTap != null) {
+                    await widget.onTap!();
+                  } else {
+                    widget.onTapSync?.call();
+                  }
+                },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            width: 176,
+            height: 56,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  kFinanzasOrange.withValues(alpha: 0.26),
+                  kFinanzasOrangeIntense.withValues(alpha: 0.18),
                 ],
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(widget.icon, color: tokens.primaryStrong, size: 20),
-                  const SizedBox(width: 8),
-                  Flexible(
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: kFinanzasBorder.withValues(alpha: 0.90),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: 16,
+                  color: kFinanzasOrange.withValues(alpha: 0.14),
+                  offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  blurRadius: 10,
+                  color: tokens.glow.withValues(alpha: 0.05),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Icon(widget.icon, size: 20, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
                     child: Text(
                       widget.label,
                       maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      softWrap: false,
                       style: TextStyle(
-                        color: tokens.primaryStrong,
-                        fontSize: 13.5,
+                        color: Colors.white,
+                        fontSize: 14,
                         fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

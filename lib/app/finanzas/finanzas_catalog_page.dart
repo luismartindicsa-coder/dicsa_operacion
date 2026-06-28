@@ -1582,7 +1582,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
                       behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => _menuOpen = false),
                       child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
+                        color: kFinanzasBgDeep.withValues(alpha: 0.14),
                       ),
                     ),
                   ),
@@ -1869,9 +1869,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
                         _FinanceTableCell.chip(
                           width: _kFinanceCompanyStatusW,
                           label: row.active ? 'ACTIVO' : 'INACTIVO',
-                          tone: row.active
-                              ? const Color(0xFF2E8B57)
-                              : const Color(0xFFB26A00),
+                          tone: row.active ? kFinanzasAmber : kFinanzasBronze,
                         ),
                         _FinanceTableCell.text(
                           width: _kFinanceCompanyNotesW,
@@ -2097,9 +2095,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
                         _FinanceTableCell.chip(
                           width: _kFinanceConceptStatusW,
                           label: row.active ? 'ACTIVO' : 'INACTIVO',
-                          tone: row.active
-                              ? const Color(0xFF2E8B57)
-                              : const Color(0xFFB26A00),
+                          tone: row.active ? kFinanzasAmber : kFinanzasBronze,
                         ),
                         _FinanceTableCell.text(
                           width: _kFinanceConceptNotesW,
@@ -2317,9 +2313,7 @@ class _FinanzasCatalogPageState extends State<FinanzasCatalogPage> {
                         _FinanceTableCell.chip(
                           width: _kFinanceRelationStatusW,
                           label: row.active ? 'ACTIVO' : 'INACTIVO',
-                          tone: row.active
-                              ? const Color(0xFF2E8B57)
-                              : const Color(0xFFB26A00),
+                          tone: row.active ? kFinanzasAmber : kFinanzasBronze,
                         ),
                         _FinanceTableCell.text(
                           width: _kFinanceRelationNotesW,
@@ -2552,7 +2546,7 @@ class _FinanceInsertRow extends StatelessWidget {
       decoration: BoxDecoration(
         color: editing
             ? finanzasAreaTokens.badgeBackground.withValues(alpha: 0.72)
-            : const Color(0xCC171B23),
+            : kFinanzasPanelSurfaceStrong,
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: editing
@@ -2676,7 +2670,7 @@ class _FinanceAddButton extends StatelessWidget {
         height: 34,
         decoration: BoxDecoration(
           color: const Color(
-            0xFF19C37D,
+            0xFFFF971F,
           ).withValues(alpha: onTap == null ? 0.28 : 0.92),
           borderRadius: BorderRadius.circular(10),
           border: Border.all(color: Colors.white.withValues(alpha: 0.52)),
@@ -2827,7 +2821,7 @@ class _FinanceStatusPreview extends StatelessWidget {
   Widget build(BuildContext context) {
     return Align(
       alignment: Alignment.centerLeft,
-      child: _FinanceRowChip(label: label, tone: const Color(0xFF2E8B57)),
+      child: _FinanceRowChip(label: label, tone: kFinanzasAmber),
     );
   }
 }
@@ -2916,8 +2910,8 @@ class _FinanceTableRowState extends State<_FinanceTableRow> {
     final background = selected
         ? tokens.primaryStrong.withValues(alpha: 0.78)
         : _hovering
-        ? const Color(0xE6222732)
-        : const Color(0xCC171B23);
+        ? kFinanzasSurfaceHover.withValues(alpha: 0.78)
+        : kFinanzasPanelSurfaceStrong;
     return MouseRegion(
       onEnter: (_) {
         setState(() => _hovering = true);
@@ -3126,13 +3120,13 @@ class _FinanceCompanyInlineEditRowState
               _FinanceActionButton(
                 onTap: widget.onCancel,
                 icon: Icons.close_rounded,
-                color: const Color(0xFF8F6D5A),
+                color: const Color(0xFFFFB66B),
               ),
               const SizedBox(width: 8),
               _FinanceActionButton(
                 onTap: _submit,
                 icon: Icons.check_rounded,
-                color: const Color(0xFF19C37D),
+                color: const Color(0xFFFF971F),
               ),
             ],
           ),
@@ -3266,13 +3260,13 @@ class _FinanceConceptInlineEditRowState
               _FinanceActionButton(
                 onTap: widget.onCancel,
                 icon: Icons.close_rounded,
-                color: const Color(0xFF8F6D5A),
+                color: const Color(0xFFFFB66B),
               ),
               const SizedBox(width: 8),
               _FinanceActionButton(
                 onTap: _submit,
                 icon: Icons.check_rounded,
-                color: const Color(0xFF19C37D),
+                color: const Color(0xFFFF971F),
               ),
             ],
           ),
@@ -3419,13 +3413,13 @@ class _FinanceRelationInlineEditRowState
               _FinanceActionButton(
                 onTap: widget.onCancel,
                 icon: Icons.close_rounded,
-                color: const Color(0xFF8F6D5A),
+                color: const Color(0xFFFFB66B),
               ),
               const SizedBox(width: 8),
               _FinanceActionButton(
                 onTap: _submit,
                 icon: Icons.check_rounded,
-                color: const Color(0xFF19C37D),
+                color: const Color(0xFFFF971F),
               ),
             ],
           ),
@@ -3567,7 +3561,7 @@ Future<T?> _showFinanceSingleSelectDialog<T>(
     ..sort((a, b) => compareMayoreoAlpha(a.label, b.label));
   return showDialog<T>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.28),
+    barrierColor: kFinanzasBgDeep.withValues(alpha: 0.72),
     builder: (dialogContext) {
       final searchC = TextEditingController();
       final searchFocus = FocusNode();
@@ -3784,7 +3778,7 @@ Future<Set<T>?> _showFinanceMultiSelectDialog<T>(
     ..sort((a, b) => compareMayoreoAlpha(a.label, b.label));
   return showDialog<Set<T>>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.28),
+    barrierColor: kFinanzasBgDeep.withValues(alpha: 0.72),
     builder: (dialogContext) {
       final searchC = TextEditingController();
       final searchFocus = FocusNode();
@@ -4032,7 +4026,7 @@ class _FinancePickerOptionTile extends StatelessWidget {
         ? finanzasAreaTokens.primaryStrong.withValues(alpha: 0.26)
         : highlighted
         ? finanzasAreaTokens.primaryStrong.withValues(alpha: 0.18)
-        : const Color(0xFF242932);
+        : const Color(0xFF3A210F);
     final borderColor = selected
         ? finanzasAreaTokens.primaryStrong.withValues(alpha: 0.78)
         : highlighted
@@ -4235,52 +4229,52 @@ String _normalizeFinanceText(String raw) {
 Color _financeSourceTone(String source) {
   switch (source) {
     case 'VENTAS':
-      return const Color(0xFF2563EB);
+      return kFinanzasAmber;
     case 'COMPRAS':
-      return const Color(0xFF8F201A);
+      return kFinanzasBurnt;
     case 'DIRECTO':
-      return const Color(0xFFE26D1F);
+      return kFinanzasCopper;
     default:
-      return const Color(0xFF7A1914);
+      return kFinanzasBronze;
   }
 }
 
 Color _financeFamilyTone(String family) {
   switch (family) {
     case 'COBRO':
-      return const Color(0xFF2563EB);
+      return kFinanzasAmber;
     case 'PAGO':
-      return const Color(0xFF8F201A);
+      return kFinanzasBurnt;
     case 'GASTO':
-      return const Color(0xFFB26A00);
+      return kFinanzasBronze;
     case 'PRESTAMO':
-      return const Color(0xFF6D28D9);
+      return kFinanzasTaupe;
     case 'AJUSTE':
-      return const Color(0xFF0F766E);
+      return kFinanzasSage;
     default:
-      return const Color(0xFF7A1914);
+      return kFinanzasCopper;
   }
 }
 
 Color _financeDirectionTone(String direction) {
   switch (direction) {
     case 'ENTRADA':
-      return const Color(0xFF2563EB);
+      return kFinanzasAmber;
     case 'SALIDA':
-      return const Color(0xFF8F201A);
+      return kFinanzasBurnt;
     default:
-      return const Color(0xFF6D28D9);
+      return kFinanzasCopper;
   }
 }
 
 Color _financeRelationModeTone(String mode) {
   switch (mode) {
     case 'AUTOMATICA':
-      return const Color(0xFF0F766E);
+      return kFinanzasSage;
     case 'MIXTA':
-      return const Color(0xFF6D28D9);
+      return kFinanzasTaupe;
     default:
-      return const Color(0xFFB26A00);
+      return kFinanzasBronze;
   }
 }
 
@@ -4304,13 +4298,13 @@ class _FinanzasCatalogHeaderBrand extends StatelessWidget {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.24),
+            color: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.44)),
+            border: Border.all(color: kFinanzasBorder.withValues(alpha: 0.92)),
             boxShadow: [
               BoxShadow(
-                color: tokens.primaryStrong.withValues(alpha: 0.16),
-                blurRadius: 24,
+                color: tokens.glow.withValues(alpha: 0.24),
+                blurRadius: 28,
                 spreadRadius: 1,
                 offset: const Offset(0, 8),
               ),
@@ -4322,12 +4316,12 @@ class _FinanzasCatalogHeaderBrand extends StatelessWidget {
         Text(
           'Catálogo Finanzas',
           maxLines: 1,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.w900,
             letterSpacing: 0.25,
             height: 1.0,
-            color: const Color(0xFFFBF3F2),
+            color: kFinanzasInk,
           ),
         ),
       ],
@@ -4483,102 +4477,79 @@ class _FinanzasHeaderButton extends StatefulWidget {
 }
 
 class _FinanzasHeaderButtonState extends State<_FinanzasHeaderButton> {
-  bool _hovered = false;
-
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final enabled = widget.onTap != null || widget.onTapSync != null;
-    final highlighted = enabled && _hovered;
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        scale: highlighted ? 1.026 : 1,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-            splashColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            splashFactory: NoSplash.splashFactory,
-            onTap: !enabled
-                ? null
-                : () async {
-                    if (widget.onTap != null) {
-                      await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
-                    }
-                  },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              transform: Matrix4.translationValues(
-                0,
-                highlighted ? -2.5 : 0,
-                0,
-              ),
-              width: 176,
-              height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withValues(alpha: highlighted ? 0.32 : 0.22),
-                    tokens.surfaceTint.withValues(
-                      alpha: highlighted ? 0.42 : 0.26,
-                    ),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: highlighted
-                      ? Colors.white.withValues(alpha: 0.76)
-                      : Colors.white.withValues(alpha: 0.48),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: highlighted ? 28 : 16,
-                    color: Colors.black.withValues(
-                      alpha: highlighted ? 0.16 : 0.08,
-                    ),
-                    offset: Offset(0, highlighted ? 14 : 8),
-                  ),
-                  BoxShadow(
-                    blurRadius: highlighted ? 20 : 10,
-                    color: tokens.glow.withValues(
-                      alpha: highlighted ? 0.12 : 0.05,
-                    ),
-                  ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
+          splashColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
+          onTap: !enabled
+              ? null
+              : () async {
+                  if (widget.onTap != null) {
+                    await widget.onTap!();
+                  } else {
+                    widget.onTapSync?.call();
+                  }
+                },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            width: 176,
+            height: 56,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  kFinanzasOrange.withValues(alpha: 0.26),
+                  kFinanzasOrangeIntense.withValues(alpha: 0.18),
                 ],
               ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(widget.icon, color: tokens.primaryStrong, size: 20),
-                  const SizedBox(width: 10),
-                  Flexible(
-                    child: Text(
-                      widget.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: tokens.primaryStrong,
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                      ),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: kFinanzasBorder.withValues(alpha: 0.90),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: 16,
+                  color: kFinanzasOrange.withValues(alpha: 0.14),
+                  offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  blurRadius: 10,
+                  color: tokens.glow.withValues(alpha: 0.05),
+                ),
+              ],
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(widget.icon, color: Colors.white, size: 20),
+                const SizedBox(width: 10),
+                Flexible(
+                  child: Text(
+                    widget.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),

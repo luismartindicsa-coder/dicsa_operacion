@@ -37,6 +37,7 @@ import 'finanzas_company_directory_page.dart';
 import 'finanzas_data_store.dart';
 import 'finanzas_dashboard_page.dart';
 import 'finanzas_evidence_store.dart';
+import 'finanzas_financial_rules.dart';
 import 'finanzas_fixed_payments_store.dart';
 import 'finanzas_fixed_payments_page.dart';
 import 'finanzas_payment_center_page.dart';
@@ -791,6 +792,23 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
       linkedSupplierInvoiceId:
           draft.linkedSupplierInvoice?.id ??
           existingRow?.linkedSupplierInvoiceId,
+      appliedSupplierAmount:
+          draft.appliedSupplierAmount ??
+          (existingRow?.hasLinkedSupplierInvoice == true
+              ? existingRow!.effectiveSupplierAppliedAmount
+              : existingRow?.appliedSupplierAmount),
+      settlementDifferenceAmount: computeSupplierSettlementDifferenceAmount(
+        debitAmount: draft.debitAmount,
+        appliedSupplierAmount:
+            draft.appliedSupplierAmount ??
+            (existingRow?.hasLinkedSupplierInvoice == true
+                ? existingRow!.effectiveSupplierAppliedAmount
+                : existingRow?.appliedSupplierAmount),
+      ),
+      settlementDifferenceReason:
+          draft.settlementDifferenceReason ??
+          existingRow?.settlementDifferenceReason,
+      settlementDifferenceNote: existingRow?.settlementDifferenceNote,
       linkedFixedPaymentId:
           draft.linkedFixedPayment?.id ?? existingRow?.linkedFixedPaymentId,
       linkedExternalRef:
@@ -803,6 +821,12 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
         if (existingRow.sourceType == 'VENTA_FACTURA' ||
             movement.sourceType == 'VENTA_FACTURA') {
           await FinanzasBankAccountsStore.updateMovementAndApplyClientPayment(
+            previousMovement: existingRow,
+            nextMovement: movement,
+          );
+        } else if (existingRow.hasLinkedSupplierInvoice ||
+            movement.hasLinkedSupplierInvoice) {
+          await FinanzasBankAccountsStore.updateMovementAndApplySupplierSettlement(
             previousMovement: existingRow,
             nextMovement: movement,
           );
@@ -1229,9 +1253,13 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
                   child: FinanzasGlassPanel(
                     borderRadius: BorderRadius.circular(28),
                     padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
-                    fillColor: const Color(0x1813171F),
-                    borderColor: Colors.white.withValues(alpha: 0.22),
-                    edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
+                    fillColor: kFinanzasPanelSurfaceSoft,
+                    borderColor: finanzasAreaTokens.border.withValues(
+                      alpha: 0.38,
+                    ),
+                    edgeHighlightColor: kFinanzasLightGlow.withValues(
+                      alpha: 0.12,
+                    ),
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 520),
                       child: Column(
@@ -1269,7 +1297,7 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
                                 height: 46,
                                 padding: EdgeInsets.zero,
                                 borderRadius: BorderRadius.circular(999),
-                                fillColor: const Color(0x14161B23),
+                                fillColor: kFinanzasPanelSurfaceSubtle,
                                 borderColor: Colors.white.withValues(
                                   alpha: 0.18,
                                 ),
@@ -1729,7 +1757,7 @@ class _FinanzasBankAccountsPageState extends State<FinanzasBankAccountsPage> {
                       behavior: HitTestBehavior.opaque,
                       onTap: () => setState(() => _menuOpen = false),
                       child: Container(
-                        color: Colors.black.withValues(alpha: 0.12),
+                        color: const Color(0xFF8B4A1A).withValues(alpha: 0.08),
                       ),
                     ),
                   ),
@@ -1901,6 +1929,8 @@ class _BankMovementDraft {
   final double debitAmount;
   final String sourceType;
   final FinanzasSupplierInvoiceRecord? linkedSupplierInvoice;
+  final double? appliedSupplierAmount;
+  final String? settlementDifferenceReason;
   final FinanzasClientPaymentAccountRecord? linkedClientAccount;
   final FinanzasFixedPaymentRecord? linkedFixedPayment;
 
@@ -1917,6 +1947,8 @@ class _BankMovementDraft {
     required this.debitAmount,
     required this.sourceType,
     required this.linkedSupplierInvoice,
+    required this.appliedSupplierAmount,
+    required this.settlementDifferenceReason,
     required this.linkedClientAccount,
     required this.linkedFixedPayment,
   });
@@ -1960,6 +1992,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
   late final TextEditingController _referenceC;
   late final TextEditingController _creditC;
   late final TextEditingController _debitC;
+  String? _settlementDifferenceReason;
   DateTime _date = DateUtils.dateOnly(DateTime.now());
   String _sourceType = 'MANUAL';
   String _company = 'DICSA';
@@ -2013,6 +2046,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
       _selectedFixedPaymentId = existing.linkedFixedPaymentId;
       _commentC.text = existing.comment;
       _referenceC.text = existing.reference;
+      _settlementDifferenceReason = existing.settlementDifferenceReason;
       _creditC.text = existing.creditAmount > 0
           ? formatDecimal(existing.creditAmount, decimals: 2)
           : '';
@@ -2088,16 +2122,16 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
               colorScheme: ColorScheme.dark(
                 primary: finanzasAreaTokens.primaryStrong,
                 onPrimary: Colors.white,
-                surface: const Color(0xFF171C24),
+                surface: kFinanzasDialogSurface,
                 onSurface: kFinanzasInk,
               ),
               dialogTheme: const DialogThemeData(
-                backgroundColor: Color(0xFF171C24),
+                backgroundColor: kFinanzasDialogSurface,
               ),
               datePickerTheme: DatePickerThemeData(
-                backgroundColor: const Color(0xFF171C24),
+                backgroundColor: kFinanzasDialogSurface,
                 surfaceTintColor: Colors.transparent,
-                headerBackgroundColor: const Color(0xFF171C24),
+                headerBackgroundColor: kFinanzasDialogSurface,
                 headerForegroundColor: kFinanzasInk,
                 weekdayStyle: const TextStyle(color: kFinanzasMutedInk),
                 dayForegroundColor: WidgetStateProperty.resolveWith((states) {
@@ -2159,6 +2193,49 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
     return null;
   }
 
+  double? get _supplierAppliedAmount {
+    if (_sourceType != 'COMPRA_FACTURA') return null;
+    final invoice = _selectedSupplierInvoice;
+    if (invoice != null) {
+      return invoice.balanceAmount.clamp(0, double.infinity).toDouble();
+    }
+    final existing = widget.existingRow;
+    if (existing != null && existing.hasLinkedSupplierInvoice) {
+      return existing.effectiveSupplierAppliedAmount;
+    }
+    return null;
+  }
+
+  double get _supplierSettlementDifferenceAmount {
+    final appliedAmount = _supplierAppliedAmount;
+    if (appliedAmount == null) return 0;
+    return computeSupplierSettlementDifferenceAmount(
+      debitAmount: _parseAmount(_debitC.text),
+      appliedSupplierAmount: appliedAmount,
+    );
+  }
+
+  bool get _requiresSupplierSettlementReason =>
+      _sourceType == 'COMPRA_FACTURA' &&
+      _supplierAppliedAmount != null &&
+      _supplierSettlementDifferenceAmount.abs() > 0.009;
+
+  bool get _isSupplierSettlementDifferenceAllowed {
+    if (_sourceType != 'COMPRA_FACTURA') return true;
+    final appliedAmount = _supplierAppliedAmount;
+    if (appliedAmount == null) return false;
+    return isSupplierSettlementDifferenceAllowed(
+      debitAmount: _parseAmount(_debitC.text),
+      appliedSupplierAmount: appliedAmount,
+    );
+  }
+
+  bool get _canEditSupplierBankAmount =>
+      _sourceType == 'COMPRA_FACTURA' &&
+      (!_isEditing ||
+          (widget.existingRow?.sourceType == 'COMPRA_FACTURA' &&
+              widget.existingRow?.linkedSupplierInvoiceId != null));
+
   double _parseAmount(String raw) {
     final cleaned = raw.replaceAll(',', '').replaceAll('\$', '').trim();
     return double.tryParse(cleaned) ?? 0;
@@ -2185,11 +2262,17 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
         _selectedFixedPayment == null) {
       return false;
     }
-    if (_sourceType == 'COMPRA_FACTURA' && !_isEditing) {
-      final invoice = _selectedSupplierInvoice;
-      if (invoice == null) return false;
+    if (_sourceType == 'COMPRA_FACTURA') {
+      final appliedAmount = _supplierAppliedAmount;
+      if (appliedAmount == null) return false;
       if (credit > 0) return false;
-      if ((debit - invoice.balanceAmount).abs() > 0.009) return false;
+      if (debit <= 0.009) return false;
+      if (!_isSupplierSettlementDifferenceAllowed) return false;
+      if (_requiresSupplierSettlementReason &&
+          (_settlementDifferenceReason == null ||
+              _settlementDifferenceReason!.trim().isEmpty)) {
+        return false;
+      }
     }
     return true;
   }
@@ -2207,6 +2290,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
         _selectedSupplierInvoiceId = null;
         _selectedClientAccountId = null;
         _selectedFixedPaymentId = null;
+        _settlementDifferenceReason = null;
       }
     });
     if (value == 'MANUAL') {
@@ -2225,6 +2309,9 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
     if (value != 'PAGO_FIJO') {
       _selectedFixedPaymentId = null;
     }
+    if (value != 'COMPRA_FACTURA') {
+      _settlementDifferenceReason = null;
+    }
   }
 
   void _applySupplierInvoice(FinanzasSupplierInvoiceRecord invoice) {
@@ -2239,6 +2326,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
       _referenceC.text = invoice.folio;
       _creditC.text = '';
       _debitC.text = invoice.balanceAmount.toStringAsFixed(2);
+      _settlementDifferenceReason = null;
     });
   }
 
@@ -2253,6 +2341,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
       _referenceC.text = account.documentNumber;
       _creditC.text = account.pendingBalance.toStringAsFixed(2);
       _debitC.text = '';
+      _settlementDifferenceReason = null;
     });
   }
 
@@ -2269,6 +2358,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
       _referenceC.text = 'Pago fijo';
       _creditC.text = '';
       _debitC.text = payment.amount.toStringAsFixed(2);
+      _settlementDifferenceReason = null;
     });
   }
 
@@ -2454,7 +2544,17 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
     if (_isManualMovement) {
       return 'Ajusta los datos del movimiento libre seleccionado.';
     }
+    if (_sourceType == 'COMPRA_FACTURA') {
+      return 'Revisa el movimiento y ajusta fecha, cuenta, comentario y el cargo real del banco sin romper la liga con proveedor.';
+    }
     return 'Revisa el movimiento y ajusta solo fecha, empresa, cuenta, categoría, comentario y evidencias.';
+  }
+
+  String get _linkedFieldsLockMessage {
+    if (_sourceType == 'COMPRA_FACTURA') {
+      return 'Este movimiento proviene de una factura proveedor. Aquí conservamos la liga y solo permitimos ajustar fecha, empresa, cuenta, categoría, comentario, evidencias y el cargo real del banco.';
+    }
+    return 'Este movimiento proviene de otra operación. Aquí solo puedes ajustar fecha, empresa, cuenta, categoría, comentario y evidencias.';
   }
 
   Future<void> _uploadEvidenceFromDialog() async {
@@ -2484,16 +2584,16 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                   onPrimary: Colors.white,
                   secondary: tokens.primarySoft,
                   onSecondary: tokens.onGlass,
-                  surface: const Color(0xFF171C24),
+                  surface: kFinanzasDialogSurface,
                   onSurface: kFinanzasInk,
                 ),
               ),
               child: FinanzasGlassPanel(
                 borderRadius: BorderRadius.circular(34),
                 padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
-                fillColor: const Color(0x1813171F),
-                borderColor: Colors.white.withValues(alpha: 0.22),
-                edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
+                fillColor: kFinanzasPanelSurfaceSoft,
+                borderColor: tokens.border.withValues(alpha: 0.38),
+                edgeHighlightColor: kFinanzasLightGlow.withValues(alpha: 0.12),
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(
                     maxWidth: 1080,
@@ -2536,7 +2636,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                             height: 54,
                             padding: EdgeInsets.zero,
                             borderRadius: BorderRadius.circular(999),
-                            fillColor: const Color(0x14161B23),
+                            fillColor: kFinanzasPanelSurfaceSubtle,
                             borderColor: Colors.white.withValues(alpha: 0.20),
                             child: Center(
                               child: IconButton(
@@ -2581,7 +2681,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                               const SizedBox(width: 10),
                               Expanded(
                                 child: Text(
-                                  'Este movimiento proviene de otra operación. Aquí solo puedes ajustar fecha, empresa, cuenta, categoría, comentario y evidencias.',
+                                  _linkedFieldsLockMessage,
                                   style: const TextStyle(
                                     fontSize: 12.5,
                                     fontWeight: FontWeight.w700,
@@ -2995,21 +3095,22 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                                       cursorColor:
                                           finanzasAreaTokens.primaryStrong,
                                       readOnly:
-                                          _hasLockedLinkedFields ||
-                                          _sourceType == 'COMPRA_FACTURA',
+                                          _hasLockedLinkedFields &&
+                                          !_canEditSupplierBankAmount,
                                       keyboardType:
                                           const TextInputType.numberWithOptions(
                                             decimal: true,
                                           ),
                                       inputFormatters:
-                                          _sourceType == 'COMPRA_FACTURA'
+                                          (_hasLockedLinkedFields &&
+                                              !_canEditSupplierBankAmount)
                                           ? const <TextInputFormatter>[]
                                           : const [_BankMoneyInputFormatter()],
                                       decoration: _bankDialogFieldDecoration(
                                         context,
                                         hintText:
                                             _sourceType == 'COMPRA_FACTURA'
-                                            ? 'Factura completa'
+                                            ? 'Cargo banco real'
                                             : 'Cargo',
                                         prefixIcon: const Icon(
                                           Icons.north_east_rounded,
@@ -3019,6 +3120,139 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                                   ),
                                 ],
                               ),
+                              if (_sourceType == 'COMPRA_FACTURA' &&
+                                  _supplierAppliedAmount != null) ...[
+                                const SizedBox(height: 10),
+                                Row(
+                                  children: [
+                                    Expanded(
+                                      child: InputDecorator(
+                                        decoration: _bankDialogFieldDecoration(
+                                          context,
+                                          hintText: 'Aplicar a factura',
+                                          prefixIcon: const Icon(
+                                            Icons.fact_check_outlined,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          formatDecimal(
+                                            _supplierAppliedAmount!,
+                                            decimals: 2,
+                                          ),
+                                          style: const TextStyle(
+                                            color: kFinanzasInk,
+                                            fontWeight: FontWeight.w700,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: InputDecorator(
+                                        decoration: _bankDialogFieldDecoration(
+                                          context,
+                                          hintText: 'Diferencia',
+                                          prefixIcon: const Icon(
+                                            Icons.calculate_outlined,
+                                          ),
+                                        ),
+                                        child: Text(
+                                          formatDecimal(
+                                            _supplierSettlementDifferenceAmount,
+                                            decimals: 2,
+                                          ),
+                                          style: TextStyle(
+                                            color:
+                                                _supplierSettlementDifferenceAmount
+                                                        .abs() <=
+                                                    0.009
+                                                ? kFinanzasInk
+                                                : !_isSupplierSettlementDifferenceAllowed
+                                                ? kFinanzasBurnt
+                                                : kFinanzasAmber,
+                                            fontWeight: FontWeight.w800,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                _ChoiceChipField(
+                                  label: 'Motivo diferencia',
+                                  value: _settlementDifferenceReason == null
+                                      ? 'Seleccionar motivo'
+                                      : finSupplierSettlementDifferenceReasonLabel(
+                                          _settlementDifferenceReason!,
+                                        ),
+                                  enabled: _requiresSupplierSettlementReason,
+                                  onTap: !_requiresSupplierSettlementReason
+                                      ? () {}
+                                      : () {
+                                          unawaited(() async {
+                                            final selected =
+                                                await _showSimpleOptionsDialog(
+                                                  context: context,
+                                                  title: 'Motivo de diferencia',
+                                                  options:
+                                                      kFinSupplierSettlementDifferenceReasons
+                                                          .map(
+                                                            (
+                                                              reason,
+                                                            ) => _SimpleOption(
+                                                              id: reason,
+                                                              label:
+                                                                  finSupplierSettlementDifferenceReasonLabel(
+                                                                    reason,
+                                                                  ),
+                                                              subtitle: '',
+                                                            ),
+                                                          )
+                                                          .toList(
+                                                            growable: false,
+                                                          ),
+                                                );
+                                            if (selected == null) return;
+                                            setState(() {
+                                              _settlementDifferenceReason =
+                                                  selected.id;
+                                            });
+                                          }());
+                                        },
+                                ),
+                                if (!_isSupplierSettlementDifferenceAllowed) ...[
+                                  const SizedBox(height: 10),
+                                  Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.fromLTRB(
+                                      14,
+                                      12,
+                                      14,
+                                      12,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(
+                                        0xFFFF5A00,
+                                      ).withValues(alpha: 0.10),
+                                      borderRadius: BorderRadius.circular(18),
+                                      border: Border.all(
+                                        color: const Color(
+                                          0xFFFF5A00,
+                                        ).withValues(alpha: 0.24),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'La diferencia banco vs factura excede el limite permitido para esta fase. Este caso debe revisarse fuera del flujo delicado de centavos.',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: kFinanzasInk,
+                                        height: 1.35,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
                               const SizedBox(height: 18),
                               _BankDialogSectionTitle(
                                 step: '4',
@@ -3153,6 +3387,10 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                                         sourceType: _sourceType,
                                         linkedSupplierInvoice:
                                             _selectedSupplierInvoice,
+                                        appliedSupplierAmount:
+                                            _supplierAppliedAmount,
+                                        settlementDifferenceReason:
+                                            _settlementDifferenceReason,
                                         linkedClientAccount:
                                             _selectedClientAccount,
                                         linkedFixedPayment:
@@ -3219,7 +3457,7 @@ InputDecoration _bankDialogFieldDecoration(
     prefixIcon: prefixIcon,
   ).copyWith(
     filled: true,
-    fillColor: const Color(0xCC171C24),
+    fillColor: kFinanzasPanelSurfaceStrong,
     hintStyle: TextStyle(color: tokens.onGlass.withValues(alpha: 0.54)),
     enabledBorder: border,
     focusedBorder: border.copyWith(
@@ -3328,7 +3566,7 @@ class _CounterpartyPickerDialogState extends State<_CounterpartyPickerDialog> {
             child: FinanzasGlassPanel(
               borderRadius: BorderRadius.circular(28),
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-              fillColor: const Color(0x1813171F),
+              fillColor: kFinanzasPanelSurfaceSoft,
               borderColor: Colors.white.withValues(alpha: 0.18),
               child: ConstrainedBox(
                 constraints: BoxConstraints(
@@ -3493,7 +3731,7 @@ class _FixedPaymentPickerDialogState extends State<_FixedPaymentPickerDialog> {
             child: FinanzasGlassPanel(
               borderRadius: BorderRadius.circular(28),
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-              fillColor: const Color(0x1813171F),
+              fillColor: kFinanzasPanelSurfaceSoft,
               borderColor: Colors.white.withValues(alpha: 0.18),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(
@@ -3649,7 +3887,7 @@ class _ClientPaymentPickerDialogState
             child: FinanzasGlassPanel(
               borderRadius: BorderRadius.circular(28),
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-              fillColor: const Color(0x1813171F),
+              fillColor: kFinanzasPanelSurfaceSoft,
               borderColor: Colors.white.withValues(alpha: 0.18),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(
@@ -3811,7 +4049,7 @@ class _SupplierInvoicePickerDialogState
             child: FinanzasGlassPanel(
               borderRadius: BorderRadius.circular(28),
               padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-              fillColor: const Color(0x1813171F),
+              fillColor: kFinanzasPanelSurfaceSoft,
               borderColor: Colors.white.withValues(alpha: 0.18),
               child: ConstrainedBox(
                 constraints: const BoxConstraints(
@@ -3933,7 +4171,7 @@ class _BankPickerOptionTileState extends State<_BankPickerOptionTile> {
                   ? tokens.primaryStrong.withValues(alpha: 0.16)
                   : hovered
                   ? tokens.primaryStrong.withValues(alpha: 0.12)
-                  : const Color(0xCC171C24),
+                  : kFinanzasPanelSurfaceStrong,
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: selected
@@ -4070,7 +4308,7 @@ Future<_SimpleOption?> _showSimpleOptionsDialog({
                 child: FinanzasGlassPanel(
                   borderRadius: BorderRadius.circular(28),
                   padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-                  fillColor: const Color(0x1813171F),
+                  fillColor: kFinanzasPanelSurfaceSoft,
                   borderColor: Colors.white.withValues(alpha: 0.18),
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(
@@ -4157,7 +4395,7 @@ Future<DateTimeRange?> _showFinBankDateRangeDialog(
 }) {
   return showDialog<DateTimeRange?>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.28),
+    barrierColor: kFinanzasBgDeep.withValues(alpha: 0.72),
     builder: (dialogContext) {
       DateTime displayMonth = defaultDatePickerOpenMonth(
         firstDate: firstDate,
@@ -4521,9 +4759,9 @@ class _ChoiceChipField extends StatelessWidget {
     return FinanzasGlassPanel(
       padding: EdgeInsets.zero,
       borderRadius: BorderRadius.circular(20),
-      fillColor: const Color(0x18161A22),
-      borderColor: Colors.white.withValues(alpha: 0.22),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.22),
+      fillColor: kFinanzasPanelSurfaceSoft,
+      borderColor: tokens.border.withValues(alpha: 0.36),
+      edgeHighlightColor: kFinanzasLightGlow.withValues(alpha: 0.12),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
@@ -4674,10 +4912,10 @@ class _BankTabSurface extends StatelessWidget {
     return FinanzasGlassPanel(
       borderRadius: BorderRadius.circular(32),
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-      fillColor: const Color(0x14141920),
+      fillColor: kFinanzasPanelSurfaceSubtle,
       borderColor: Colors.white.withValues(alpha: 0.28),
       edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
-      glowColor: const Color(0x1FFF7A1F),
+      glowColor: kFinanzasAmber.withValues(alpha: 0.12),
       child: child,
     );
   }
@@ -4701,9 +4939,9 @@ class _BankFilterSummaryRow extends StatelessWidget {
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.08),
+              color: kFinanzasSurfaceHover.withValues(alpha: 0.44),
               borderRadius: BorderRadius.circular(999),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+              border: Border.all(color: tokens.border.withValues(alpha: 0.32)),
             ),
             child: Text(
               label,
@@ -4834,9 +5072,9 @@ class _BankHeaderRow extends StatelessWidget {
     return FinanzasGlassPanel(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       borderRadius: BorderRadius.circular(18),
-      fillColor: const Color(0x10151A22),
-      borderColor: Colors.white.withValues(alpha: 0.16),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.16),
+      fillColor: kFinanzasPanelSurfaceSubtle,
+      borderColor: tokens.border.withValues(alpha: 0.32),
+      edgeHighlightColor: kFinanzasLightGlow.withValues(alpha: 0.10),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final totalWidth = columns.fold<double>(
@@ -4872,7 +5110,7 @@ class _BankHeaderRow extends StatelessWidget {
                                               alpha: 0.92,
                                             )
                                           : Colors.white.withValues(
-                                              alpha: 0.08,
+                                              alpha: 0.04,
                                             ),
                                       borderRadius: BorderRadius.circular(10),
                                       border: Border.all(
@@ -4881,7 +5119,7 @@ class _BankHeaderRow extends StatelessWidget {
                                                 alpha: 0.82,
                                               )
                                             : Colors.white.withValues(
-                                                alpha: 0.16,
+                                                alpha: 0.10,
                                               ),
                                       ),
                                     ),
@@ -4989,9 +5227,9 @@ class _BankTopBar extends StatelessWidget {
     return FinanzasGlassPanel(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
       borderRadius: BorderRadius.circular(26),
-      fillColor: const Color(0x12161A22),
-      borderColor: Colors.white.withValues(alpha: 0.24),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.20),
+      fillColor: kFinanzasPanelSurfaceSoft,
+      borderColor: tokens.border.withValues(alpha: 0.42),
+      edgeHighlightColor: kFinanzasLightGlow.withValues(alpha: 0.14),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final actions = Wrap(
@@ -5001,8 +5239,12 @@ class _BankTopBar extends StatelessWidget {
               FilledButton.icon(
                 style: OutlinedButton.styleFrom(
                   foregroundColor: tokens.primaryStrong,
-                  backgroundColor: Colors.white.withValues(alpha: 0.12),
-                  side: BorderSide(color: Colors.white.withValues(alpha: 0.26)),
+                  backgroundColor: kFinanzasSurfaceHover.withValues(
+                    alpha: 0.52,
+                  ),
+                  side: BorderSide(
+                    color: tokens.border.withValues(alpha: 0.42),
+                  ),
                   disabledForegroundColor: tokens.badgeText.withValues(
                     alpha: 0.55,
                   ),
@@ -5087,8 +5329,8 @@ class _FinanzasGridPager extends StatelessWidget {
     return FinanzasGlassPanel(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       borderRadius: BorderRadius.circular(22),
-      fillColor: const Color(0x12161A22),
-      borderColor: Colors.white.withValues(alpha: 0.18),
+      fillColor: kFinanzasPanelSurfaceSoft,
+      borderColor: tokens.border.withValues(alpha: 0.32),
       edgeHighlightColor: Colors.white.withValues(alpha: 0.16),
       child: Wrap(
         spacing: 8,
@@ -5126,7 +5368,7 @@ class _FinanzasGridPager extends StatelessWidget {
             child: DropdownButtonFormField<int>(
               initialValue: pageSize,
               isDense: true,
-              dropdownColor: const Color(0xFF171C24),
+              dropdownColor: kFinanzasDialogSurface,
               iconEnabledColor: tokens.badgeText,
               style: TextStyle(
                 fontWeight: FontWeight.w700,
@@ -5135,7 +5377,7 @@ class _FinanzasGridPager extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 filled: true,
-                fillColor: const Color(0xCC171C24),
+                fillColor: kFinanzasPanelSurfaceStrong,
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 10,
@@ -5146,7 +5388,7 @@ class _FinanzasGridPager extends StatelessWidget {
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide(
-                    color: Colors.white.withValues(alpha: 0.22),
+                    color: tokens.border.withValues(alpha: 0.34),
                   ),
                 ),
                 focusedBorder: OutlineInputBorder(
@@ -5194,68 +5436,73 @@ class _BankAccountTotalCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
     final net = total.credit - total.debit;
+    final accent = net >= 0 ? kFinanzasAmber : kFinanzasCoral;
+    final tokens = AreaThemeScope.of(context);
     return FinanzasGlassPanel(
+      borderRadius: BorderRadius.circular(22),
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-      borderRadius: BorderRadius.circular(26),
-      fillColor: const Color(0x14161A21),
-      borderColor: Colors.white.withValues(alpha: 0.24),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.20),
+      fillColor: kFinanzasPanelSurface,
+      borderColor: accent.withValues(alpha: 0.30),
+      glowColor: accent.withValues(alpha: 0.22),
+      edgeHighlightColor: kFinanzasOrange.withValues(alpha: 0.12),
       child: SizedBox(
         height: 144,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              alignment: Alignment.centerLeft,
-              child: Text(
-                '${total.company} ${total.branch}',
-                maxLines: 1,
-                style: TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w900,
-                  color: tokens.primaryStrong,
-                ),
+            Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: accent.withValues(alpha: 0.16)),
+              ),
+              child: Icon(
+                net >= 0
+                    ? Icons.account_balance_wallet_outlined
+                    : Icons.payments_outlined,
+                color: accent,
+                size: 20,
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             Text(
-              'Abonos ${moneyFormatter(total.credit)}',
-              maxLines: 1,
+              '${total.company} ${total.branch}',
+              maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13,
+              style: TextStyle(
+                fontSize: 16,
                 fontWeight: FontWeight.w800,
-                color: Color(0xFF48B7A9),
+                color: Colors.white.withValues(alpha: 0.84),
               ),
             ),
             const SizedBox(height: 6),
-            Text(
-              'Cargos ${moneyFormatter(total.debit)}',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w800,
-                color: Color(0xFFF45F4E),
-              ),
-            ),
-            const Spacer(),
             FittedBox(
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text(
-                'Neto ${moneyFormatter(net)}',
+                moneyFormatter(net),
                 maxLines: 1,
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w900,
-                  color: net >= 0
-                      ? const Color(0xFF48B7A9)
-                      : tokens.primaryStrong,
+                  color: tokens.primaryStrong,
+                  height: 1,
                 ),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Abonos ${moneyFormatter(total.credit)}\nCargos ${moneyFormatter(total.debit)}',
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasMutedInk,
+                height: 1.3,
               ),
             ),
           ],
@@ -5325,7 +5572,7 @@ class _BankTableCell {
   }) {
     final color = selectedContext
         ? Colors.white
-        : (positive ? const Color(0xFF0F766E) : const Color(0xFFB42318));
+        : (positive ? kFinanzasSage : kFinanzasBurnt);
     return _BankTableCell._(
       width: width,
       child: Text(
@@ -5402,8 +5649,8 @@ class _BankTableRowState extends State<_BankTableRow> {
     final background = widget.selected
         ? tokens.primaryStrong.withValues(alpha: widget.active ? 0.26 : 0.20)
         : _hovering
-        ? const Color(0xE01D222B)
-        : const Color(0xCC171B23);
+        ? kFinanzasSurfaceHover.withValues(alpha: 0.78)
+        : kFinanzasPanelSurfaceStrong;
 
     Widget buildCell(int index, _BankTableCell cell) {
       final editable = widget.editableColumns.contains(index);
@@ -5530,7 +5777,7 @@ class _BankTableRowState extends State<_BankTableRow> {
                                       height: 36,
                                       decoration: BoxDecoration(
                                         color: widget.selected
-                                            ? const Color(0xCC1D2129)
+                                            ? kFinanzasSurfaceActive
                                             : Colors.white.withValues(
                                                 alpha: 0.06,
                                               ),
@@ -5548,8 +5795,8 @@ class _BankTableRowState extends State<_BankTableRow> {
                                           BoxShadow(
                                             blurRadius: 10,
                                             offset: const Offset(0, 4),
-                                            color: Colors.black.withValues(
-                                              alpha: 0.06,
+                                            color: kFinanzasOrange.withValues(
+                                              alpha: 0.12,
                                             ),
                                           ),
                                         ],
@@ -5629,8 +5876,8 @@ class _BankDetailsEvidenceBlock extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       borderRadius: BorderRadius.circular(20),
-      fillColor: const Color(0x14161A22),
-      borderColor: Colors.white.withValues(alpha: 0.18),
+      fillColor: kFinanzasPanelSurfaceSoft,
+      borderColor: tokens.border.withValues(alpha: 0.30),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -5736,8 +5983,8 @@ class _FinBankEmptyPane extends StatelessWidget {
         width: 420,
         padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
         borderRadius: BorderRadius.circular(24),
-        fillColor: const Color(0x12161A22),
-        borderColor: Colors.white.withValues(alpha: 0.18),
+        fillColor: kFinanzasPanelSurfaceSoft,
+        borderColor: tokens.border.withValues(alpha: 0.30),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -5823,13 +6070,13 @@ class _FinBankHeaderBrand extends StatelessWidget {
           width: 56,
           height: 56,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.24),
+            color: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.44)),
+            border: Border.all(color: kFinanzasBorder.withValues(alpha: 0.92)),
             boxShadow: [
               BoxShadow(
-                color: tokens.primaryStrong.withValues(alpha: 0.16),
-                blurRadius: 24,
+                color: tokens.glow.withValues(alpha: 0.24),
+                blurRadius: 28,
                 spreadRadius: 1,
                 offset: const Offset(0, 8),
               ),
@@ -5838,10 +6085,10 @@ class _FinBankHeaderBrand extends StatelessWidget {
           child: const Center(child: DicsaLogoD(size: 40, progress: 1)),
         ),
         const SizedBox(width: 20),
-        const Text(
+        Text(
           'Cuentas Bancarias',
           maxLines: 1,
-          style: TextStyle(
+          style: const TextStyle(
             fontSize: 28,
             fontWeight: FontWeight.w900,
             letterSpacing: 0.25,
@@ -5872,105 +6119,82 @@ class _FinBankHeaderButton extends StatefulWidget {
 }
 
 class _FinBankHeaderButtonState extends State<_FinBankHeaderButton> {
-  bool _hovered = false;
-
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final enabled = widget.onTap != null || widget.onTapSync != null;
-    final highlighted = enabled && _hovered;
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedScale(
-        duration: const Duration(milliseconds: 180),
-        curve: Curves.easeOutCubic,
-        scale: highlighted ? 1.026 : 1,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            overlayColor: WidgetStateProperty.all(Colors.transparent),
-            splashColor: Colors.transparent,
-            hoverColor: Colors.transparent,
-            highlightColor: Colors.transparent,
-            splashFactory: NoSplash.splashFactory,
-            onTap: !enabled
-                ? null
-                : () async {
-                    if (widget.onTap != null) {
-                      await widget.onTap!();
-                    } else {
-                      widget.onTapSync?.call();
-                    }
-                  },
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 180),
-              curve: Curves.easeOutCubic,
-              transform: Matrix4.translationValues(
-                0,
-                highlighted ? -2.5 : 0,
-                0,
-              ),
-              width: 176,
-              height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withValues(alpha: highlighted ? 0.36 : 0.24),
-                    tokens.surfaceTint.withValues(
-                      alpha: highlighted ? 0.46 : 0.28,
-                    ),
-                  ],
-                ),
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
-                  color: highlighted
-                      ? Colors.white.withValues(alpha: 0.76)
-                      : Colors.white.withValues(alpha: 0.48),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    blurRadius: highlighted ? 28 : 16,
-                    color: Colors.black.withValues(
-                      alpha: highlighted ? 0.16 : 0.08,
-                    ),
-                    offset: Offset(0, highlighted ? 14 : 8),
-                  ),
-                  BoxShadow(
-                    blurRadius: highlighted ? 20 : 10,
-                    color: tokens.glow.withValues(
-                      alpha: highlighted ? 0.12 : 0.05,
-                    ),
-                  ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          borderRadius: BorderRadius.circular(18),
+          overlayColor: WidgetStateProperty.all(Colors.transparent),
+          splashColor: Colors.transparent,
+          hoverColor: Colors.transparent,
+          highlightColor: Colors.transparent,
+          splashFactory: NoSplash.splashFactory,
+          onTap: !enabled
+              ? null
+              : () async {
+                  if (widget.onTap != null) {
+                    await widget.onTap!();
+                  } else {
+                    widget.onTapSync?.call();
+                  }
+                },
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 180),
+            curve: Curves.easeOutCubic,
+            width: 176,
+            height: 56,
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  kFinanzasOrange.withValues(alpha: 0.26),
+                  kFinanzasOrangeIntense.withValues(alpha: 0.18),
                 ],
               ),
-              child: Row(
-                children: [
-                  Icon(widget.icon, size: 20, color: tokens.primaryStrong),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: FittedBox(
-                      fit: BoxFit.scaleDown,
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        widget.label,
-                        maxLines: 1,
-                        softWrap: false,
-                        style: TextStyle(
-                          color: tokens.primaryStrong,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                        ),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: kFinanzasBorder.withValues(alpha: 0.90),
+              ),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: 16,
+                  color: kFinanzasOrange.withValues(alpha: 0.14),
+                  offset: const Offset(0, 8),
+                ),
+                BoxShadow(
+                  blurRadius: 10,
+                  color: tokens.glow.withValues(alpha: 0.05),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Icon(widget.icon, size: 20, color: Colors.white),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      widget.label,
+                      maxLines: 1,
+                      softWrap: false,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
                       ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
