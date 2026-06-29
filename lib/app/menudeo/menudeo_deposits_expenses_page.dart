@@ -118,6 +118,7 @@ List<PopupMenuEntry<_VoucherGridMenuAction>> _buildVoucherMenuItems({
 }
 
 class _ConceptConfig {
+  final String id;
   final String label;
   final bool requiresUnit;
   final bool requiresQuantity;
@@ -130,6 +131,7 @@ class _ConceptConfig {
   final List<String> modes;
 
   const _ConceptConfig({
+    required this.id,
     required this.label,
     this.requiresUnit = false,
     this.requiresQuantity = false,
@@ -144,6 +146,7 @@ class _ConceptConfig {
 }
 
 class _LineItemRecord {
+  final String conceptId;
   final String concept;
   final String unit;
   final String quantity;
@@ -156,6 +159,7 @@ class _LineItemRecord {
   final String comment;
 
   const _LineItemRecord({
+    required this.conceptId,
     required this.concept,
     required this.unit,
     required this.quantity,
@@ -171,6 +175,8 @@ class _LineItemRecord {
 
 class _VoucherRecord {
   final String? id;
+  final String personCatalogId;
+  final String rubricCatalogId;
   final String folio;
   final String date;
   final _VoucherType type;
@@ -182,6 +188,8 @@ class _VoucherRecord {
 
   const _VoucherRecord({
     this.id,
+    this.personCatalogId = '',
+    this.rubricCatalogId = '',
     required this.folio,
     required this.date,
     required this.type,
@@ -485,6 +493,7 @@ Future<void> _openVoucherPdfForRecord({required _VoucherRecord record}) async {
 }
 
 class _LineItemDraft {
+  String conceptId = '';
   String concept = '';
   String unit = '';
   String quantity = '';
@@ -503,6 +512,7 @@ class _LineItemDraft {
 
   _LineItemRecord toRecord() {
     return _LineItemRecord(
+      conceptId: conceptId,
       concept: concept,
       unit: unit,
       quantity: quantity,
@@ -518,6 +528,7 @@ class _LineItemDraft {
 
   static _LineItemDraft fromRecord(_LineItemRecord record) {
     final draft = _LineItemDraft();
+    draft.conceptId = record.conceptId;
     draft.concept = record.concept;
     draft.unit = record.unit;
     draft.quantity = record.quantity;
@@ -540,6 +551,7 @@ _VoucherType _movementTypeToVoucherType(MenudeoCashMovementType movementType) {
 
 _ConceptConfig _conceptConfigFromCatalog(MenudeoCashConceptDefinition concept) {
   return _ConceptConfig(
+    id: concept.id,
     label: concept.label,
     requiresUnit: concept.requiresUnit,
     requiresQuantity: concept.requiresQuantity,
@@ -753,7 +765,7 @@ class _MenudeoDepositsExpensesPageState
           final lineRows = await _supa
               .from('men_cash_voucher_lines')
               .select(
-                'voucher_id,line_order,concept,unit,quantity,company,driver,destination,subconcept,mode,amount,comment',
+                'voucher_id,line_order,concept_catalog_id,concept,concept_label_snapshot,unit,quantity,company,driver,destination,subconcept,subconcept_snapshot,mode,mode_snapshot,amount,comment',
               )
               .inFilter('voucher_id', idBatch)
               .order('line_order');
@@ -764,14 +776,29 @@ class _MenudeoDepositsExpensesPageState
                 .putIfAbsent(voucherId, () => <_LineItemRecord>[])
                 .add(
                   _LineItemRecord(
-                    concept: (raw['concept'] ?? '').toString(),
+                    conceptId: (raw['concept_catalog_id'] ?? '').toString(),
+                    concept:
+                        ((raw['concept_label_snapshot'] ?? '')
+                                .toString()
+                                .trim())
+                            .isNotEmpty
+                        ? (raw['concept_label_snapshot'] ?? '').toString()
+                        : (raw['concept'] ?? '').toString(),
                     unit: (raw['unit'] ?? '').toString(),
                     quantity: (raw['quantity'] ?? '').toString(),
                     company: (raw['company'] ?? '').toString(),
                     driver: (raw['driver'] ?? '').toString(),
                     destination: (raw['destination'] ?? '').toString(),
-                    subconcept: (raw['subconcept'] ?? '').toString(),
-                    mode: (raw['mode'] ?? '').toString(),
+                    subconcept:
+                        ((raw['subconcept_snapshot'] ?? '').toString().trim())
+                            .isNotEmpty
+                        ? (raw['subconcept_snapshot'] ?? '').toString()
+                        : (raw['subconcept'] ?? '').toString(),
+                    mode:
+                        ((raw['mode_snapshot'] ?? '').toString().trim())
+                            .isNotEmpty
+                        ? (raw['mode_snapshot'] ?? '').toString()
+                        : (raw['mode'] ?? '').toString(),
                     amount: (raw['amount'] ?? '0').toString(),
                     comment: (raw['comment'] ?? '').toString(),
                   ),
@@ -815,6 +842,8 @@ class _MenudeoDepositsExpensesPageState
             final id = (row['id'] ?? '').toString();
             return _VoucherRecord(
               id: id.isEmpty ? null : id,
+              personCatalogId: (row['person_catalog_id'] ?? '').toString(),
+              rubricCatalogId: (row['rubric_catalog_id'] ?? '').toString(),
               folio: folio,
               date: date,
               type: type,
@@ -1628,41 +1657,71 @@ class _MenudeoDepositsExpensesPageState
             details.contains('voucher_type'));
   }
 
+  Future<String?> _fetchOpenCashCutId() async {
+    final rows = await _supa
+        .from('men_cash_cuts')
+        .select('id')
+        .isFilter('closed_at', null)
+        .order('opened_at', ascending: false)
+        .limit(1);
+    final parsed = (rows as List).cast<Map<String, dynamic>>();
+    if (parsed.isEmpty) return null;
+    final id = (parsed.first['id'] ?? '').toString().trim();
+    return id.isEmpty ? null : id;
+  }
+
   Future<_VoucherRecord> _persistVoucher(_VoucherRecord record) async {
-    if (await _hasConflictingVoucherFolio(record)) {
-      throw Exception(
-        'Ya existe un ${record.type == _VoucherType.deposit ? 'depósito' : 'gasto'} con el folio ${record.folio}.',
-      );
-    }
-    final payload = <String, dynamic>{
-      'voucher_date': _uiDateToIso(record.date),
-      'folio': record.folio,
-      'voucher_type': record.type == _VoucherType.deposit
-          ? 'deposit'
-          : 'expense',
-      'person_label': record.person,
-      'rubric': record.rubric,
-      'comment': record.comment,
-      'total_amount': record.total,
-    };
-
-    String voucherId = record.id ?? '';
-    if (voucherId.isEmpty) {
-      final inserted = await _supa
-          .from('men_cash_vouchers')
-          .insert(payload)
-          .select('id')
-          .single();
-      voucherId = (inserted['id'] ?? '').toString();
-    } else {
-      await _supa.from('men_cash_vouchers').update(payload).eq('id', voucherId);
-      await _supa
-          .from('men_cash_voucher_lines')
-          .delete()
-          .eq('voucher_id', voucherId);
-    }
-
     try {
+      if (await _hasConflictingVoucherFolio(record)) {
+        throw Exception(
+          'Ya existe un ${record.type == _VoucherType.deposit ? 'depósito' : 'gasto'} con el folio ${record.folio}.',
+        );
+      }
+      String? openCashCutId;
+      if ((record.id ?? '').isEmpty) {
+        openCashCutId = await _fetchOpenCashCutId();
+        if (openCashCutId == null) {
+          throw Exception(
+            'No hay una caja abierta en Menudeo. Abre caja antes de guardar depósitos o gastos.',
+          );
+        }
+      }
+      final payload = <String, dynamic>{
+        'voucher_date': _uiDateToIso(record.date),
+        'folio': record.folio,
+        'voucher_type': record.type == _VoucherType.deposit
+            ? 'deposit'
+            : 'expense',
+        if (openCashCutId != null) 'cash_cut_id': openCashCutId,
+        'person_catalog_id': record.personCatalogId,
+        'person_label': record.person,
+        'person_label_snapshot': record.person,
+        'rubric_catalog_id': record.rubricCatalogId,
+        'rubric': record.rubric,
+        'rubric_label_snapshot': record.rubric,
+        'comment': record.comment,
+        'total_amount': record.total,
+      };
+
+      String voucherId = record.id ?? '';
+      if (voucherId.isEmpty) {
+        final inserted = await _supa
+            .from('men_cash_vouchers')
+            .insert(payload)
+            .select('id')
+            .single();
+        voucherId = (inserted['id'] ?? '').toString();
+      } else {
+        await _supa
+            .from('men_cash_vouchers')
+            .update(payload)
+            .eq('id', voucherId);
+        await _supa
+            .from('men_cash_voucher_lines')
+            .delete()
+            .eq('voucher_id', voucherId);
+      }
+
       if (record.lines.isNotEmpty) {
         final linesPayload = <Map<String, dynamic>>[];
         for (var i = 0; i < record.lines.length; i++) {
@@ -1670,14 +1729,18 @@ class _MenudeoDepositsExpensesPageState
           linesPayload.add(<String, dynamic>{
             'voucher_id': voucherId,
             'line_order': i + 1,
+            'concept_catalog_id': line.conceptId,
             'concept': line.concept,
+            'concept_label_snapshot': line.concept,
             'unit': line.unit,
             'quantity': line.quantity,
             'company': line.company,
             'driver': line.driver,
             'destination': line.destination,
             'subconcept': line.subconcept,
+            'subconcept_snapshot': line.subconcept,
             'mode': line.mode,
+            'mode_snapshot': line.mode,
             'amount': double.tryParse(line.amount) ?? 0,
             'comment': line.comment,
           });
@@ -1702,6 +1765,19 @@ class _MenudeoDepositsExpensesPageState
           }
         });
       }
+      return _VoucherRecord(
+        id: voucherId,
+        personCatalogId: record.personCatalogId,
+        rubricCatalogId: record.rubricCatalogId,
+        folio: record.folio,
+        date: record.date,
+        type: record.type,
+        person: record.person,
+        rubric: record.rubric,
+        comment: record.comment,
+        lines: record.lines,
+        hasPendingCashCheck: record.hasPendingCashCheck,
+      );
     } on PostgrestException catch (error) {
       if (_isDuplicateVoucherFolioError(error)) {
         throw Exception(
@@ -1709,18 +1785,9 @@ class _MenudeoDepositsExpensesPageState
         );
       }
       rethrow;
+    } catch (error) {
+      rethrow;
     }
-    return _VoucherRecord(
-      id: voucherId,
-      folio: record.folio,
-      date: record.date,
-      type: record.type,
-      person: record.person,
-      rubric: record.rubric,
-      comment: record.comment,
-      lines: record.lines,
-      hasPendingCashCheck: record.hasPendingCashCheck,
-    );
   }
 
   Future<void> _openVoucherDialog({_VoucherRecord? initial, int? index}) async {
@@ -1778,12 +1845,6 @@ class _MenudeoDepositsExpensesPageState
             unitOptions: _unitOptions,
             companyOptions: _companyOptions,
             driverOptions: _driverOptions,
-            depositPeopleOptions: MenudeoCashTaxonomyStore.instance.peopleFor(
-              MenudeoCashMovementType.deposit,
-            ),
-            expensePeopleOptions: MenudeoCashTaxonomyStore.instance.peopleFor(
-              MenudeoCashMovementType.expense,
-            ),
             canGoPrevious: index != null && currentPosition > 0,
             canGoNext:
                 index != null && currentPosition < editableEntries.length - 1,
@@ -3517,8 +3578,6 @@ class _VoucherEditorDialog extends StatefulWidget {
   final List<String> unitOptions;
   final List<String> companyOptions;
   final List<String> driverOptions;
-  final List<String> depositPeopleOptions;
-  final List<String> expensePeopleOptions;
   final bool canGoPrevious;
   final bool canGoNext;
   final String? positionLabel;
@@ -3531,8 +3590,6 @@ class _VoucherEditorDialog extends StatefulWidget {
     required this.unitOptions,
     required this.companyOptions,
     required this.driverOptions,
-    required this.depositPeopleOptions,
-    required this.expensePeopleOptions,
     required this.onPersistRecord,
     this.canGoPrevious = false,
     this.canGoNext = false,
@@ -3547,12 +3604,15 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
   late _VoucherType _type;
   late final TextEditingController _folioC;
   late final TextEditingController _dateC;
-  late String _person;
+  String _personCatalogId = '';
+  String _person = '';
   late final TextEditingController _generalCommentC;
+  String _rubricCatalogId = '';
   String _rubric = '';
   String? _persistedVoucherId;
   bool _draftPersisted = false;
   bool _saving = false;
+  bool _printing = false;
   final List<_LineItemDraft> _lines = <_LineItemDraft>[];
 
   @override
@@ -3563,25 +3623,19 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
     _persistedVoucherId = initial?.id;
     _draftPersisted =
         _persistedVoucherId != null && _persistedVoucherId!.isNotEmpty;
+    _personCatalogId = initial?.personCatalogId ?? '';
+    _rubricCatalogId = initial?.rubricCatalogId ?? '';
     _folioC = TextEditingController(
       text: initial?.folio ?? _suggestedFolioForType(_type),
     );
     _dateC = TextEditingController(
       text: initial?.date ?? _formatVoucherUiDate(DateTime.now()),
     );
-    final availablePeople = _peopleOptionsForType(_type);
-    final availableRubrics = _rubricOptionsForType(_type);
     final initialPerson = (initial?.person ?? '').trim().toUpperCase();
-    _person = availablePeople.contains(initialPerson)
-        ? initialPerson
-        : (availablePeople.isNotEmpty ? availablePeople.first : initialPerson);
-    _generalCommentC = TextEditingController(text: initial?.comment ?? '');
     final initialRubric = (initial?.rubric ?? '').trim();
-    _rubric = availableRubrics.contains(initialRubric)
-        ? initialRubric
-        : (availableRubrics.isNotEmpty
-              ? availableRubrics.first
-              : initialRubric);
+    _person = initialPerson;
+    _rubric = initialRubric;
+    _generalCommentC = TextEditingController(text: initial?.comment ?? '');
     if (initial != null) {
       for (final line in initial.lines) {
         _lines.add(_LineItemDraft.fromRecord(line));
@@ -3590,10 +3644,16 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
     if (_lines.isEmpty) {
       _lines.add(_LineItemDraft());
     }
+    MenudeoCashTaxonomyStore.instance.addListener(_handleTaxonomyUpdated);
+    _reconcileSelections(
+      preserveHistoricalValues: initial != null,
+      allowDefaults: initial == null,
+    );
   }
 
   @override
   void dispose() {
+    MenudeoCashTaxonomyStore.instance.removeListener(_handleTaxonomyUpdated);
     _folioC.dispose();
     _dateC.dispose();
     _generalCommentC.dispose();
@@ -3609,7 +3669,18 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
         : widget.suggestedExpenseFolio;
   }
 
-  bool get _canPrint => _draftPersisted && !_saving;
+  List<String> _mergeCurrentValueIntoOptions(
+    List<String> options,
+    String currentValue,
+  ) {
+    final normalizedCurrent = currentValue.trim();
+    if (normalizedCurrent.isEmpty || options.contains(normalizedCurrent)) {
+      return options;
+    }
+    return <String>[normalizedCurrent, ...options];
+  }
+
+  bool get _canPrint => _draftPersisted && !_saving && !_printing;
 
   _VoucherRecord? _buildDraftRecord() {
     final cleanLines = _lines
@@ -3628,6 +3699,8 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
       id: (_persistedVoucherId?.isNotEmpty ?? false)
           ? _persistedVoucherId
           : widget.initial?.id,
+      personCatalogId: _personCatalogId,
+      rubricCatalogId: _rubricCatalogId,
       folio: _folioC.text.trim(),
       date: _dateC.text.trim(),
       type: _type,
@@ -3654,16 +3727,21 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
   }
 
   List<String> _peopleOptionsForType(_VoucherType type) {
-    return type == _VoucherType.deposit
-        ? widget.depositPeopleOptions
-        : widget.expensePeopleOptions;
+    final options = MenudeoCashTaxonomyStore.instance.peopleFor(
+      type == _VoucherType.deposit
+          ? MenudeoCashMovementType.deposit
+          : MenudeoCashMovementType.expense,
+    );
+    return _mergeCurrentValueIntoOptions(options, _person);
   }
 
   List<String> _rubricOptionsForType(_VoucherType type) {
-    return (_voucherConfigFromCatalog()[type] ??
-            const <String, List<_ConceptConfig>>{})
-        .keys
-        .toList(growable: false);
+    final options =
+        (_voucherConfigFromCatalog()[type] ??
+                const <String, List<_ConceptConfig>>{})
+            .keys
+            .toList(growable: false);
+    return _mergeCurrentValueIntoOptions(options, _rubric);
   }
 
   List<_ConceptConfig> _conceptOptionsForRubric() {
@@ -3673,9 +3751,129 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
   }
 
   _ConceptConfig? _findConcept(String value) {
+    final normalizedValue = _normalizeCatalogValue(value);
     for (final concept in _conceptOptionsForRubric()) {
-      if (concept.label == value) return concept;
+      if (_normalizeCatalogValue(concept.label) == normalizedValue) {
+        return concept;
+      }
     }
+    return null;
+  }
+
+  void _handleTaxonomyUpdated() {
+    if (!mounted) return;
+    setState(() {
+      _reconcileSelections(
+        preserveHistoricalValues: true,
+        allowDefaults: false,
+      );
+    });
+  }
+
+  void _reconcileSelections({
+    required bool preserveHistoricalValues,
+    required bool allowDefaults,
+  }) {
+    final resolvedPerson = _resolveNamedCatalogSelection(
+      currentId: _personCatalogId,
+      currentLabel: _person,
+      options: MenudeoCashTaxonomyStore.instance.peopleFor(
+        _type == _VoucherType.deposit
+            ? MenudeoCashMovementType.deposit
+            : MenudeoCashMovementType.expense,
+      ),
+      idForOption: (label) => _personCatalogIdFor(_type, label),
+      canonicalize: (value) => value.trim().toUpperCase(),
+      preserveUnknown: preserveHistoricalValues,
+      allowDefault: allowDefaults,
+    );
+    _personCatalogId = resolvedPerson.id;
+    _person = resolvedPerson.label;
+    final resolvedRubric = _resolveNamedCatalogSelection(
+      currentId: _rubricCatalogId,
+      currentLabel: _rubric,
+      options: _rubricOptionsForType(_type),
+      idForOption: (label) => _rubricCatalogIdFor(_type, label),
+      canonicalize: (value) => value.trim(),
+      preserveUnknown: preserveHistoricalValues,
+      allowDefault: allowDefaults,
+    );
+    _rubricCatalogId = resolvedRubric.id;
+    _rubric = resolvedRubric.label;
+    for (final line in _lines) {
+      _reconcileLineSelection(
+        line,
+        preserveHistoricalValues: preserveHistoricalValues,
+      );
+    }
+  }
+
+  void _reconcileLineSelection(
+    _LineItemDraft line, {
+    required bool preserveHistoricalValues,
+  }) {
+    final concepts = _conceptOptionsForRubric();
+    final matchedConcept = _resolveConceptSelection(
+      line,
+      concepts,
+      preserveHistoricalValues: preserveHistoricalValues,
+    );
+    if (matchedConcept == null) {
+      if (!preserveHistoricalValues) {
+        line.conceptId = '';
+        line.concept = '';
+        line.unit = '';
+        line.quantity = '';
+        line.company = '';
+        line.driver = '';
+        line.destination = '';
+        line.subconcept = '';
+        line.mode = '';
+      }
+      return;
+    }
+    line.conceptId = matchedConcept.id;
+    line.concept = matchedConcept.label;
+    line.subconcept = _resolveNamedCatalogSelection(
+      currentId: line.subconcept,
+      currentLabel: line.subconcept,
+      options: matchedConcept.subconcepts,
+      idForOption: (label) => label,
+      canonicalize: _normalizeCatalogValue,
+      preserveUnknown: preserveHistoricalValues,
+      allowDefault: false,
+    ).label;
+    line.mode = _resolveNamedCatalogSelection(
+      currentId: line.mode,
+      currentLabel: line.mode,
+      options: matchedConcept.modes,
+      idForOption: (label) => label,
+      canonicalize: _normalizeCatalogValue,
+      preserveUnknown: preserveHistoricalValues,
+      allowDefault: false,
+    ).label;
+  }
+
+  _ConceptConfig? _resolveConceptSelection(
+    _LineItemDraft line,
+    List<_ConceptConfig> concepts, {
+    required bool preserveHistoricalValues,
+  }) {
+    final normalizedId = _normalizeCatalogValue(line.conceptId);
+    if (normalizedId.isNotEmpty) {
+      for (final concept in concepts) {
+        if (_normalizeCatalogValue(concept.id) == normalizedId) {
+          return concept;
+        }
+      }
+    }
+    final normalizedLabel = _normalizeCatalogValue(line.concept);
+    for (final concept in concepts) {
+      if (_normalizeCatalogValue(concept.label) == normalizedLabel) {
+        return concept;
+      }
+    }
+    if (!preserveHistoricalValues) return null;
     return null;
   }
 
@@ -3684,27 +3882,16 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
     (sum, line) => sum + (double.tryParse(line.amountC.text.trim()) ?? 0),
   );
 
-  void _syncLineWithRubric(_LineItemDraft line) {
-    final concepts = _conceptOptionsForRubric().map((e) => e.label).toSet();
-    if (!concepts.contains(line.concept)) {
-      line.concept = '';
-      line.unit = '';
-      line.quantity = '';
-      line.company = '';
-      line.driver = '';
-      line.destination = '';
-      line.subconcept = '';
-      line.mode = '';
-    }
-  }
-
   Future<void> _printSavedVoucher() async {
     final record = _buildDraftRecord();
-    if (record == null || !_draftPersisted) return;
+    if (record == null || !_draftPersisted || _printing) return;
+    setState(() => _printing = true);
     try {
       await _openVoucherPdfForRecord(
         record: _VoucherRecord(
           id: _persistedVoucherId,
+          personCatalogId: record.personCatalogId,
+          rubricCatalogId: record.rubricCatalogId,
           folio: record.folio,
           date: record.date,
           type: record.type,
@@ -3722,6 +3909,10 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } finally {
+      if (mounted) {
+        setState(() => _printing = false);
+      }
     }
   }
 
@@ -4036,19 +4227,11 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                                                       _type,
                                                     );
                                               }
-                                              final availablePeople =
-                                                  _peopleOptionsForType(_type);
-                                              final availableRubrics =
-                                                  _rubricOptionsForType(_type);
-                                              _person = availablePeople.isEmpty
-                                                  ? ''
-                                                  : availablePeople.first;
-                                              _rubric = availableRubrics.isEmpty
-                                                  ? ''
-                                                  : availableRubrics.first;
-                                              for (final line in _lines) {
-                                                _syncLineWithRubric(line);
-                                              }
+                                              _reconcileSelections(
+                                                preserveHistoricalValues:
+                                                    widget.initial != null,
+                                                allowDefaults: true,
+                                              );
                                             });
                                           },
                                         ),
@@ -4073,7 +4256,14 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                                               ? 'Recibido de'
                                               : 'Entregado a',
                                           onChanged: (value) {
-                                            setState(() => _person = value);
+                                            setState(() {
+                                              _personCatalogId =
+                                                  _personCatalogIdFor(
+                                                    _type,
+                                                    value,
+                                                  );
+                                              _person = value;
+                                            });
                                           },
                                         ),
                                       ),
@@ -4089,10 +4279,16 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                                           hint: 'Rubro',
                                           onChanged: (value) {
                                             setState(() {
+                                              _rubricCatalogId =
+                                                  _rubricCatalogIdFor(
+                                                    _type,
+                                                    value,
+                                                  );
                                               _rubric = value;
-                                              for (final line in _lines) {
-                                                _syncLineWithRubric(line);
-                                              }
+                                              _reconcileSelections(
+                                                preserveHistoricalValues: true,
+                                                allowDefaults: false,
+                                              );
                                             });
                                           },
                                         ),
@@ -4162,9 +4358,13 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                                   child: OutlinedButton(
                                     style: _voucherSecondaryButtonStyle(tokens),
                                     onPressed: () {
-                                      setState(
-                                        () => _lines.add(_LineItemDraft()),
-                                      );
+                                      setState(() {
+                                        _lines.add(_LineItemDraft());
+                                        _reconcileSelections(
+                                          preserveHistoricalValues: true,
+                                          allowDefaults: false,
+                                        );
+                                      });
                                     },
                                     child: const Text('+'),
                                   ),
@@ -4190,12 +4390,14 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                       const SizedBox(width: 10),
                       FilledButton.icon(
                         style: _voucherPrimaryButtonStyle(tokens),
-                        onPressed: _saving
+                        onPressed: (_saving || _printing)
                             ? null
-                            : () => _save(
-                                closeAfterSave: false,
-                                printAfterSave: true,
-                              ),
+                            : (_draftPersisted
+                                  ? _printSavedVoucher
+                                  : () => _save(
+                                      closeAfterSave: false,
+                                      printAfterSave: true,
+                                    )),
                         icon: const Icon(Icons.print_rounded),
                         label: Text(
                           _draftPersisted
@@ -4229,6 +4431,85 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
       ),
     );
   }
+}
+
+String _normalizeCatalogValue(String value) => value.trim().toUpperCase();
+
+class _ResolvedCatalogSelection {
+  final String id;
+  final String label;
+
+  const _ResolvedCatalogSelection({required this.id, required this.label});
+}
+
+_ResolvedCatalogSelection _resolveNamedCatalogSelection({
+  required String currentId,
+  required String currentLabel,
+  required List<String> options,
+  required String Function(String option) idForOption,
+  required String Function(String value) canonicalize,
+  required bool preserveUnknown,
+  required bool allowDefault,
+}) {
+  final normalizedId = _normalizeCatalogValue(currentId);
+  if (normalizedId.isNotEmpty) {
+    for (final option in options) {
+      if (_normalizeCatalogValue(idForOption(option)) == normalizedId) {
+        return _ResolvedCatalogSelection(
+          id: idForOption(option),
+          label: option,
+        );
+      }
+    }
+  }
+  final normalizedCurrent = canonicalize(currentLabel);
+  if (normalizedCurrent.isNotEmpty) {
+    for (final option in options) {
+      if (canonicalize(option) == normalizedCurrent) {
+        return _ResolvedCatalogSelection(
+          id: idForOption(option),
+          label: option,
+        );
+      }
+    }
+    if (preserveUnknown) {
+      return _ResolvedCatalogSelection(
+        id: currentId.trim(),
+        label: currentLabel.trim(),
+      );
+    }
+  }
+  if (allowDefault && options.isNotEmpty) {
+    return _ResolvedCatalogSelection(
+      id: idForOption(options.first),
+      label: options.first,
+    );
+  }
+  return _ResolvedCatalogSelection(
+    id: normalizedCurrent.isEmpty ? '' : currentId.trim(),
+    label: normalizedCurrent.isEmpty ? '' : currentLabel.trim(),
+  );
+}
+
+String _catalogTokenForLabel(String value) {
+  final normalized = value.trim().toLowerCase();
+  if (normalized.isEmpty) return '';
+  final sanitized = normalized
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
+      .replaceAll(RegExp(r'^-+|-+$'), '');
+  return sanitized.isEmpty ? 'sin-etiqueta' : sanitized;
+}
+
+String _personCatalogIdFor(_VoucherType type, String label) {
+  final token = _catalogTokenForLabel(label);
+  if (token.isEmpty) return '';
+  return '${type.name}-person-$token';
+}
+
+String _rubricCatalogIdFor(_VoucherType type, String label) {
+  final token = _catalogTokenForLabel(label);
+  if (token.isEmpty) return '';
+  return '${type.name}-rubric-$token';
 }
 
 TextStyle _voucherInputTextStyle(ContractAreaTokens tokens) => TextStyle(
@@ -4617,10 +4898,10 @@ class _VoucherStatusChip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          const Text(
-            'Pendiente por comprobar',
+          Text(
+            label,
             textAlign: TextAlign.center,
-            style: TextStyle(
+            style: const TextStyle(
               fontSize: 11.5,
               fontWeight: FontWeight.w800,
               color: Color(0xFF8F2D22),
@@ -4668,6 +4949,13 @@ class _VoucherLineCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final conceptItems = concepts
+        .map((item) => item.label)
+        .toList(growable: false);
+    final mergedConceptItems =
+        line.concept.trim().isNotEmpty && !conceptItems.contains(line.concept)
+        ? <String>[line.concept, ...conceptItems]
+        : conceptItems;
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
@@ -4708,9 +4996,16 @@ class _VoucherLineCard extends StatelessWidget {
                   compact: true,
                   child: _InlineDropdown(
                     value: line.concept,
-                    items: concepts.map((item) => item.label).toList(),
+                    items: mergedConceptItems,
                     hint: 'Seleccionar concepto',
                     onChanged: (value) {
+                      final matched = concepts
+                          .cast<_ConceptConfig?>()
+                          .firstWhere(
+                            (item) => item?.label == value,
+                            orElse: () => null,
+                          );
+                      line.conceptId = matched?.id ?? line.conceptId;
                       line.concept = value;
                       line.unit = '';
                       line.quantity = '';

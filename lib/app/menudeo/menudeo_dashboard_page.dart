@@ -594,16 +594,14 @@ class _MenudeoDashboardPageState extends State<MenudeoDashboardPage> {
           depositsTotal: _depositsToday,
           expensesTotal: _expensesToday,
         );
-    final capture = base.status == 'EN_CONCILIACION'
-        ? _CashCountCapture(
-            countedCashTotal: base.countedCashTotal,
-            notes: base.notes,
-          )
-        : await showDialog<_CashCountCapture>(
-            context: context,
-            barrierColor: Colors.black.withValues(alpha: 0.24),
-            builder: (context) => _CashCountDialog(initial: base),
-          );
+    final capture = await showDialog<_CashCountCapture>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.24),
+      builder: (context) => _CashCountDialog(
+        initial: base,
+        resumeMode: base.status == 'EN_CONCILIACION',
+      ),
+    );
     if (capture == null || !mounted) return;
 
     final currentCutId = base.id;
@@ -2395,6 +2393,7 @@ class _DashboardCashCutDialogState extends State<_DashboardCashCutDialog> {
   late final TextEditingController _pendingC;
   late final TextEditingController _notesC;
   String _status = 'ABIERTO';
+  bool _cashCutPrintInProgress = false;
 
   @override
   void initState() {
@@ -2658,6 +2657,17 @@ class _DashboardCashCutDialogState extends State<_DashboardCashCutDialog> {
   }
 
   Future<void> _openCashCutPdf() async {
+    if (_cashCutPrintInProgress) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('La impresión del corte ya está en proceso.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    _cashCutPrintInProgress = true;
     try {
       final pdfBytes = await _buildCashCutPrintPdfBytes();
       final stamp = DateTime.now().millisecondsSinceEpoch;
@@ -2674,6 +2684,8 @@ class _DashboardCashCutDialogState extends State<_DashboardCashCutDialog> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } finally {
+      _cashCutPrintInProgress = false;
     }
   }
 
@@ -4283,8 +4295,9 @@ class _CashCountCapture {
 
 class _CashCountDialog extends StatefulWidget {
   final _MenudeoCashCutDraft initial;
+  final bool resumeMode;
 
-  const _CashCountDialog({required this.initial});
+  const _CashCountDialog({required this.initial, this.resumeMode = false});
 
   @override
   State<_CashCountDialog> createState() => _CashCountDialogState();
@@ -4315,6 +4328,15 @@ class _CashCountDialogState extends State<_CashCountDialog> {
   @override
   Widget build(BuildContext context) {
     final tokens = menudeoAreaTokens;
+    final title = widget.resumeMode
+        ? 'Actualizar caja real'
+        : 'Conteo real de caja';
+    final helperText = widget.resumeMode
+        ? 'Puedes corregir la cantidad de caja real y luego seguir exactamente con la conciliacion donde se quedó.'
+        : 'Captura el dinero real contado en caja y luego pasamos a comprobar gastos, depósitos, ventas y compras en ese orden.';
+    final actionLabel = widget.resumeMode
+        ? 'Guardar y reanudar conciliacion'
+        : 'Empezar comprobación';
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 22, vertical: 18),
@@ -4335,10 +4357,10 @@ class _CashCountDialogState extends State<_CashCountDialog> {
               children: [
                 Row(
                   children: [
-                    const Expanded(
+                    Expanded(
                       child: Text(
-                        'Conteo real de caja',
-                        style: TextStyle(
+                        title,
+                        style: const TextStyle(
                           fontSize: 24,
                           fontWeight: FontWeight.w900,
                         ),
@@ -4352,7 +4374,7 @@ class _CashCountDialogState extends State<_CashCountDialog> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'Captura el dinero real contado en caja y luego pasamos a comprobar gastos, depósitos, ventas y compras en ese orden.',
+                  helperText,
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w700,
@@ -4410,7 +4432,7 @@ class _CashCountDialogState extends State<_CashCountDialog> {
                         );
                       },
                       icon: const Icon(Icons.play_arrow_rounded),
-                      label: const Text('Empezar comprobación'),
+                      label: Text(actionLabel),
                     ),
                   ],
                 ),

@@ -1067,6 +1067,7 @@ class _CashCutEditorDialogState extends State<_CashCutEditorDialog> {
   late final TextEditingController _pendingC;
   late final TextEditingController _notesC;
   String _status = 'ABIERTO';
+  bool _cashCutPrintInProgress = false;
 
   @override
   void initState() {
@@ -1343,6 +1344,16 @@ class _CashCutEditorDialogState extends State<_CashCutEditorDialog> {
   }
 
   Future<void> _openCashCutPdf() async {
+    if (_cashCutPrintInProgress) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('La impresión del corte ya está en proceso.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+    _cashCutPrintInProgress = true;
     try {
       final pdfBytes = await _buildCashCutPrintPdfBytes();
       final stamp = DateTime.now().millisecondsSinceEpoch;
@@ -1359,6 +1370,8 @@ class _CashCutEditorDialogState extends State<_CashCutEditorDialog> {
           behavior: SnackBarBehavior.floating,
         ),
       );
+    } finally {
+      _cashCutPrintInProgress = false;
     }
   }
 

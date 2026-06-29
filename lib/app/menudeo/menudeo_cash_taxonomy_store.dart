@@ -410,12 +410,16 @@ class MenudeoCashTaxonomyStore
           .toList(growable: false);
     }
 
-    final loadedDepositPeople = _stringListFromJson(payload['deposit_people']);
+    final loadedDepositPeople = _normalizePeopleList(
+      _stringListFromJson(payload['deposit_people']),
+    );
     if (loadedDepositPeople.isNotEmpty) {
       depositPeople.value = loadedDepositPeople;
     }
 
-    final loadedExpensePeople = _stringListFromJson(payload['expense_people']);
+    final loadedExpensePeople = _normalizePeopleList(
+      _stringListFromJson(payload['expense_people']),
+    );
     if (loadedExpensePeople.isNotEmpty) {
       expensePeople.value = loadedExpensePeople;
     }
@@ -472,11 +476,11 @@ class MenudeoCashTaxonomyStore
   }
 
   List<String> peopleFor(MenudeoCashMovementType type) {
-    return List<String>.from(
+    return _normalizePeopleList(
       type == MenudeoCashMovementType.deposit
           ? depositPeople.value
           : expensePeople.value,
-    )..sort();
+    );
   }
 
   void addPersonOption({
@@ -488,8 +492,8 @@ class MenudeoCashTaxonomyStore
     final target = movementType == MenudeoCashMovementType.deposit
         ? depositPeople
         : expensePeople;
-    if (target.value.contains(normalized)) return;
-    target.value = [...target.value, normalized]..sort();
+    if (_containsNormalizedValue(target.value, normalized)) return;
+    target.value = _normalizePeopleList(<String>[...target.value, normalized]);
     notifyListeners();
     _schedulePersist();
   }
@@ -501,9 +505,10 @@ class MenudeoCashTaxonomyStore
     final target = movementType == MenudeoCashMovementType.deposit
         ? depositPeople
         : expensePeople;
-    target.value = target.value
-        .where((item) => item != label)
-        .toList(growable: false);
+    final normalized = label.trim().toUpperCase();
+    target.value = _normalizePeopleList(
+      target.value.where((item) => item.trim().toUpperCase() != normalized),
+    );
     notifyListeners();
     _schedulePersist();
   }
@@ -515,8 +520,8 @@ class MenudeoCashTaxonomyStore
   Map<String, dynamic> _toJson() {
     return <String, dynamic>{
       'rubrics': value.map(_rubricToJson).toList(growable: false),
-      'deposit_people': depositPeople.value,
-      'expense_people': expensePeople.value,
+      'deposit_people': _normalizePeopleList(depositPeople.value),
+      'expense_people': _normalizePeopleList(expensePeople.value),
     };
   }
 
@@ -553,6 +558,28 @@ class MenudeoCashTaxonomyStore
       'comment_label': concept.commentLabel,
     };
   }
+}
+
+List<String> _normalizePeopleList(Iterable<String> values) {
+  final seen = <String>{};
+  final normalized = <String>[];
+  for (final raw in values) {
+    final value = raw.trim().toUpperCase();
+    if (value.isEmpty || !seen.add(value)) continue;
+    normalized.add(value);
+  }
+  normalized.sort();
+  return normalized;
+}
+
+bool _containsNormalizedValue(Iterable<String> values, String target) {
+  final normalizedTarget = target.trim().toUpperCase();
+  for (final value in values) {
+    if (value.trim().toUpperCase() == normalizedTarget) {
+      return true;
+    }
+  }
+  return false;
 }
 
 MenudeoCashRubricDefinition _rubricFromJson(Map<String, dynamic> json) {

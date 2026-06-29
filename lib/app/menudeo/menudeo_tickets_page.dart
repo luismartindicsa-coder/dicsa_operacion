@@ -30,7 +30,9 @@ import 'menudeo_delete_confirm_dialog.dart';
 import 'menudeo_deposits_expenses_page.dart';
 import 'menudeo_filter_widgets.dart';
 import 'menudeo_header_brand.dart';
+import 'menudeo_local_draft_store.dart';
 import 'menudeo_metric_card.dart';
+import 'menudeo_pending_sync_store.dart';
 import 'menudeo_price_adjustments_page.dart';
 import 'menudeo_session_confirm_dialog.dart';
 import 'menudeo_sorting.dart';
@@ -175,6 +177,9 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
     debugLabel: 'tickets_rows_viewport',
   );
   final Map<int, GlobalKey> _ticketRowItemKeys = <int, GlobalKey>{};
+  final Set<String> _activePrintKeys = <String>{};
+  int _pendingSyncCount = 0;
+  bool _syncingPending = false;
   Set<String> _providerGridFilter = <String>{};
   Set<String> _materialGridFilter = <String>{};
   Set<String> _statusGridFilter = <String>{};
@@ -193,6 +198,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   String get _emptyGridLabel => _isSales
       ? 'No hay tickets de venta para mostrar.'
       : 'No hay tickets para mostrar.';
+  String get _ticketDraftStorageKey => 'ticket_draft_${_flowDirection}';
 
   List<_TicketGridEntry> _lotEntriesForInitialIndex(int initialIndex) {
     final filteredEntries = _filteredTicketEntries;
@@ -212,6 +218,8 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
     unawaited(HardwareKeyboard.instance.syncKeyboardState());
     unawaited(_loadCatalogPrices());
     unawaited(_loadTickets());
+    unawaited(_refreshPendingSyncCount());
+    unawaited(_syncPendingTicketOperations(showFeedback: false));
     for (final controller in <TextEditingController>[
       _ticketC,
       _brutoC,
@@ -1160,6 +1168,272 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
     });
   }
 
+  Future<T?> _runPrintLocked<T>({
+    required String key,
+    required Future<T> Function() action,
+  }) async {
+    if (_activePrintKeys.contains(key)) {
+      _toast('Ya se está procesando esa impresión.');
+      return null;
+    }
+    _activePrintKeys.add(key);
+    try {
+      return await action();
+    } finally {
+      _activePrintKeys.remove(key);
+    }
+  }
+
+  String _ticketFingerprintFromRows(List<Map<String, dynamic>> rows) {
+    final values =
+        rows
+            .map(
+              (row) => _ticketNumberFromParts(
+                row['ticket_base']?.toString() ?? '',
+                row['ticket_suffix']?.toString(),
+              ),
+            )
+            .where((value) => value.isNotEmpty)
+            .toList()
+          ..sort();
+    return values.join('|');
+  }
+
+  Future<void> _refreshPendingSyncCount() async {
+    final count = await MenudeoPendingSyncStore.countForScope('tickets');
+    if (!mounted) return;
+    setState(() => _pendingSyncCount = count);
+  }
+
+  Future<void> _enqueuePendingTicketRows({
+    required List<Map<String, dynamic>> rows,
+    required Object error,
+  }) async {
+    final fingerprint = _ticketFingerprintFromRows(rows);
+    if (fingerprint.isEmpty) {
+      _toast('No se pudo resguardar el ticket para sincronización: $error');
+      return;
+    }
+    await MenudeoPendingSyncStore.enqueue(
+      scope: 'tickets',
+      operation: 'create_ticket_batch',
+      fingerprint: fingerprint,
+      payload: <String, dynamic>{'rows': rows, 'direction': _flowDirection},
+    );
+    await _refreshPendingSyncCount();
+    _toast('Ticket resguardado localmente. Quedó pendiente por sincronizar.');
+  }
+
+  Future<void> _syncPendingTicketOperations({
+    required bool showFeedback,
+  }) async {
+    if (_syncingPending) return;
+    setState(() => _syncingPending = true);
+    var syncedCount = 0;
+    var failedCount = 0;
+    try {
+      final entries = await MenudeoPendingSyncStore.loadEntriesForScope(
+        'tickets',
+      );
+      for (final entry in entries) {
+        final rawRows = entry.payload['rows'];
+        if (rawRows is! List || rawRows.isEmpty) {
+          await MenudeoPendingSyncStore.removeById(entry.id);
+          continue;
+        }
+        final rows = rawRows
+            .whereType<Map>()
+            .map((row) => Map<String, dynamic>.from(row))
+            .toList(growable: false);
+        final ticketNumbers = rows
+            .map(
+              (row) => _ticketNumberFromParts(
+                row['ticket_base']?.toString() ?? '',
+                row['ticket_suffix']?.toString(),
+              ),
+            )
+            .where((value) => value.isNotEmpty)
+            .toList(growable: false);
+        if (ticketNumbers.isEmpty) {
+          await MenudeoPendingSyncStore.removeById(entry.id);
+          continue;
+        }
+        try {
+          final existingRaw = await _supa
+              .from('men_tickets')
+              .select('ticket_number')
+              .inFilter('ticket_number', ticketNumbers);
+          final existing = (existingRaw as List)
+              .map((row) => (row as Map<String, dynamic>)['ticket_number'])
+              .whereType<String>()
+              .toSet();
+          if (existing.length == ticketNumbers.length) {
+            await MenudeoPendingSyncStore.removeById(entry.id);
+            syncedCount++;
+            continue;
+          }
+          final openCashCutId = await _fetchOpenCashCutId();
+          if (openCashCutId == null) {
+            failedCount++;
+            continue;
+          }
+          final payloadRows = rows
+              .map(
+                (row) => <String, dynamic>{
+                  ...row,
+                  'cash_cut_id': openCashCutId,
+                },
+              )
+              .toList(growable: false);
+          await _supa.from('men_tickets').insert(payloadRows);
+          await MenudeoPendingSyncStore.removeById(entry.id);
+          syncedCount++;
+        } on PostgrestException catch (error) {
+          if (_isDuplicateTicketError(error)) {
+            await MenudeoPendingSyncStore.removeById(entry.id);
+            syncedCount++;
+          } else {
+            failedCount++;
+          }
+        } catch (_) {
+          failedCount++;
+        }
+      }
+      if (syncedCount > 0) {
+        await _loadTickets();
+      }
+    } finally {
+      await _refreshPendingSyncCount();
+      if (mounted) {
+        setState(() => _syncingPending = false);
+      }
+    }
+    if (!showFeedback) return;
+    if (syncedCount > 0 && failedCount == 0) {
+      _toast(
+        syncedCount == 1
+            ? 'Se sincronizó 1 ticket pendiente.'
+            : 'Se sincronizaron $syncedCount tickets pendientes.',
+      );
+      return;
+    }
+    if (syncedCount > 0 || failedCount > 0) {
+      _toast(
+        'Sincronización de tickets: $syncedCount enviados, $failedCount pendientes.',
+      );
+    }
+  }
+
+  Map<String, dynamic> _buildTicketDraftBackupPayload() {
+    return <String, dynamic>{
+      'selected_date': _selectedDate.toIso8601String(),
+      'ticket': _ticketC.text.trim(),
+      'provider': _selectedProvider,
+      'material': _selectedMaterial,
+      'status': _selectedStatus,
+      'bruto': _brutoC.text.trim(),
+      'tara': _taraC.text.trim(),
+      'humedad': _humedadC.text.trim(),
+      'basura': _basuraC.text.trim(),
+      'precio': _precioC.text.trim(),
+      'sobreprecio': _sobreprecioC.text.trim(),
+      'exit_order_number': _exitOrderNumberC.text.trim(),
+      'comentario': _comentarioC.text.trim(),
+      'split_enabled': _splitEnabled,
+      'split_count': _splitCount,
+      'split_drafts': _splitDrafts
+          .map(
+            (draft) => <String, dynamic>{
+              'selected_material': draft.selectedMaterial,
+              'bruto': draft.brutoC.text.trim(),
+              'tara': draft.taraC.text.trim(),
+              'humedad': draft.humedadC.text.trim(),
+              'basura': draft.basuraC.text.trim(),
+              'sobreprecio': draft.sobreprecioC.text.trim(),
+              'comentario': draft.comentarioC.text.trim(),
+            },
+          )
+          .toList(growable: false),
+    };
+  }
+
+  Future<void> _saveTicketDraftBackup() async {
+    await MenudeoLocalDraftStore.saveDraft(
+      key: _ticketDraftStorageKey,
+      payload: _buildTicketDraftBackupPayload(),
+    );
+  }
+
+  Future<bool> _restoreTicketDraftBackup() async {
+    final payload = await MenudeoLocalDraftStore.loadDraft(
+      _ticketDraftStorageKey,
+    );
+    if (payload == null) return false;
+    _selectedDate =
+        DateTime.tryParse((payload['selected_date'] ?? '').toString()) ??
+        DateTime.now();
+    _ticketC.text = (payload['ticket'] ?? '').toString();
+    _selectedProvider = (payload['provider'] ?? '').toString();
+    _selectedMaterial = (payload['material'] ?? '').toString();
+    _selectedStatus = (payload['status'] ?? 'PENDIENTE').toString();
+    _brutoC.text = (payload['bruto'] ?? '').toString();
+    _taraC.text = (payload['tara'] ?? '').toString();
+    _humedadC.text = (payload['humedad'] ?? '').toString();
+    _basuraC.text = (payload['basura'] ?? '').toString();
+    _precioC.text = (payload['precio'] ?? '').toString();
+    _sobreprecioC.text = (payload['sobreprecio'] ?? '').toString();
+    _exitOrderNumberC.text = (payload['exit_order_number'] ?? '').toString();
+    _comentarioC.text = (payload['comentario'] ?? '').toString();
+    _splitEnabled = payload['split_enabled'] == true;
+    _splitCount =
+        int.tryParse((payload['split_count'] ?? '').toString())?.clamp(2, 4) ??
+        2;
+    for (final draft in _splitDrafts) {
+      draft.dispose();
+    }
+    _splitDrafts.clear();
+    _syncSplitDrafts();
+    final rawDrafts = payload['split_drafts'];
+    if (rawDrafts is List) {
+      for (
+        var index = 0;
+        index < _splitDrafts.length && index < rawDrafts.length;
+        index++
+      ) {
+        final row = rawDrafts[index];
+        if (row is! Map) continue;
+        final parsed = Map<String, dynamic>.from(row);
+        final draft = _splitDrafts[index];
+        draft.selectedMaterial = (parsed['selected_material'] ?? '').toString();
+        draft.brutoC.text = (parsed['bruto'] ?? '').toString();
+        draft.taraC.text = (parsed['tara'] ?? '').toString();
+        draft.humedadC.text = (parsed['humedad'] ?? '').toString();
+        draft.basuraC.text = (parsed['basura'] ?? '').toString();
+        draft.sobreprecioC.text = (parsed['sobreprecio'] ?? '').toString();
+        draft.comentarioC.text = (parsed['comentario'] ?? '').toString();
+      }
+    }
+    _syncSelectedPrice();
+    return true;
+  }
+
+  Future<void> _clearTicketDraftBackup() async {
+    await MenudeoLocalDraftStore.clearDraft(_ticketDraftStorageKey);
+  }
+
+  Future<String?> _fetchOpenCashCutId() async {
+    final rows = await _supa
+        .from('men_cash_cuts')
+        .select('id')
+        .isFilter('closed_at', null)
+        .order('opened_at', ascending: false)
+        .limit(1);
+    final parsed = (rows as List).cast<Map<String, dynamic>>();
+    if (parsed.isEmpty) return null;
+    final id = (parsed.first['id'] ?? '').toString().trim();
+    return id.isEmpty ? null : id;
+  }
+
   Future<List<Map<String, dynamic>>?> _createTicketsFromDraft({
     bool refreshList = true,
   }) async {
@@ -1296,6 +1570,18 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       _toast('No se pudo validar el número de ticket: ${e.message}');
       return null;
     }
+    final openCashCutId = await _fetchOpenCashCutId();
+    if (openCashCutId == null) {
+      _toast(
+        'No hay una caja abierta en Menudeo. Abre caja antes de crear tickets.',
+      );
+      return null;
+    }
+    await _saveTicketDraftBackup();
+    final pendingFingerprint = _ticketFingerprintFromRows(createdRows);
+    for (final row in createdRows) {
+      row['cash_cut_id'] = openCashCutId;
+    }
     setState(() => _creatingTicketDraft = true);
     try {
       final inserted = await _supa
@@ -1305,6 +1591,12 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       final normalizedRows = (inserted as List)
           .map((row) => _normalizeTicketRow(Map<String, dynamic>.from(row)))
           .toList(growable: false);
+      await MenudeoPendingSyncStore.removeByFingerprint(
+        scope: 'tickets',
+        fingerprint: pendingFingerprint,
+      );
+      await _refreshPendingSyncCount();
+      await _clearTicketDraftBackup();
       if (refreshList) {
         await _loadTickets();
       }
@@ -1320,8 +1612,11 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
           'Ya existe un ticket con ese número. Usa un subticket distinto.',
         );
       } else {
-        _toast('No se pudo crear el ticket: ${e.message}');
+        await _enqueuePendingTicketRows(rows: createdRows, error: e.message);
       }
+      return null;
+    } catch (e) {
+      await _enqueuePendingTicketRows(rows: createdRows, error: e);
       return null;
     } finally {
       if (mounted) {
@@ -1634,13 +1929,75 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
 
   Future<void> _showNewTicketDialog() async {
     setState(_resetDraft);
+    final restoredLocalDraft = await _restoreTicketDraftBackup();
+    if (restoredLocalDraft) {
+      _toast(
+        'Se restauró un borrador local de ticket pendiente por sincronizar.',
+      );
+    }
     var draftPersisted = false;
+    var localDraftProtected = restoredLocalDraft;
+    var syncPending = restoredLocalDraft;
+    BuildContext? activeDialogContext;
+    void Function(VoidCallback fn)? refreshDialog;
     List<Map<String, dynamic>> persistedRows = <Map<String, dynamic>>[];
+    final trackedControllers = <TextEditingController>[
+      _ticketC,
+      _brutoC,
+      _taraC,
+      _humedadC,
+      _basuraC,
+      _precioC,
+      _sobreprecioC,
+      _exitOrderNumberC,
+      _comentarioC,
+    ];
+    void scheduleTicketDraftBackup() {
+      syncPending = true;
+      refreshDialog?.call(() {});
+      unawaited(() async {
+        await _saveTicketDraftBackup();
+        if (!(activeDialogContext?.mounted ?? false)) return;
+        localDraftProtected = true;
+        refreshDialog?.call(() {});
+      }());
+    }
+
+    final splitControllers = <TextEditingController>[];
+    void bindSplitDraftControllers() {
+      for (final controller in splitControllers) {
+        controller.removeListener(scheduleTicketDraftBackup);
+      }
+      splitControllers
+        ..clear()
+        ..addAll(
+          _splitDrafts.expand(
+            (draft) => <TextEditingController>[
+              draft.brutoC,
+              draft.taraC,
+              draft.humedadC,
+              draft.basuraC,
+              draft.sobreprecioC,
+              draft.comentarioC,
+            ],
+          ),
+        );
+      for (final controller in splitControllers) {
+        controller.addListener(scheduleTicketDraftBackup);
+      }
+    }
+
+    for (final controller in trackedControllers) {
+      controller.addListener(scheduleTicketDraftBackup);
+    }
+    bindSplitDraftControllers();
     await showDialog<void>(
       context: context,
       builder: (dialogContext) {
+        activeDialogContext = dialogContext;
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            refreshDialog = setDialogState;
             return Dialog(
               backgroundColor: Colors.transparent,
               insetPadding: const EdgeInsets.symmetric(
@@ -1670,6 +2027,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                           dateLabel: _todayLabel,
                           onPickDate: () async {
                             await _pickTicketDate();
+                            scheduleTicketDraftBackup();
                             setDialogState(() {});
                           },
                           ticketC: _ticketC,
@@ -1703,6 +2061,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                               }
                               _syncSelectedPrice();
                             });
+                            scheduleTicketDraftBackup();
                             setDialogState(() {});
                           },
                           onMaterialChanged: (value) {
@@ -1710,10 +2069,12 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                               _selectedMaterial = value;
                               _syncSelectedPrice();
                             });
+                            scheduleTicketDraftBackup();
                             setDialogState(() {});
                           },
                           onStatusChanged: (value) {
                             setState(() => _selectedStatus = value);
+                            scheduleTicketDraftBackup();
                             setDialogState(() {});
                           },
                           onSplitChanged: (value) {
@@ -1721,6 +2082,8 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                               _splitEnabled = value;
                               if (value) _syncSplitDrafts();
                             });
+                            bindSplitDraftControllers();
+                            scheduleTicketDraftBackup();
                             setDialogState(() {});
                           },
                           onSplitCountChanged: (value) {
@@ -1728,17 +2091,23 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                               _splitCount = value;
                               _syncSplitDrafts();
                             });
+                            bindSplitDraftControllers();
+                            scheduleTicketDraftBackup();
                             setDialogState(() {});
                           },
                           onSplitMaterialChanged: (index, value) {
                             setState(() {
                               _splitDrafts[index].selectedMaterial = value;
                             });
+                            scheduleTicketDraftBackup();
                             setDialogState(() {});
                           },
                           loadingCatalogPrice: _loadingCatalogPrices,
                           creatingTicketDraft: _creatingTicketDraft,
                           draftPersisted: draftPersisted,
+                          restoredLocalDraft: restoredLocalDraft,
+                          localDraftProtected: localDraftProtected,
+                          syncPending: syncPending,
                           hasCatalogPrice: _catalogPriceForSelection() != null,
                           onCreateTicket: () async {
                             if (draftPersisted) {
@@ -1753,6 +2122,9 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                             }
                             persistedRows = createdRows;
                             draftPersisted = true;
+                            localDraftProtected = false;
+                            syncPending = false;
+                            unawaited(_clearTicketDraftBackup());
                             setDialogState(() {});
                           },
                           onPrintTicket: () async {
@@ -1768,6 +2140,9 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                               }
                               persistedRows = createdRows;
                               draftPersisted = true;
+                              localDraftProtected = false;
+                              syncPending = false;
+                              unawaited(_clearTicketDraftBackup());
                               setDialogState(() {});
                             }
                             if (persistedRows.isEmpty) return;
@@ -1790,35 +2165,47 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
         );
       },
     );
+    for (final controller in trackedControllers) {
+      controller.removeListener(scheduleTicketDraftBackup);
+    }
+    for (final controller in splitControllers) {
+      controller.removeListener(scheduleTicketDraftBackup);
+    }
   }
 
   Future<void> _openTicketPdfForDraft({
     required Map<String, dynamic> row,
   }) async {
-    try {
-      final pdfBytes = await _buildTicketPrintPdfBytes(
-        row: row,
-        humidity: _numFrom(_humedadC),
-        trash: _numFrom(_basuraC),
-        premium: _numFrom(_sobreprecioC),
-        exitOrderNumber: _exitOrderNumberC.text.trim(),
-        status: _selectedStatus,
-        comment: _comentarioC.text.trim(),
-      );
-      final safeTicket = (row['ticket'] ?? 'ticket').toString().replaceAll(
-        RegExp(r'[^A-Za-z0-9_-]+'),
-        '_',
-      );
-      final stamp = DateTime.now().millisecondsSinceEpoch;
-      final file = File(
-        '${Directory.systemTemp.path}/menudeo_ticket_${safeTicket}_$stamp.pdf',
-      );
-      await file.writeAsBytes(pdfBytes, flush: true);
-      await _dispatchTicketPdf(file.path);
-      _toast('Ticket enviado a impresión');
-    } catch (e) {
-      _toast('No se pudo generar el ticket: $e');
-    }
+    final printKey =
+        'ticket-draft:${(row['id'] ?? row['ticket'] ?? row['ticket_number'] ?? 'draft').toString()}';
+    await _runPrintLocked<void>(
+      key: printKey,
+      action: () async {
+        try {
+          final pdfBytes = await _buildTicketPrintPdfBytes(
+            row: row,
+            humidity: _numFrom(_humedadC),
+            trash: _numFrom(_basuraC),
+            premium: _numFrom(_sobreprecioC),
+            exitOrderNumber: _exitOrderNumberC.text.trim(),
+            status: _selectedStatus,
+            comment: _comentarioC.text.trim(),
+          );
+          final safeTicket = (row['ticket'] ?? row['ticket_number'] ?? 'ticket')
+              .toString()
+              .replaceAll(RegExp(r'[^A-Za-z0-9_-]+'), '_');
+          final stamp = DateTime.now().millisecondsSinceEpoch;
+          final file = File(
+            '${Directory.systemTemp.path}/menudeo_ticket_${safeTicket}_$stamp.pdf',
+          );
+          await file.writeAsBytes(pdfBytes, flush: true);
+          await _dispatchTicketPdf(file.path);
+          _toast('Ticket enviado a impresión');
+        } catch (e) {
+          _toast('No se pudo generar el ticket: $e');
+        }
+      },
+    );
   }
 
   Future<void> _showTicketDetailDialog(int initialIndex) async {
@@ -2389,29 +2776,35 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
     required TextEditingController comentarioC,
     required String status,
   }) async {
-    try {
-      final pdfBytes = await _buildTicketPrintPdfBytes(
-        row: row,
-        humidity: _parseDraftController(humedadC),
-        trash: _parseDraftController(basuraC),
-        premium: _parseDraftController(sobreprecioC),
-        exitOrderNumber: exitOrderNumberC.text.trim(),
-        status: status,
-        comment: comentarioC.text.trim(),
-      );
-      final stamp = DateTime.now().millisecondsSinceEpoch;
-      final ticket = (row['ticket'] ?? 'ticket').toString().replaceAll(
-        RegExp(r'[^A-Za-z0-9_-]'),
-        '_',
-      );
-      final file = File(
-        '${Directory.systemTemp.path}/menudeo_ticket_${ticket}_$stamp.pdf',
-      );
-      await file.writeAsBytes(pdfBytes, flush: true);
-      await _dispatchTicketPdf(file.path);
-    } catch (e) {
-      _toast('No se pudo abrir el ticket en PDF: $e');
-    }
+    final printKey =
+        'ticket-dialog:${(row['id'] ?? row['ticket'] ?? row['ticket_number'] ?? 'ticket').toString()}';
+    await _runPrintLocked<void>(
+      key: printKey,
+      action: () async {
+        try {
+          final pdfBytes = await _buildTicketPrintPdfBytes(
+            row: row,
+            humidity: _parseDraftController(humedadC),
+            trash: _parseDraftController(basuraC),
+            premium: _parseDraftController(sobreprecioC),
+            exitOrderNumber: exitOrderNumberC.text.trim(),
+            status: status,
+            comment: comentarioC.text.trim(),
+          );
+          final stamp = DateTime.now().millisecondsSinceEpoch;
+          final ticket = (row['ticket'] ?? row['ticket_number'] ?? 'ticket')
+              .toString()
+              .replaceAll(RegExp(r'[^A-Za-z0-9_-]'), '_');
+          final file = File(
+            '${Directory.systemTemp.path}/menudeo_ticket_${ticket}_$stamp.pdf',
+          );
+          await file.writeAsBytes(pdfBytes, flush: true);
+          await _dispatchTicketPdf(file.path);
+        } catch (e) {
+          _toast('No se pudo abrir el ticket en PDF: $e');
+        }
+      },
+    );
   }
 
   Future<void> _dispatchTicketPdf(String path) async {
@@ -2563,8 +2956,12 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                 emptyGridLabel: _emptyGridLabel,
                 onShowNewTicket: _showNewTicketDialog,
                 onExportCsv: _exportFilteredTicketsCsv,
+                onSyncPending: () =>
+                    _syncPendingTicketOperations(showFeedback: true),
                 formatMoney: _money,
                 exportingCsv: _exportingCsv,
+                pendingSyncCount: _pendingSyncCount,
+                syncingPending: _syncingPending,
                 entries: visibleEntries,
                 filteredEntryCount: filteredEntries.length,
                 activeRowIndex: _activeRowIndex,
@@ -2718,8 +3115,11 @@ class _TicketsBody extends StatelessWidget {
   final String emptyGridLabel;
   final Future<void> Function() onShowNewTicket;
   final Future<void> Function() onExportCsv;
+  final Future<void> Function() onSyncPending;
   final String Function(num value) formatMoney;
   final bool exportingCsv;
+  final int pendingSyncCount;
+  final bool syncingPending;
   final List<_TicketGridEntry> entries;
   final int filteredEntryCount;
   final int activeRowIndex;
@@ -2771,8 +3171,11 @@ class _TicketsBody extends StatelessWidget {
     required this.emptyGridLabel,
     required this.onShowNewTicket,
     required this.onExportCsv,
+    required this.onSyncPending,
     required this.formatMoney,
     required this.exportingCsv,
+    required this.pendingSyncCount,
+    required this.syncingPending,
     required this.entries,
     required this.filteredEntryCount,
     required this.activeRowIndex,
@@ -2883,7 +3286,10 @@ class _TicketsBody extends StatelessWidget {
                       selectedImporteAvg: selectedImporteAvg,
                       formatMoney: formatMoney,
                       exportingCsv: exportingCsv,
+                      pendingSyncCount: pendingSyncCount,
+                      syncingPending: syncingPending,
                       onExportCsv: onExportCsv,
+                      onSyncPending: onSyncPending,
                       onShowNewTicket: onShowNewTicket,
                     ),
                     const SizedBox(height: 12),
@@ -2962,7 +3368,10 @@ class _TicketsModuleTopBar extends StatelessWidget {
   final double selectedImporteAvg;
   final String Function(num value) formatMoney;
   final bool exportingCsv;
+  final int pendingSyncCount;
+  final bool syncingPending;
   final Future<void> Function() onExportCsv;
+  final Future<void> Function() onSyncPending;
   final Future<void> Function() onShowNewTicket;
 
   const _TicketsModuleTopBar({
@@ -2980,7 +3389,10 @@ class _TicketsModuleTopBar extends StatelessWidget {
     required this.selectedImporteAvg,
     required this.formatMoney,
     required this.exportingCsv,
+    required this.pendingSyncCount,
+    required this.syncingPending,
     required this.onExportCsv,
+    required this.onSyncPending,
     required this.onShowNewTicket,
   });
 
@@ -3020,6 +3432,25 @@ class _TicketsModuleTopBar extends StatelessWidget {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
+                  if (pendingSyncCount > 0)
+                    OutlinedButton.icon(
+                      style: _ticketsGlassToolbarActionStyle(),
+                      onPressed: syncingPending
+                          ? null
+                          : () => unawaited(onSyncPending()),
+                      icon: syncingPending
+                          ? const SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.sync_rounded),
+                      label: Text(
+                        syncingPending
+                            ? 'Sincronizando...'
+                            : 'Pendientes ($pendingSyncCount)',
+                      ),
+                    ),
                   OutlinedButton.icon(
                     style: _ticketsGlassToolbarActionStyle(),
                     onPressed: exportingCsv
@@ -3291,6 +3722,55 @@ class _TicketDialogActionButton extends StatelessWidget {
   }
 }
 
+class _TicketStatusBadge extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _TicketStatusBadge({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            Colors.white.withValues(alpha: 0.96),
+            tokens.surfaceTint.withValues(alpha: 0.90),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: tokens.primarySoft.withValues(alpha: 0.26)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w800,
+              color: tokens.badgeText,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w900,
+              color: tokens.primaryStrong,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _NewTicketCard extends StatelessWidget {
   final String counterpartyLabel;
   final bool showExitOrderField;
@@ -3318,6 +3798,9 @@ class _NewTicketCard extends StatelessWidget {
   final bool loadingCatalogPrice;
   final bool creatingTicketDraft;
   final bool draftPersisted;
+  final bool restoredLocalDraft;
+  final bool localDraftProtected;
+  final bool syncPending;
   final bool hasCatalogPrice;
   final ValueChanged<String> onProviderChanged;
   final ValueChanged<String> onMaterialChanged;
@@ -3355,6 +3838,9 @@ class _NewTicketCard extends StatelessWidget {
     required this.loadingCatalogPrice,
     required this.creatingTicketDraft,
     required this.draftPersisted,
+    required this.restoredLocalDraft,
+    required this.localDraftProtected,
+    required this.syncPending,
     required this.hasCatalogPrice,
     required this.onProviderChanged,
     required this.onMaterialChanged,
@@ -3396,6 +3882,39 @@ class _NewTicketCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (restoredLocalDraft ||
+                  localDraftProtected ||
+                  syncPending ||
+                  draftPersisted)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      if (restoredLocalDraft)
+                        const _TicketStatusBadge(
+                          label: 'Resguardo local',
+                          value: 'BORRADOR RESTAURADO',
+                        ),
+                      if (localDraftProtected && !draftPersisted)
+                        const _TicketStatusBadge(
+                          label: 'Resguardo local',
+                          value: 'ACTIVO',
+                        ),
+                      _TicketStatusBadge(
+                        label: 'Sincronización',
+                        value: creatingTicketDraft
+                            ? 'GUARDANDO...'
+                            : syncPending
+                            ? 'PENDIENTE POR SINCRONIZAR'
+                            : draftPersisted
+                            ? 'GUARDADO EN SERVIDOR'
+                            : 'CAPTURA LOCAL',
+                      ),
+                    ],
+                  ),
+                ),
               Container(
                 decoration: BoxDecoration(
                   color: Colors.white.withValues(alpha: 0.88),
