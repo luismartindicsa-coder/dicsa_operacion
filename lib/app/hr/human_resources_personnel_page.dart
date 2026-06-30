@@ -2,16 +2,18 @@ import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_ui/app_ui_widgets.dart';
 import '../shared/app_shell.dart';
-import '../shared/archetypes/auxiliary_surfaces/date_picker_surface.dart';
 import '../shared/archetypes/auxiliary_surfaces/confirmation_dialog.dart';
 import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart';
 import '../shared/archetypes/grid_editable/grid_editable_shell.dart';
@@ -32,7 +34,6 @@ import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_dashboard_page.dart';
-import 'human_resources_mock_page.dart';
 import 'human_resources_theme.dart';
 
 const double _kHrActionsW = 118;
@@ -48,13 +49,117 @@ const List<String> _kHrEmpresaOptions = <String>[
   'WHIRLPOOL',
   'KS',
 ];
-const List<String> _kHrHorarioOptions = <String>[
-  'ADMIN',
-  'MATUTINO',
-  'VESPERTINO',
-  'NOCTURNO',
-  'MIXTO',
+const List<String> _kHrFileExtensions = <String>[
+  'pdf',
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'heic',
 ];
+const String _kHrEmployeeProfilesTable = 'hr_employee_profiles';
+const String _kHrEmployeeDocumentsTable = 'hr_employee_documents';
+const String _kHrEmployeeFilesBucket = 'hr_employee_files';
+const List<_HrExpedienteRequirementSpec> _kHrExpedienteRequirements =
+    <_HrExpedienteRequirementSpec>[
+      _HrExpedienteRequirementSpec(
+        key: 'solicitud',
+        title: 'Solicitud elaborada',
+        detail: 'Formato base de ingreso firmado por el colaborador.',
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'nss_imss',
+        title: 'No. de seguridad social (IMSS)',
+        detail: 'Comprobante o documento de afiliacion IMSS/NSS.',
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'antecedentes_penales',
+        title: 'Antecedentes penales actualizados',
+        detail: 'Constancia vigente del colaborador.',
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'acta_nacimiento',
+        title: 'Acta de nacimiento',
+        detail: 'Copia legible del acta.',
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'curp_doc',
+        title: 'CURP',
+        detail: 'Copia del CURP para expediente.',
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'ine',
+        title: 'INE',
+        detail: 'Copia de identificacion oficial.',
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'comprobante_domicilio',
+        title: 'Comprobante de domicilio',
+        detail: 'Documento reciente y legible.',
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'cartas_recomendacion',
+        title: 'Cartas de recomendacion',
+        detail: 'Se requieren dos cartas.',
+        minimumFiles: 2,
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'telefono_contacto',
+        title: 'Telefono de contacto',
+        detail: 'Se toma del dato base del expediente.',
+        kind: _HrExpedienteRequirementKind.baseTelefono,
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'cuenta_nomina',
+        title: 'Cuenta de nomina BBVA',
+        detail: 'Se toma del dato base cuando exista.',
+        kind: _HrExpedienteRequirementKind.baseCuenta,
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'credito_aviso',
+        title: 'Aviso de credito',
+        detail: 'Declarar Infonavit, Fonacot u otro credito.',
+        kind: _HrExpedienteRequirementKind.creditNotice,
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'antidoping',
+        title: 'Antidoping 5 parametros',
+        detail: 'Resultado/documento de control.',
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'constancia_fiscal',
+        title: 'Constancia de situacion fiscal',
+        detail: 'Documento actualizado.',
+      ),
+      _HrExpedienteRequirementSpec(
+        key: 'contrato',
+        title: 'Contrato',
+        detail: 'Contrato firmado y vigente.',
+      ),
+    ];
+
+enum _HrExpedienteRequirementKind {
+  upload,
+  baseTelefono,
+  baseCuenta,
+  creditNotice,
+}
+
+class _HrExpedienteRequirementSpec {
+  final String key;
+  final String title;
+  final String detail;
+  final int minimumFiles;
+  final _HrExpedienteRequirementKind kind;
+
+  const _HrExpedienteRequirementSpec({
+    required this.key,
+    required this.title,
+    required this.detail,
+    this.minimumFiles = 1,
+    this.kind = _HrExpedienteRequirementKind.upload,
+  });
+}
 
 class HumanResourcesPersonnelPage extends StatefulWidget {
   final bool instantOpen;
@@ -118,6 +223,7 @@ class _HumanResourcesPersonnelPageState
       _syncViewportState(requestFocus: true);
     });
     unawaited(_resolveNavigationAccess());
+    unawaited(_loadRemoteEmployees());
   }
 
   @override
@@ -485,9 +591,9 @@ class _HumanResourcesPersonnelPageState
   }
 
   void _applyFilters() {
-    final nextRows = _allRows
-        .where(_matchesColumnFilters)
-        .toList(growable: false);
+    final nextRows =
+        _allRows.where(_matchesColumnFilters).toList(growable: false)
+          ..sort(_compareHrEmployeeRowsById);
 
     final visibleIds = nextRows.map((row) => row.id).toSet();
     if (_selectedRowIds.isNotEmpty &&
@@ -501,6 +607,22 @@ class _HumanResourcesPersonnelPageState
       _hoveredRowId = visibleIds.contains(_hoveredRowId) ? _hoveredRowId : null;
     });
     _syncViewportState();
+  }
+
+  Future<void> _loadRemoteEmployees() async {
+    try {
+      final rows = await _HrPersonnelStore.loadEmployees();
+      if (!mounted) return;
+      if (rows.isNotEmpty) {
+        setState(() {
+          _allRows
+            ..clear()
+            ..addAll(rows)
+            ..sort(_compareHrEmployeeRowsById);
+        });
+        _applyFilters();
+      }
+    } catch (_) {}
   }
 
   bool _matchesColumnFilters(_HumanResourcesEmployeeRow row) {
@@ -573,11 +695,18 @@ class _HumanResourcesPersonnelPageState
 
   bool _isDateFilterColumn(String columnId) => columnId == 'fecha_ingreso';
 
-  void _replaceRow(_HumanResourcesEmployeeRow updatedRow) {
-    final rowIndex = _allRows.indexWhere((row) => row.id == updatedRow.id);
+  void _replaceRow(
+    _HumanResourcesEmployeeRow updatedRow, {
+    String? originalId,
+  }) {
+    final lookupId = (originalId == null || originalId == updatedRow.id)
+        ? updatedRow.id
+        : originalId;
+    final rowIndex = _allRows.indexWhere((row) => row.id == lookupId);
     if (rowIndex < 0) return;
     setState(() {
       _allRows[rowIndex] = updatedRow;
+      _allRows.sort(_compareHrEmployeeRowsById);
       _selectedRowId = updatedRow.id;
       _selectedRowIds = <String>{updatedRow.id};
     });
@@ -592,17 +721,21 @@ class _HumanResourcesPersonnelPageState
         tokens: humanResourcesAreaTokens,
         child: _HumanResourcesEmployeeDialog.create(
           nextId: _suggestNextEmployeeId(),
+          reservedIds: _allRows.map((row) => row.id).toSet(),
         ),
       ),
     );
     if (!mounted || next == null) return;
+    final persisted = await _persistRow(next, creating: true);
+    if (!mounted || persisted == null) return;
     setState(() {
-      _allRows.insert(0, next);
-      _selectedRowId = next.id;
-      _selectedRowIds = <String>{next.id};
+      _allRows.add(persisted);
+      _allRows.sort(_compareHrEmployeeRowsById);
+      _selectedRowId = persisted.id;
+      _selectedRowIds = <String>{persisted.id};
     });
     _applyFilters();
-    _showSnack('Registro agregado: ${next.nombre}');
+    _showSnack('Registro agregado: ${persisted.nombre}');
   }
 
   Future<void> _editRecord(_HumanResourcesEmployeeRow row) async {
@@ -611,12 +744,42 @@ class _HumanResourcesPersonnelPageState
       barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (dialogContext) => AreaThemeScope(
         tokens: humanResourcesAreaTokens,
-        child: _HumanResourcesEmployeeDialog.edit(employee: row),
+        child: _HumanResourcesEmployeeDialog.edit(
+          employee: row,
+          reservedIds: _allRows
+              .where((item) => item.id != row.id)
+              .map((item) => item.id)
+              .toSet(),
+        ),
       ),
     );
     if (!mounted || updated == null) return;
-    _replaceRow(updated);
-    _showSnack('Registro actualizado: ${updated.nombre}');
+    final persisted = await _persistRow(updated, originalId: row.id);
+    if (!mounted || persisted == null) return;
+    _replaceRow(persisted, originalId: row.id);
+    _showSnack('Registro actualizado: ${persisted.nombre}');
+  }
+
+  Future<_HumanResourcesEmployeeRow?> _persistRow(
+    _HumanResourcesEmployeeRow row, {
+    bool creating = false,
+    String? originalId,
+  }) async {
+    try {
+      final persisted = await _HrPersonnelStore.upsertEmployee(
+        row,
+        originalId: originalId,
+      );
+      return persisted;
+    } catch (error) {
+      if (!mounted) return null;
+      _showSnack(
+        creating
+            ? 'No se pudo crear en Supabase. Se conserva localmente. $error'
+            : 'No se pudo guardar en Supabase. Se conserva localmente. $error',
+      );
+      return row;
+    }
   }
 
   String _suggestNextEmployeeId() {
@@ -718,13 +881,6 @@ class _HumanResourcesPersonnelPageState
     );
   }
 
-  Future<void> _openMockVisual() async {
-    if (!mounted) return;
-    await Navigator.of(
-      context,
-    ).push(appPageRoute(page: const HumanResourcesMockPage()));
-  }
-
   Future<void> _openDirectionDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -746,8 +902,11 @@ class _HumanResourcesPersonnelPageState
           'RFC',
           'CURP',
           'Fecha de ingreso',
+          'Fecha de alta',
           'Telefono',
           'No. de Cuenta',
+          'Salario',
+          'Salario percibido',
           'Calzado',
         ].map(_csvCell).join(','),
       );
@@ -762,8 +921,11 @@ class _HumanResourcesPersonnelPageState
           row.rfc,
           row.curp,
           row.fechaIngreso,
+          row.fechaAlta,
           row.telefono,
           row.numeroCuenta,
+          row.salario,
+          row.salarioRealPercibido,
           row.calzado,
         ].map(_csvCell).join(','),
       );
@@ -860,10 +1022,28 @@ class _HumanResourcesPersonnelPageState
   }
 
   void _deleteRowsByIdsNow(Set<String> selectedIds) {
-    final deletedCount = _allRows
+    final rowsToDelete = _allRows
         .where((row) => selectedIds.contains(row.id))
-        .length;
+        .toList(growable: false);
+    final deletedCount = rowsToDelete.length;
     if (deletedCount == 0) return;
+    unawaited(_deleteRowsRemotely(rowsToDelete, selectedIds));
+  }
+
+  Future<void> _deleteRowsRemotely(
+    List<_HumanResourcesEmployeeRow> rowsToDelete,
+    Set<String> selectedIds,
+  ) async {
+    try {
+      await _HrPersonnelStore.deleteEmployees(rowsToDelete);
+    } catch (error) {
+      if (mounted) {
+        _showSnack('No se pudieron borrar en Supabase. $error');
+        return;
+      }
+    }
+    final deletedCount = rowsToDelete.length;
+    if (!mounted) return;
     setState(() {
       _allRows.removeWhere((row) => selectedIds.contains(row.id));
       _selectionController.clear();
@@ -911,8 +1091,11 @@ class _HumanResourcesPersonnelPageState
           'RFC',
           'CURP',
           'Fecha de ingreso',
+          'Fecha de alta',
           'Telefono',
           'No. de Cuenta',
+          'Salario',
+          'Salario percibido',
           'Calzado',
         ].map(_csvCell).join(','),
       )
@@ -926,8 +1109,11 @@ class _HumanResourcesPersonnelPageState
           row.rfc,
           row.curp,
           row.fechaIngreso,
+          row.fechaAlta,
           row.telefono,
           row.numeroCuenta,
+          row.salario,
+          row.salarioRealPercibido,
           row.calzado,
         ].map(_csvCell).join(','),
       );
@@ -1131,12 +1317,6 @@ class _HumanResourcesPersonnelPageState
                       title: 'Personal',
                       subtitle: 'Grid homologado de expediente base',
                       accented: true,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.auto_awesome_rounded,
-                      title: 'Mock visual RH',
-                      subtitle: 'Referencia cromática actual',
-                      onTap: _openMockVisual,
                     ),
                   ],
                   accessItems: [
@@ -2154,13 +2334,17 @@ class _HumanResourcesMetricCard extends StatelessWidget {
 class _HumanResourcesEmployeeDialog extends StatefulWidget {
   final String initialId;
   final _HumanResourcesEmployeeRow? existing;
+  final Set<String> reservedIds;
 
-  const _HumanResourcesEmployeeDialog.create({required String nextId})
-    : initialId = nextId,
-      existing = null;
+  const _HumanResourcesEmployeeDialog.create({
+    required String nextId,
+    required this.reservedIds,
+  }) : initialId = nextId,
+       existing = null;
 
   _HumanResourcesEmployeeDialog.edit({
     required _HumanResourcesEmployeeRow employee,
+    required this.reservedIds,
   }) : initialId = employee.id,
        existing = employee;
 
@@ -2193,12 +2377,26 @@ class _HumanResourcesEmployeeDialogState
   late final TextEditingController _cuentaController = TextEditingController(
     text: widget.existing?.numeroCuenta ?? '',
   );
+  late final TextEditingController _salarioController = TextEditingController(
+    text: widget.existing?.salario ?? '',
+  );
+  late final TextEditingController _salarioRealPercibidoController =
+      TextEditingController(text: widget.existing?.salarioRealPercibido ?? '');
   late final TextEditingController _calzadoController = TextEditingController(
     text: widget.existing?.calzado ?? '',
   );
+  late final TextEditingController _creditoDetalleController =
+      TextEditingController(text: widget.existing?.creditoDetalle ?? '');
   String? _empresa;
   String? _horario;
   DateTime? _fechaIngreso;
+  DateTime? _fechaAlta;
+  _HrEmployeeAttachment? _photo;
+  bool? _creditoDeclarado;
+  late List<_HrEmployeeAttachment> _requiredAttachments;
+  late List<_HrEmployeeAttachment> _additionalAttachments;
+  bool _showRequiredDocuments = false;
+  bool _showAdditionalAttachments = false;
 
   bool get _isEditing => widget.existing != null;
 
@@ -2210,6 +2408,19 @@ class _HumanResourcesEmployeeDialogState
     _fechaIngreso = widget.existing == null
         ? null
         : _tryParseHrDbDate(widget.existing!.fechaIngreso);
+    _fechaAlta = widget.existing == null
+        ? null
+        : _tryParseHrDbDate(widget.existing!.fechaAlta);
+    _photo = widget.existing?.photo;
+    _creditoDeclarado = widget.existing?.creditoDeclarado;
+    _requiredAttachments = List<_HrEmployeeAttachment>.of(
+      widget.existing?.requiredAttachments ?? const <_HrEmployeeAttachment>[],
+    );
+    _additionalAttachments = List<_HrEmployeeAttachment>.of(
+      widget.existing?.additionalAttachments ?? const <_HrEmployeeAttachment>[],
+    );
+    _telefonoController.addListener(_handleDerivedExpedienteChanged);
+    _cuentaController.addListener(_handleDerivedExpedienteChanged);
   }
 
   @override
@@ -2221,8 +2432,16 @@ class _HumanResourcesEmployeeDialogState
     _curpController.dispose();
     _telefonoController.dispose();
     _cuentaController.dispose();
+    _salarioController.dispose();
+    _salarioRealPercibidoController.dispose();
     _calzadoController.dispose();
+    _creditoDetalleController.dispose();
     super.dispose();
+  }
+
+  void _handleDerivedExpedienteChanged() {
+    if (!mounted) return;
+    setState(() {});
   }
 
   Future<void> _pickEmpresa() async {
@@ -2239,20 +2458,13 @@ class _HumanResourcesEmployeeDialogState
   }
 
   Future<void> _pickHorario() async {
-    final value = await showSearchablePickerDialog<String>(
-      context,
-      title: 'Horario',
-      initialValue: _horario,
-      options: _kHrHorarioOptions
-          .map((option) => SearchablePickerOption(value: option, label: option))
-          .toList(growable: false),
-    );
+    final value = await _showHrScheduleDialog(context, initialValue: _horario);
     if (!mounted || value == null) return;
     setState(() => _horario = value);
   }
 
   Future<void> _pickFechaIngreso() async {
-    final picked = await showContractDatePickerSurface(
+    final picked = await _showHrSingleDateDialog(
       context,
       initialDate: _fechaIngreso ?? DateTime.now(),
       firstDate: DateTime(1990, 1, 1),
@@ -2263,33 +2475,208 @@ class _HumanResourcesEmployeeDialogState
     setState(() => _fechaIngreso = DateUtils.dateOnly(picked));
   }
 
-  void _submit() {
-    if (!_formKey.currentState!.validate()) return;
-    if (_empresa == null || _horario == null || _fechaIngreso == null) return;
-    Navigator.of(context).pop(
-      _HumanResourcesEmployeeRow(
-        id: _idController.text.trim(),
-        nombre: _nombreController.text.trim().toUpperCase(),
-        empresa: _empresa!,
-        horario: _horario!,
-        nss: _nssController.text.trim(),
-        rfc: _rfcController.text.trim().toUpperCase(),
-        curp: _curpController.text.trim().toUpperCase(),
-        fechaIngreso: _fmtHrDbDate(_fechaIngreso!),
-        telefono: _telefonoController.text.trim(),
-        numeroCuenta: _cuentaController.text.trim(),
-        calzado: _calzadoController.text.trim(),
+  Future<void> _pickFechaAlta() async {
+    final picked = await _showHrSingleDateDialog(
+      context,
+      initialDate: _fechaAlta ?? _fechaIngreso ?? DateTime.now(),
+      firstDate: DateTime(1990, 1, 1),
+      lastDate: DateTime(2035, 12, 31),
+      title: 'Fecha de alta',
+    );
+    if (!mounted || picked == null) return;
+    setState(() => _fechaAlta = DateUtils.dateOnly(picked));
+  }
+
+  Future<void> _pickPhoto() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: false,
+        withData: true,
+        lockParentWindow: true,
+        type: FileType.custom,
+        allowedExtensions: _kHrFileExtensions
+            .where((ext) => ext != 'pdf')
+            .toList(growable: false),
+      );
+      if (!mounted || result == null || result.files.isEmpty) return;
+      final attachment = _attachmentFromPlatformFile(
+        result.files.first,
+        categoryKey: 'photo',
+        categoryLabel: 'Fotografia',
+      );
+      if (attachment == null) return;
+      setState(() => _photo = attachment);
+    } catch (_) {}
+  }
+
+  Future<void> _pickRequiredFiles(_HrExpedienteRequirementSpec spec) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: spec.minimumFiles > 1,
+        withData: true,
+        lockParentWindow: true,
+        type: FileType.custom,
+        allowedExtensions: _kHrFileExtensions,
+      );
+      if (!mounted || result == null || result.files.isEmpty) return;
+      final next = List<_HrEmployeeAttachment>.of(_requiredAttachments);
+      for (final file in result.files) {
+        final attachment = _attachmentFromPlatformFile(
+          file,
+          categoryKey: spec.key,
+          categoryLabel: spec.title,
+        );
+        if (attachment != null) next.insert(0, attachment);
+      }
+      setState(() => _requiredAttachments = next);
+    } catch (_) {}
+  }
+
+  Future<void> _pickAdditionalFiles() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        allowMultiple: true,
+        withData: true,
+        lockParentWindow: true,
+        type: FileType.custom,
+        allowedExtensions: _kHrFileExtensions,
+      );
+      if (!mounted || result == null || result.files.isEmpty) return;
+      final next = List<_HrEmployeeAttachment>.of(_additionalAttachments);
+      for (final file in result.files) {
+        final attachment = _attachmentFromPlatformFile(
+          file,
+          categoryKey: 'adicional',
+          categoryLabel: 'Adjunto adicional',
+        );
+        if (attachment != null) next.insert(0, attachment);
+      }
+      setState(() => _additionalAttachments = next);
+    } catch (_) {}
+  }
+
+  void _removeRequiredAttachment(_HrEmployeeAttachment attachment) {
+    setState(() {
+      _requiredAttachments = _requiredAttachments
+          .where((item) => item.id != attachment.id)
+          .toList(growable: false);
+    });
+  }
+
+  void _removeAdditionalAttachment(_HrEmployeeAttachment attachment) {
+    setState(() {
+      _additionalAttachments = _additionalAttachments
+          .where((item) => item.id != attachment.id)
+          .toList(growable: false);
+    });
+  }
+
+  _HrEmployeeAttachment? _attachmentFromPlatformFile(
+    PlatformFile file, {
+    required String categoryKey,
+    required String categoryLabel,
+  }) {
+    final bytes = file.bytes;
+    if (bytes == null || bytes.isEmpty) return null;
+    return _HrEmployeeAttachment(
+      id: '${categoryKey}_${DateTime.now().microsecondsSinceEpoch}_${file.name}',
+      title: file.name,
+      fileName: file.name,
+      bytes: bytes,
+      fileUrl: '',
+      storagePath: null,
+      mimeType: _hrMimeTypeFor(file),
+      sizeBytes: file.size,
+      uploadedBy: null,
+      uploadedByName: '',
+      uploadedAt: DateTime.now(),
+      createdAt: null,
+      updatedAt: null,
+      categoryKey: categoryKey,
+      categoryLabel: categoryLabel,
+    );
+  }
+
+  _HumanResourcesEmployeeRow _draftEmployeeRow() {
+    return _HumanResourcesEmployeeRow(
+      id: _idController.text.trim(),
+      nombre: _nombreController.text.trim().toUpperCase(),
+      empresa: (_empresa ?? '').trim(),
+      horario: (_horario ?? '').trim(),
+      nss: _nssController.text.trim(),
+      rfc: _rfcController.text.trim().toUpperCase(),
+      curp: _curpController.text.trim().toUpperCase(),
+      fechaIngreso: _fechaIngreso == null ? '' : _fmtHrDbDate(_fechaIngreso!),
+      fechaAlta: _fechaAlta == null ? '' : _fmtHrDbDate(_fechaAlta!),
+      telefono: _telefonoController.text.trim(),
+      numeroCuenta: _cuentaController.text.trim(),
+      salario: _normalizeHrMoneyInput(_salarioController.text),
+      salarioRealPercibido: _normalizeHrMoneyInput(
+        _salarioRealPercibidoController.text,
+      ),
+      calzado: _calzadoController.text.trim(),
+      photo: _photo,
+      creditoDeclarado: _creditoDeclarado,
+      creditoDetalle: _creditoDetalleController.text.trim(),
+      requiredAttachments: List<_HrEmployeeAttachment>.of(_requiredAttachments),
+      additionalAttachments: List<_HrEmployeeAttachment>.of(
+        _additionalAttachments,
       ),
     );
   }
 
+  Future<void> _submit() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_fechaIngreso == null) {
+      _showDialogValidationSnack('Fecha de ingreso es obligatoria.');
+      return;
+    }
+    if (_normalizeHrMoneyInput(_salarioController.text).isEmpty) {
+      _showDialogValidationSnack('Salario es obligatorio.');
+      return;
+    }
+    if (_normalizeHrMoneyInput(_salarioRealPercibidoController.text).isEmpty) {
+      _showDialogValidationSnack('Salario percibido es obligatorio.');
+      return;
+    }
+    final nextRow = _draftEmployeeRow().copyWith(
+      empresa: (_empresa ?? '').trim(),
+      horario: (_horario ?? '').trim(),
+      fechaIngreso: _fmtHrDbDate(_fechaIngreso!),
+      fechaAlta: _fechaAlta == null ? '' : _fmtHrDbDate(_fechaAlta!),
+    );
+    final originalId = widget.existing?.id;
+    if (originalId != null && originalId != nextRow.id) {
+      final confirmed = await showContractConfirmationDialog(
+        context,
+        title: 'Confirmar cambio de ID',
+        content:
+            'Vas a cambiar el ID del trabajador de "$originalId" a "${nextRow.id}". '
+            'Esto moverá la llave principal del expediente digital. ¿Deseas continuar?',
+        confirmText: 'Sí, cambiar ID',
+        tokens: humanResourcesAreaTokens,
+      );
+      if (confirmed != true || !mounted) return;
+    }
+    Navigator.of(context).pop(nextRow);
+  }
+
+  void _showDialogValidationSnack(String message) {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    messenger?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
+    final draft = _draftEmployeeRow();
+    final completedRequirements = _completedHrRequirementCount(draft);
+    final totalRequirements = _kHrExpedienteRequirements.length;
+    final progress = _hrExpedienteProgress(draft);
     return ContractDialogShell(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
         child: Container(
-          width: 760,
+          width: 1080,
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
           decoration: BoxDecoration(
             color: const Color(0xFFF6F0FF).withValues(alpha: 0.97),
@@ -2356,181 +2743,513 @@ class _HumanResourcesEmployeeDialogState
                         ],
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: IconButton.styleFrom(
-                        backgroundColor: const Color(
-                          0xFFF1E6FF,
-                        ).withValues(alpha: 0.92),
-                        foregroundColor: const Color(0xFF6E47A8),
-                        side: const BorderSide(color: Color(0x66B084FF)),
-                      ),
-                      icon: const Icon(Icons.close_rounded),
-                      tooltip: 'Cerrar',
-                    ),
-                  ],
-                ),
-                if (_isEditing) ...[
-                  const SizedBox(height: 14),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF0E4FF),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0x55B084FF)),
-                    ),
-                    child: const Row(
+                    const SizedBox(width: 18),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
-                        Icon(
-                          Icons.lock_outline_rounded,
-                          size: 18,
-                          color: Color(0xFF6E47A8),
-                        ),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            'El ID del trabajador queda bloqueado en edición para conservar trazabilidad del expediente.',
-                            style: TextStyle(
-                              fontSize: 12.5,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF6E47A8),
-                            ),
+                        IconButton(
+                          onPressed: () => Navigator.of(context).pop(),
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(
+                              0xFFF1E6FF,
+                            ).withValues(alpha: 0.92),
+                            foregroundColor: const Color(0xFF6E47A8),
+                            side: const BorderSide(color: Color(0x66B084FF)),
                           ),
+                          icon: const Icon(Icons.close_rounded),
+                          tooltip: 'Cerrar',
                         ),
                       ],
                     ),
-                  ),
-                ],
+                  ],
+                ),
                 const SizedBox(height: 16),
                 Flexible(
                   child: SingleChildScrollView(
-                    child: Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _HrDialogField(
-                          width: 120,
-                          child: TextFormField(
-                            controller: _idController,
-                            enabled: !_isEditing,
-                            style: const TextStyle(color: Color(0xFF24103D)),
-                            decoration: _hrDialogFieldDecoration(
-                              context,
-                              hintText: 'ID',
+                        Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              child: _HrDialogSectionCard(
+                                title: 'Datos base',
+                                subtitle:
+                                    'Informacion principal del colaborador.',
+                                child: Wrap(
+                                  spacing: 12,
+                                  runSpacing: 12,
+                                  children: [
+                                    _HrDialogField(
+                                      width: 120,
+                                      child: TextFormField(
+                                        controller: _idController,
+                                        style: const TextStyle(
+                                          color: Color(0xFF24103D),
+                                        ),
+                                        decoration: _hrDialogFieldDecoration(
+                                          context,
+                                          hintText: 'ID interno',
+                                        ),
+                                        validator: (value) {
+                                          final required = _requiredValidator(
+                                            value,
+                                          );
+                                          if (required != null) return required;
+                                          final normalized = value!.trim();
+                                          if (widget.reservedIds.contains(
+                                            normalized,
+                                          )) {
+                                            return 'Este ID ya existe.';
+                                          }
+                                          return null;
+                                        },
+                                        onChanged: (_) => setState(() {}),
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 520,
+                                      child: TextFormField(
+                                        controller: _nombreController,
+                                        style: const TextStyle(
+                                          color: Color(0xFF24103D),
+                                        ),
+                                        decoration: _hrDialogFieldDecoration(
+                                          context,
+                                          hintText: 'Nombre completo',
+                                        ),
+                                        validator: _requiredValidator,
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 220,
+                                      child: _HrDialogPickerField(
+                                        label: _empresa ?? 'Empresa',
+                                        onTap: _pickEmpresa,
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 260,
+                                      child: _HrDialogPickerField(
+                                        label: _horario ?? 'Horario laboral',
+                                        onTap: _pickHorario,
+                                        icon: Icons.schedule_rounded,
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 180,
+                                      child: TextFormField(
+                                        controller: _nssController,
+                                        style: const TextStyle(
+                                          color: Color(0xFF24103D),
+                                        ),
+                                        decoration: _hrDialogFieldDecoration(
+                                          context,
+                                          hintText: 'NSS',
+                                        ),
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 220,
+                                      child: TextFormField(
+                                        controller: _rfcController,
+                                        style: const TextStyle(
+                                          color: Color(0xFF24103D),
+                                        ),
+                                        decoration: _hrDialogFieldDecoration(
+                                          context,
+                                          hintText: 'RFC',
+                                        ),
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 300,
+                                      child: TextFormField(
+                                        controller: _curpController,
+                                        style: const TextStyle(
+                                          color: Color(0xFF24103D),
+                                        ),
+                                        decoration: _hrDialogFieldDecoration(
+                                          context,
+                                          hintText: 'CURP',
+                                        ),
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 220,
+                                      child: _HrDialogPickerField(
+                                        label: _fechaIngreso == null
+                                            ? 'Fecha de ingreso'
+                                            : _fmtHrDateLabel(_fechaIngreso!),
+                                        onTap: _pickFechaIngreso,
+                                        icon: Icons.calendar_month_rounded,
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 220,
+                                      child: _HrDialogPickerField(
+                                        label: _fechaAlta == null
+                                            ? 'Fecha de alta'
+                                            : _fmtHrDateLabel(_fechaAlta!),
+                                        onTap: _pickFechaAlta,
+                                        icon: Icons.event_available_rounded,
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 200,
+                                      child: TextFormField(
+                                        controller: _telefonoController,
+                                        style: const TextStyle(
+                                          color: Color(0xFF24103D),
+                                        ),
+                                        decoration: _hrDialogFieldDecoration(
+                                          context,
+                                          hintText: 'Telefono',
+                                        ),
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 240,
+                                      child: TextFormField(
+                                        controller: _cuentaController,
+                                        style: const TextStyle(
+                                          color: Color(0xFF24103D),
+                                        ),
+                                        decoration: _hrDialogFieldDecoration(
+                                          context,
+                                          hintText: 'No. de Cuenta',
+                                        ),
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 200,
+                                      child: TextFormField(
+                                        controller: _salarioController,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        style: const TextStyle(
+                                          color: Color(0xFF24103D),
+                                        ),
+                                        decoration: _hrDialogFieldDecoration(
+                                          context,
+                                          hintText: 'Salario',
+                                        ),
+                                        validator: _requiredMoneyValidator,
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 220,
+                                      child: TextFormField(
+                                        controller:
+                                            _salarioRealPercibidoController,
+                                        keyboardType:
+                                            const TextInputType.numberWithOptions(
+                                              decimal: true,
+                                            ),
+                                        style: const TextStyle(
+                                          color: Color(0xFF24103D),
+                                        ),
+                                        decoration: _hrDialogFieldDecoration(
+                                          context,
+                                          hintText: 'Salario percibido',
+                                        ),
+                                        validator: _requiredMoneyValidator,
+                                      ),
+                                    ),
+                                    _HrDialogField(
+                                      width: 180,
+                                      child: TextFormField(
+                                        controller: _calzadoController,
+                                        style: const TextStyle(
+                                          color: Color(0xFF24103D),
+                                        ),
+                                        decoration: _hrDialogFieldDecoration(
+                                          context,
+                                          hintText: 'Calzado',
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            validator: _requiredValidator,
-                          ),
-                        ),
-                        _HrDialogField(
-                          width: 420,
-                          child: TextFormField(
-                            controller: _nombreController,
-                            style: const TextStyle(color: Color(0xFF24103D)),
-                            decoration: _hrDialogFieldDecoration(
-                              context,
-                              hintText: 'Nombre',
+                            const SizedBox(width: 14),
+                            SizedBox(
+                              width: 280,
+                              child: _HrPassportPhotoCard(
+                                photo: _photo,
+                                onUpload: _pickPhoto,
+                                onRemove: _photo == null
+                                    ? null
+                                    : () => setState(() => _photo = null),
+                              ),
                             ),
-                            validator: _requiredValidator,
+                          ],
+                        ),
+                        const SizedBox(height: 18),
+                        _HrDialogSectionCard(
+                          title: 'Expediente digital',
+                          subtitle:
+                              'Controla avance documental, foto y adjuntos del colaborador.',
+                          trailing: Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              OutlinedButton.icon(
+                                style: _hrInvActionOutlinedButtonStyle(),
+                                onPressed: () => setState(
+                                  () => _showRequiredDocuments =
+                                      !_showRequiredDocuments,
+                                ),
+                                icon: Icon(
+                                  _showRequiredDocuments
+                                      ? Icons.expand_less_rounded
+                                      : Icons.description_outlined,
+                                ),
+                                label: Text(
+                                  _showRequiredDocuments
+                                      ? 'Ocultar requeridos'
+                                      : 'Ver documentos requeridos',
+                                ),
+                              ),
+                              OutlinedButton.icon(
+                                style: _hrInvActionOutlinedButtonStyle(),
+                                onPressed: () => setState(
+                                  () => _showAdditionalAttachments =
+                                      !_showAdditionalAttachments,
+                                ),
+                                icon: Icon(
+                                  _showAdditionalAttachments
+                                      ? Icons.expand_less_rounded
+                                      : Icons.folder_open_rounded,
+                                ),
+                                label: Text(
+                                  _showAdditionalAttachments
+                                      ? 'Ocultar adjuntos'
+                                      : 'Ver adjuntos adicionales',
+                                ),
+                              ),
+                            ],
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(999),
+                                      child: LinearProgressIndicator(
+                                        value: progress.clamp(0.0, 1.0),
+                                        minHeight: 12,
+                                        backgroundColor: const Color(
+                                          0xFFE8D8FF,
+                                        ),
+                                        valueColor:
+                                            const AlwaysStoppedAnimation<Color>(
+                                              Color(0xFF9F6BFF),
+                                            ),
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 14),
+                                  Text(
+                                    '$completedRequirements / $totalRequirements',
+                                    style: const TextStyle(
+                                      fontSize: 15,
+                                      fontWeight: FontWeight.w900,
+                                      color: Color(0xFF24103D),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '${(progress * 100).round()}% del expediente estructurado completo.',
+                                style: const TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF6E47A8),
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              Container(
+                                width: double.infinity,
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  12,
+                                  12,
+                                  12,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFFFBFF),
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: const Color(0x44B084FF),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    const Icon(
+                                      Icons.info_outline_rounded,
+                                      color: Color(0xFF6E47A8),
+                                      size: 18,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _creditoDeclarado == null
+                                            ? 'Falta declarar si el colaborador tiene credito Infonavit, Fonacot u otro.'
+                                            : _creditoDeclarado == true
+                                            ? 'Credito declarado. Puedes documentarlo desde los requeridos.'
+                                            : 'Colaborador marcado sin credito declarado.',
+                                        style: const TextStyle(
+                                          fontSize: 12.5,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF6E47A8),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ),
                         ),
-                        _HrDialogField(
-                          width: 220,
-                          child: _HrDialogPickerField(
-                            label: _empresa ?? 'Empresa',
-                            onTap: _pickEmpresa,
-                          ),
-                        ),
-                        _HrDialogField(
-                          width: 180,
-                          child: _HrDialogPickerField(
-                            label: _horario ?? 'Horario',
-                            onTap: _pickHorario,
-                          ),
-                        ),
-                        _HrDialogField(
-                          width: 180,
-                          child: TextFormField(
-                            controller: _nssController,
-                            style: const TextStyle(color: Color(0xFF24103D)),
-                            decoration: _hrDialogFieldDecoration(
-                              context,
-                              hintText: 'NSS',
+                        if (_showRequiredDocuments) ...[
+                          const SizedBox(height: 12),
+                          _HrDialogSectionCard(
+                            title: 'Documentos requeridos',
+                            subtitle:
+                                'Checklist estructurado para medir integridad del expediente.',
+                            child: Column(
+                              children: [
+                                _HrDialogInlineNote(
+                                  icon: Icons.credit_score_rounded,
+                                  message:
+                                      'Declaracion de credito: ${_creditoDeclarado == null
+                                          ? 'pendiente'
+                                          : _creditoDeclarado == true
+                                          ? 'con credito'
+                                          : 'sin credito'}.',
+                                ),
+                                const SizedBox(height: 10),
+                                Wrap(
+                                  spacing: 8,
+                                  runSpacing: 8,
+                                  children: [
+                                    _HrChoiceChip(
+                                      label: 'Pendiente',
+                                      selected: _creditoDeclarado == null,
+                                      onTap: () => setState(
+                                        () => _creditoDeclarado = null,
+                                      ),
+                                    ),
+                                    _HrChoiceChip(
+                                      label: 'Sin credito',
+                                      selected: _creditoDeclarado == false,
+                                      onTap: () => setState(
+                                        () => _creditoDeclarado = false,
+                                      ),
+                                    ),
+                                    _HrChoiceChip(
+                                      label: 'Con credito',
+                                      selected: _creditoDeclarado == true,
+                                      onTap: () => setState(
+                                        () => _creditoDeclarado = true,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                                const SizedBox(height: 10),
+                                TextFormField(
+                                  controller: _creditoDetalleController,
+                                  minLines: 2,
+                                  maxLines: 3,
+                                  style: const TextStyle(
+                                    color: Color(0xFF24103D),
+                                  ),
+                                  decoration: _hrDialogFieldDecoration(
+                                    context,
+                                    hintText:
+                                        'Detalle del credito o nota interna de declaracion',
+                                  ),
+                                ),
+                                const SizedBox(height: 12),
+                                for (final spec
+                                    in _kHrExpedienteRequirements) ...[
+                                  _buildRequirementTile(draft, spec),
+                                  if (spec != _kHrExpedienteRequirements.last)
+                                    const SizedBox(height: 10),
+                                ],
+                              ],
                             ),
-                            validator: _requiredValidator,
                           ),
-                        ),
-                        _HrDialogField(
-                          width: 180,
-                          child: TextFormField(
-                            controller: _rfcController,
-                            style: const TextStyle(color: Color(0xFF24103D)),
-                            decoration: _hrDialogFieldDecoration(
-                              context,
-                              hintText: 'RFC',
+                        ],
+                        if (_showAdditionalAttachments) ...[
+                          const SizedBox(height: 12),
+                          _HrDialogSectionCard(
+                            title: 'Adjuntos adicionales',
+                            subtitle:
+                                'Responsivas, actas administrativas, prestaciones firmadas y otros soportes.',
+                            trailing: FilledButton.icon(
+                              style: contractSecondaryButtonStyle(context),
+                              onPressed: _pickAdditionalFiles,
+                              icon: const Icon(Icons.upload_file_rounded),
+                              label: const Text('Subir archivos'),
                             ),
-                            validator: _requiredValidator,
+                            child: _additionalAttachments.isEmpty
+                                ? Container(
+                                    width: double.infinity,
+                                    padding: const EdgeInsets.fromLTRB(
+                                      14,
+                                      16,
+                                      14,
+                                      16,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(
+                                        0xFFF8F2FF,
+                                      ).withValues(alpha: 0.92),
+                                      borderRadius: BorderRadius.circular(16),
+                                      border: Border.all(
+                                        color: const Color(0x44B084FF),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'Aun no hay adjuntos libres en este expediente.',
+                                      style: TextStyle(
+                                        fontSize: 12.5,
+                                        fontWeight: FontWeight.w700,
+                                        color: Color(0xFF7D62A8),
+                                      ),
+                                    ),
+                                  )
+                                : Column(
+                                    children: [
+                                      for (
+                                        var i = 0;
+                                        i < _additionalAttachments.length;
+                                        i++
+                                      ) ...[
+                                        _HrAttachmentTile(
+                                          attachment: _additionalAttachments[i],
+                                          onRemove: () =>
+                                              _removeAdditionalAttachment(
+                                                _additionalAttachments[i],
+                                              ),
+                                        ),
+                                        if (i !=
+                                            _additionalAttachments.length - 1)
+                                          const SizedBox(height: 10),
+                                      ],
+                                    ],
+                                  ),
                           ),
-                        ),
-                        _HrDialogField(
-                          width: 240,
-                          child: TextFormField(
-                            controller: _curpController,
-                            style: const TextStyle(color: Color(0xFF24103D)),
-                            decoration: _hrDialogFieldDecoration(
-                              context,
-                              hintText: 'CURP',
-                            ),
-                            validator: _requiredValidator,
-                          ),
-                        ),
-                        _HrDialogField(
-                          width: 200,
-                          child: _HrDialogPickerField(
-                            label: _fechaIngreso == null
-                                ? 'Fecha de ingreso'
-                                : _fmtHrDateLabel(_fechaIngreso!),
-                            onTap: _pickFechaIngreso,
-                            icon: Icons.calendar_month_rounded,
-                          ),
-                        ),
-                        _HrDialogField(
-                          width: 180,
-                          child: TextFormField(
-                            controller: _telefonoController,
-                            style: const TextStyle(color: Color(0xFF24103D)),
-                            decoration: _hrDialogFieldDecoration(
-                              context,
-                              hintText: 'Telefono',
-                            ),
-                            validator: _requiredValidator,
-                          ),
-                        ),
-                        _HrDialogField(
-                          width: 220,
-                          child: TextFormField(
-                            controller: _cuentaController,
-                            style: const TextStyle(color: Color(0xFF24103D)),
-                            decoration: _hrDialogFieldDecoration(
-                              context,
-                              hintText: 'No. de Cuenta',
-                            ),
-                            validator: _requiredValidator,
-                          ),
-                        ),
-                        _HrDialogField(
-                          width: 120,
-                          child: TextFormField(
-                            controller: _calzadoController,
-                            style: const TextStyle(color: Color(0xFF24103D)),
-                            decoration: _hrDialogFieldDecoration(
-                              context,
-                              hintText: 'Calzado',
-                            ),
-                            validator: _requiredValidator,
-                          ),
-                        ),
+                        ],
                       ],
                     ),
                   ),
@@ -2545,8 +3264,15 @@ class _HumanResourcesEmployeeDialogState
                     border: Border.all(color: const Color(0x55B084FF)),
                   ),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.end,
                     children: [
+                      const Expanded(
+                        child: _HrDialogInlineNote(
+                          icon: Icons.info_outline_rounded,
+                          message:
+                              'Verifica la informacion antes de guardar. Podras seguir completando el expediente despues.',
+                        ),
+                      ),
+                      const SizedBox(width: 12),
                       OutlinedButton(
                         style: _hrInvActionOutlinedButtonStyle(),
                         onPressed: () => Navigator.of(context).pop(),
@@ -2572,6 +3298,129 @@ class _HumanResourcesEmployeeDialogState
   String? _requiredValidator(String? value) {
     if (value == null || value.trim().isEmpty) return 'Obligatorio';
     return null;
+  }
+
+  String? _requiredMoneyValidator(String? value) {
+    final text = value?.trim() ?? '';
+    if (text.isEmpty) return 'Obligatorio';
+    return _optionalMoneyValidator(text);
+  }
+
+  Widget _buildRequirementTile(
+    _HumanResourcesEmployeeRow draft,
+    _HrExpedienteRequirementSpec spec,
+  ) {
+    final attachments = _attachmentsForRequirement(draft, spec.key);
+    final isComplete = _isHrRequirementComplete(draft, spec);
+    final statusLabel = isComplete
+        ? 'Completo'
+        : spec.kind == _HrExpedienteRequirementKind.upload
+        ? 'Pendiente ${attachments.length}/${spec.minimumFiles}'
+        : 'Pendiente';
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFFBFF),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: isComplete ? const Color(0x88B084FF) : const Color(0x44B084FF),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      spec.title,
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF24103D),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      spec.detail,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF7D62A8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _HrStatusChip(label: statusLabel, complete: isComplete),
+            ],
+          ),
+          const SizedBox(height: 10),
+          if (spec.kind == _HrExpedienteRequirementKind.upload) ...[
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                style: _hrInvActionOutlinedButtonStyle(),
+                onPressed: () => _pickRequiredFiles(spec),
+                icon: const Icon(Icons.attach_file_rounded),
+                label: Text(
+                  spec.minimumFiles > 1
+                      ? 'Subir archivos'
+                      : attachments.isEmpty
+                      ? 'Subir archivo'
+                      : 'Agregar archivo',
+                ),
+              ),
+            ),
+            if (attachments.isNotEmpty) ...[
+              const SizedBox(height: 10),
+              Column(
+                children: [
+                  for (var i = 0; i < attachments.length; i++) ...[
+                    _HrAttachmentTile(
+                      attachment: attachments[i],
+                      onRemove: () => _removeRequiredAttachment(attachments[i]),
+                    ),
+                    if (i != attachments.length - 1) const SizedBox(height: 8),
+                  ],
+                ],
+              ),
+            ],
+          ] else ...[
+            Text(
+              switch (spec.kind) {
+                _HrExpedienteRequirementKind.baseTelefono =>
+                  draft.telefono.trim().isEmpty
+                      ? 'Captura el telefono en datos base para completar este punto.'
+                      : 'Dato base actual: ${draft.telefono}',
+                _HrExpedienteRequirementKind.baseCuenta =>
+                  draft.numeroCuenta.trim().isEmpty
+                      ? 'Captura la cuenta de nomina en datos base si existe.'
+                      : 'Dato base actual: ${draft.numeroCuenta}',
+                _HrExpedienteRequirementKind.creditNotice =>
+                  draft.creditoDeclarado == null
+                      ? 'Declara si el colaborador reporto o no credito.'
+                      : draft.creditoDeclarado == true
+                      ? 'Colaborador con credito declarado.'
+                      : 'Colaborador declarado sin credito.',
+                _HrExpedienteRequirementKind.upload => '',
+              },
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF6E47A8),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 }
 
@@ -2623,6 +3472,338 @@ class _HrDialogPickerField extends StatelessWidget {
   }
 }
 
+class _HrPassportPhotoCard extends StatelessWidget {
+  final _HrEmployeeAttachment? photo;
+  final VoidCallback onUpload;
+  final VoidCallback? onRemove;
+
+  const _HrPassportPhotoCard({
+    required this.photo,
+    required this.onUpload,
+    this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _HrDialogSectionCard(
+      title: 'Foto',
+      subtitle: 'Sube la foto oficial del colaborador.',
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Container(
+            height: 240,
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0E4FF),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: const Color(0x55B084FF)),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: photo?.bytes != null
+                ? Image.memory(photo!.bytes!, fit: BoxFit.cover)
+                : (photo != null && photo!.fileUrl.trim().isNotEmpty)
+                ? Image.network(photo!.fileUrl, fit: BoxFit.cover)
+                : const Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Icon(
+                        Icons.badge_outlined,
+                        size: 44,
+                        color: Color(0xFF6E47A8),
+                      ),
+                      SizedBox(height: 12),
+                      Padding(
+                        padding: EdgeInsets.symmetric(horizontal: 18),
+                        child: Text(
+                          'Selecciona una foto para el expediente.',
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF6E47A8),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+          ),
+          const SizedBox(height: 10),
+          FilledButton.icon(
+            style: contractSecondaryButtonStyle(context),
+            onPressed: onUpload,
+            icon: const Icon(Icons.upload_rounded),
+            label: Text(photo == null ? 'Subir foto' : 'Cambiar foto'),
+          ),
+          if (onRemove != null) ...[
+            const SizedBox(height: 8),
+            OutlinedButton(
+              style: _hrInvActionOutlinedButtonStyle(),
+              onPressed: onRemove,
+              child: const Text('Quitar'),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HrDialogSectionCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final Widget child;
+  final Widget? trailing;
+
+  const _HrDialogSectionCard({
+    required this.title,
+    required this.subtitle,
+    required this.child,
+    this.trailing,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3E9FF).withValues(alpha: 0.92),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x55B084FF)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF24103D),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      subtitle,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF6E47A8),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (trailing != null) ...[const SizedBox(width: 12), trailing!],
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _HrChoiceChip extends StatelessWidget {
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _HrChoiceChip({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(999),
+      onTap: onTap,
+      child: Ink(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected ? const Color(0xFFB68CFF) : const Color(0xFFFFFBFF),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(
+            color: selected ? const Color(0xFF9F6BFF) : const Color(0x44B084FF),
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w800,
+            color: selected ? const Color(0xFF24103D) : const Color(0xFF6E47A8),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HrStatusChip extends StatelessWidget {
+  final String label;
+  final bool complete;
+
+  const _HrStatusChip({required this.label, required this.complete});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: complete ? const Color(0xFFDCC5FF) : const Color(0xFFF7F0FF),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(
+          color: complete ? const Color(0xFF9F6BFF) : const Color(0x44B084FF),
+        ),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w900,
+          color: complete ? const Color(0xFF24103D) : const Color(0xFF6E47A8),
+        ),
+      ),
+    );
+  }
+}
+
+class _HrAttachmentTile extends StatelessWidget {
+  final _HrEmployeeAttachment attachment;
+  final VoidCallback onRemove;
+
+  const _HrAttachmentTile({required this.attachment, required this.onRemove});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFDF9FF),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0x44B084FF)),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 38,
+            height: 38,
+            decoration: BoxDecoration(
+              color: const Color(0xFFE9DAFF),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              attachment.isImage
+                  ? Icons.image_outlined
+                  : Icons.picture_as_pdf_outlined,
+              size: 20,
+              color: const Color(0xFF6E47A8),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  attachment.fileName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF24103D),
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  '${_fmtHrDateLabel(attachment.uploadedAt)} · ${_hrAttachmentSizeLabel(attachment.sizeBytes)}',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF7D62A8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: onRemove,
+            tooltip: 'Quitar archivo',
+            style: IconButton.styleFrom(
+              foregroundColor: const Color(0xFF6E47A8),
+              backgroundColor: const Color(0xFFF1E6FF),
+              side: const BorderSide(color: Color(0x44B084FF)),
+            ),
+            icon: const Icon(Icons.close_rounded),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HrDialogInlineNote extends StatelessWidget {
+  final IconData icon;
+  final String message;
+
+  const _HrDialogInlineNote({required this.icon, required this.message});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 18, color: const Color(0xFF6E47A8)),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            message,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF6E47A8),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HrScheduleDraft {
+  final TimeOfDay start;
+  final TimeOfDay end;
+  final TimeOfDay? lunchStart;
+  final TimeOfDay? lunchEnd;
+
+  const _HrScheduleDraft({
+    required this.start,
+    required this.end,
+    this.lunchStart,
+    this.lunchEnd,
+  });
+
+  String format() {
+    final base = '${_fmtTimeOfDay(start)} - ${_fmtTimeOfDay(end)}';
+    if (lunchStart == null || lunchEnd == null) return base;
+    return '$base | comida ${_fmtTimeOfDay(lunchStart!)} - ${_fmtTimeOfDay(lunchEnd!)}';
+  }
+}
+
 InputDecoration _hrDialogFieldDecoration(
   BuildContext context, {
   String? hintText,
@@ -2648,6 +3829,447 @@ InputDecoration _hrDialogFieldDecoration(
     ),
     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
   );
+}
+
+Future<TimeOfDay?> _showHrTimePicker(
+  BuildContext context, {
+  required TimeOfDay initialTime,
+}) {
+  return showTimePicker(
+    context: context,
+    initialTime: initialTime,
+    builder: (context, child) {
+      return Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: Theme.of(context).colorScheme.copyWith(
+            primary: humanResourcesAreaTokens.primary,
+            onPrimary: Colors.white,
+            surface: const Color(0xFFF6F0FF),
+            onSurface: const Color(0xFF24103D),
+          ),
+          textButtonTheme: TextButtonThemeData(
+            style: TextButton.styleFrom(
+              foregroundColor: humanResourcesAreaTokens.primary,
+              textStyle: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+          ),
+          timePickerTheme: TimePickerThemeData(
+            backgroundColor: const Color(0xFFF6F0FF),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(24),
+              side: const BorderSide(color: Color(0x66B084FF)),
+            ),
+            hourMinuteColor: const Color(0xFFEFE4FF),
+            hourMinuteTextColor: const Color(0xFF24103D),
+            dayPeriodTextColor: const Color(0xFF24103D),
+            dayPeriodColor: const Color(0xFFEFE4FF),
+            dialHandColor: humanResourcesAreaTokens.primary,
+            dialBackgroundColor: const Color(0xFFF0E4FF),
+            dialTextColor: const Color(0xFF24103D),
+            entryModeIconColor: humanResourcesAreaTokens.primary,
+            helpTextStyle: const TextStyle(
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF24103D),
+            ),
+            hourMinuteTextStyle: const TextStyle(
+              fontSize: 48,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          dialogTheme: DialogThemeData(
+            backgroundColor: const Color(0xFFF6F0FF),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(22),
+              side: const BorderSide(color: Color(0x66B084FF)),
+            ),
+          ),
+        ),
+        child: child!,
+      );
+    },
+  );
+}
+
+Future<String?> _showHrScheduleDialog(
+  BuildContext context, {
+  String? initialValue,
+}) {
+  final initialDraft = _parseHrSchedule(initialValue);
+  return showDialog<String>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) {
+      var draft = initialDraft;
+      var includeLunch = draft.lunchStart != null && draft.lunchEnd != null;
+      return StatefulBuilder(
+        builder: (context, setLocal) {
+          Future<void> pickStart() async {
+            final picked = await _showHrTimePicker(
+              context,
+              initialTime: draft.start,
+            );
+            if (picked == null) return;
+            setLocal(
+              () => draft = _HrScheduleDraft(
+                start: picked,
+                end: draft.end,
+                lunchStart: draft.lunchStart,
+                lunchEnd: draft.lunchEnd,
+              ),
+            );
+          }
+
+          Future<void> pickEnd() async {
+            final picked = await _showHrTimePicker(
+              context,
+              initialTime: draft.end,
+            );
+            if (picked == null) return;
+            setLocal(
+              () => draft = _HrScheduleDraft(
+                start: draft.start,
+                end: picked,
+                lunchStart: draft.lunchStart,
+                lunchEnd: draft.lunchEnd,
+              ),
+            );
+          }
+
+          Future<void> pickLunchStart() async {
+            final picked = await _showHrTimePicker(
+              context,
+              initialTime:
+                  draft.lunchStart ?? const TimeOfDay(hour: 13, minute: 0),
+            );
+            if (picked == null) return;
+            setLocal(
+              () => draft = _HrScheduleDraft(
+                start: draft.start,
+                end: draft.end,
+                lunchStart: picked,
+                lunchEnd: draft.lunchEnd,
+              ),
+            );
+          }
+
+          Future<void> pickLunchEnd() async {
+            final picked = await _showHrTimePicker(
+              context,
+              initialTime:
+                  draft.lunchEnd ?? const TimeOfDay(hour: 14, minute: 0),
+            );
+            if (picked == null) return;
+            setLocal(
+              () => draft = _HrScheduleDraft(
+                start: draft.start,
+                end: draft.end,
+                lunchStart: draft.lunchStart,
+                lunchEnd: picked,
+              ),
+            );
+          }
+
+          return ContractDialogShell(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+              child: AreaThemeScope(
+                tokens: humanResourcesAreaTokens,
+                child: Container(
+                  width: 540,
+                  padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF6F0FF).withValues(alpha: 0.98),
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(color: const Color(0x66B084FF)),
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Horario laboral',
+                                  style: TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w900,
+                                    color: Color(0xFF24103D),
+                                  ),
+                                ),
+                                SizedBox(height: 6),
+                                Text(
+                                  'Captura entrada, salida y tramo de comida opcional.',
+                                  style: TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFF6E47A8),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            style: IconButton.styleFrom(
+                              backgroundColor: const Color(0xFFF1E6FF),
+                              foregroundColor: const Color(0xFF6E47A8),
+                              side: const BorderSide(color: Color(0x66B084FF)),
+                            ),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: _HrScheduleTimeButton(
+                              label: 'Entrada',
+                              value: _fmtTimeOfDay(draft.start),
+                              onTap: pickStart,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: _HrScheduleTimeButton(
+                              label: 'Salida',
+                              value: _fmtTimeOfDay(draft.end),
+                              onTap: pickEnd,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
+                      SwitchListTile(
+                        contentPadding: EdgeInsets.zero,
+                        value: includeLunch,
+                        activeThumbColor: humanResourcesAreaTokens.primary,
+                        title: const Text(
+                          'Incluir horario de comida',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFF24103D),
+                          ),
+                        ),
+                        subtitle: const Text(
+                          'Permite guardar de tal a tal y de tal a tal.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Color(0xFF6E47A8),
+                          ),
+                        ),
+                        onChanged: (value) {
+                          setLocal(() {
+                            includeLunch = value;
+                            draft = _HrScheduleDraft(
+                              start: draft.start,
+                              end: draft.end,
+                              lunchStart: value
+                                  ? (draft.lunchStart ??
+                                        const TimeOfDay(hour: 13, minute: 0))
+                                  : null,
+                              lunchEnd: value
+                                  ? (draft.lunchEnd ??
+                                        const TimeOfDay(hour: 14, minute: 0))
+                                  : null,
+                            );
+                          });
+                        },
+                      ),
+                      if (includeLunch) ...[
+                        const SizedBox(height: 6),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: _HrScheduleTimeButton(
+                                label: 'Comida inicio',
+                                value: _fmtTimeOfDay(
+                                  draft.lunchStart ??
+                                      const TimeOfDay(hour: 13, minute: 0),
+                                ),
+                                onTap: pickLunchStart,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            Expanded(
+                              child: _HrScheduleTimeButton(
+                                label: 'Comida fin',
+                                value: _fmtTimeOfDay(
+                                  draft.lunchEnd ??
+                                      const TimeOfDay(hour: 14, minute: 0),
+                                ),
+                                onTap: pickLunchEnd,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFFFBFF),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0x44B084FF)),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Vista previa',
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF6E47A8),
+                              ),
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              draft.format(),
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w900,
+                                color: Color(0xFF24103D),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          OutlinedButton(
+                            style: _hrInvActionOutlinedButtonStyle(),
+                            onPressed: () => Navigator.of(dialogContext).pop(),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 8),
+                          FilledButton(
+                            style: _hrInvFilterFilledButtonStyle(),
+                            onPressed: () =>
+                                Navigator.of(dialogContext).pop(draft.format()),
+                            child: const Text('Aplicar horario'),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+_HrScheduleDraft _parseHrSchedule(String? raw) {
+  final normalized = (raw ?? '').trim();
+  final pattern = RegExp(
+    r'^(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2})(?:\s*\|\s*comida\s*(\d{2}:\d{2})\s*-\s*(\d{2}:\d{2}))?$',
+    caseSensitive: false,
+  );
+  final match = pattern.firstMatch(normalized);
+  if (match == null) {
+    return const _HrScheduleDraft(
+      start: TimeOfDay(hour: 8, minute: 0),
+      end: TimeOfDay(hour: 17, minute: 0),
+    );
+  }
+  return _HrScheduleDraft(
+    start:
+        _parseTimeOfDay(match.group(1)) ?? const TimeOfDay(hour: 8, minute: 0),
+    end:
+        _parseTimeOfDay(match.group(2)) ?? const TimeOfDay(hour: 17, minute: 0),
+    lunchStart: _parseTimeOfDay(match.group(3)),
+    lunchEnd: _parseTimeOfDay(match.group(4)),
+  );
+}
+
+TimeOfDay? _parseTimeOfDay(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  final parts = raw.split(':');
+  if (parts.length != 2) return null;
+  final hour = int.tryParse(parts[0]);
+  final minute = int.tryParse(parts[1]);
+  if (hour == null || minute == null) return null;
+  return TimeOfDay(hour: hour, minute: minute);
+}
+
+String _fmtTimeOfDay(TimeOfDay value) {
+  final hour = value.hour.toString().padLeft(2, '0');
+  final minute = value.minute.toString().padLeft(2, '0');
+  return '$hour:$minute';
+}
+
+class _HrScheduleTimeButton extends StatelessWidget {
+  final String label;
+  final String value;
+  final VoidCallback onTap;
+
+  const _HrScheduleTimeButton({
+    required this.label,
+    required this.value,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Ink(
+        padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFBFF),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: const Color(0x44B084FF)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF6E47A8),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    value,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Color(0xFF24103D),
+                    ),
+                  ),
+                ),
+                const Icon(
+                  Icons.schedule_rounded,
+                  size: 18,
+                  color: Color(0xFF6E47A8),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _HrHCellExpand extends StatelessWidget {
@@ -2809,6 +4431,34 @@ String _fmtHrInt(int value) {
     }
   }
   return buffer.toString();
+}
+
+String _normalizeHrMoneyInput(String value) {
+  final trimmed = value.trim().replaceAll(',', '');
+  if (trimmed.isEmpty) return '';
+  final parsed = double.tryParse(trimmed);
+  if (parsed == null) return trimmed;
+  return parsed.toStringAsFixed(2);
+}
+
+double? _hrDbMoneyValue(String value) {
+  final normalized = _normalizeHrMoneyInput(value);
+  if (normalized.isEmpty) return null;
+  return double.tryParse(normalized);
+}
+
+String _hrDbNumericToText(Object? value) {
+  if (value == null) return '';
+  if (value is num) {
+    if (value == value.roundToDouble()) return value.toInt().toString();
+    return value.toStringAsFixed(2);
+  }
+  final text = value.toString().trim();
+  if (text.isEmpty) return '';
+  final parsed = double.tryParse(text.replaceAll(',', ''));
+  if (parsed == null) return text;
+  if (parsed == parsed.roundToDouble()) return parsed.toInt().toString();
+  return parsed.toStringAsFixed(2);
 }
 
 class _HrDateFilterDialogResult {
@@ -3193,6 +4843,290 @@ Future<_HrDateFilterDialogResult?> _showHrDateRangeFilterDialog(
   );
 }
 
+Future<DateTime?> _showHrSingleDateDialog(
+  BuildContext context, {
+  required DateTime initialDate,
+  required DateTime firstDate,
+  required DateTime lastDate,
+  required String title,
+}) {
+  return showDialog<DateTime>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) {
+      DateTime displayMonth = DateTime(initialDate.year, initialDate.month);
+      DateTime selected = DateUtils.dateOnly(initialDate);
+
+      bool isSameDay(DateTime a, DateTime b) =>
+          a.year == b.year && a.month == b.month && a.day == b.day;
+      DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
+      bool withinBounds(DateTime day) {
+        final d = dateOnly(day);
+        return !d.isBefore(dateOnly(firstDate)) &&
+            !d.isAfter(dateOnly(lastDate));
+      }
+
+      return StatefulBuilder(
+        builder: (context, setLocalState) {
+          final monthFirst = DateTime(displayMonth.year, displayMonth.month, 1);
+          final leading = (monthFirst.weekday + 6) % 7;
+          final gridStart = monthFirst.subtract(Duration(days: leading));
+
+          return Focus(
+            autofocus: true,
+            onKeyEvent: (_, event) {
+              if (event is! KeyDownEvent) return KeyEventResult.ignored;
+              if (event.logicalKey == LogicalKeyboardKey.escape) {
+                Navigator.pop(dialogContext);
+                return KeyEventResult.handled;
+              }
+              if (event.logicalKey == LogicalKeyboardKey.enter ||
+                  event.logicalKey == LogicalKeyboardKey.numpadEnter) {
+                Navigator.pop(dialogContext, selected);
+                return KeyEventResult.handled;
+              }
+              return KeyEventResult.ignored;
+            },
+            child: Dialog(
+              backgroundColor: Colors.transparent,
+              insetPadding: const EdgeInsets.symmetric(
+                horizontal: 18,
+                vertical: 24,
+              ),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 420),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
+                    child: Container(
+                      padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
+                      decoration: _hrFilterDialogDecoration(),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w800,
+                              fontSize: 16,
+                              color: Colors.white,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => setLocalState(
+                                  () => displayMonth = DateTime(
+                                    displayMonth.year,
+                                    displayMonth.month - 1,
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.chevron_left,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    '${_hrMonthNameEs(monthFirst.month)[0].toUpperCase()}${_hrMonthNameEs(monthFirst.month).substring(1)} ${monthFirst.year}',
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.w700,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              IconButton(
+                                visualDensity: VisualDensity.compact,
+                                onPressed: () => setLocalState(
+                                  () => displayMonth = DateTime(
+                                    displayMonth.year,
+                                    displayMonth.month + 1,
+                                  ),
+                                ),
+                                icon: const Icon(
+                                  Icons.chevron_right,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 4),
+                          Row(
+                            children: const [
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    'L',
+                                    style: TextStyle(color: Color(0xFFF1E7FF)),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    'M',
+                                    style: TextStyle(color: Color(0xFFF1E7FF)),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    'M',
+                                    style: TextStyle(color: Color(0xFFF1E7FF)),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    'J',
+                                    style: TextStyle(color: Color(0xFFF1E7FF)),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    'V',
+                                    style: TextStyle(color: Color(0xFFF1E7FF)),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    'S',
+                                    style: TextStyle(color: Color(0xFFF1E7FF)),
+                                  ),
+                                ),
+                              ),
+                              Expanded(
+                                child: Center(
+                                  child: Text(
+                                    'D',
+                                    style: TextStyle(color: Color(0xFFF1E7FF)),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 2),
+                          SizedBox(
+                            height: 250,
+                            child: Column(
+                              children: List.generate(6, (row) {
+                                return Expanded(
+                                  child: Row(
+                                    children: List.generate(7, (col) {
+                                      final day = gridStart.add(
+                                        Duration(days: row * 7 + col),
+                                      );
+                                      final inMonth =
+                                          day.month == displayMonth.month;
+                                      final allowed = withinBounds(day);
+                                      final active = isSameDay(day, selected);
+                                      return Expanded(
+                                        child: GestureDetector(
+                                          behavior: HitTestBehavior.opaque,
+                                          onTap: !allowed
+                                              ? null
+                                              : () => setLocalState(
+                                                  () =>
+                                                      selected = dateOnly(day),
+                                                ),
+                                          child: Container(
+                                            margin: const EdgeInsets.all(2),
+                                            decoration: BoxDecoration(
+                                              color: active
+                                                  ? humanResourcesAreaTokens
+                                                        .primary
+                                                  : Colors.transparent,
+                                              borderRadius:
+                                                  BorderRadius.circular(9),
+                                              border: active
+                                                  ? Border.all(
+                                                      color: Colors.white
+                                                          .withValues(
+                                                            alpha: 0.7,
+                                                          ),
+                                                    )
+                                                  : null,
+                                            ),
+                                            child: Center(
+                                              child: Text(
+                                                '${day.day}',
+                                                style: TextStyle(
+                                                  fontSize: 12,
+                                                  fontWeight: active
+                                                      ? FontWeight.w800
+                                                      : FontWeight.w600,
+                                                  color: active
+                                                      ? Colors.white
+                                                      : !allowed
+                                                      ? Colors.white38
+                                                      : inMonth
+                                                      ? const Color(0xFFF1E7FF)
+                                                      : Colors.white54,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      );
+                                    }),
+                                  ),
+                                );
+                              }),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            _fmtHrDateLabel(selected),
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFFE7D8FF),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              OutlinedButton(
+                                style: _hrInvFilterOutlinedButtonStyle(),
+                                onPressed: () => Navigator.pop(dialogContext),
+                                child: const Text('Cancelar'),
+                              ),
+                              const SizedBox(width: 8),
+                              FilledButton(
+                                style: _hrInvFilterFilledButtonStyle(),
+                                onPressed: () =>
+                                    Navigator.pop(dialogContext, selected),
+                                child: const Text('Aplicar'),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
 String _fmtHrDateLabel(DateTime d) {
   final dd = d.day.toString().padLeft(2, '0');
   final mm = d.month.toString().padLeft(2, '0');
@@ -3213,6 +5147,14 @@ String _fmtHrDbDate(DateTime d) {
   final mm = d.month.toString().padLeft(2, '0');
   final dd = d.day.toString().padLeft(2, '0');
   return '${d.year}-$mm-$dd';
+}
+
+String? _optionalMoneyValidator(String? value) {
+  final text = value?.trim() ?? '';
+  if (text.isEmpty) return null;
+  return double.tryParse(text.replaceAll(',', '')) == null
+      ? 'Numero invalido'
+      : null;
 }
 
 String _hrMonthNameEs(int month) {
@@ -3343,6 +5285,87 @@ const List<_HumanResourcesGridColumn> _kGridColumns =
       ),
     ];
 
+class _HrEmployeeAttachment {
+  final String id;
+  final String title;
+  final String fileName;
+  final Uint8List? bytes;
+  final String fileUrl;
+  final String? storagePath;
+  final String mimeType;
+  final int sizeBytes;
+  final String? uploadedBy;
+  final String uploadedByName;
+  final DateTime uploadedAt;
+  final DateTime? createdAt;
+  final DateTime? updatedAt;
+  final String categoryKey;
+  final String categoryLabel;
+
+  const _HrEmployeeAttachment({
+    required this.id,
+    required this.title,
+    required this.fileName,
+    required this.bytes,
+    required this.fileUrl,
+    required this.storagePath,
+    required this.mimeType,
+    required this.sizeBytes,
+    required this.uploadedBy,
+    required this.uploadedByName,
+    required this.uploadedAt,
+    required this.createdAt,
+    required this.updatedAt,
+    required this.categoryKey,
+    required this.categoryLabel,
+  });
+
+  _HrEmployeeAttachment copyWith({
+    String? id,
+    String? title,
+    String? fileName,
+    Uint8List? bytes,
+    String? fileUrl,
+    String? storagePath,
+    String? mimeType,
+    int? sizeBytes,
+    String? uploadedBy,
+    String? uploadedByName,
+    DateTime? uploadedAt,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+    String? categoryKey,
+    String? categoryLabel,
+  }) {
+    return _HrEmployeeAttachment(
+      id: id ?? this.id,
+      title: title ?? this.title,
+      fileName: fileName ?? this.fileName,
+      bytes: bytes ?? this.bytes,
+      fileUrl: fileUrl ?? this.fileUrl,
+      storagePath: storagePath ?? this.storagePath,
+      mimeType: mimeType ?? this.mimeType,
+      sizeBytes: sizeBytes ?? this.sizeBytes,
+      uploadedBy: uploadedBy ?? this.uploadedBy,
+      uploadedByName: uploadedByName ?? this.uploadedByName,
+      uploadedAt: uploadedAt ?? this.uploadedAt,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+      categoryKey: categoryKey ?? this.categoryKey,
+      categoryLabel: categoryLabel ?? this.categoryLabel,
+    );
+  }
+
+  bool get isImage {
+    final lower = fileName.toLowerCase();
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png') ||
+        lower.endsWith('.webp') ||
+        lower.endsWith('.heic');
+  }
+}
+
 class _HumanResourcesEmployeeRow {
   final String id;
   final String nombre;
@@ -3352,9 +5375,17 @@ class _HumanResourcesEmployeeRow {
   final String rfc;
   final String curp;
   final String fechaIngreso;
+  final String fechaAlta;
   final String telefono;
   final String numeroCuenta;
+  final String salario;
+  final String salarioRealPercibido;
   final String calzado;
+  final _HrEmployeeAttachment? photo;
+  final bool? creditoDeclarado;
+  final String creditoDetalle;
+  final List<_HrEmployeeAttachment> requiredAttachments;
+  final List<_HrEmployeeAttachment> additionalAttachments;
 
   const _HumanResourcesEmployeeRow({
     required this.id,
@@ -3365,9 +5396,17 @@ class _HumanResourcesEmployeeRow {
     required this.rfc,
     required this.curp,
     required this.fechaIngreso,
+    this.fechaAlta = '',
     required this.telefono,
     required this.numeroCuenta,
+    this.salario = '',
+    this.salarioRealPercibido = '',
     required this.calzado,
+    this.photo,
+    this.creditoDeclarado,
+    this.creditoDetalle = '',
+    this.requiredAttachments = const <_HrEmployeeAttachment>[],
+    this.additionalAttachments = const <_HrEmployeeAttachment>[],
   });
 
   _HumanResourcesEmployeeRow copyWithColumn(String columnId, String value) {
@@ -3386,10 +5425,18 @@ class _HumanResourcesEmployeeRow {
         return value == curp ? this : copyWith(curp: value);
       case 'fecha_ingreso':
         return value == fechaIngreso ? this : copyWith(fechaIngreso: value);
+      case 'fecha_alta':
+        return value == fechaAlta ? this : copyWith(fechaAlta: value);
       case 'telefono':
         return value == telefono ? this : copyWith(telefono: value);
       case 'numero_cuenta':
         return value == numeroCuenta ? this : copyWith(numeroCuenta: value);
+      case 'salario':
+        return value == salario ? this : copyWith(salario: value);
+      case 'salario_real_percibido':
+        return value == salarioRealPercibido
+            ? this
+            : copyWith(salarioRealPercibido: value);
       case 'calzado':
         return value == calzado ? this : copyWith(calzado: value);
       default:
@@ -3406,9 +5453,17 @@ class _HumanResourcesEmployeeRow {
     String? rfc,
     String? curp,
     String? fechaIngreso,
+    String? fechaAlta,
     String? telefono,
     String? numeroCuenta,
+    String? salario,
+    String? salarioRealPercibido,
     String? calzado,
+    _HrEmployeeAttachment? photo,
+    bool? creditoDeclarado,
+    String? creditoDetalle,
+    List<_HrEmployeeAttachment>? requiredAttachments,
+    List<_HrEmployeeAttachment>? additionalAttachments,
   }) {
     return _HumanResourcesEmployeeRow(
       id: id ?? this.id,
@@ -3419,9 +5474,21 @@ class _HumanResourcesEmployeeRow {
       rfc: rfc ?? this.rfc,
       curp: curp ?? this.curp,
       fechaIngreso: fechaIngreso ?? this.fechaIngreso,
+      fechaAlta: fechaAlta ?? this.fechaAlta,
       telefono: telefono ?? this.telefono,
       numeroCuenta: numeroCuenta ?? this.numeroCuenta,
+      salario: salario ?? this.salario,
+      salarioRealPercibido: salarioRealPercibido ?? this.salarioRealPercibido,
       calzado: calzado ?? this.calzado,
+      photo: photo ?? this.photo,
+      creditoDeclarado: creditoDeclarado ?? this.creditoDeclarado,
+      creditoDetalle: creditoDetalle ?? this.creditoDetalle,
+      requiredAttachments:
+          requiredAttachments ??
+          List<_HrEmployeeAttachment>.of(this.requiredAttachments),
+      additionalAttachments:
+          additionalAttachments ??
+          List<_HrEmployeeAttachment>.of(this.additionalAttachments),
     );
   }
 
@@ -3519,6 +5586,453 @@ class _HumanResourcesEmployeeRow {
           calzado: '8',
         ),
       ];
+}
+
+List<_HrEmployeeAttachment> _attachmentsForRequirement(
+  _HumanResourcesEmployeeRow row,
+  String requirementKey,
+) {
+  return row.requiredAttachments
+      .where((attachment) => attachment.categoryKey == requirementKey)
+      .toList(growable: false);
+}
+
+bool _isHrRequirementComplete(
+  _HumanResourcesEmployeeRow row,
+  _HrExpedienteRequirementSpec spec,
+) {
+  switch (spec.kind) {
+    case _HrExpedienteRequirementKind.baseTelefono:
+      return row.telefono.trim().isNotEmpty;
+    case _HrExpedienteRequirementKind.baseCuenta:
+      return row.numeroCuenta.trim().isNotEmpty;
+    case _HrExpedienteRequirementKind.creditNotice:
+      return row.creditoDeclarado != null;
+    case _HrExpedienteRequirementKind.upload:
+      return _attachmentsForRequirement(row, spec.key).length >=
+          spec.minimumFiles;
+  }
+}
+
+int _completedHrRequirementCount(_HumanResourcesEmployeeRow row) {
+  var completed = 0;
+  for (final spec in _kHrExpedienteRequirements) {
+    if (_isHrRequirementComplete(row, spec)) completed += 1;
+  }
+  return completed;
+}
+
+double _hrExpedienteProgress(_HumanResourcesEmployeeRow row) {
+  if (_kHrExpedienteRequirements.isEmpty) return 0;
+  return _completedHrRequirementCount(row) / _kHrExpedienteRequirements.length;
+}
+
+int _compareHrEmployeeRowsById(
+  _HumanResourcesEmployeeRow a,
+  _HumanResourcesEmployeeRow b,
+) {
+  final aInt = int.tryParse(a.id);
+  final bInt = int.tryParse(b.id);
+  if (aInt != null && bInt != null) return aInt.compareTo(bInt);
+  if (aInt != null) return -1;
+  if (bInt != null) return 1;
+  return a.id.compareTo(b.id);
+}
+
+class _HrPersonnelStore {
+  static Future<List<_HumanResourcesEmployeeRow>> loadEmployees() async {
+    final profileRows = await Supabase.instance.client
+        .from(_kHrEmployeeProfilesTable)
+        .select()
+        .order('id');
+    final documentRows = await Supabase.instance.client
+        .from(_kHrEmployeeDocumentsTable)
+        .select()
+        .order('uploaded_at', ascending: false)
+        .order('created_at', ascending: false);
+
+    final docsByEmployeeId = <String, List<_HrEmployeeAttachment>>{};
+    for (final raw in (documentRows as List)) {
+      final map = Map<String, dynamic>.from(raw as Map);
+      final ownerId = (map['employee_id'] ?? '').toString();
+      if (ownerId.isEmpty) continue;
+      docsByEmployeeId
+          .putIfAbsent(ownerId, () => <_HrEmployeeAttachment>[])
+          .add(_hrAttachmentFromRemoteRow(map));
+    }
+
+    return (profileRows as List)
+        .map((raw) => Map<String, dynamic>.from(raw as Map))
+        .map((row) {
+          final employeeId = (row['id'] ?? '').toString();
+          final documents =
+              docsByEmployeeId[employeeId] ?? const <_HrEmployeeAttachment>[];
+          return _HumanResourcesEmployeeRow(
+            id: employeeId,
+            nombre: (row['nombre'] ?? '').toString(),
+            empresa: (row['empresa'] ?? '').toString(),
+            horario: (row['horario'] ?? '').toString(),
+            nss: (row['nss'] ?? '').toString(),
+            rfc: (row['rfc'] ?? '').toString(),
+            curp: (row['curp'] ?? '').toString(),
+            fechaIngreso: (row['fecha_ingreso'] ?? '').toString(),
+            fechaAlta: (row['fecha_alta'] ?? '').toString(),
+            telefono: (row['telefono'] ?? '').toString(),
+            numeroCuenta: (row['numero_cuenta'] ?? '').toString(),
+            salario: _hrDbNumericToText(row['salario']),
+            salarioRealPercibido: _hrDbNumericToText(
+              row['salario_real_percibido'],
+            ),
+            calzado: (row['calzado'] ?? '').toString(),
+            creditoDeclarado: row['credito_declarado'] as bool?,
+            creditoDetalle: (row['credito_detalle'] ?? '').toString(),
+            photo: _hrPhotoFromProfileRow(row),
+            requiredAttachments: documents
+                .where((doc) => doc.categoryKey != 'adicional')
+                .toList(growable: false),
+            additionalAttachments: documents
+                .where((doc) => doc.categoryKey == 'adicional')
+                .toList(growable: false),
+          );
+        })
+        .toList(growable: false);
+  }
+
+  static Future<_HumanResourcesEmployeeRow> upsertEmployee(
+    _HumanResourcesEmployeeRow row, {
+    String? originalId,
+  }) async {
+    final client = Supabase.instance.client;
+    final sourceEmployeeId = (originalId == null || originalId == row.id)
+        ? row.id
+        : originalId;
+    final existingDocumentsRows = await client
+        .from(_kHrEmployeeDocumentsTable)
+        .select()
+        .eq('employee_id', sourceEmployeeId);
+    final existingDocuments = (existingDocumentsRows as List)
+        .map((raw) => Map<String, dynamic>.from(raw as Map))
+        .map(_hrAttachmentFromRemoteRow)
+        .toList(growable: false);
+
+    _HrEmployeeAttachment? photo = row.photo;
+    if (photo != null && photo.fileUrl.trim().isEmpty) {
+      photo = await _uploadAttachment(
+        employeeId: row.id,
+        attachment: photo,
+        segment: 'photo',
+      );
+    }
+
+    final syncedRequired = <_HrEmployeeAttachment>[];
+    for (final attachment in row.requiredAttachments) {
+      if (attachment.fileUrl.trim().isNotEmpty) {
+        syncedRequired.add(attachment);
+      } else {
+        syncedRequired.add(
+          await _uploadAttachment(
+            employeeId: row.id,
+            attachment: attachment,
+            segment: 'required',
+          ),
+        );
+      }
+    }
+
+    final syncedAdditional = <_HrEmployeeAttachment>[];
+    for (final attachment in row.additionalAttachments) {
+      if (attachment.fileUrl.trim().isNotEmpty) {
+        syncedAdditional.add(attachment);
+      } else {
+        syncedAdditional.add(
+          await _uploadAttachment(
+            employeeId: row.id,
+            attachment: attachment,
+            segment: 'additional',
+          ),
+        );
+      }
+    }
+
+    final syncedRow = row.copyWith(
+      photo: photo,
+      requiredAttachments: syncedRequired,
+      additionalAttachments: syncedAdditional,
+    );
+
+    final currentDocIds = {
+      ...syncedRequired.map((doc) => doc.id),
+      ...syncedAdditional.map((doc) => doc.id),
+    };
+    final removedDocs = existingDocuments
+        .where((doc) => !currentDocIds.contains(doc.id))
+        .toList(growable: false);
+    for (final doc in removedDocs) {
+      if (doc.storagePath != null && doc.storagePath!.isNotEmpty) {
+        await client.storage.from(_kHrEmployeeFilesBucket).remove([
+          doc.storagePath!,
+        ]);
+      }
+    }
+    if (removedDocs.isNotEmpty) {
+      await client
+          .from(_kHrEmployeeDocumentsTable)
+          .delete()
+          .eq('employee_id', sourceEmployeeId)
+          .inFilter('id', removedDocs.map((doc) => doc.id).toList());
+    }
+
+    final oldProfileRows = await client
+        .from(_kHrEmployeeProfilesTable)
+        .select('photo_storage_path')
+        .eq('id', sourceEmployeeId)
+        .limit(1);
+    final oldPhotoPath = (oldProfileRows as List).isNotEmpty
+        ? Map<String, dynamic>.from(
+            oldProfileRows.first as Map,
+          )['photo_storage_path']?.toString()
+        : null;
+    if (photo == null && oldPhotoPath != null && oldPhotoPath.isNotEmpty) {
+      await client.storage.from(_kHrEmployeeFilesBucket).remove([oldPhotoPath]);
+    } else if (photo != null &&
+        oldPhotoPath != null &&
+        oldPhotoPath.isNotEmpty &&
+        oldPhotoPath != photo.storagePath) {
+      await client.storage.from(_kHrEmployeeFilesBucket).remove([oldPhotoPath]);
+    }
+
+    await client.from(_kHrEmployeeProfilesTable).upsert(<String, dynamic>{
+      'id': syncedRow.id,
+      'nombre': syncedRow.nombre,
+      'empresa': syncedRow.empresa,
+      'horario': syncedRow.horario,
+      'nss': syncedRow.nss,
+      'rfc': syncedRow.rfc,
+      'curp': syncedRow.curp,
+      'fecha_ingreso': syncedRow.fechaIngreso,
+      'fecha_alta': syncedRow.fechaAlta.trim().isEmpty
+          ? null
+          : syncedRow.fechaAlta,
+      'telefono': syncedRow.telefono,
+      'numero_cuenta': syncedRow.numeroCuenta,
+      'salario': _hrDbMoneyValue(syncedRow.salario),
+      'salario_real_percibido': _hrDbMoneyValue(syncedRow.salarioRealPercibido),
+      'calzado': syncedRow.calzado,
+      'credito_declarado': syncedRow.creditoDeclarado,
+      'credito_detalle': syncedRow.creditoDetalle.trim().isEmpty
+          ? null
+          : syncedRow.creditoDetalle.trim(),
+      'photo_file_url': photo?.fileUrl,
+      'photo_storage_path': photo?.storagePath,
+      'photo_file_name': photo?.fileName,
+      'photo_mime_type': photo?.mimeType,
+      'photo_uploaded_at': photo?.uploadedAt.toIso8601String(),
+    });
+
+    final docsToUpsert = [
+      ...syncedRequired.map(
+        (doc) => _hrDocumentToInsertJson(doc, employeeId: row.id),
+      ),
+      ...syncedAdditional.map(
+        (doc) => _hrDocumentToInsertJson(doc, employeeId: row.id),
+      ),
+    ];
+    if (docsToUpsert.isNotEmpty) {
+      await client.from(_kHrEmployeeDocumentsTable).upsert(docsToUpsert);
+    }
+    if (sourceEmployeeId != row.id) {
+      await client
+          .from(_kHrEmployeeProfilesTable)
+          .delete()
+          .eq('id', sourceEmployeeId);
+    }
+    return syncedRow;
+  }
+
+  static Future<void> deleteEmployees(
+    List<_HumanResourcesEmployeeRow> rows,
+  ) async {
+    if (rows.isEmpty) return;
+    final client = Supabase.instance.client;
+    final ids = rows.map((row) => row.id).toList(growable: false);
+    final documentRows = await client
+        .from(_kHrEmployeeDocumentsTable)
+        .select('storage_path')
+        .inFilter('employee_id', ids);
+    final profileRows = await client
+        .from(_kHrEmployeeProfilesTable)
+        .select('photo_storage_path')
+        .inFilter('id', ids);
+    final paths = <String>{
+      for (final raw in (documentRows as List))
+        if (Map<String, dynamic>.from(raw as Map)['storage_path'] != null)
+          Map<String, dynamic>.from(raw)['storage_path'].toString(),
+      for (final raw in (profileRows as List))
+        if (Map<String, dynamic>.from(raw as Map)['photo_storage_path'] != null)
+          Map<String, dynamic>.from(raw)['photo_storage_path'].toString(),
+    }.where((path) => path.trim().isNotEmpty).toList(growable: false);
+    if (paths.isNotEmpty) {
+      await client.storage.from(_kHrEmployeeFilesBucket).remove(paths);
+    }
+    await client.from(_kHrEmployeeProfilesTable).delete().inFilter('id', ids);
+  }
+
+  static Future<_HrEmployeeAttachment> _uploadAttachment({
+    required String employeeId,
+    required _HrEmployeeAttachment attachment,
+    required String segment,
+  }) async {
+    final sanitized = attachment.fileName.replaceAll(
+      RegExp(r'[^a-zA-Z0-9._-]'),
+      '_',
+    );
+    final storagePath =
+        'employees/$employeeId/$segment/${DateTime.now().millisecondsSinceEpoch}_$sanitized';
+    if (kIsWeb) {
+      final bytes = attachment.bytes;
+      if (bytes == null) {
+        throw Exception('No se pudieron leer los bytes del archivo.');
+      }
+      await Supabase.instance.client.storage
+          .from(_kHrEmployeeFilesBucket)
+          .uploadBinary(
+            storagePath,
+            bytes,
+            fileOptions: FileOptions(
+              upsert: true,
+              contentType: attachment.mimeType,
+            ),
+          );
+    } else {
+      if (attachment.bytes != null) {
+        await Supabase.instance.client.storage
+            .from(_kHrEmployeeFilesBucket)
+            .uploadBinary(
+              storagePath,
+              attachment.bytes!,
+              fileOptions: FileOptions(
+                upsert: true,
+                contentType: attachment.mimeType,
+              ),
+            );
+      } else {
+        throw Exception('No se pudo leer el archivo local.');
+      }
+    }
+    final url = Supabase.instance.client.storage
+        .from(_kHrEmployeeFilesBucket)
+        .getPublicUrl(storagePath);
+    final user = Supabase.instance.client.auth.currentUser;
+    final now = DateTime.now();
+    return attachment.copyWith(
+      fileUrl: url,
+      storagePath: storagePath,
+      uploadedAt: now,
+      uploadedBy: user?.id,
+      uploadedByName: user?.email ?? 'Usuario',
+    );
+  }
+}
+
+Map<String, dynamic> _hrDocumentToInsertJson(
+  _HrEmployeeAttachment attachment, {
+  required String employeeId,
+}) => <String, dynamic>{
+  'id': attachment.id,
+  'employee_id': employeeId,
+  'category_key': attachment.categoryKey,
+  'category_label': attachment.categoryLabel,
+  'title': attachment.title,
+  'file_url': attachment.fileUrl,
+  'storage_path': attachment.storagePath,
+  'file_name': attachment.fileName,
+  'mime_type': attachment.mimeType,
+  'size_bytes': attachment.sizeBytes,
+  'uploaded_by': attachment.uploadedBy,
+  'uploaded_by_name': attachment.uploadedByName.trim().isEmpty
+      ? null
+      : attachment.uploadedByName.trim(),
+  'uploaded_at': attachment.uploadedAt.toIso8601String(),
+  'is_required': attachment.categoryKey != 'adicional',
+};
+
+_HrEmployeeAttachment _hrAttachmentFromRemoteRow(Map<String, dynamic> row) {
+  return _HrEmployeeAttachment(
+    id: (row['id'] ?? '').toString(),
+    title: (row['title'] ?? row['file_name'] ?? '').toString(),
+    fileName: (row['file_name'] ?? '').toString(),
+    bytes: null,
+    fileUrl: (row['file_url'] ?? '').toString(),
+    storagePath: row['storage_path']?.toString(),
+    mimeType: (row['mime_type'] ?? 'application/octet-stream').toString(),
+    sizeBytes: (row['size_bytes'] as num?)?.toInt() ?? 0,
+    uploadedBy: row['uploaded_by']?.toString(),
+    uploadedByName: (row['uploaded_by_name'] ?? '').toString(),
+    uploadedAt:
+        _tryParseDateTime(row['uploaded_at']?.toString()) ?? DateTime.now(),
+    createdAt: _tryParseDateTime(row['created_at']?.toString()),
+    updatedAt: _tryParseDateTime(row['updated_at']?.toString()),
+    categoryKey: (row['category_key'] ?? '').toString(),
+    categoryLabel: (row['category_label'] ?? '').toString(),
+  );
+}
+
+_HrEmployeeAttachment? _hrPhotoFromProfileRow(Map<String, dynamic> row) {
+  final fileUrl = (row['photo_file_url'] ?? '').toString();
+  final fileName = (row['photo_file_name'] ?? '').toString();
+  if (fileUrl.trim().isEmpty && fileName.trim().isEmpty) return null;
+  return _HrEmployeeAttachment(
+    id: 'photo_${row['id']}',
+    title: fileName.isEmpty ? 'Foto' : fileName,
+    fileName: fileName,
+    bytes: null,
+    fileUrl: fileUrl,
+    storagePath: row['photo_storage_path']?.toString(),
+    mimeType: (row['photo_mime_type'] ?? 'image/jpeg').toString(),
+    sizeBytes: 0,
+    uploadedBy: null,
+    uploadedByName: '',
+    uploadedAt:
+        _tryParseDateTime(row['photo_uploaded_at']?.toString()) ??
+        DateTime.now(),
+    createdAt: null,
+    updatedAt: null,
+    categoryKey: 'photo',
+    categoryLabel: 'Fotografia',
+  );
+}
+
+String _hrMimeTypeFor(PlatformFile file) {
+  final ext = (file.extension ?? '').trim().toLowerCase();
+  switch (ext) {
+    case 'pdf':
+      return 'application/pdf';
+    case 'jpg':
+    case 'jpeg':
+      return 'image/jpeg';
+    case 'png':
+      return 'image/png';
+    case 'webp':
+      return 'image/webp';
+    case 'heic':
+      return 'image/heic';
+    default:
+      return 'application/octet-stream';
+  }
+}
+
+DateTime? _tryParseDateTime(String? raw) {
+  if (raw == null || raw.trim().isEmpty) return null;
+  return DateTime.tryParse(raw);
+}
+
+String _hrAttachmentSizeLabel(int sizeBytes) {
+  if (sizeBytes <= 0) return 'sin tamaño';
+  if (sizeBytes < 1024) return '$sizeBytes B';
+  if (sizeBytes < 1024 * 1024) {
+    return '${(sizeBytes / 1024).toStringAsFixed(1)} KB';
+  }
+  return '${(sizeBytes / (1024 * 1024)).toStringAsFixed(1)} MB';
 }
 
 String _csvCell(String value) {

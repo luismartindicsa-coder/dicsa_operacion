@@ -252,6 +252,7 @@ class EmptyAreaDashboardConfig {
   final List<DashboardPlaceholderCard> placeholderCards;
   final EmptyAreaDashboardSidePanelBuilder? sidePanelBuilder;
   final EmptyAreaDashboardWorkspaceBuilder? workspaceBuilder;
+  final bool showHeroPanel;
   final bool showContractPanel;
   final bool showPlaceholderCards;
 
@@ -322,6 +323,7 @@ class EmptyAreaDashboardConfig {
     ],
     this.sidePanelBuilder,
     this.workspaceBuilder,
+    this.showHeroPanel = true,
     this.showContractPanel = true,
     this.showPlaceholderCards = true,
   });
@@ -332,6 +334,7 @@ class EmptyAreaDashboardConfig {
     List<DashboardHeaderAction>? headerActions,
     List<DashboardPlaceholderCard>? placeholderCards,
     EmptyAreaDashboardWorkspaceBuilder? workspaceBuilder,
+    bool? showHeroPanel,
     bool? showContractPanel,
     bool? showPlaceholderCards,
   }) {
@@ -383,6 +386,7 @@ class EmptyAreaDashboardConfig {
       placeholderCards: placeholderCards ?? this.placeholderCards,
       sidePanelBuilder: sidePanelBuilder,
       workspaceBuilder: workspaceBuilder ?? this.workspaceBuilder,
+      showHeroPanel: showHeroPanel ?? this.showHeroPanel,
       showContractPanel: showContractPanel ?? this.showContractPanel,
       showPlaceholderCards: showPlaceholderCards ?? this.showPlaceholderCards,
     );
@@ -569,8 +573,10 @@ class _AreaDashboardBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              _AreaHero(config: config),
-              const SizedBox(height: 16),
+              if (config.showHeroPanel) ...[
+                _AreaHero(config: config),
+                const SizedBox(height: 16),
+              ],
               LayoutBuilder(
                 builder: (context, constraints) {
                   final availableWidth = constraints.maxWidth;

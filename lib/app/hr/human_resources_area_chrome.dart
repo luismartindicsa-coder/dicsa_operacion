@@ -31,7 +31,7 @@ class HumanResourcesAreaBackground extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [Color(0xFF130B22), Color(0xFF24103D), Color(0xFF341A5A)],
+              colors: [Color(0xFF140B25), Color(0xFF24103F), Color(0xFF4A1D7A)],
             ),
           ),
           child: const SizedBox.expand(),
@@ -41,7 +41,7 @@ class HumanResourcesAreaBackground extends StatelessWidget {
           top: -140,
           child: _HumanResourcesBackgroundCircle(
             diameter: 760,
-            colors: [Color(0x262A174A), Color(0x1012091F)],
+            colors: [Color(0xFF2A174A), Color(0xFF12091F)],
           ),
         ),
         Positioned(
@@ -49,7 +49,7 @@ class HumanResourcesAreaBackground extends StatelessWidget {
           top: -80,
           child: _HumanResourcesBackgroundCircle(
             diameter: 560,
-            colors: [Color(0x269465F4), Color(0x10261540)],
+            colors: [Color(0xFF9465F4), Color(0x33261540)],
           ),
         ),
         Positioned(
@@ -57,7 +57,7 @@ class HumanResourcesAreaBackground extends StatelessWidget {
           bottom: -240,
           child: _HumanResourcesBackgroundCircle(
             diameter: 660,
-            colors: [Color(0x24573797), Color(0x10E9D8FF)],
+            colors: [Color(0x33573797), Color(0xFFE9D8FF)],
           ),
         ),
       ],

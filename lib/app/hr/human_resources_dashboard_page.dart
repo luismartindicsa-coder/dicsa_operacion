@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import 'human_resources_personnel_page.dart';
-import 'human_resources_mock_page.dart';
 import 'human_resources_theme.dart';
 
 class HumanResourcesDashboardPage extends StatelessWidget {
@@ -110,15 +111,14 @@ class HumanResourcesDashboardPage extends StatelessWidget {
       );
     }
 
-    Future<void> openMockVisual() async {
-      await Navigator.of(
-        context,
-      ).push(appPageRoute(page: const HumanResourcesMockPage()));
-    }
-
     return EmptyAreaDashboardPage(
       instantOpen: instantOpen,
       config: _config.copyWith(
+        workspaceBuilder: (context, config, width) =>
+            _HrDashboardWorkspace(width: width, onOpenPersonnel: openPersonnel),
+        showHeroPanel: false,
+        showContractPanel: false,
+        showPlaceholderCards: false,
         areaItems: [
           const DashboardNavAction(
             title: 'Dashboard RH',
@@ -133,12 +133,6 @@ class HumanResourcesDashboardPage extends StatelessWidget {
             icon: Icons.badge_outlined,
             onTap: openPersonnel,
           ),
-          DashboardNavAction(
-            title: 'Mock visual RH',
-            subtitle: 'Referencia cromatica y atmosferica actual',
-            icon: Icons.auto_awesome_rounded,
-            onTap: openMockVisual,
-          ),
         ],
       ),
     );
@@ -146,3 +140,187 @@ class HumanResourcesDashboardPage extends StatelessWidget {
 }
 
 Future<void> _noop() async {}
+
+class _HrDashboardWorkspace extends StatelessWidget {
+  final double width;
+  final Future<void> Function() onOpenPersonnel;
+
+  const _HrDashboardWorkspace({
+    required this.width,
+    required this.onOpenPersonnel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: _HrDashboardPersonnelSummaryCard(onTap: onOpenPersonnel),
+      ),
+    );
+  }
+}
+
+class _HrDashboardPersonnelSummaryCard extends StatefulWidget {
+  final Future<void> Function() onTap;
+
+  const _HrDashboardPersonnelSummaryCard({required this.onTap});
+
+  @override
+  State<_HrDashboardPersonnelSummaryCard> createState() =>
+      _HrDashboardPersonnelSummaryCardState();
+}
+
+class _HrDashboardPersonnelSummaryCardState
+    extends State<_HrDashboardPersonnelSummaryCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        scale: _hovered ? 1.015 : 1,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () async => widget.onTap(),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
+              width: 320,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              decoration: BoxDecoration(
+                color: const Color(0xE625163A),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: _hovered
+                      ? const Color(0x66C79CFF)
+                      : const Color(0x33B084FF),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(
+                      alpha: _hovered ? 0.24 : 0.14,
+                    ),
+                    blurRadius: _hovered ? 26 : 18,
+                    offset: Offset(0, _hovered ? 14 : 10),
+                  ),
+                  BoxShadow(
+                    color: tokens.glow.withValues(
+                      alpha: _hovered ? 0.12 : 0.06,
+                    ),
+                    blurRadius: _hovered ? 18 : 10,
+                  ),
+                ],
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF9F6BFF), Color(0xFF6E47A8)],
+                      ),
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.16),
+                      ),
+                    ),
+                    child: const Icon(
+                      Icons.badge_outlined,
+                      size: 18,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          'Personal',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: 0.5,
+                            color: Colors.white.withValues(alpha: 0.60),
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        FutureBuilder<List<dynamic>>(
+                          future: Supabase.instance.client
+                              .from('hr_employee_profiles')
+                              .select('id'),
+                          builder: (context, snapshot) {
+                            final total = snapshot.data?.length ?? 0;
+                            final loading =
+                                snapshot.connectionState !=
+                                ConnectionState.done;
+                            return Text(
+                              loading ? '...' : '$total empleados',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: Colors.white.withValues(alpha: 0.96),
+                                height: 1,
+                              ),
+                            );
+                          },
+                        ),
+                        const SizedBox(height: 3),
+                        const Text(
+                          'Abrir expediente digital',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFFCFAEFF),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: _hovered
+                          ? const Color(0xFF9F6BFF)
+                          : const Color(0x33432A65),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _hovered
+                            ? const Color(0x80FFFFFF)
+                            : const Color(0x33C79CFF),
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.arrow_forward_rounded,
+                      size: 18,
+                      color: _hovered ? Colors.white : const Color(0xFFC79CFF),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}

@@ -12,6 +12,10 @@ La referencia visual congelada para nuevas pantallas de RH es:
 
 - `lib/app/hr/human_resources_dashboard_page.dart`
 
+La referencia funcional congelada para el siguiente modulo fuente queda en:
+
+- `docs/hr/CONTRATO_ASISTENCIA_INCIDENCIAS_RH.md`
+
 ## Proposito
 
 `Recursos Humanos` debe convertirse en la superficie fuente para:
@@ -353,6 +357,19 @@ Entidades sugeridas:
 - `attendance_adjustment`
 - `hr_incident`
 - `leave_request`
+
+Contrato ampliado:
+
+- usar `employee_id` como llave principal del cruce
+- tratar `Personal RH` como padrón maestro
+- tratar `NGTeco` como fuente parcial de asistencia
+- tratar `CONTPAQ` como fuente parcial de nómina del periodo
+- soportar captura manual justificada como capacidad nativa
+- publicar a prenómina solo desde staging aprobado
+
+Referencia directa:
+
+- `docs/hr/CONTRATO_ASISTENCIA_INCIDENCIAS_RH.md`
 
 ### Prenomina / Nomina
 

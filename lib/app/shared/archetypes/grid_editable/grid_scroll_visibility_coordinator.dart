@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 import 'grid_navigation_controller.dart';
 
@@ -31,6 +32,23 @@ class GridScrollVisibilityCoordinator {
     );
     final context = _keys[id]?.currentContext;
     if (context == null) return;
+    final renderObject = context.findRenderObject();
+    final scrollableState = Scrollable.maybeOf(context);
+    if (renderObject is RenderObject && scrollableState != null) {
+      final viewport = RenderAbstractViewport.maybeOf(renderObject);
+      final position = scrollableState.position;
+      if (viewport != null &&
+          position.hasPixels &&
+          position.hasViewportDimension) {
+        final leading = viewport.getOffsetToReveal(renderObject, 0.0).offset;
+        final trailing = viewport.getOffsetToReveal(renderObject, 1.0).offset;
+        final visibleStart = position.pixels;
+        final visibleEnd = position.pixels + position.viewportDimension;
+        final fullyVisible =
+            leading >= visibleStart - 0.5 && trailing <= visibleEnd + 0.5;
+        if (fullyVisible) return;
+      }
+    }
     await Scrollable.ensureVisible(
       context,
       duration: duration,
