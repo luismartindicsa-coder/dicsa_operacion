@@ -49,6 +49,15 @@ const List<String> _kHrEmpresaOptions = <String>[
   'WHIRLPOOL',
   'KS',
 ];
+const List<String> _kHrWeekdayOptions = <String>[
+  'Lun',
+  'Mar',
+  'Mie',
+  'Jue',
+  'Vie',
+  'Sab',
+  'Dom',
+];
 const List<String> _kHrFileExtensions = <String>[
   'pdf',
   'jpg',
@@ -898,6 +907,7 @@ class _HumanResourcesPersonnelPageState
           'Nombre',
           'Empresa',
           'Horario',
+          'Dias que labora',
           'NSS',
           'RFC',
           'CURP',
@@ -908,6 +918,7 @@ class _HumanResourcesPersonnelPageState
           'Salario',
           'Salario percibido',
           'Calzado',
+          'Talla de uniforme',
         ].map(_csvCell).join(','),
       );
     for (final row in _visibleRows) {
@@ -917,6 +928,7 @@ class _HumanResourcesPersonnelPageState
           row.nombre,
           row.empresa,
           row.horario,
+          row.diasLabora.join(', '),
           row.nss,
           row.rfc,
           row.curp,
@@ -927,6 +939,7 @@ class _HumanResourcesPersonnelPageState
           row.salario,
           row.salarioRealPercibido,
           row.calzado,
+          row.tallaUniforme,
         ].map(_csvCell).join(','),
       );
     }
@@ -1087,6 +1100,7 @@ class _HumanResourcesPersonnelPageState
           'Nombre',
           'Empresa',
           'Horario',
+          'Dias que labora',
           'NSS',
           'RFC',
           'CURP',
@@ -1097,6 +1111,7 @@ class _HumanResourcesPersonnelPageState
           'Salario',
           'Salario percibido',
           'Calzado',
+          'Talla de uniforme',
         ].map(_csvCell).join(','),
       )
       ..writeln(
@@ -1105,6 +1120,7 @@ class _HumanResourcesPersonnelPageState
           row.nombre,
           row.empresa,
           row.horario,
+          row.diasLabora.join(', '),
           row.nss,
           row.rfc,
           row.curp,
@@ -1115,6 +1131,7 @@ class _HumanResourcesPersonnelPageState
           row.salario,
           row.salarioRealPercibido,
           row.calzado,
+          row.tallaUniforme,
         ].map(_csvCell).join(','),
       );
     final safeName = row.nombre
@@ -2385,10 +2402,13 @@ class _HumanResourcesEmployeeDialogState
   late final TextEditingController _calzadoController = TextEditingController(
     text: widget.existing?.calzado ?? '',
   );
+  late final TextEditingController _tallaUniformeController =
+      TextEditingController(text: widget.existing?.tallaUniforme ?? '');
   late final TextEditingController _creditoDetalleController =
       TextEditingController(text: widget.existing?.creditoDetalle ?? '');
   String? _empresa;
   String? _horario;
+  List<String> _diasLabora = <String>[];
   DateTime? _fechaIngreso;
   DateTime? _fechaAlta;
   _HrEmployeeAttachment? _photo;
@@ -2405,6 +2425,7 @@ class _HumanResourcesEmployeeDialogState
     super.initState();
     _empresa = widget.existing?.empresa;
     _horario = widget.existing?.horario;
+    _diasLabora = List<String>.of(widget.existing?.diasLabora ?? const []);
     _fechaIngreso = widget.existing == null
         ? null
         : _tryParseHrDbDate(widget.existing!.fechaIngreso);
@@ -2435,6 +2456,7 @@ class _HumanResourcesEmployeeDialogState
     _salarioController.dispose();
     _salarioRealPercibidoController.dispose();
     _calzadoController.dispose();
+    _tallaUniformeController.dispose();
     _creditoDetalleController.dispose();
     super.dispose();
   }
@@ -2461,6 +2483,15 @@ class _HumanResourcesEmployeeDialogState
     final value = await _showHrScheduleDialog(context, initialValue: _horario);
     if (!mounted || value == null) return;
     setState(() => _horario = value);
+  }
+
+  Future<void> _pickDiasLabora() async {
+    final value = await _showHrWeekdaySelectionDialog(
+      context,
+      initialValues: _diasLabora,
+    );
+    if (!mounted || value == null) return;
+    setState(() => _diasLabora = value);
   }
 
   Future<void> _pickFechaIngreso() async {
@@ -2603,6 +2634,7 @@ class _HumanResourcesEmployeeDialogState
       nombre: _nombreController.text.trim().toUpperCase(),
       empresa: (_empresa ?? '').trim(),
       horario: (_horario ?? '').trim(),
+      diasLabora: List<String>.of(_diasLabora),
       nss: _nssController.text.trim(),
       rfc: _rfcController.text.trim().toUpperCase(),
       curp: _curpController.text.trim().toUpperCase(),
@@ -2615,6 +2647,7 @@ class _HumanResourcesEmployeeDialogState
         _salarioRealPercibidoController.text,
       ),
       calzado: _calzadoController.text.trim(),
+      tallaUniforme: _tallaUniformeController.text.trim(),
       photo: _photo,
       creditoDeclarado: _creditoDeclarado,
       creditoDetalle: _creditoDetalleController.text.trim(),
@@ -2672,12 +2705,16 @@ class _HumanResourcesEmployeeDialogState
     final completedRequirements = _completedHrRequirementCount(draft);
     final totalRequirements = _kHrExpedienteRequirements.length;
     final progress = _hrExpedienteProgress(draft);
+    final expedienteStatus = _hrExpedienteStatusLabel(progress);
+    final ingresoChip = _fechaIngreso == null
+        ? 'Ingreso pendiente'
+        : 'Ingreso: ${_fmtHrDateLabel(_fechaIngreso!)}';
     return ContractDialogShell(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Container(
-          width: 1080,
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          width: 1028,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
           decoration: BoxDecoration(
             color: const Color(0xFFF6F0FF).withValues(alpha: 0.97),
             borderRadius: BorderRadius.circular(18),
@@ -2722,7 +2759,7 @@ class _HumanResourcesEmployeeDialogState
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            _isEditing ? 'Editar registro' : 'Nuevo registro',
+                            'Expediente del colaborador',
                             style: const TextStyle(
                               fontSize: 22,
                               fontWeight: FontWeight.w900,
@@ -2731,19 +2768,43 @@ class _HumanResourcesEmployeeDialogState
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            _isEditing
-                                ? 'Ajusta la información base del expediente de personal.'
-                                : 'Captura base del expediente de personal.',
+                            'Informacion administrativa y laboral del empleado.',
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
                               color: Color(0xFF6E47A8),
                             ),
                           ),
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 8,
+                            children: [
+                              _HrStatusChip(
+                                label:
+                                    '#${_idController.text.trim().isEmpty ? '---' : _idController.text.trim()}',
+                                complete: true,
+                              ),
+                              _HrStatusChip(
+                                label: (_empresa ?? 'Empresa pendiente'),
+                                complete:
+                                    _empresa != null &&
+                                    _empresa!.trim().isNotEmpty,
+                              ),
+                              _HrStatusChip(
+                                label: ingresoChip,
+                                complete: _fechaIngreso != null,
+                              ),
+                              _HrStatusChip(
+                                label: expedienteStatus,
+                                complete: progress >= 1,
+                              ),
+                            ],
+                          ),
                         ],
                       ),
                     ),
-                    const SizedBox(width: 18),
+                    const SizedBox(width: 14),
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.end,
                       children: [
@@ -2763,7 +2824,7 @@ class _HumanResourcesEmployeeDialogState
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 12),
                 Flexible(
                   child: SingleChildScrollView(
                     child: Column(
@@ -2772,224 +2833,335 @@ class _HumanResourcesEmployeeDialogState
                         Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Expanded(
-                              child: _HrDialogSectionCard(
-                                title: 'Datos base',
-                                subtitle:
-                                    'Informacion principal del colaborador.',
-                                child: Wrap(
-                                  spacing: 12,
-                                  runSpacing: 12,
-                                  children: [
-                                    _HrDialogField(
-                                      width: 120,
-                                      child: TextFormField(
-                                        controller: _idController,
-                                        style: const TextStyle(
-                                          color: Color(0xFF24103D),
-                                        ),
-                                        decoration: _hrDialogFieldDecoration(
-                                          context,
-                                          hintText: 'ID interno',
-                                        ),
-                                        validator: (value) {
-                                          final required = _requiredValidator(
-                                            value,
-                                          );
-                                          if (required != null) return required;
-                                          final normalized = value!.trim();
-                                          if (widget.reservedIds.contains(
-                                            normalized,
-                                          )) {
-                                            return 'Este ID ya existe.';
-                                          }
-                                          return null;
-                                        },
-                                        onChanged: (_) => setState(() {}),
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 520,
-                                      child: TextFormField(
-                                        controller: _nombreController,
-                                        style: const TextStyle(
-                                          color: Color(0xFF24103D),
-                                        ),
-                                        decoration: _hrDialogFieldDecoration(
-                                          context,
-                                          hintText: 'Nombre completo',
-                                        ),
-                                        validator: _requiredValidator,
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 220,
-                                      child: _HrDialogPickerField(
-                                        label: _empresa ?? 'Empresa',
-                                        onTap: _pickEmpresa,
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 260,
-                                      child: _HrDialogPickerField(
-                                        label: _horario ?? 'Horario laboral',
-                                        onTap: _pickHorario,
-                                        icon: Icons.schedule_rounded,
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 180,
-                                      child: TextFormField(
-                                        controller: _nssController,
-                                        style: const TextStyle(
-                                          color: Color(0xFF24103D),
-                                        ),
-                                        decoration: _hrDialogFieldDecoration(
-                                          context,
-                                          hintText: 'NSS',
-                                        ),
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 220,
-                                      child: TextFormField(
-                                        controller: _rfcController,
-                                        style: const TextStyle(
-                                          color: Color(0xFF24103D),
-                                        ),
-                                        decoration: _hrDialogFieldDecoration(
-                                          context,
-                                          hintText: 'RFC',
-                                        ),
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 300,
-                                      child: TextFormField(
-                                        controller: _curpController,
-                                        style: const TextStyle(
-                                          color: Color(0xFF24103D),
-                                        ),
-                                        decoration: _hrDialogFieldDecoration(
-                                          context,
-                                          hintText: 'CURP',
-                                        ),
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 220,
-                                      child: _HrDialogPickerField(
-                                        label: _fechaIngreso == null
-                                            ? 'Fecha de ingreso'
-                                            : _fmtHrDateLabel(_fechaIngreso!),
-                                        onTap: _pickFechaIngreso,
-                                        icon: Icons.calendar_month_rounded,
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 220,
-                                      child: _HrDialogPickerField(
-                                        label: _fechaAlta == null
-                                            ? 'Fecha de alta'
-                                            : _fmtHrDateLabel(_fechaAlta!),
-                                        onTap: _pickFechaAlta,
-                                        icon: Icons.event_available_rounded,
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 200,
-                                      child: TextFormField(
-                                        controller: _telefonoController,
-                                        style: const TextStyle(
-                                          color: Color(0xFF24103D),
-                                        ),
-                                        decoration: _hrDialogFieldDecoration(
-                                          context,
-                                          hintText: 'Telefono',
-                                        ),
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 240,
-                                      child: TextFormField(
-                                        controller: _cuentaController,
-                                        style: const TextStyle(
-                                          color: Color(0xFF24103D),
-                                        ),
-                                        decoration: _hrDialogFieldDecoration(
-                                          context,
-                                          hintText: 'No. de Cuenta',
-                                        ),
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 200,
-                                      child: TextFormField(
-                                        controller: _salarioController,
-                                        keyboardType:
-                                            const TextInputType.numberWithOptions(
-                                              decimal: true,
-                                            ),
-                                        style: const TextStyle(
-                                          color: Color(0xFF24103D),
-                                        ),
-                                        decoration: _hrDialogFieldDecoration(
-                                          context,
-                                          hintText: 'Salario',
-                                        ),
-                                        validator: _requiredMoneyValidator,
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 220,
-                                      child: TextFormField(
-                                        controller:
-                                            _salarioRealPercibidoController,
-                                        keyboardType:
-                                            const TextInputType.numberWithOptions(
-                                              decimal: true,
-                                            ),
-                                        style: const TextStyle(
-                                          color: Color(0xFF24103D),
-                                        ),
-                                        decoration: _hrDialogFieldDecoration(
-                                          context,
-                                          hintText: 'Salario percibido',
-                                        ),
-                                        validator: _requiredMoneyValidator,
-                                      ),
-                                    ),
-                                    _HrDialogField(
-                                      width: 180,
-                                      child: TextFormField(
-                                        controller: _calzadoController,
-                                        style: const TextStyle(
-                                          color: Color(0xFF24103D),
-                                        ),
-                                        decoration: _hrDialogFieldDecoration(
-                                          context,
-                                          hintText: 'Calzado',
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 14),
                             SizedBox(
-                              width: 280,
+                              width: 250,
                               child: _HrPassportPhotoCard(
                                 photo: _photo,
                                 onUpload: _pickPhoto,
                                 onRemove: _photo == null
                                     ? null
                                     : () => setState(() => _photo = null),
+                                nombre: _nombreController.text.trim(),
+                                id: _idController.text.trim(),
+                                empresa: (_empresa ?? '').trim(),
+                                nss: _nssController.text.trim(),
+                                rfc: _rfcController.text.trim().toUpperCase(),
+                                curp: _curpController.text.trim().toUpperCase(),
+                                statusLabel: expedienteStatus,
+                                progress: progress,
+                              ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                children: [
+                                  _HrDialogSectionCard(
+                                    title: 'Datos personales',
+                                    subtitle:
+                                        'Identificacion oficial y datos base del colaborador.',
+                                    child: Wrap(
+                                      spacing: 12,
+                                      runSpacing: 12,
+                                      children: [
+                                        _HrDialogField(
+                                          width: 132,
+                                          label: 'ID',
+                                          child: TextFormField(
+                                            controller: _idController,
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'ID interno',
+                                                ),
+                                            validator: (value) {
+                                              final required =
+                                                  _requiredValidator(value);
+                                              if (required != null) {
+                                                return required;
+                                              }
+                                              final normalized = value!.trim();
+                                              if (widget.reservedIds.contains(
+                                                normalized,
+                                              )) {
+                                                return 'Este ID ya existe.';
+                                              }
+                                              return null;
+                                            },
+                                            onChanged: (_) => setState(() {}),
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 514,
+                                          label: 'Nombre',
+                                          child: TextFormField(
+                                            controller: _nombreController,
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'Nombre completo',
+                                                ),
+                                            validator: _requiredValidator,
+                                            onChanged: (_) => setState(() {}),
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 320,
+                                          label: 'CURP',
+                                          child: TextFormField(
+                                            controller: _curpController,
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'CURP',
+                                                ),
+                                            onChanged: (_) => setState(() {}),
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 200,
+                                          label: 'RFC',
+                                          child: TextFormField(
+                                            controller: _rfcController,
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'RFC',
+                                                ),
+                                            onChanged: (_) => setState(() {}),
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 180,
+                                          label: 'NSS',
+                                          child: TextFormField(
+                                            controller: _nssController,
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'NSS',
+                                                ),
+                                            onChanged: (_) => setState(() {}),
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 200,
+                                          label: 'Telefono',
+                                          child: TextFormField(
+                                            controller: _telefonoController,
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'Telefono',
+                                                ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  _HrDialogSectionCard(
+                                    title: 'Datos laborales',
+                                    subtitle:
+                                        'Adscripcion, horario y vigencia del colaborador.',
+                                    child: Wrap(
+                                      spacing: 12,
+                                      runSpacing: 12,
+                                      children: [
+                                        _HrDialogField(
+                                          width: 220,
+                                          label: 'Empresa',
+                                          child: _HrDialogPickerField(
+                                            label:
+                                                _empresa ??
+                                                'Selecciona empresa',
+                                            onTap: _pickEmpresa,
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 230,
+                                          label: 'Horario',
+                                          child: _HrDialogPickerField(
+                                            label:
+                                                _horario ??
+                                                'Selecciona horario',
+                                            onTap: _pickHorario,
+                                            icon: Icons.schedule_rounded,
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 246,
+                                          label: 'Dias que labora',
+                                          child: _HrDialogPickerField(
+                                            label: _diasLabora.isEmpty
+                                                ? 'Selecciona dias'
+                                                : _diasLabora.join(', '),
+                                            onTap: _pickDiasLabora,
+                                            icon: Icons
+                                                .calendar_view_week_rounded,
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 220,
+                                          label: 'Fecha de ingreso',
+                                          child: _HrDialogPickerField(
+                                            label: _fechaIngreso == null
+                                                ? 'Selecciona fecha'
+                                                : _fmtHrDateLabel(
+                                                    _fechaIngreso!,
+                                                  ),
+                                            onTap: _pickFechaIngreso,
+                                            icon: Icons.calendar_month_rounded,
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 220,
+                                          label: 'Fecha de alta',
+                                          child: _HrDialogPickerField(
+                                            label: _fechaAlta == null
+                                                ? 'Selecciona fecha'
+                                                : _fmtHrDateLabel(_fechaAlta!),
+                                            onTap: _pickFechaAlta,
+                                            icon: Icons.event_available_rounded,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  _HrDialogSectionCard(
+                                    title: 'Nomina',
+                                    subtitle:
+                                        'Datos operativos para calculo y dispersion.',
+                                    child: Wrap(
+                                      spacing: 12,
+                                      runSpacing: 12,
+                                      children: [
+                                        _HrDialogField(
+                                          width: 240,
+                                          label: 'No. de Cuenta',
+                                          child: TextFormField(
+                                            controller: _cuentaController,
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'No. de Cuenta',
+                                                ),
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 200,
+                                          label: 'Salario',
+                                          child: TextFormField(
+                                            controller: _salarioController,
+                                            keyboardType:
+                                                const TextInputType.numberWithOptions(
+                                                  decimal: true,
+                                                ),
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'Salario',
+                                                ),
+                                            validator: _requiredMoneyValidator,
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 220,
+                                          label: 'Salario percibido',
+                                          child: TextFormField(
+                                            controller:
+                                                _salarioRealPercibidoController,
+                                            keyboardType:
+                                                const TextInputType.numberWithOptions(
+                                                  decimal: true,
+                                                ),
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'Salario percibido',
+                                                ),
+                                            validator: _requiredMoneyValidator,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(height: 10),
+                                  _HrDialogSectionCard(
+                                    title: 'Contacto y uniforme',
+                                    subtitle:
+                                        'Datos operativos complementarios del expediente.',
+                                    child: Wrap(
+                                      spacing: 12,
+                                      runSpacing: 12,
+                                      children: [
+                                        _HrDialogField(
+                                          width: 180,
+                                          label: 'Calzado',
+                                          child: TextFormField(
+                                            controller: _calzadoController,
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'Calzado',
+                                                ),
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 220,
+                                          label: 'Talla de uniforme',
+                                          child: TextFormField(
+                                            controller:
+                                                _tallaUniformeController,
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'Talla de uniforme',
+                                                ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 18),
+                        const SizedBox(height: 14),
                         _HrDialogSectionCard(
                           title: 'Expediente digital',
                           subtitle:
@@ -3254,7 +3426,7 @@ class _HumanResourcesEmployeeDialogState
                     ),
                   ),
                 ),
-                const SizedBox(height: 18),
+                const SizedBox(height: 14),
                 Container(
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
@@ -3282,7 +3454,7 @@ class _HumanResourcesEmployeeDialogState
                       FilledButton(
                         style: contractPrimaryButtonStyle(context),
                         onPressed: _submit,
-                        child: const Text('Guardar y cerrar'),
+                        child: const Text('Guardar expediente'),
                       ),
                     ],
                   ),
@@ -3426,13 +3598,33 @@ class _HumanResourcesEmployeeDialogState
 
 class _HrDialogField extends StatelessWidget {
   final double width;
+  final String? label;
   final Widget child;
 
-  const _HrDialogField({required this.width, required this.child});
+  const _HrDialogField({required this.width, required this.child, this.label});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(width: width, child: child);
+    return SizedBox(
+      width: width,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (label != null) ...[
+            Text(
+              label!,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF6E47A8),
+              ),
+            ),
+            const SizedBox(height: 5),
+          ],
+          child,
+        ],
+      ),
+    );
   }
 }
 
@@ -3476,23 +3668,39 @@ class _HrPassportPhotoCard extends StatelessWidget {
   final _HrEmployeeAttachment? photo;
   final VoidCallback onUpload;
   final VoidCallback? onRemove;
+  final String nombre;
+  final String id;
+  final String empresa;
+  final String nss;
+  final String rfc;
+  final String curp;
+  final String statusLabel;
+  final double progress;
 
   const _HrPassportPhotoCard({
     required this.photo,
     required this.onUpload,
     this.onRemove,
+    required this.nombre,
+    required this.id,
+    required this.empresa,
+    required this.nss,
+    required this.rfc,
+    required this.curp,
+    required this.statusLabel,
+    required this.progress,
   });
 
   @override
   Widget build(BuildContext context) {
     return _HrDialogSectionCard(
-      title: 'Foto',
-      subtitle: 'Sube la foto oficial del colaborador.',
+      title: 'Ficha del colaborador',
+      subtitle: 'Resumen identificador del expediente.',
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Container(
-            height: 240,
+            height: 180,
             decoration: BoxDecoration(
               color: const Color(0xFFF0E4FF),
               borderRadius: BorderRadius.circular(16),
@@ -3527,7 +3735,42 @@ class _HrPassportPhotoCard extends StatelessWidget {
                     ],
                   ),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 8),
+          Text(
+            nombre.isEmpty ? 'Nombre pendiente' : nombre,
+            style: const TextStyle(
+              fontSize: 15,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF24103D),
+            ),
+          ),
+          const SizedBox(height: 5),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _HrStatusChip(
+                label: id.isEmpty ? 'ID pendiente' : 'ID #$id',
+                complete: id.isNotEmpty,
+              ),
+              _HrStatusChip(
+                label: empresa.isEmpty ? 'Empresa pendiente' : empresa,
+                complete: empresa.isNotEmpty,
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const _HrSidebarDivider(),
+          _HrSidebarDatum(label: 'Estado', value: statusLabel),
+          _HrSidebarDatum(
+            label: 'Avance',
+            value: '${(progress * 100).round()}% completo',
+          ),
+          const _HrSidebarDivider(),
+          _HrSidebarDatum(label: 'NSS', value: nss),
+          _HrSidebarDatum(label: 'RFC', value: rfc),
+          _HrSidebarDatum(label: 'CURP', value: curp),
+          const SizedBox(height: 8),
           FilledButton.icon(
             style: contractSecondaryButtonStyle(context),
             onPressed: onUpload,
@@ -3542,6 +3785,57 @@ class _HrPassportPhotoCard extends StatelessWidget {
               child: const Text('Quitar'),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _HrSidebarDivider extends StatelessWidget {
+  const _HrSidebarDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      height: 1,
+      margin: const EdgeInsets.symmetric(vertical: 8),
+      color: const Color(0xFFE7DCFF),
+    );
+  }
+}
+
+class _HrSidebarDatum extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _HrSidebarDatum({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    final safeValue = value.trim().isEmpty ? 'Pendiente' : value.trim();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFF6E47A8),
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            safeValue,
+            style: const TextStyle(
+              fontSize: 12.5,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF24103D),
+            ),
+          ),
         ],
       ),
     );
@@ -3565,10 +3859,10 @@ class _HrDialogSectionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
         color: const Color(0xFFF3E9FF).withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0x55B084FF)),
       ),
       child: Column(
@@ -3584,7 +3878,7 @@ class _HrDialogSectionCard extends StatelessWidget {
                     Text(
                       title,
                       style: const TextStyle(
-                        fontSize: 15,
+                        fontSize: 14,
                         fontWeight: FontWeight.w900,
                         color: Color(0xFF24103D),
                       ),
@@ -3593,7 +3887,7 @@ class _HrDialogSectionCard extends StatelessWidget {
                     Text(
                       subtitle,
                       style: const TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                         color: Color(0xFF6E47A8),
                       ),
@@ -3604,7 +3898,7 @@ class _HrDialogSectionCard extends StatelessWidget {
               if (trailing != null) ...[const SizedBox(width: 12), trailing!],
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 12),
           child,
         ],
       ),
@@ -3629,12 +3923,13 @@ class _HrChoiceChip extends StatelessWidget {
       borderRadius: BorderRadius.circular(999),
       onTap: onTap,
       child: Ink(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         decoration: BoxDecoration(
-          color: selected ? const Color(0xFFB68CFF) : const Color(0xFFFFFBFF),
+          color: selected ? const Color(0xFFE7D4FF) : const Color(0xFFFFFBFF),
           borderRadius: BorderRadius.circular(999),
           border: Border.all(
-            color: selected ? const Color(0xFF9F6BFF) : const Color(0x44B084FF),
+            color: selected ? const Color(0xFF7C4DFF) : const Color(0x66B084FF),
+            width: selected ? 1.2 : 1,
           ),
         ),
         child: Text(
@@ -3642,7 +3937,7 @@ class _HrChoiceChip extends StatelessWidget {
           style: TextStyle(
             fontSize: 12.5,
             fontWeight: FontWeight.w800,
-            color: selected ? const Color(0xFF24103D) : const Color(0xFF6E47A8),
+            color: selected ? const Color(0xFF3B1F5C) : const Color(0xFF6E47A8),
           ),
         ),
       ),
@@ -3804,6 +4099,107 @@ class _HrScheduleDraft {
   }
 }
 
+Future<List<String>?> _showHrWeekdaySelectionDialog(
+  BuildContext context, {
+  required List<String> initialValues,
+}) {
+  return showDialog<List<String>>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) {
+      final selected = <String>{...initialValues};
+      return StatefulBuilder(
+        builder: (context, setLocalState) {
+          return Dialog(
+            backgroundColor: Colors.transparent,
+            insetPadding: const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 24,
+            ),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 420),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                decoration: _hrFilterDialogDecoration(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'Dias que labora',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Selecciona los dias de la semana en los que se presenta.',
+                      style: TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white.withValues(alpha: 0.68),
+                      ),
+                    ),
+                    const SizedBox(height: 14),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (final day in _kHrWeekdayOptions)
+                          _HrChoiceChip(
+                            label: day,
+                            selected: selected.contains(day),
+                            onTap: () => setLocalState(() {
+                              if (!selected.add(day)) selected.remove(day);
+                            }),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        OutlinedButton(
+                          style: _hrInvFilterOutlinedButtonStyle(),
+                          onPressed: () => Navigator.pop(dialogContext),
+                          child: const Text('Cancelar'),
+                        ),
+                        const Spacer(),
+                        TextButton(
+                          onPressed: () =>
+                              setLocalState(() => selected.clear()),
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white.withValues(
+                              alpha: 0.78,
+                            ),
+                          ),
+                          child: const Text('Limpiar'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          style: _hrInvFilterFilledButtonStyle(),
+                          onPressed: () => Navigator.pop(
+                            dialogContext,
+                            _kHrWeekdayOptions
+                                .where(selected.contains)
+                                .toList(growable: false),
+                          ),
+                          child: const Text('Aplicar'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
 InputDecoration _hrDialogFieldDecoration(
   BuildContext context, {
   String? hintText,
@@ -3827,7 +4223,7 @@ InputDecoration _hrDialogFieldDecoration(
         width: 1.2,
       ),
     ),
-    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
   );
 }
 
@@ -4439,6 +4835,32 @@ String _normalizeHrMoneyInput(String value) {
   final parsed = double.tryParse(trimmed);
   if (parsed == null) return trimmed;
   return parsed.toStringAsFixed(2);
+}
+
+bool _sameHrStringList(List<String> a, List<String> b) {
+  if (identical(a, b)) return true;
+  if (a.length != b.length) return false;
+  for (var i = 0; i < a.length; i++) {
+    if (a[i] != b[i]) return false;
+  }
+  return true;
+}
+
+List<String> _parseHrDiasLaboraValue(Object? value) {
+  if (value == null) return const <String>[];
+  if (value is List) {
+    return value
+        .map((item) => item.toString().trim())
+        .where((item) => item.isNotEmpty)
+        .toList(growable: false);
+  }
+  final text = value.toString().trim();
+  if (text.isEmpty) return const <String>[];
+  return text
+      .split(',')
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toList(growable: false);
 }
 
 double? _hrDbMoneyValue(String value) {
@@ -5371,6 +5793,7 @@ class _HumanResourcesEmployeeRow {
   final String nombre;
   final String empresa;
   final String horario;
+  final List<String> diasLabora;
   final String nss;
   final String rfc;
   final String curp;
@@ -5381,6 +5804,7 @@ class _HumanResourcesEmployeeRow {
   final String salario;
   final String salarioRealPercibido;
   final String calzado;
+  final String tallaUniforme;
   final _HrEmployeeAttachment? photo;
   final bool? creditoDeclarado;
   final String creditoDetalle;
@@ -5392,6 +5816,7 @@ class _HumanResourcesEmployeeRow {
     required this.nombre,
     required this.empresa,
     required this.horario,
+    this.diasLabora = const <String>[],
     required this.nss,
     required this.rfc,
     required this.curp,
@@ -5402,6 +5827,7 @@ class _HumanResourcesEmployeeRow {
     this.salario = '',
     this.salarioRealPercibido = '',
     required this.calzado,
+    this.tallaUniforme = '',
     this.photo,
     this.creditoDeclarado,
     this.creditoDetalle = '',
@@ -5417,6 +5843,11 @@ class _HumanResourcesEmployeeRow {
         return value == empresa ? this : copyWith(empresa: value);
       case 'horario':
         return value == horario ? this : copyWith(horario: value);
+      case 'dias_labora':
+        final normalized = _parseHrDiasLaboraValue(value);
+        return _sameHrStringList(normalized, diasLabora)
+            ? this
+            : copyWith(diasLabora: normalized);
       case 'nss':
         return value == nss ? this : copyWith(nss: value);
       case 'rfc':
@@ -5439,6 +5870,8 @@ class _HumanResourcesEmployeeRow {
             : copyWith(salarioRealPercibido: value);
       case 'calzado':
         return value == calzado ? this : copyWith(calzado: value);
+      case 'talla_uniforme':
+        return value == tallaUniforme ? this : copyWith(tallaUniforme: value);
       default:
         return this;
     }
@@ -5449,6 +5882,7 @@ class _HumanResourcesEmployeeRow {
     String? nombre,
     String? empresa,
     String? horario,
+    List<String>? diasLabora,
     String? nss,
     String? rfc,
     String? curp,
@@ -5459,6 +5893,7 @@ class _HumanResourcesEmployeeRow {
     String? salario,
     String? salarioRealPercibido,
     String? calzado,
+    String? tallaUniforme,
     _HrEmployeeAttachment? photo,
     bool? creditoDeclarado,
     String? creditoDetalle,
@@ -5470,6 +5905,7 @@ class _HumanResourcesEmployeeRow {
       nombre: nombre ?? this.nombre,
       empresa: empresa ?? this.empresa,
       horario: horario ?? this.horario,
+      diasLabora: diasLabora ?? List<String>.of(this.diasLabora),
       nss: nss ?? this.nss,
       rfc: rfc ?? this.rfc,
       curp: curp ?? this.curp,
@@ -5480,6 +5916,7 @@ class _HumanResourcesEmployeeRow {
       salario: salario ?? this.salario,
       salarioRealPercibido: salarioRealPercibido ?? this.salarioRealPercibido,
       calzado: calzado ?? this.calzado,
+      tallaUniforme: tallaUniforme ?? this.tallaUniforme,
       photo: photo ?? this.photo,
       creditoDeclarado: creditoDeclarado ?? this.creditoDeclarado,
       creditoDetalle: creditoDetalle ?? this.creditoDetalle,
@@ -5627,6 +6064,12 @@ double _hrExpedienteProgress(_HumanResourcesEmployeeRow row) {
   return _completedHrRequirementCount(row) / _kHrExpedienteRequirements.length;
 }
 
+String _hrExpedienteStatusLabel(double progress) {
+  if (progress >= 1) return 'Expediente completo';
+  if (progress <= 0) return 'Expediente pendiente';
+  return 'Expediente incompleto';
+}
+
 int _compareHrEmployeeRowsById(
   _HumanResourcesEmployeeRow a,
   _HumanResourcesEmployeeRow b,
@@ -5672,6 +6115,7 @@ class _HrPersonnelStore {
             nombre: (row['nombre'] ?? '').toString(),
             empresa: (row['empresa'] ?? '').toString(),
             horario: (row['horario'] ?? '').toString(),
+            diasLabora: _parseHrDiasLaboraValue(row['dias_labora']),
             nss: (row['nss'] ?? '').toString(),
             rfc: (row['rfc'] ?? '').toString(),
             curp: (row['curp'] ?? '').toString(),
@@ -5684,6 +6128,7 @@ class _HrPersonnelStore {
               row['salario_real_percibido'],
             ),
             calzado: (row['calzado'] ?? '').toString(),
+            tallaUniforme: (row['talla_uniforme'] ?? '').toString(),
             creditoDeclarado: row['credito_declarado'] as bool?,
             creditoDetalle: (row['credito_detalle'] ?? '').toString(),
             photo: _hrPhotoFromProfileRow(row),
@@ -5806,6 +6251,7 @@ class _HrPersonnelStore {
       'nombre': syncedRow.nombre,
       'empresa': syncedRow.empresa,
       'horario': syncedRow.horario,
+      'dias_labora': syncedRow.diasLabora,
       'nss': syncedRow.nss,
       'rfc': syncedRow.rfc,
       'curp': syncedRow.curp,
@@ -5818,6 +6264,7 @@ class _HrPersonnelStore {
       'salario': _hrDbMoneyValue(syncedRow.salario),
       'salario_real_percibido': _hrDbMoneyValue(syncedRow.salarioRealPercibido),
       'calzado': syncedRow.calzado,
+      'talla_uniforme': syncedRow.tallaUniforme,
       'credito_declarado': syncedRow.creditoDeclarado,
       'credito_detalle': syncedRow.creditoDetalle.trim().isEmpty
           ? null
