@@ -32,6 +32,7 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_dashboard_page.dart';
 import 'human_resources_theme.dart';
@@ -897,6 +898,15 @@ class _HumanResourcesPersonnelPageState
     );
   }
 
+  Future<void> _openAttendanceIncidents() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const HumanResourcesAttendanceIncidentsPage(instantOpen: true),
+      ),
+    );
+  }
+
   Future<void> _exportCsv() async {
     if (_exportingCsv) return;
     setState(() => _exportingCsv = true);
@@ -1334,6 +1344,12 @@ class _HumanResourcesPersonnelPageState
                       title: 'Personal',
                       subtitle: 'Grid homologado de expediente base',
                       accented: true,
+                    ),
+                    HumanResourcesAreaNavEntry(
+                      icon: Icons.schedule_rounded,
+                      title: 'Asistencia e incidencias',
+                      subtitle: 'Importaciones, staging y correcciones',
+                      onTap: _openAttendanceIncidents,
                     ),
                   ],
                   accessItems: [
@@ -2409,6 +2425,7 @@ class _HumanResourcesEmployeeDialogState
   String? _empresa;
   String? _horario;
   List<String> _diasLabora = <String>[];
+  List<_HrLaborSchedule> _additionalLaborSchedules = <_HrLaborSchedule>[];
   DateTime? _fechaIngreso;
   DateTime? _fechaAlta;
   _HrEmployeeAttachment? _photo;
@@ -2424,8 +2441,19 @@ class _HumanResourcesEmployeeDialogState
   void initState() {
     super.initState();
     _empresa = widget.existing?.empresa;
-    _horario = widget.existing?.horario;
-    _diasLabora = List<String>.of(widget.existing?.diasLabora ?? const []);
+    final schedules =
+        widget.existing?.laborSchedules
+            .where((schedule) => schedule.isMeaningful)
+            .toList(growable: false) ??
+        const <_HrLaborSchedule>[];
+    if (schedules.isNotEmpty) {
+      _horario = schedules.first.horario;
+      _diasLabora = List<String>.of(schedules.first.diasLabora);
+      _additionalLaborSchedules = List<_HrLaborSchedule>.of(schedules.skip(1));
+    } else {
+      _horario = widget.existing?.horario;
+      _diasLabora = List<String>.of(widget.existing?.diasLabora ?? const []);
+    }
     _fechaIngreso = widget.existing == null
         ? null
         : _tryParseHrDbDate(widget.existing!.fechaIngreso);
@@ -2492,6 +2520,50 @@ class _HumanResourcesEmployeeDialogState
     );
     if (!mounted || value == null) return;
     setState(() => _diasLabora = value);
+  }
+
+  Future<void> _addLaborSchedule() async {
+    final value = await _showHrLaborScheduleComposerDialog(context);
+    if (!mounted || value == null) return;
+    setState(() {
+      _additionalLaborSchedules = [..._additionalLaborSchedules, value];
+    });
+  }
+
+  Future<void> _editLaborSchedule(int index) async {
+    if (index < 0 || index >= _additionalLaborSchedules.length) return;
+    final value = await _showHrLaborScheduleComposerDialog(
+      context,
+      initialValue: _additionalLaborSchedules[index],
+    );
+    if (!mounted || value == null) return;
+    setState(() {
+      _additionalLaborSchedules = List<_HrLaborSchedule>.of(
+        _additionalLaborSchedules,
+      )..[index] = value;
+    });
+  }
+
+  void _removeLaborSchedule(int index) {
+    if (index < 0 || index >= _additionalLaborSchedules.length) return;
+    setState(() {
+      _additionalLaborSchedules = List<_HrLaborSchedule>.of(
+        _additionalLaborSchedules,
+      )..removeAt(index);
+    });
+  }
+
+  List<_HrLaborSchedule> _composeLaborSchedules() {
+    final schedules = <_HrLaborSchedule>[];
+    final primary = _HrLaborSchedule(
+      horario: (_horario ?? '').trim(),
+      diasLabora: List<String>.of(_diasLabora),
+    );
+    if (primary.isMeaningful) schedules.add(primary);
+    for (final schedule in _additionalLaborSchedules) {
+      if (schedule.isMeaningful) schedules.add(schedule);
+    }
+    return schedules;
   }
 
   Future<void> _pickFechaIngreso() async {
@@ -2635,6 +2707,7 @@ class _HumanResourcesEmployeeDialogState
       empresa: (_empresa ?? '').trim(),
       horario: (_horario ?? '').trim(),
       diasLabora: List<String>.of(_diasLabora),
+      laborSchedules: _composeLaborSchedules(),
       nss: _nssController.text.trim(),
       rfc: _rfcController.text.trim().toUpperCase(),
       curp: _curpController.text.trim().toUpperCase(),
@@ -2981,67 +3054,130 @@ class _HumanResourcesEmployeeDialogState
                                     title: 'Datos laborales',
                                     subtitle:
                                         'Adscripcion, horario y vigencia del colaborador.',
-                                    child: Wrap(
-                                      spacing: 12,
-                                      runSpacing: 12,
+                                    trailing: FilledButton.icon(
+                                      style: FilledButton.styleFrom(
+                                        backgroundColor: const Color(
+                                          0xFF8B5CF6,
+                                        ),
+                                        foregroundColor: Colors.white,
+                                        visualDensity: VisualDensity.compact,
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 12,
+                                          vertical: 10,
+                                        ),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(
+                                            14,
+                                          ),
+                                        ),
+                                      ),
+                                      onPressed: _addLaborSchedule,
+                                      icon: const Icon(Icons.add_rounded),
+                                      label: const Text('Jornada'),
+                                    ),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
-                                        _HrDialogField(
-                                          width: 220,
-                                          label: 'Empresa',
-                                          child: _HrDialogPickerField(
-                                            label:
-                                                _empresa ??
-                                                'Selecciona empresa',
-                                            onTap: _pickEmpresa,
-                                          ),
+                                        Wrap(
+                                          spacing: 12,
+                                          runSpacing: 12,
+                                          children: [
+                                            _HrDialogField(
+                                              width: 220,
+                                              label: 'Empresa',
+                                              child: _HrDialogPickerField(
+                                                label:
+                                                    _empresa ??
+                                                    'Selecciona empresa',
+                                                onTap: _pickEmpresa,
+                                              ),
+                                            ),
+                                            _HrDialogField(
+                                              width: 230,
+                                              label: 'Horario',
+                                              child: _HrDialogPickerField(
+                                                label:
+                                                    _horario ??
+                                                    'Selecciona horario',
+                                                onTap: _pickHorario,
+                                                icon: Icons.schedule_rounded,
+                                              ),
+                                            ),
+                                            _HrDialogField(
+                                              width: 246,
+                                              label: 'Dias que labora',
+                                              child: _HrDialogPickerField(
+                                                label: _diasLabora.isEmpty
+                                                    ? 'Selecciona dias'
+                                                    : _diasLabora.join(', '),
+                                                onTap: _pickDiasLabora,
+                                                icon: Icons
+                                                    .calendar_view_week_rounded,
+                                              ),
+                                            ),
+                                            _HrDialogField(
+                                              width: 220,
+                                              label: 'Fecha de ingreso',
+                                              child: _HrDialogPickerField(
+                                                label: _fechaIngreso == null
+                                                    ? 'Selecciona fecha'
+                                                    : _fmtHrDateLabel(
+                                                        _fechaIngreso!,
+                                                      ),
+                                                onTap: _pickFechaIngreso,
+                                                icon: Icons
+                                                    .calendar_month_rounded,
+                                              ),
+                                            ),
+                                            _HrDialogField(
+                                              width: 220,
+                                              label: 'Fecha de alta',
+                                              child: _HrDialogPickerField(
+                                                label: _fechaAlta == null
+                                                    ? 'Selecciona fecha'
+                                                    : _fmtHrDateLabel(
+                                                        _fechaAlta!,
+                                                      ),
+                                                onTap: _pickFechaAlta,
+                                                icon: Icons
+                                                    .event_available_rounded,
+                                              ),
+                                            ),
+                                          ],
                                         ),
-                                        _HrDialogField(
-                                          width: 230,
-                                          label: 'Horario',
-                                          child: _HrDialogPickerField(
-                                            label:
-                                                _horario ??
-                                                'Selecciona horario',
-                                            onTap: _pickHorario,
-                                            icon: Icons.schedule_rounded,
+                                        if (_additionalLaborSchedules
+                                            .isNotEmpty) ...[
+                                          const SizedBox(height: 12),
+                                          Column(
+                                            children: [
+                                              for (
+                                                var index = 0;
+                                                index <
+                                                    _additionalLaborSchedules
+                                                        .length;
+                                                index += 1
+                                              ) ...[
+                                                _HrLaborScheduleCard(
+                                                  title: 'Jornada ${index + 2}',
+                                                  schedule:
+                                                      _additionalLaborSchedules[index],
+                                                  onEdit: () =>
+                                                      _editLaborSchedule(index),
+                                                  onRemove: () =>
+                                                      _removeLaborSchedule(
+                                                        index,
+                                                      ),
+                                                ),
+                                                if (index !=
+                                                    _additionalLaborSchedules
+                                                            .length -
+                                                        1)
+                                                  const SizedBox(height: 8),
+                                              ],
+                                            ],
                                           ),
-                                        ),
-                                        _HrDialogField(
-                                          width: 246,
-                                          label: 'Dias que labora',
-                                          child: _HrDialogPickerField(
-                                            label: _diasLabora.isEmpty
-                                                ? 'Selecciona dias'
-                                                : _diasLabora.join(', '),
-                                            onTap: _pickDiasLabora,
-                                            icon: Icons
-                                                .calendar_view_week_rounded,
-                                          ),
-                                        ),
-                                        _HrDialogField(
-                                          width: 220,
-                                          label: 'Fecha de ingreso',
-                                          child: _HrDialogPickerField(
-                                            label: _fechaIngreso == null
-                                                ? 'Selecciona fecha'
-                                                : _fmtHrDateLabel(
-                                                    _fechaIngreso!,
-                                                  ),
-                                            onTap: _pickFechaIngreso,
-                                            icon: Icons.calendar_month_rounded,
-                                          ),
-                                        ),
-                                        _HrDialogField(
-                                          width: 220,
-                                          label: 'Fecha de alta',
-                                          child: _HrDialogPickerField(
-                                            label: _fechaAlta == null
-                                                ? 'Selecciona fecha'
-                                                : _fmtHrDateLabel(_fechaAlta!),
-                                            onTap: _pickFechaAlta,
-                                            icon: Icons.event_available_rounded,
-                                          ),
-                                        ),
+                                        ],
                                       ],
                                     ),
                                   ),
@@ -3664,6 +3800,97 @@ class _HrDialogPickerField extends StatelessWidget {
   }
 }
 
+class _HrLaborScheduleCard extends StatelessWidget {
+  final String title;
+  final _HrLaborSchedule schedule;
+  final VoidCallback onEdit;
+  final VoidCallback onRemove;
+
+  const _HrLaborScheduleCard({
+    required this.title,
+    required this.schedule,
+    required this.onEdit,
+    required this.onRemove,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0x44B084FF)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF24103D),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  schedule.horario.trim().isEmpty
+                      ? 'Horario pendiente'
+                      : schedule.horario,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF24103D),
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  schedule.diasLabora.isEmpty
+                      ? 'Dias pendientes'
+                      : schedule.diasLabora.join(', '),
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFF6E47A8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 10),
+          IconButton(
+            onPressed: onEdit,
+            tooltip: 'Editar jornada',
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFFF1E6FF),
+              foregroundColor: const Color(0xFF6E47A8),
+              side: const BorderSide(color: Color(0x55B084FF)),
+              visualDensity: VisualDensity.compact,
+            ),
+            icon: const Icon(Icons.edit_rounded, size: 18),
+          ),
+          const SizedBox(width: 6),
+          IconButton(
+            onPressed: onRemove,
+            tooltip: 'Eliminar jornada',
+            style: IconButton.styleFrom(
+              backgroundColor: const Color(0xFFFFF1F6),
+              foregroundColor: const Color(0xFFB24A75),
+              side: const BorderSide(color: Color(0x55E5A8BF)),
+              visualDensity: VisualDensity.compact,
+            ),
+            icon: const Icon(Icons.delete_outline_rounded, size: 18),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _HrPassportPhotoCard extends StatelessWidget {
   final _HrEmployeeAttachment? photo;
   final VoidCallback onUpload;
@@ -4186,6 +4413,149 @@ Future<List<String>?> _showHrWeekdaySelectionDialog(
                                 .toList(growable: false),
                           ),
                           child: const Text('Aplicar'),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      );
+    },
+  );
+}
+
+Future<_HrLaborSchedule?> _showHrLaborScheduleComposerDialog(
+  BuildContext context, {
+  _HrLaborSchedule? initialValue,
+}) {
+  return showDialog<_HrLaborSchedule>(
+    context: context,
+    barrierColor: Colors.black.withValues(alpha: 0.28),
+    builder: (dialogContext) {
+      var horario = initialValue?.horario ?? '';
+      var diasLabora = List<String>.of(initialValue?.diasLabora ?? const []);
+      return StatefulBuilder(
+        builder: (context, setLocal) {
+          Future<void> pickHorario() async {
+            final value = await _showHrScheduleDialog(
+              context,
+              initialValue: horario,
+            );
+            if (value == null) return;
+            setLocal(() => horario = value);
+          }
+
+          Future<void> pickDiasLabora() async {
+            final value = await _showHrWeekdaySelectionDialog(
+              context,
+              initialValues: diasLabora,
+            );
+            if (value == null) return;
+            setLocal(() => diasLabora = value);
+          }
+
+          return ContractDialogShell(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+              child: Container(
+                width: 468,
+                padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF6F0FF).withValues(alpha: 0.98),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0x66B084FF)),
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                initialValue == null
+                                    ? 'Nueva jornada'
+                                    : 'Editar jornada',
+                                style: const TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w900,
+                                  color: Color(0xFF24103D),
+                                ),
+                              ),
+                              const SizedBox(height: 6),
+                              const Text(
+                                'Define horario y dias laborables de una jornada adicional.',
+                                style: TextStyle(
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF6E47A8),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          style: IconButton.styleFrom(
+                            backgroundColor: const Color(0xFFF1E6FF),
+                            foregroundColor: const Color(0xFF6E47A8),
+                            side: const BorderSide(color: Color(0x66B084FF)),
+                          ),
+                          icon: const Icon(Icons.close_rounded),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    _HrDialogField(
+                      width: double.infinity,
+                      label: 'Horario',
+                      child: _HrDialogPickerField(
+                        label: horario.trim().isEmpty
+                            ? 'Selecciona horario'
+                            : horario,
+                        onTap: pickHorario,
+                        icon: Icons.schedule_rounded,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    _HrDialogField(
+                      width: double.infinity,
+                      label: 'Dias que labora',
+                      child: _HrDialogPickerField(
+                        label: diasLabora.isEmpty
+                            ? 'Selecciona dias'
+                            : diasLabora.join(', '),
+                        onTap: pickDiasLabora,
+                        icon: Icons.calendar_view_week_rounded,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton(
+                          style: _hrInvActionOutlinedButtonStyle(),
+                          onPressed: () => Navigator.of(dialogContext).pop(),
+                          child: const Text('Cancelar'),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton(
+                          style: _hrInvFilterFilledButtonStyle(),
+                          onPressed: horario.trim().isEmpty
+                              ? null
+                              : () => Navigator.of(dialogContext).pop(
+                                  _HrLaborSchedule(
+                                    horario: horario.trim(),
+                                    diasLabora: List<String>.of(diasLabora),
+                                  ),
+                                ),
+                          child: const Text('Guardar jornada'),
                         ),
                       ],
                     ),
@@ -4861,6 +5231,30 @@ List<String> _parseHrDiasLaboraValue(Object? value) {
       .map((item) => item.trim())
       .where((item) => item.isNotEmpty)
       .toList(growable: false);
+}
+
+List<_HrLaborSchedule> _parseHrLaborSchedulesValue(
+  Object? value, {
+  String fallbackHorario = '',
+  List<String> fallbackDiasLabora = const <String>[],
+}) {
+  final parsed = <_HrLaborSchedule>[];
+  if (value is List) {
+    for (final item in value) {
+      if (item is Map) {
+        final schedule = _HrLaborSchedule.fromJson(
+          Map<String, dynamic>.from(item),
+        );
+        if (schedule.isMeaningful) parsed.add(schedule);
+      }
+    }
+  }
+  if (parsed.isNotEmpty) return parsed;
+  final fallback = _HrLaborSchedule(
+    horario: fallbackHorario,
+    diasLabora: fallbackDiasLabora,
+  );
+  return fallback.isMeaningful ? <_HrLaborSchedule>[fallback] : const [];
 }
 
 double? _hrDbMoneyValue(String value) {
@@ -5788,6 +6182,39 @@ class _HrEmployeeAttachment {
   }
 }
 
+class _HrLaborSchedule {
+  final String horario;
+  final List<String> diasLabora;
+
+  const _HrLaborSchedule({
+    required this.horario,
+    this.diasLabora = const <String>[],
+  });
+
+  Map<String, dynamic> toJson() => {
+    'horario': horario,
+    'dias_labora': diasLabora,
+  };
+
+  static _HrLaborSchedule fromJson(Map<String, dynamic> json) {
+    return _HrLaborSchedule(
+      horario: (json['horario'] ?? '').toString(),
+      diasLabora: _parseHrDiasLaboraValue(json['dias_labora']),
+    );
+  }
+
+  _HrLaborSchedule copyWith({String? horario, List<String>? diasLabora}) {
+    return _HrLaborSchedule(
+      horario: horario ?? this.horario,
+      diasLabora: diasLabora ?? List<String>.of(this.diasLabora),
+    );
+  }
+
+  bool get isMeaningful =>
+      horario.trim().isNotEmpty ||
+      diasLabora.any((day) => day.trim().isNotEmpty);
+}
+
 class _HumanResourcesEmployeeRow {
   final String id;
   final String nombre;
@@ -5805,6 +6232,7 @@ class _HumanResourcesEmployeeRow {
   final String salarioRealPercibido;
   final String calzado;
   final String tallaUniforme;
+  final List<_HrLaborSchedule> laborSchedules;
   final _HrEmployeeAttachment? photo;
   final bool? creditoDeclarado;
   final String creditoDetalle;
@@ -5828,6 +6256,7 @@ class _HumanResourcesEmployeeRow {
     this.salarioRealPercibido = '',
     required this.calzado,
     this.tallaUniforme = '',
+    this.laborSchedules = const <_HrLaborSchedule>[],
     this.photo,
     this.creditoDeclarado,
     this.creditoDetalle = '',
@@ -5894,6 +6323,7 @@ class _HumanResourcesEmployeeRow {
     String? salarioRealPercibido,
     String? calzado,
     String? tallaUniforme,
+    List<_HrLaborSchedule>? laborSchedules,
     _HrEmployeeAttachment? photo,
     bool? creditoDeclarado,
     String? creditoDetalle,
@@ -5917,6 +6347,8 @@ class _HumanResourcesEmployeeRow {
       salarioRealPercibido: salarioRealPercibido ?? this.salarioRealPercibido,
       calzado: calzado ?? this.calzado,
       tallaUniforme: tallaUniforme ?? this.tallaUniforme,
+      laborSchedules:
+          laborSchedules ?? List<_HrLaborSchedule>.of(this.laborSchedules),
       photo: photo ?? this.photo,
       creditoDeclarado: creditoDeclarado ?? this.creditoDeclarado,
       creditoDetalle: creditoDetalle ?? this.creditoDetalle,
@@ -6116,6 +6548,11 @@ class _HrPersonnelStore {
             empresa: (row['empresa'] ?? '').toString(),
             horario: (row['horario'] ?? '').toString(),
             diasLabora: _parseHrDiasLaboraValue(row['dias_labora']),
+            laborSchedules: _parseHrLaborSchedulesValue(
+              row['labor_schedules'],
+              fallbackHorario: (row['horario'] ?? '').toString(),
+              fallbackDiasLabora: _parseHrDiasLaboraValue(row['dias_labora']),
+            ),
             nss: (row['nss'] ?? '').toString(),
             rfc: (row['rfc'] ?? '').toString(),
             curp: (row['curp'] ?? '').toString(),
@@ -6252,6 +6689,10 @@ class _HrPersonnelStore {
       'empresa': syncedRow.empresa,
       'horario': syncedRow.horario,
       'dias_labora': syncedRow.diasLabora,
+      'labor_schedules': syncedRow.laborSchedules
+          .where((schedule) => schedule.isMeaningful)
+          .map((schedule) => schedule.toJson())
+          .toList(growable: false),
       'nss': syncedRow.nss,
       'rfc': syncedRow.rfc,
       'curp': syncedRow.curp,

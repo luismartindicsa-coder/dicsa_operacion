@@ -548,6 +548,21 @@ class FinanzasProviderAccountsStore {
     );
   }
 
+  static Future<void> updateInvoiceFolioAndLinkedBankReferences({
+    required FinanzasSupplierInvoiceRecord invoice,
+    required String folio,
+  }) async {
+    final normalizedFolio = folio.trim();
+    final updatedInvoice = invoice.copyWith(folio: normalizedFolio);
+    await saveInvoice(updatedInvoice);
+    await Supabase.instance.client
+        .from(_kFinBankMovementsTable)
+        .update(<String, dynamic>{
+          'reference': normalizedFolio.isEmpty ? null : normalizedFolio,
+        })
+        .eq('linked_supplier_invoice_id', invoice.id);
+  }
+
   static Future<void> updateInvoiceWithTickets({
     required FinanzasSupplierInvoiceRecord invoice,
     required List<ComprasTicketRecord> tickets,

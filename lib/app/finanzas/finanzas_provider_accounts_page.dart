@@ -2699,6 +2699,42 @@ class _FinanzasProviderAccountsPageState
   Future<void> _editInvoiceForSelectedProvider(_ProviderInvoiceView row) async {
     final account = _selectedAccount;
     if (account == null) return;
+    if (_canEditSupplierInvoiceFolioOnly(row)) {
+      final nextFolio = await showDialog<String>(
+        context: context,
+        barrierDismissible: true,
+        builder: (_) => _EditSupplierInvoiceFolioDialog(
+          companyName: account.company.companyName,
+          currentFolio: row.invoice.folio,
+          title: 'Editar número de factura',
+          subtitle:
+              'Solo se actualizará el número de factura y la referencia ligada en Cuentas Bancarias.',
+        ),
+      );
+      if (nextFolio == null) return;
+      final normalizedFolio = nextFolio.trim();
+      if (normalizedFolio.isEmpty) {
+        _toast('Captura un número de factura para guardar el cambio.');
+        return;
+      }
+      if (normalizedFolio == row.invoice.folio.trim()) return;
+      try {
+        await FinanzasProviderAccountsStore.updateInvoiceFolioAndLinkedBankReferences(
+          invoice: row.invoice,
+          folio: normalizedFolio,
+        );
+        if (!mounted) return;
+        _toast(
+          'Número de factura actualizado y sincronizado con Cuentas Bancarias.',
+        );
+        await _loadPage();
+      } catch (error) {
+        if (!mounted) return;
+        _toast('No se pudo actualizar el número de factura. $error');
+      }
+      return;
+    }
+
     if (!_canEditSupplierInvoice(row)) {
       _toast(
         'Solo puedes editar facturas pendientes sin pagos aplicados ni movimientos bancarios ligados.',
@@ -3816,6 +3852,10 @@ bool _canEditSupplierInvoice(_ProviderInvoiceView row) {
   return row.bankMovement == null &&
       untouchedBalance &&
       (status == 'PENDIENTE' || status == 'VENCIDA');
+}
+
+bool _canEditSupplierInvoiceFolioOnly(_ProviderInvoiceView row) {
+  return row.bankMovement != null;
 }
 
 class _ProviderTicketApplicationView {
@@ -7354,7 +7394,8 @@ class _ProviderAccountInvoicesView extends StatelessWidget {
                             ),
                             const SizedBox(width: 8),
                           ],
-                          if (_canEditSupplierInvoice(row)) ...[
+                          if (_canEditSupplierInvoice(row) ||
+                              _canEditSupplierInvoiceFolioOnly(row)) ...[
                             _MovementIconAction(
                               icon: Icons.edit_outlined,
                               color: tokens.primaryStrong,
@@ -10893,6 +10934,104 @@ class _InvoiceDraftResult {
     required this.notes,
     required this.selectedTicketIds,
   });
+}
+
+class _EditSupplierInvoiceFolioDialog extends StatefulWidget {
+  final String companyName;
+  final String currentFolio;
+  final String title;
+  final String subtitle;
+
+  const _EditSupplierInvoiceFolioDialog({
+    required this.companyName,
+    required this.currentFolio,
+    required this.title,
+    required this.subtitle,
+  });
+
+  @override
+  State<_EditSupplierInvoiceFolioDialog> createState() =>
+      _EditSupplierInvoiceFolioDialogState();
+}
+
+class _EditSupplierInvoiceFolioDialogState
+    extends State<_EditSupplierInvoiceFolioDialog> {
+  late final TextEditingController _folioC;
+
+  @override
+  void initState() {
+    super.initState();
+    _folioC = TextEditingController(text: widget.currentFolio);
+  }
+
+  @override
+  void dispose() {
+    _folioC.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final canSave = _folioC.text.trim().isNotEmpty;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 28),
+      child: AreaThemeScope(
+        tokens: finanzasAreaTokens,
+        child: Builder(
+          builder: (context) => ContractGlassCard(
+            borderRadius: BorderRadius.circular(30),
+            padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _DialogHeader(
+                    title: widget.title,
+                    subtitle: '${widget.companyName} · ${widget.subtitle}',
+                  ),
+                  const SizedBox(height: 18),
+                  TextField(
+                    controller: _folioC,
+                    onChanged: (_) => setState(() {}),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                    ),
+                    cursorColor: finanzasAreaTokens.primaryStrong,
+                    decoration: contractGlassFieldDecoration(
+                      context,
+                      hintText: 'Número de factura',
+                      prefixIcon: const Icon(Icons.receipt_long_rounded),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    'Este cambio no modifica saldo, pagos, tickets, cobertura ni vínculos operativos. Solo sincroniza el folio con la referencia del movimiento bancario ligado.',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: kFinanzasMutedInk,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  _DialogActionsRow(
+                    onCancel: () => Navigator.of(context).pop(),
+                    onConfirm: !canSave
+                        ? null
+                        : () => Navigator.of(context).pop(_folioC.text.trim()),
+                    confirmLabel: 'Guardar número',
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _RegisterSupplierInvoiceDialog extends StatefulWidget {

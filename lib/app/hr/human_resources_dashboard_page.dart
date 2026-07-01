@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_personnel_page.dart';
 import 'human_resources_theme.dart';
 
@@ -111,11 +112,22 @@ class HumanResourcesDashboardPage extends StatelessWidget {
       );
     }
 
+    Future<void> openAttendance() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const HumanResourcesAttendanceIncidentsPage(instantOpen: true),
+        ),
+      );
+    }
+
     return EmptyAreaDashboardPage(
       instantOpen: instantOpen,
       config: _config.copyWith(
-        workspaceBuilder: (context, config, width) =>
-            _HrDashboardWorkspace(width: width, onOpenPersonnel: openPersonnel),
+        workspaceBuilder: (context, config, width) => _HrDashboardWorkspace(
+          width: width,
+          onOpenPersonnel: openPersonnel,
+          onOpenAttendance: openAttendance,
+        ),
         showHeroPanel: false,
         showContractPanel: false,
         showPlaceholderCards: false,
@@ -133,6 +145,12 @@ class HumanResourcesDashboardPage extends StatelessWidget {
             icon: Icons.badge_outlined,
             onTap: openPersonnel,
           ),
+          DashboardNavAction(
+            title: 'Asistencia e incidencias',
+            subtitle: 'Staging semanal e importaciones',
+            icon: Icons.schedule_rounded,
+            onTap: openAttendance,
+          ),
         ],
       ),
     );
@@ -144,10 +162,12 @@ Future<void> _noop() async {}
 class _HrDashboardWorkspace extends StatelessWidget {
   final double width;
   final Future<void> Function() onOpenPersonnel;
+  final Future<void> Function() onOpenAttendance;
 
   const _HrDashboardWorkspace({
     required this.width,
     required this.onOpenPersonnel,
+    required this.onOpenAttendance,
   });
 
   @override
@@ -156,7 +176,19 @@ class _HrDashboardWorkspace extends StatelessWidget {
       width: width,
       child: Align(
         alignment: Alignment.centerLeft,
-        child: _HrDashboardPersonnelSummaryCard(onTap: onOpenPersonnel),
+        child: Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _HrDashboardPersonnelSummaryCard(onTap: onOpenPersonnel),
+            _HrDashboardSimpleShortcutCard(
+              icon: Icons.schedule_rounded,
+              title: 'Asistencia',
+              subtitle: 'Importaciones y staging semanal',
+              onTap: onOpenAttendance,
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -170,6 +202,139 @@ class _HrDashboardPersonnelSummaryCard extends StatefulWidget {
   @override
   State<_HrDashboardPersonnelSummaryCard> createState() =>
       _HrDashboardPersonnelSummaryCardState();
+}
+
+class _HrDashboardSimpleShortcutCard extends StatefulWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final Future<void> Function() onTap;
+
+  const _HrDashboardSimpleShortcutCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.onTap,
+  });
+
+  @override
+  State<_HrDashboardSimpleShortcutCard> createState() =>
+      _HrDashboardSimpleShortcutCardState();
+}
+
+class _HrDashboardSimpleShortcutCardState
+    extends State<_HrDashboardSimpleShortcutCard> {
+  bool _hovered = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      onEnter: (_) => setState(() => _hovered = true),
+      onExit: (_) => setState(() => _hovered = false),
+      child: AnimatedScale(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        scale: _hovered ? 1.015 : 1,
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            borderRadius: BorderRadius.circular(18),
+            onTap: () async => widget.onTap(),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              curve: Curves.easeOutCubic,
+              transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
+              width: 320,
+              padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+              decoration: BoxDecoration(
+                color: const Color(0xE625163A),
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(
+                  color: _hovered
+                      ? const Color(0x66C79CFF)
+                      : const Color(0x33B084FF),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(
+                      alpha: _hovered ? 0.24 : 0.14,
+                    ),
+                    blurRadius: _hovered ? 26 : 18,
+                    offset: Offset(0, _hovered ? 14 : 10),
+                  ),
+                  BoxShadow(
+                    color: tokens.glow.withValues(
+                      alpha: _hovered ? 0.12 : 0.06,
+                    ),
+                    blurRadius: _hovered ? 18 : 10,
+                  ),
+                ],
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      gradient: const LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [Color(0xFF9F6BFF), Color(0xFF6E47A8)],
+                      ),
+                      borderRadius: BorderRadius.circular(11),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.16),
+                      ),
+                    ),
+                    child: Icon(widget.icon, size: 18, color: Colors.white),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          widget.title,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          widget.subtitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            height: 1.35,
+                            color: Colors.white.withValues(alpha: 0.66),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Icon(
+                    Icons.arrow_forward_rounded,
+                    size: 20,
+                    color: const Color(
+                      0xFFCFAEFF,
+                    ).withValues(alpha: _hovered ? 1 : 0.84),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _HrDashboardPersonnelSummaryCardState
