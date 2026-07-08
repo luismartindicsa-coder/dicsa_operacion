@@ -66,6 +66,7 @@ const double _kPriceContentW =
     _kPriceNotesW;
 const List<String> _kComprasGeneralCategories = <String>[
   'CARTON',
+  'BASURA',
   'CHATARRA',
   'METAL',
   'PAPEL',
@@ -679,19 +680,19 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'mayoreo_counterparties',
+          table: 'compras_counterparties',
           callback: (_) => unawaited(_refreshCatalogIfIdle()),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'mayoreo_material_catalog',
+          table: 'compras_material_catalog',
           callback: (_) => unawaited(_refreshCatalogIfIdle()),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
-          table: 'mayoreo_counterparty_material_prices',
+          table: 'compras_counterparty_material_prices',
           callback: (_) => unawaited(_refreshCatalogIfIdle()),
         )
         .subscribe();

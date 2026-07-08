@@ -1,0 +1,10 @@
+table	json_rows	csv_bytes
+mayoreo_counterparties	31	3845
+mayoreo_material_catalog	90	15256
+mayoreo_counterparty_material_prices	148	24803
+compras_counterparties	45	5328
+compras_material_catalog	91	15187
+compras_counterparty_material_prices	59	12737
+finanzas_catalog_companies	168	28962
+finanzas_catalog_concepts	0	1
+finanzas_catalog_relations	0	1

@@ -32,10 +32,14 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_permissions_page.dart';
+import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
+import 'human_resources_vacations_page.dart';
 
 const double _kHrActionsW = 118;
 const double _kHrPersonnelIdW = 84;
@@ -907,6 +911,36 @@ class _HumanResourcesPersonnelPageState
     );
   }
 
+  Future<void> _openAttendance() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesAttendancePage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openVacations() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesVacationsPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openPermissions() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const HumanResourcesPermissionsPage(instantOpen: true),
+      ),
+    );
+  }
+
+  Future<void> _openPrenomina() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesPrenominaPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _exportCsv() async {
     if (_exportingCsv) return;
     setState(() => _exportingCsv = true);
@@ -1346,10 +1380,34 @@ class _HumanResourcesPersonnelPageState
                       accented: true,
                     ),
                     HumanResourcesAreaNavEntry(
+                      icon: Icons.fact_check_outlined,
+                      title: 'Asistencia',
+                      subtitle: 'Cierre editable semanal por colaborador',
+                      onTap: _openAttendance,
+                    ),
+                    HumanResourcesAreaNavEntry(
                       icon: Icons.schedule_rounded,
-                      title: 'Asistencia e incidencias',
-                      subtitle: 'Importaciones, staging y correcciones',
+                      title: 'Importación y conciliación',
+                      subtitle: 'Lectura y cruce de NGTeco y CONTPAQ',
                       onTap: _openAttendanceIncidents,
+                    ),
+                    HumanResourcesAreaNavEntry(
+                      icon: Icons.beach_access_rounded,
+                      title: 'Vacaciones',
+                      subtitle: 'Derecho, aplicación y saldo por ejercicio',
+                      onTap: _openVacations,
+                    ),
+                    HumanResourcesAreaNavEntry(
+                      icon: Icons.assignment_turned_in_outlined,
+                      title: 'Permisos',
+                      subtitle: 'Ledger operativo por periodo y colaborador',
+                      onTap: _openPermissions,
+                    ),
+                    HumanResourcesAreaNavEntry(
+                      icon: Icons.payments_outlined,
+                      title: 'Prenómina',
+                      subtitle: 'Corrida borrador semanal por colaborador',
+                      onTap: _openPrenomina,
                     ),
                   ],
                   accessItems: [

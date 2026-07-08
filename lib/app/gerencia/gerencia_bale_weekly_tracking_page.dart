@@ -8,11 +8,14 @@ import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
+import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
-import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/utils/number_formatters.dart';
+import 'gerencia_area_chrome.dart';
 import 'gerencia_bale_weekly_tracking_store.dart';
 import 'gerencia_dashboard_page.dart';
 import 'gerencia_theme.dart';
@@ -29,16 +32,29 @@ class GerenciaBaleWeeklyTrackingPage extends StatefulWidget {
 
 class _GerenciaBaleWeeklyTrackingPageState
     extends State<GerenciaBaleWeeklyTrackingPage> {
+  static const Duration _kSilentReloadInterval = Duration(seconds: 60);
+
   bool _menuOpen = false;
   bool _loading = true;
   bool _canReturnToDirection = false;
+  bool _refreshing = false;
   GerenciaBaleWeeklyTrackingBundle? _bundle;
+  Timer? _reloadTimer;
 
   @override
   void initState() {
     super.initState();
     unawaited(_resolveNavigationAccess());
     unawaited(_load());
+    _reloadTimer = Timer.periodic(_kSilentReloadInterval, (_) {
+      unawaited(_load(silent: true));
+    });
+  }
+
+  @override
+  void dispose() {
+    _reloadTimer?.cancel();
+    super.dispose();
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -49,8 +65,12 @@ class _GerenciaBaleWeeklyTrackingPageState
     });
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  Future<void> _load({bool silent = false}) async {
+    if (_refreshing) return;
+    _refreshing = true;
+    if (!silent || _bundle == null) {
+      setState(() => _loading = true);
+    }
     try {
       final bundle = await GerenciaBaleWeeklyTrackingStore.loadCurrentWeek();
       if (!mounted) return;
@@ -60,7 +80,11 @@ class _GerenciaBaleWeeklyTrackingPageState
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      if (!silent || _bundle == null) {
+        setState(() => _loading = false);
+      }
+    } finally {
+      _refreshing = false;
     }
   }
 
@@ -101,67 +125,142 @@ class _GerenciaBaleWeeklyTrackingPageState
       text: line.shipmentTargetBales.toString(),
     );
     final notesController = TextEditingController(text: line.notes);
+    final productionFocusNode = FocusNode(debugLabel: 'gerencia_prod_target');
+    final shipmentFocusNode = FocusNode(debugLabel: 'gerencia_ship_target');
+    final notesFocusNode = FocusNode(debugLabel: 'gerencia_notes');
+    final cancelFocusNode = FocusNode(debugLabel: 'gerencia_cancel');
+    final saveFocusNode = FocusNode(debugLabel: 'gerencia_save');
     final result = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          backgroundColor: const Color(0xFFF7E8EA),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(20),
-          ),
-          title: Text('Editar ${_labelForType(line.baleTypeKey)}'),
-          content: SizedBox(
-            width: 360,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: productionController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Meta producción',
-                    hintText: 'Pacas de producción',
+        return AreaThemeScope(
+          tokens: gerenciaAreaTokens,
+          child: Shortcuts(
+            shortcuts: const <ShortcutActivator, Intent>{
+              SingleActivator(LogicalKeyboardKey.escape): DismissIntent(),
+              SingleActivator(LogicalKeyboardKey.arrowLeft):
+                  _PreviousDialogFocusIntent(),
+              SingleActivator(LogicalKeyboardKey.arrowRight):
+                  _NextDialogFocusIntent(),
+              SingleActivator(LogicalKeyboardKey.enter): _SubmitDialogIntent(),
+              SingleActivator(LogicalKeyboardKey.numpadEnter):
+                  _SubmitDialogIntent(),
+            },
+            child: Actions(
+              actions: <Type, Action<Intent>>{
+                DismissIntent: CallbackAction<DismissIntent>(
+                  onInvoke: (_) {
+                    Navigator.of(dialogContext).pop(false);
+                    return null;
+                  },
+                ),
+                _PreviousDialogFocusIntent:
+                    CallbackAction<_PreviousDialogFocusIntent>(
+                      onInvoke: (_) {
+                        FocusScope.of(dialogContext).previousFocus();
+                        return null;
+                      },
+                    ),
+                _NextDialogFocusIntent: CallbackAction<_NextDialogFocusIntent>(
+                  onInvoke: (_) {
+                    FocusScope.of(dialogContext).nextFocus();
+                    return null;
+                  },
+                ),
+                _SubmitDialogIntent: CallbackAction<_SubmitDialogIntent>(
+                  onInvoke: (_) {
+                    Navigator.of(dialogContext).pop(true);
+                    return null;
+                  },
+                ),
+              },
+              child: Focus(
+                autofocus: true,
+                child: ContractDialogShell(
+                  child: Padding(
+                    padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          'Editar ${_labelForType(line.baleTypeKey)}',
+                          style: const TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        TextField(
+                          focusNode: productionFocusNode,
+                          controller: productionController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Meta producción',
+                            hintText: 'Pacas de producción',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          focusNode: shipmentFocusNode,
+                          controller: shipmentController,
+                          keyboardType: TextInputType.number,
+                          decoration: const InputDecoration(
+                            labelText: 'Meta embarque',
+                            hintText: 'Pacas de embarque',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          focusNode: notesFocusNode,
+                          controller: notesController,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: const InputDecoration(
+                            labelText: 'Nota',
+                            hintText: 'Comentario ejecutivo opcional',
+                          ),
+                        ),
+                        const SizedBox(height: 18),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            OutlinedButton(
+                              focusNode: cancelFocusNode,
+                              style: contractSecondaryButtonStyle(
+                                dialogContext,
+                              ),
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(false),
+                              child: const Text('Cancelar'),
+                            ),
+                            const SizedBox(width: 8),
+                            FilledButton.icon(
+                              focusNode: saveFocusNode,
+                              style: contractPrimaryButtonStyle(dialogContext),
+                              onPressed: () =>
+                                  Navigator.of(dialogContext).pop(true),
+                              icon: const Icon(Icons.check_rounded),
+                              label: const Text('Guardar'),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
                   ),
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: shipmentController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'Meta embarque',
-                    hintText: 'Pacas de embarque',
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: notesController,
-                  minLines: 2,
-                  maxLines: 4,
-                  decoration: const InputDecoration(
-                    labelText: 'Nota',
-                    hintText: 'Comentario ejecutivo opcional',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(false),
-              child: const Text('Cancelar'),
-            ),
-            FilledButton(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFB23346),
-                foregroundColor: Colors.white,
               ),
-              onPressed: () => Navigator.of(dialogContext).pop(true),
-              child: const Text('Guardar'),
             ),
-          ],
+          ),
         );
       },
     );
+    productionFocusNode.dispose();
+    shipmentFocusNode.dispose();
+    notesFocusNode.dispose();
+    cancelFocusNode.dispose();
+    saveFocusNode.dispose();
     if (result != true) return;
     final productionTarget = int.tryParse(productionController.text.trim());
     final shipmentTarget = int.tryParse(shipmentController.text.trim());
@@ -261,6 +360,7 @@ class _GerenciaBaleWeeklyTrackingPageState
                 child: IgnorePointer(
                   ignoring: !_menuOpen,
                   child: _GerenciaSidePanel(
+                    label: 'Gerencia',
                     canReturnToDirection: _canReturnToDirection,
                     onOpenDashboard: () async {
                       setState(() => _menuOpen = false);
@@ -589,11 +689,7 @@ class _GerenciaEmptyPlanPanel extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           FilledButton.icon(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFB23346),
-              foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-            ),
+            style: contractPrimaryButtonStyle(context),
             onPressed: onCreatePlan,
             icon: const Icon(Icons.playlist_add_rounded),
             label: const Text('Crear plan base de la semana'),
@@ -870,6 +966,18 @@ class _DailyDeltaStatus {
   const _DailyDeltaStatus({required this.label, required this.color});
 }
 
+class _PreviousDialogFocusIntent extends Intent {
+  const _PreviousDialogFocusIntent();
+}
+
+class _NextDialogFocusIntent extends Intent {
+  const _NextDialogFocusIntent();
+}
+
+class _SubmitDialogIntent extends Intent {
+  const _SubmitDialogIntent();
+}
+
 _DailyDeltaStatus _dailyDeltaStatus({
   required int delta,
   required int expectedCumulative,
@@ -1101,11 +1209,8 @@ class _GerenciaTypeExecutionCard extends StatelessWidget {
                 ),
                 _WeeklyStatusChip(status: overallStatus),
                 const SizedBox(width: 10),
-                FilledButton.tonalIcon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF4A1520),
-                    foregroundColor: const Color(0xFFFFC3CB),
-                  ),
+                FilledButton.icon(
+                  style: contractSecondaryButtonStyle(context),
                   onPressed: onEdit,
                   icon: const Icon(Icons.edit_outlined, size: 16),
                   label: const Text('Editar'),
@@ -1382,12 +1487,14 @@ class _ProgressLane extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: FractionallySizedBox(
                 widthFactor: safeRatio,
+                heightFactor: 1,
                 child: DecoratedBox(
                   decoration: BoxDecoration(
                     gradient: LinearGradient(
                       colors: [accent, accent.withValues(alpha: 0.68)],
                     ),
                   ),
+                  child: const SizedBox.expand(),
                 ),
               ),
             ),
@@ -1399,11 +1506,13 @@ class _ProgressLane extends StatelessWidget {
 }
 
 class _GerenciaSidePanel extends StatelessWidget {
+  final String label;
   final bool canReturnToDirection;
   final Future<void> Function() onOpenDashboard;
   final Future<void> Function()? onOpenDirectionDashboard;
 
   const _GerenciaSidePanel({
+    required this.label,
     required this.canReturnToDirection,
     required this.onOpenDashboard,
     required this.onOpenDirectionDashboard,
@@ -1411,220 +1520,35 @@ class _GerenciaSidePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Padding(
-      padding: const EdgeInsets.only(right: 12),
-      child: ContractGlassCard(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                'Gerencia',
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: tokens.onGlass,
-                ),
-              ),
-              const SizedBox(height: 16),
-              if (canReturnToDirection) ...[
-                _SidePanelItem(
-                  icon: Icons.arrow_back_rounded,
-                  title: 'Volver a Dirección',
-                  subtitle: 'Regresar a la vista ejecutiva',
-                  onTap: onOpenDirectionDashboard,
-                ),
-                const SizedBox(height: 10),
-              ],
-              const _GerenciaPanelSectionHeader(label: 'AREA'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0x994A1520),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08),
-                  ),
-                ),
-                child: Column(
-                  children: [
-                    _SidePanelItem(
-                      icon: Icons.monitor_heart_outlined,
-                      title: 'Dashboard Gerencia',
-                      subtitle: 'Volver a la vista base del área',
-                      onTap: onOpenDashboard,
-                    ),
-                    const SizedBox(height: 8),
-                    const _SidePanelItem(
-                      icon: Icons.stacked_line_chart_rounded,
-                      title: 'Seguimiento Semanal de Pacas',
-                      subtitle: 'Plan, real y detalle diario',
-                      current: true,
-                    ),
-                  ],
-                ),
-              ),
-              if (canReturnToDirection) ...[
-                const SizedBox(height: 14),
-                const _GerenciaPanelSectionHeader(label: 'ACCESOS'),
-                const SizedBox(height: 8),
-                _SidePanelItem(
-                  icon: Icons.assessment_outlined,
-                  title: 'Dashboard Dirección',
-                  subtitle: 'Vista ejecutiva multiarea',
-                  onTap: onOpenDirectionDashboard,
-                ),
-              ],
-            ],
-          ),
+    final accessItems = <DashboardNavAction>[
+      if (canReturnToDirection && onOpenDirectionDashboard != null)
+        DashboardNavAction(
+          title: 'Dashboard Dirección',
+          subtitle: 'Vista ejecutiva multiarea',
+          icon: Icons.assessment_outlined,
+          onTap: onOpenDirectionDashboard!,
         ),
+    ];
+    final areaItems = <DashboardNavAction>[
+      DashboardNavAction(
+        title: 'Dashboard Gerencia',
+        subtitle: 'Pulso ejecutivo semanal',
+        icon: Icons.space_dashboard_rounded,
+        onTap: onOpenDashboard,
       ),
-    );
-  }
-}
-
-class _GerenciaPanelSectionHeader extends StatelessWidget {
-  final String label;
-
-  const _GerenciaPanelSectionHeader({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Row(
-      children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 1.6,
-            color: tokens.primary,
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: Container(
-            height: 1,
-            color: Colors.white.withValues(alpha: 0.10),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _SidePanelItem extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final bool current;
-  final Future<void> Function()? onTap;
-
-  const _SidePanelItem({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    this.current = false,
-    this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(18),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          child: Ink(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              gradient: current
-                  ? const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xFFFF7A87), Color(0xFFD84B5B)],
-                    )
-                  : const LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [Color(0xE6250B12), Color(0xE61D0810)],
-                    ),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(
-                color: current
-                    ? Colors.white.withValues(alpha: 0.28)
-                    : Colors.white.withValues(alpha: 0.08),
-              ),
-              boxShadow: current
-                  ? [
-                      BoxShadow(
-                        color: tokens.glow.withValues(alpha: 0.20),
-                        blurRadius: 22,
-                        offset: const Offset(0, 12),
-                      ),
-                    ]
-                  : [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.08),
-                        blurRadius: 16,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  icon,
-                  color: current ? Colors.white : tokens.primary,
-                  size: 22,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.w900,
-                          color: current ? Colors.white : tokens.onGlass,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: current
-                              ? Colors.white.withValues(alpha: 0.92)
-                              : tokens.onGlass.withValues(alpha: 0.58),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                if (!current) ...[
-                  const SizedBox(width: 8),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: tokens.primary,
-                    size: 22,
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
+      DashboardNavAction(
+        title: 'Seguimiento Semanal de Pacas',
+        subtitle: 'Plan, real y detalle diario',
+        icon: Icons.stacked_line_chart_rounded,
+        current: true,
+        onTap: _noop,
       ),
+    ];
+    return GerenciaAreaSidePanel(
+      label: label,
+      canReturnToDirection: canReturnToDirection,
+      areaItems: areaItems,
+      accessItems: accessItems,
     );
   }
 }
@@ -2051,6 +1975,8 @@ int _isoWeekNumber(DateTime date) {
   final firstThursday = DateTime(thursday.year, 1, 4);
   return 1 + ((thursday.difference(firstThursday).inDays) ~/ 7);
 }
+
+Future<void> _noop() async {}
 
 String _weekdayShort(DateTime date) {
   const labels = <String>['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'];

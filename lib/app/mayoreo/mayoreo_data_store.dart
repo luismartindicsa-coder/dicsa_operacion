@@ -311,6 +311,7 @@ class MayoreoDataStore {
 
 const List<String> _kMayoreoCanonicalGeneralCategories = <String>[
   'CARTON',
+  'BASURA',
   'CHATARRA',
   'METAL',
   'PLASTICO',
@@ -399,8 +400,16 @@ String _canonicalMayoreoGeneralCategory(
   final merged = <String>[?raw, ?family, ?name].join(' ').toUpperCase();
 
   if (merged.contains('CARTON')) return 'CARTON';
+  if (merged.contains('BASURA')) return 'BASURA';
   if (merged.contains('CHATARRA') || merged.contains('FIERRO')) {
     return 'CHATARRA';
+  }
+  if (merged.contains('METAL') ||
+      merged.contains('ACERO') ||
+      merged.contains('ALUMINIO') ||
+      merged.contains('COBRE') ||
+      merged.contains('BRONCE')) {
+    return 'METAL';
   }
   if (merged.contains('PLASTICO') || merged.contains('PET')) {
     return 'PLASTICO';

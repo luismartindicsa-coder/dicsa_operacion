@@ -15,6 +15,9 @@ La referencia visual congelada para nuevas pantallas de RH es:
 La referencia funcional congelada para el siguiente modulo fuente queda en:
 
 - `docs/hr/CONTRATO_ASISTENCIA_INCIDENCIAS_RH.md`
+- `docs/hr/CONTRATO_ASISTENCIA_RH.md`
+- `docs/hr/PLAN_VACACIONES_RH.md`
+- `docs/hr/CONTRATO_VACACIONES_RH.md`
 
 ## Proposito
 

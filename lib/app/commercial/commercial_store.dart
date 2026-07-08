@@ -17,6 +17,7 @@ const String _kCommercialCounterpartyGeneralActivityView =
     'v_commercial_counterparty_general_activity_snapshot';
 const String _kCommercialAlertsView = 'v_commercial_variation_alerts';
 const String _kCommercialMarketEventsView = 'v_commercial_market_events';
+const String _kInventoryGeneralBalanceView = 'v_inventory_general_balance_v2';
 const String _kMenEffectivePricesView = 'vw_men_effective_prices';
 const String _kComprasPriceAuditCatalogView = 'vw_compras_price_audit_catalog';
 const String _kMayoreoPriceAuditCatalogView = 'vw_mayoreo_price_audit_catalog';
@@ -355,6 +356,7 @@ class CommercialFollowUpRecord {
 
 class CommercialDashboardBundle {
   final CommercialKpiSummary kpis;
+  final List<CommercialMarketEventRecord> marketEvents;
   final List<CommercialAlertRecord> alerts;
   final List<CommercialMaterialSnapshotRecord> materialRows;
   final List<CommercialCounterpartyActivityRecord> counterpartyRows;
@@ -362,16 +364,60 @@ class CommercialDashboardBundle {
   final List<CommercialGeneralCounterpartyActivityRecord>
   generalCounterpartyRows;
   final List<CommercialCatalogPriceReferenceRecord> catalogPriceRows;
+  final List<CommercialInventoryGeneralBalanceRecord> inventoryGeneralRows;
 
   const CommercialDashboardBundle({
     required this.kpis,
+    required this.marketEvents,
     required this.alerts,
     required this.materialRows,
     required this.counterpartyRows,
     required this.generalMaterialRows,
     required this.generalCounterpartyRows,
     required this.catalogPriceRows,
+    required this.inventoryGeneralRows,
   });
+}
+
+class CommercialMarketEventRecord {
+  final String sourceArea;
+  final String sourceEventId;
+  final DateTime? eventAt;
+  final String channel;
+  final String flow;
+  final String generalMaterialKey;
+  final String generalMaterialLabel;
+  final double volumeKg;
+  final double amountTotal;
+  final double unitPrice;
+
+  const CommercialMarketEventRecord({
+    required this.sourceArea,
+    required this.sourceEventId,
+    required this.eventAt,
+    required this.channel,
+    required this.flow,
+    required this.generalMaterialKey,
+    required this.generalMaterialLabel,
+    required this.volumeKg,
+    required this.amountTotal,
+    required this.unitPrice,
+  });
+
+  factory CommercialMarketEventRecord.fromRow(Map<String, dynamic> row) {
+    return CommercialMarketEventRecord(
+      sourceArea: (row['source_area'] ?? '').toString(),
+      sourceEventId: (row['source_event_id'] ?? '').toString(),
+      eventAt: _tryParseDateTime(row['event_at'] as String?),
+      channel: (row['channel'] ?? '').toString(),
+      flow: (row['flow'] ?? '').toString(),
+      generalMaterialKey: (row['general_material_key'] ?? '').toString(),
+      generalMaterialLabel: (row['general_material_label'] ?? '').toString(),
+      volumeKg: ((row['volume_kg'] as num?) ?? 0).toDouble(),
+      amountTotal: ((row['amount_total'] as num?) ?? 0).toDouble(),
+      unitPrice: ((row['unit_price'] as num?) ?? 0).toDouble(),
+    );
+  }
 }
 
 class CommercialCatalogPriceReferenceRecord {
@@ -498,6 +544,46 @@ class CommercialGeneralCounterpartyActivityRecord {
   double? get avgPrice30d => volume30d > 0 ? amount30d / volume30d : null;
 }
 
+class CommercialInventoryGeneralBalanceRecord {
+  final String id;
+  final String code;
+  final String name;
+  final double openingKg;
+  final double movementKg;
+  final double onHandKg;
+  final int openingUnits;
+  final int movementUnits;
+  final int onHandUnits;
+
+  const CommercialInventoryGeneralBalanceRecord({
+    required this.id,
+    required this.code,
+    required this.name,
+    required this.openingKg,
+    required this.movementKg,
+    required this.onHandKg,
+    required this.openingUnits,
+    required this.movementUnits,
+    required this.onHandUnits,
+  });
+
+  factory CommercialInventoryGeneralBalanceRecord.fromRow(
+    Map<String, dynamic> row,
+  ) {
+    return CommercialInventoryGeneralBalanceRecord(
+      id: (row['id'] ?? '').toString(),
+      code: (row['code'] ?? '').toString(),
+      name: (row['name'] ?? '').toString(),
+      openingKg: ((row['opening_kg'] as num?) ?? 0).toDouble(),
+      movementKg: ((row['movement_kg'] as num?) ?? 0).toDouble(),
+      onHandKg: ((row['on_hand_kg'] as num?) ?? 0).toDouble(),
+      openingUnits: ((row['opening_units'] as num?) ?? 0).toInt(),
+      movementUnits: ((row['movement_units'] as num?) ?? 0).toInt(),
+      onHandUnits: ((row['on_hand_units'] as num?) ?? 0).toInt(),
+    );
+  }
+}
+
 class CommercialDirectoryBundle {
   final List<CommercialDirectoryAccountRecord> accounts;
   final Map<String, List<CommercialContactRecord>> contactsByAccountId;
@@ -517,18 +603,22 @@ class CommercialStore {
 
   static Future<CommercialDashboardBundle> loadDashboard() async {
     final results = await Future.wait<dynamic>([
-      _supa.from(_kCommercialMarketEventsView).select(),
+      _selectAllRows(_kCommercialMarketEventsView, orderColumn: 'event_at'),
       _supa.from(_kCommercialAlertsView).select(),
       _supa.from(_kCommercialMaterialSnapshotView).select(),
       _supa.from(_kCommercialCounterpartyActivityView).select(),
       _supa.from(_kCommercialMaterialGeneralSnapshotView).select(),
       _supa.from(_kCommercialCounterpartyGeneralActivityView).select(),
+      _supa.from(_kInventoryGeneralBalanceView).select(),
       _supa.from(_kMenEffectivePricesView).select(),
       _supa.from(_kComprasPriceAuditCatalogView).select(),
       _supa.from(_kMayoreoPriceAuditCatalogView).select(),
     ]);
 
     final events = _rows(results[0]);
+    final marketEvents = events
+        .map(CommercialMarketEventRecord.fromRow)
+        .toList(growable: false);
     final alerts = _rows(
       results[1],
     ).map(CommercialAlertRecord.fromRow).toList(growable: false);
@@ -552,11 +642,16 @@ class CommercialStore {
             .map(CommercialGeneralCounterpartyActivityRecord.fromRow)
             .toList(growable: false)
           ..sort((a, b) => b.amount30d.compareTo(a.amount30d));
+    final inventoryGeneralRows =
+        _rows(results[6])
+            .map(CommercialInventoryGeneralBalanceRecord.fromRow)
+            .toList(growable: false)
+          ..sort((a, b) => b.onHandKg.compareTo(a.onHandKg));
     final catalogPriceRows =
         <CommercialCatalogPriceReferenceRecord>[
-          ..._buildMenCatalogPriceRows(_rows(results[6])),
-          ..._buildComprasCatalogPriceRows(_rows(results[7])),
-          ..._buildMayoreoCatalogPriceRows(_rows(results[8])),
+          ..._buildMenCatalogPriceRows(_rows(results[7])),
+          ..._buildComprasCatalogPriceRows(_rows(results[8])),
+          ..._buildMayoreoCatalogPriceRows(_rows(results[9])),
         ]..sort((a, b) {
           final left = a.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
           final right = b.updatedAt ?? DateTime.fromMillisecondsSinceEpoch(0);
@@ -603,13 +698,38 @@ class CommercialStore {
             .where((value) => !value.endsWith('|'))
             .length,
       ),
+      marketEvents: marketEvents,
       alerts: alerts,
       materialRows: materials,
       counterpartyRows: counterparties,
       generalMaterialRows: generalMaterials,
       generalCounterpartyRows: generalCounterparties,
       catalogPriceRows: catalogPriceRows,
+      inventoryGeneralRows: inventoryGeneralRows,
     );
+  }
+
+  static Future<List<Map<String, dynamic>>> _selectAllRows(
+    String tableOrView, {
+    String? orderColumn,
+    bool ascending = false,
+    int pageSize = 1000,
+  }) async {
+    final rows = <Map<String, dynamic>>[];
+    var from = 0;
+
+    while (true) {
+      dynamic query = _supa.from(tableOrView).select();
+      if (orderColumn != null && orderColumn.trim().isNotEmpty) {
+        query = query.order(orderColumn, ascending: ascending);
+      }
+      final page = _rows(await query.range(from, from + pageSize - 1));
+      rows.addAll(page);
+      if (page.length < pageSize) break;
+      from += pageSize;
+    }
+
+    return rows;
   }
 
   static Future<CommercialDirectoryBundle> loadDirectory() async {

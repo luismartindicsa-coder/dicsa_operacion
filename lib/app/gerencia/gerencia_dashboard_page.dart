@@ -5,8 +5,10 @@ import 'package:flutter/material.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/number_formatters.dart';
+import 'gerencia_area_chrome.dart';
 import 'gerencia_bale_weekly_tracking_page.dart';
 import 'gerencia_bale_weekly_tracking_store.dart';
 import 'gerencia_theme.dart';
@@ -21,11 +23,15 @@ class GerenciaDashboardPage extends StatefulWidget {
 }
 
 class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
+  static const Duration _kSilentReloadInterval = Duration(seconds: 60);
+
   bool _loading = true;
+  bool _refreshing = false;
   GerenciaBaleWeeklyTrackingBundle? _bundle;
   List<GerenciaBaleWeeklyHistorySnapshot> _history = const [];
+  Timer? _reloadTimer;
 
-  static const EmptyAreaDashboardConfig _config = EmptyAreaDashboardConfig(
+  static final EmptyAreaDashboardConfig _config = EmptyAreaDashboardConfig(
     dashboardLabel: 'Gerencia',
     sidePanelLabel: 'Gerencia',
     headerTitleColor: Colors.white,
@@ -92,16 +98,30 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
     areaItems: <DashboardNavAction>[],
     showContractPanel: false,
     showPlaceholderCards: false,
+    sidePanelBuilder: _buildGerenciaSidePanel,
   );
 
   @override
   void initState() {
     super.initState();
     unawaited(_load());
+    _reloadTimer = Timer.periodic(_kSilentReloadInterval, (_) {
+      unawaited(_load(silent: true));
+    });
   }
 
-  Future<void> _load() async {
-    setState(() => _loading = true);
+  @override
+  void dispose() {
+    _reloadTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (_refreshing) return;
+    _refreshing = true;
+    if (!silent || _bundle == null) {
+      setState(() => _loading = true);
+    }
     try {
       final results = await Future.wait([
         GerenciaBaleWeeklyTrackingStore.loadCurrentWeek(),
@@ -115,7 +135,11 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
       });
     } catch (_) {
       if (!mounted) return;
-      setState(() => _loading = false);
+      if (!silent || _bundle == null) {
+        setState(() => _loading = false);
+      }
+    } finally {
+      _refreshing = false;
     }
   }
 
@@ -148,14 +172,6 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
             onTap: _openWeeklyTracking,
           ),
         ],
-        headerActions: [
-          DashboardHeaderAction(
-            label: 'Recargar',
-            icon: Icons.refresh_rounded,
-            compact: true,
-            onTap: _load,
-          ),
-        ],
         workspaceBuilder: (context, config, width) => _GerenciaWorkspace(
           loading: _loading,
           bundle: _bundle,
@@ -165,6 +181,21 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
       ),
     );
   }
+}
+
+Widget _buildGerenciaSidePanel(
+  BuildContext context,
+  EmptyAreaDashboardConfig config,
+  bool canReturnToDirection,
+  List<DashboardNavAction> accessItems,
+  List<DashboardNavAction> areaItems,
+) {
+  return GerenciaAreaSidePanel(
+    label: config.sidePanelLabel,
+    canReturnToDirection: canReturnToDirection,
+    areaItems: areaItems,
+    accessItems: accessItems,
+  );
 }
 
 class _GerenciaWorkspace extends StatelessWidget {
@@ -246,12 +277,8 @@ class _GerenciaWorkspace extends StatelessWidget {
             _HistoricTrackingCard(history: history),
           ],
           const SizedBox(height: 18),
-          FilledButton.tonalIcon(
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF4A1520),
-              foregroundColor: const Color(0xFFFFC3CB),
-              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-            ),
+          FilledButton.icon(
+            style: contractSecondaryButtonStyle(context),
             onPressed: onOpenWeeklyTracking,
             icon: const Icon(Icons.arrow_forward_rounded),
             label: const Text('Abrir seguimiento semanal'),

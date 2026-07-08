@@ -12,13 +12,19 @@ import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/archetypes/operacion_hibrida_tabs/operacion_hibrida_tabs.dart';
+import '../shared/archetypes/auxiliary_surfaces/confirmation_dialog.dart';
 import '../shared/page_routes.dart';
+import '../shared/dicsa_logo_mark.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
+import 'human_resources_attendance_page.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
+import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
+import 'human_resources_vacations_page.dart';
 
 class HumanResourcesAttendanceIncidentsPage extends StatefulWidget {
   final bool instantOpen;
@@ -37,9 +43,10 @@ class _HumanResourcesAttendanceIncidentsPageState
     extends State<HumanResourcesAttendanceIncidentsPage> {
   static const String _kProfilesTable = 'hr_employee_profiles';
   static const String _kImportLotsTable = 'hr_attendance_import_lots';
+  static const String _kAdjustmentsTable = 'hr_attendance_manual_adjustments';
 
   late final OperacionHibridaTabsController _tabs =
-      OperacionHibridaTabsController(initialTabId: 'resumen');
+      OperacionHibridaTabsController(initialTabId: 'importaciones');
 
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
@@ -50,6 +57,8 @@ class _HumanResourcesAttendanceIncidentsPageState
   bool _importingNgteco = false;
   bool _importingContpaq = false;
   final List<_HrAttendanceImportLot> _importLots = <_HrAttendanceImportLot>[];
+  final List<_HrAttendanceManualAdjustment> _manualAdjustments =
+      <_HrAttendanceManualAdjustment>[];
 
   @override
   void initState() {
@@ -57,6 +66,7 @@ class _HumanResourcesAttendanceIncidentsPageState
     unawaited(_resolveNavigationAccess());
     unawaited(_loadSummary());
     unawaited(_loadSavedImportLots());
+    unawaited(_loadSavedAdjustments());
   }
 
   @override
@@ -137,6 +147,28 @@ class _HumanResourcesAttendanceIncidentsPageState
         _importLots
           ..clear()
           ..addAll(lots);
+      });
+    } catch (_) {
+      // Keep the screen usable even if the persistence table does not exist yet.
+    }
+  }
+
+  Future<void> _loadSavedAdjustments() async {
+    try {
+      final result = await Supabase.instance.client
+          .from(_kAdjustmentsTable)
+          .select()
+          .order('source_date')
+          .order('created_at');
+      if (!mounted) return;
+      final rows = (result as List)
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .map(_HrAttendanceManualAdjustment.fromRow)
+          .toList(growable: false);
+      setState(() {
+        _manualAdjustments
+          ..clear()
+          ..addAll(rows);
       });
     } catch (_) {
       // Keep the screen usable even if the persistence table does not exist yet.
@@ -244,6 +276,47 @@ class _HumanResourcesAttendanceIncidentsPageState
     }
   }
 
+  Future<void> _createManualAdjustment(
+    _HrAttendanceManualAdjustment adjustment,
+  ) async {
+    await Supabase.instance.client
+        .from(_kAdjustmentsTable)
+        .upsert(adjustment.toRow(), onConflict: 'id');
+    if (!mounted) return;
+    setState(() {
+      _manualAdjustments.insert(0, adjustment);
+      _tabs.activateTab('conciliaciones');
+    });
+  }
+
+  Future<void> _deleteManualAdjustment(
+    _HrAttendanceManualAdjustment adjustment,
+  ) async {
+    final confirmed = await showContractConfirmationDialog(
+      context,
+      title: 'Eliminar corrección',
+      content:
+          'Se eliminará la corrección de ${adjustment.employeeName} del ${adjustment.sourceDate}.',
+      confirmText: 'Eliminar',
+      tokens: humanResourcesAreaTokens,
+    );
+    if (confirmed != true) return;
+    try {
+      await Supabase.instance.client
+          .from(_kAdjustmentsTable)
+          .delete()
+          .eq('id', adjustment.id);
+      if (!mounted) return;
+      setState(() {
+        _manualAdjustments.removeWhere((row) => row.id == adjustment.id);
+      });
+      _showSnack('Corrección eliminada.');
+    } catch (error) {
+      if (!mounted) return;
+      _showSnack('No se pudo eliminar la corrección. $error');
+    }
+  }
+
   void _showSnack(String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
@@ -268,6 +341,36 @@ class _HumanResourcesAttendanceIncidentsPageState
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const GeneralDashboardPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openAttendance() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesAttendancePage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openVacations() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesVacationsPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openPermissions() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const HumanResourcesPermissionsPage(instantOpen: true),
+      ),
+    );
+  }
+
+  Future<void> _openPrenomina() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesPrenominaPage(instantOpen: true)),
     );
   }
 
@@ -307,6 +410,7 @@ class _HumanResourcesAttendanceIncidentsPageState
                     employeeCount: _employeeCount,
                     employees: _employees,
                     importLots: _importLots,
+                    manualAdjustments: _manualAdjustments,
                     onImportNgteco: () =>
                         _pickImportFile(_HrAttendanceImportSource.ngteco),
                     onImportContpaq: () =>
@@ -314,6 +418,8 @@ class _HumanResourcesAttendanceIncidentsPageState
                     importingNgteco: _importingNgteco,
                     importingContpaq: _importingContpaq,
                     onDeleteLot: _deleteImportLot,
+                    onCreateManualAdjustment: _createManualAdjustment,
+                    onDeleteManualAdjustment: _deleteManualAdjustment,
                   ),
                 ),
               ),
@@ -359,10 +465,34 @@ class _HumanResourcesAttendanceIncidentsPageState
                       subtitle: 'Expediente operativo y adscripción',
                       onTap: _openPersonnel,
                     ),
+                    HumanResourcesAreaNavEntry(
+                      icon: Icons.fact_check_outlined,
+                      title: 'Asistencia',
+                      subtitle: 'Cierre editable semanal por colaborador',
+                      onTap: _openAttendance,
+                    ),
+                    HumanResourcesAreaNavEntry(
+                      icon: Icons.beach_access_rounded,
+                      title: 'Vacaciones',
+                      subtitle: 'Derecho, aplicación y saldo por ejercicio',
+                      onTap: _openVacations,
+                    ),
+                    HumanResourcesAreaNavEntry(
+                      icon: Icons.assignment_turned_in_outlined,
+                      title: 'Permisos',
+                      subtitle: 'Ledger operativo por periodo y colaborador',
+                      onTap: _openPermissions,
+                    ),
+                    HumanResourcesAreaNavEntry(
+                      icon: Icons.payments_outlined,
+                      title: 'Prenómina',
+                      subtitle: 'Corrida borrador semanal por colaborador',
+                      onTap: _openPrenomina,
+                    ),
                     const HumanResourcesAreaNavEntry(
                       icon: Icons.schedule_rounded,
-                      title: 'Asistencia e incidencias',
-                      subtitle: 'Importaciones, staging y correcciones',
+                      title: 'Importación y conciliación',
+                      subtitle: 'Lectura y cruce de NGTeco y CONTPAQ',
                       accented: true,
                     ),
                   ],
@@ -391,11 +521,16 @@ class _HrAttendanceWorkspace extends StatelessWidget {
   final int employeeCount;
   final List<_HrAttendanceEmployeeMaster> employees;
   final List<_HrAttendanceImportLot> importLots;
+  final List<_HrAttendanceManualAdjustment> manualAdjustments;
   final Future<void> Function() onImportNgteco;
   final Future<void> Function() onImportContpaq;
   final bool importingNgteco;
   final bool importingContpaq;
   final Future<void> Function(_HrAttendanceImportLot lot) onDeleteLot;
+  final Future<void> Function(_HrAttendanceManualAdjustment adjustment)
+  onCreateManualAdjustment;
+  final Future<void> Function(_HrAttendanceManualAdjustment adjustment)
+  onDeleteManualAdjustment;
 
   const _HrAttendanceWorkspace({
     required this.tabs,
@@ -403,11 +538,14 @@ class _HrAttendanceWorkspace extends StatelessWidget {
     required this.employeeCount,
     required this.employees,
     required this.importLots,
+    required this.manualAdjustments,
     required this.onImportNgteco,
     required this.onImportContpaq,
     required this.importingNgteco,
     required this.importingContpaq,
     required this.onDeleteLot,
+    required this.onCreateManualAdjustment,
+    required this.onDeleteManualAdjustment,
   });
 
   @override
@@ -420,60 +558,38 @@ class _HrAttendanceWorkspace extends StatelessWidget {
       importLots,
       _HrAttendanceImportSource.contpaq,
     );
+    final activePeriodLabel = _resolveActiveAttendancePeriodLabel(
+      ngtecoLot: latestNgteco,
+      contpaqLot: latestContpaq,
+    );
     final attendanceRows = _buildAttendanceRows(
       employees: employees,
       ngtecoLot: latestNgteco,
       contpaqLot: latestContpaq,
     );
+    final currentAdjustments = manualAdjustments
+        .where((row) => row.periodLabel == activePeriodLabel)
+        .toList(growable: false);
     final tardinessRows = _buildTardinessRows(
       employees: employees,
       ngtecoLot: latestNgteco,
+      adjustments: currentAdjustments,
     );
-    final importedNgteco = _countImportedEmployees(
-      importLots,
-      _HrAttendanceImportSource.ngteco,
-    );
-    final importedContpaq = _countImportedEmployees(
-      importLots,
-      _HrAttendanceImportSource.contpaq,
-    );
-    final manualRequired = employeeCount - importedNgteco < 0
-        ? 0
-        : employeeCount - importedNgteco;
-    final pendingReview = importLots.fold<int>(
-      0,
-      (sum, lot) => sum + lot.rejectedRows,
+    final absenceRows = _buildAbsenceRows(
+      employees: employees,
+      ngtecoLot: latestNgteco,
+      contpaqLot: latestContpaq,
+      adjustments: currentAdjustments,
     );
     final tabsSpec = const [
-      ('resumen', 'Resumen'),
       ('importaciones', 'Importaciones'),
-      ('asistencia', 'Asistencia'),
-      ('retardos', 'Retardos'),
-      ('faltas', 'Faltas y ausencias'),
-      ('permisos', 'Permisos y vacaciones'),
-      ('correcciones', 'Correcciones'),
+      ('conciliaciones', 'Conciliaciones'),
     ];
 
     return AnimatedBuilder(
       animation: tabs,
       builder: (context, _) {
         return OperacionHibridaTabsShell(
-          topBar: _HrAttendanceTopBar(activeTabId: tabs.activeTabId),
-          summary: _HrAttendanceSummaryStrip(
-            loading: loadingSummary,
-            employeeCount: employeeCount,
-            importedNgteco: importedNgteco,
-            importedContpaq: importedContpaq,
-            manualRequired: manualRequired,
-            pendingReview: pendingReview,
-          ),
-          actionsBar: _HrAttendanceActionsBar(
-            activeTabId: tabs.activeTabId,
-            onImportNgteco: onImportNgteco,
-            onImportContpaq: onImportContpaq,
-            importingNgteco: importingNgteco,
-            importingContpaq: importingContpaq,
-          ),
           tabs: Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -489,21 +605,10 @@ class _HrAttendanceWorkspace extends StatelessWidget {
           body: OperacionTabViewHost(
             activeTabId: tabs.activeTabId,
             tabViews: {
-              'resumen': _HrAttendancePanel(
-                title: 'Resumen semanal',
-                subtitle:
-                    'Cruce por ID, cobertura de fuentes y puntos pendientes antes de publicar a prenómina.',
-                child: _HrAttendanceOverviewBody(
-                  employeeCount: employeeCount,
-                  importedNgteco: importedNgteco,
-                  importedContpaq: importedContpaq,
-                  attendanceRows: attendanceRows,
-                ),
-              ),
               'importaciones': _HrAttendancePanel(
                 title: 'Importaciones',
                 subtitle:
-                    'Sube NGTeco y CONTPAQ a staging. Ningún lote pega directo a prenómina.',
+                    'Los archivos se cargan en staging. Ningún lote modifica la prenómina hasta ser conciliado.',
                 child: _HrAttendanceImportationsBody(
                   lots: importLots,
                   onImportNgteco: onImportNgteco,
@@ -513,268 +618,21 @@ class _HrAttendanceWorkspace extends StatelessWidget {
                   onDeleteLot: onDeleteLot,
                 ),
               ),
-              'asistencia': _HrAttendancePanel(
-                title: 'Asistencia',
-                subtitle:
-                    'Vista semanal por colaborador con horario esperado, presencia en fuentes y estado de revisión.',
-                child: _HrAttendanceStagingBody(
-                  rows: attendanceRows,
-                  ngtecoPeriodLabel: latestNgteco?.periodLabel ?? '',
-                  contpaqPeriodLabel: latestContpaq?.periodLabel ?? '',
-                ),
-              ),
-              'retardos': _HrAttendancePanel(
-                title: 'Retardos',
-                subtitle:
-                    'Minutos tarde, proporción respecto a jornada efectiva y descuento potencial reproducible.',
-                child: _HrAttendanceTardinessBody(
-                  rows: tardinessRows,
-                  ngtecoPeriodLabel: latestNgteco?.periodLabel ?? '',
-                ),
-              ),
-              'faltas': const _HrAttendancePanel(
-                title: 'Faltas y ausencias',
-                subtitle:
-                    'Control semanal de faltas justificadas, injustificadas y horas ausentes.',
-                child: _HrAttendanceEmptyState(
-                  icon: Icons.event_busy_outlined,
-                  title: 'Sin staging de ausencias',
-                  body:
-                      'Aquí se consolidarán faltas, ausencias parciales y justificaciones antes del envío a prenómina.',
-                ),
-              ),
-              'permisos': const _HrAttendancePanel(
-                title: 'Permisos y vacaciones',
-                subtitle:
-                    'Permisos, vacaciones e incapacidades sobre la misma semana operacional.',
-                child: _HrAttendanceEmptyState(
-                  icon: Icons.beach_access_outlined,
-                  title: 'Módulo en preparación',
-                  body:
-                      'Esta vista concentrará permisos, vacaciones e incapacidades manuales o importadas para la semana de trabajo.',
-                ),
-              ),
-              'correcciones': const _HrAttendancePanel(
-                title: 'Correcciones',
-                subtitle:
-                    'Ajustes manuales, otras plantas y casos donde no existe cobertura completa de NGTeco o CONTPAQ.',
-                child: _HrAttendanceEmptyState(
-                  icon: Icons.edit_calendar_outlined,
-                  title: 'Correcciones manuales pendientes',
-                  body:
-                      'Aquí RH podrá capturar horas, retardos, permisos y observaciones cuando el colaborador no venga en una fuente o requiera ajuste.',
+              'conciliaciones': _HrAttendancePanel(
+                title: '',
+                subtitle: '',
+                child: _HrAttendanceReconciliationBody(
+                  attendanceRows: attendanceRows,
+                  tardinessRows: tardinessRows,
+                  absenceRows: absenceRows,
+                  ngtecoLot: latestNgteco,
+                  contpaqLot: latestContpaq,
                 ),
               ),
             },
           ),
         );
       },
-    );
-  }
-}
-
-class _HrAttendanceTopBar extends StatelessWidget {
-  final String activeTabId;
-
-  const _HrAttendanceTopBar({required this.activeTabId});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-      decoration: BoxDecoration(
-        color: const Color(0xE625163A),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 52,
-            height: 52,
-            decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [Color(0xFF9F6BFF), Color(0xFF6E47A8)],
-              ),
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: const Icon(
-              Icons.schedule_rounded,
-              color: Colors.white,
-              size: 26,
-            ),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  'Asistencia e incidencias',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  _hrAttendanceSubtitleFor(activeTabId),
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white.withValues(alpha: 0.72),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-String _hrAttendanceSubtitleFor(String tabId) {
-  switch (tabId) {
-    case 'importaciones':
-      return 'Carga NGTeco y CONTPAQ con staging auditable.';
-    case 'asistencia':
-      return 'Consolidación semanal por colaborador y cobertura de fuentes.';
-    case 'retardos':
-      return 'Minutos tarde y equivalencias reproducibles de descuento.';
-    case 'faltas':
-      return 'Control de faltas, ausencias y revisión semanal.';
-    case 'permisos':
-      return 'Permisos, vacaciones e incapacidades sobre el periodo.';
-    case 'correcciones':
-      return 'Captura manual para plantas, casos parciales y ajustes.';
-    case 'resumen':
-    default:
-      return 'Capa previa a prenómina para validar asistencia e incidencias.';
-  }
-}
-
-class _HrAttendanceSummaryStrip extends StatelessWidget {
-  final bool loading;
-  final int employeeCount;
-  final int importedNgteco;
-  final int importedContpaq;
-  final int manualRequired;
-  final int pendingReview;
-
-  const _HrAttendanceSummaryStrip({
-    required this.loading,
-    required this.employeeCount,
-    required this.importedNgteco,
-    required this.importedContpaq,
-    required this.manualRequired,
-    required this.pendingReview,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xC61D112F),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-      ),
-      child: Wrap(
-        spacing: 12,
-        runSpacing: 12,
-        children: [
-          _HrAttendanceMetricCard(
-            icon: Icons.badge_outlined,
-            label: 'Padrón RH',
-            value: loading ? '...' : '$employeeCount',
-            subtitle: 'Base maestra del periodo',
-          ),
-          _HrAttendanceMetricCard(
-            icon: Icons.fingerprint_rounded,
-            label: 'NGTeco',
-            value: '$importedNgteco',
-            subtitle: 'Con fichaje cargado',
-          ),
-          _HrAttendanceMetricCard(
-            icon: Icons.payments_outlined,
-            label: 'CONTPAQ',
-            value: '$importedContpaq',
-            subtitle: 'Presentes en nómina',
-          ),
-          _HrAttendanceMetricCard(
-            icon: Icons.edit_calendar_outlined,
-            label: 'Captura manual',
-            value: loading ? '...' : '$manualRequired',
-            subtitle: 'Requieren atención RH',
-          ),
-          _HrAttendanceMetricCard(
-            icon: Icons.rule_folder_outlined,
-            label: 'Pendiente revisión',
-            value: '$pendingReview',
-            subtitle: 'Sin publicar a prenómina',
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HrAttendanceActionsBar extends StatelessWidget {
-  final String activeTabId;
-  final Future<void> Function() onImportNgteco;
-  final Future<void> Function() onImportContpaq;
-  final bool importingNgteco;
-  final bool importingContpaq;
-
-  const _HrAttendanceActionsBar({
-    required this.activeTabId,
-    required this.onImportNgteco,
-    required this.onImportContpaq,
-    required this.importingNgteco,
-    required this.importingContpaq,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      decoration: BoxDecoration(
-        color: const Color(0xC61D112F),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-      ),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        children: [
-          FilledButton.icon(
-            style: contractPrimaryButtonStyle(context),
-            onPressed: activeTabId == 'importaciones' ? onImportNgteco : null,
-            icon: const Icon(Icons.upload_file_rounded),
-            label: Text(
-              importingNgteco ? 'Cargando NGTeco...' : 'Importar NGTeco',
-            ),
-          ),
-          OutlinedButton.icon(
-            style: contractSecondaryButtonStyle(context),
-            onPressed: activeTabId == 'importaciones' ? onImportContpaq : null,
-            icon: const Icon(Icons.table_view_rounded),
-            label: Text(
-              importingContpaq ? 'Cargando CONTPAQ...' : 'Importar CONTPAQ',
-            ),
-          ),
-          OutlinedButton.icon(
-            style: contractSecondaryButtonStyle(context),
-            onPressed: null,
-            icon: const Icon(Icons.edit_note_rounded),
-            label: const Text('Captura manual'),
-          ),
-        ],
-      ),
     );
   }
 }
@@ -834,6 +692,7 @@ class _HrAttendancePanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final hasHeader = title.trim().isNotEmpty || subtitle.trim().isNotEmpty;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
@@ -844,24 +703,26 @@ class _HrAttendancePanel extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
+          if (hasHeader) ...[
+            Text(
+              title,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: Colors.white.withValues(alpha: 0.68),
+            const SizedBox(height: 4),
+            Text(
+              subtitle,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.68),
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
+            const SizedBox(height: 14),
+          ],
           Expanded(child: child),
         ],
       ),
@@ -869,71 +730,173 @@ class _HrAttendancePanel extends StatelessWidget {
   }
 }
 
-class _HrAttendanceOverviewBody extends StatelessWidget {
-  final int employeeCount;
-  final int importedNgteco;
-  final int importedContpaq;
+class _HrAttendanceReconciliationBody extends StatefulWidget {
   final List<_HrAttendanceStageRow> attendanceRows;
+  final List<_HrAttendanceTardinessRow> tardinessRows;
+  final List<_HrAttendanceAbsenceRow> absenceRows;
+  final _HrAttendanceImportLot? ngtecoLot;
+  final _HrAttendanceImportLot? contpaqLot;
 
-  const _HrAttendanceOverviewBody({
-    required this.employeeCount,
-    required this.importedNgteco,
-    required this.importedContpaq,
+  const _HrAttendanceReconciliationBody({
     required this.attendanceRows,
+    required this.tardinessRows,
+    required this.absenceRows,
+    required this.ngtecoLot,
+    required this.contpaqLot,
   });
 
   @override
+  State<_HrAttendanceReconciliationBody> createState() =>
+      _HrAttendanceReconciliationBodyState();
+}
+
+class _HrAttendanceReconciliationBodyState
+    extends State<_HrAttendanceReconciliationBody> {
+  String _activeSection = 'cruce';
+  String _searchQuery = '';
+
+  @override
   Widget build(BuildContext context) {
-    final fullyCrossed = attendanceRows
-        .where((row) => row.presentInNgteco && row.presentInContpaq)
+    final attendanceRows = widget.attendanceRows;
+    final tardinessRows = widget.tardinessRows
+        .where(_isRelevantTardinessRow)
+        .toList(growable: false);
+    final absenceRows = widget.absenceRows.toList(growable: false);
+    final filteredAttendanceRows = attendanceRows
+        .where(
+          (row) => _matchesAttendanceSearch(
+            query: _searchQuery,
+            employeeId: row.employeeId,
+            displayName: row.displayName,
+            empresa: row.empresa,
+          ),
+        )
+        .toList(growable: false);
+    final filteredTardinessRows = tardinessRows
+        .where(
+          (row) => _matchesAttendanceSearch(
+            query: _searchQuery,
+            employeeId: row.employeeId,
+            displayName: row.displayName,
+            empresa: row.empresa,
+          ),
+        )
+        .toList(growable: false);
+    final filteredAbsenceRows = absenceRows
+        .where(
+          (row) => _matchesAttendanceSearch(
+            query: _searchQuery,
+            employeeId: row.employeeId,
+            displayName: row.displayName,
+            empresa: row.empresa,
+          ),
+        )
+        .toList(growable: false);
+
+    Widget activeBody;
+    switch (_activeSection) {
+      case 'retardos':
+        activeBody = _HrAttendanceTardinessBody(rows: filteredTardinessRows);
+        break;
+      case 'faltas':
+        activeBody = _HrAttendanceAbsenceBody(rows: filteredAbsenceRows);
+        break;
+      case 'cruce':
+      default:
+        activeBody = _HrAttendanceStagingBody(rows: filteredAttendanceRows);
+        break;
+    }
+
+    final crossedCount = attendanceRows
+        .where(
+          (row) =>
+              !row.requiresManualCapture &&
+              !row.missingScheduleBase &&
+              !row.missingWorkdaysBase,
+        )
         .length;
-    final missingBase = attendanceRows
-        .where((row) => row.missingScheduleBase || row.missingWorkdaysBase)
+    final manualCount = attendanceRows
+        .where((row) => row.requiresManualCapture)
         .length;
-    final withNgtecoPunches = attendanceRows
-        .where((row) => row.ngtecoPunchCount > 0)
+    final noPunchCount = attendanceRows
+        .where((row) => !row.presentInNgteco)
         .length;
-    return ListView(
+    final likelyAbsenceCount = absenceRows
+        .where((row) => row.statusLabel == 'Falta probable')
+        .length;
+    final periodLabel = _resolveActiveAttendancePeriodLabel(
+      ngtecoLot: widget.ngtecoLot,
+      contpaqLot: widget.contpaqLot,
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            _HrAttendanceInfoCard(
-              title: 'Regla madre',
-              body:
-                  'Asistencia e incidencias consolida, corrige y publica al staging semanal. No calcula nómina final.',
+        _HrAttendanceContextCard(
+          title: 'Conciliaciones',
+          periodLabel: periodLabel,
+          ngtecoLot: widget.ngtecoLot,
+          contpaqLot: widget.contpaqLot,
+        ),
+        const SizedBox(height: 12),
+        _HrAttendanceSummaryCard(
+          items: [
+            _HrSummaryMetric(
+              label: 'Colaboradores',
+              value: attendanceRows.length.toString(),
             ),
-            _HrAttendanceInfoCard(
-              title: 'Cobertura parcial permitida',
-              body:
-                  'La ausencia en NGTeco o CONTPAQ no es error automático. RH debe poder resolverlo con captura manual y trazabilidad.',
+            _HrSummaryMetric(label: 'Cruzados', value: crossedCount.toString()),
+            _HrSummaryMetric(label: 'Manuales', value: manualCount.toString()),
+            _HrSummaryMetric(
+              label: 'Sin fichaje',
+              value: noPunchCount.toString(),
             ),
-            _HrAttendanceInfoCard(
-              title: 'Semana actual',
-              body:
-                  'Padrón RH: $employeeCount · NGTeco: $importedNgteco · CONTPAQ: $importedContpaq · Con fichajes visibles: $withNgtecoPunches.',
+            _HrSummaryMetric(
+              label: 'Retardos',
+              value: tardinessRows.length.toString(),
             ),
-            _HrAttendanceInfoCard(
-              title: 'Cruce por ID',
-              body:
-                  'Coinciden en ambas fuentes: $fullyCrossed · Requieren captura manual: ${attendanceRows.where((row) => row.requiresManualCapture).length} · Base de personal pendiente: $missingBase.',
+            _HrSummaryMetric(
+              label: 'Faltas probables',
+              value: likelyAbsenceCount.toString(),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        const _HrAttendanceEmptyState(
-          icon: Icons.account_tree_outlined,
-          title: 'Staging semanal inicial activo',
-          body:
-              'La importación ya cruza IDs reales entre Personal, NGTeco y CONTPAQ. El siguiente bloque es cálculo operativo: retardos, faltas, permisos y correcciones manuales sobre esta misma semana.',
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _HrAttendanceTabChip(
+              label: 'Cruce ${attendanceRows.length}',
+              selected: _activeSection == 'cruce',
+              onTap: () => setState(() => _activeSection = 'cruce'),
+            ),
+            _HrAttendanceTabChip(
+              label: 'Retardos ${tardinessRows.length}',
+              selected: _activeSection == 'retardos',
+              onTap: () => setState(() => _activeSection = 'retardos'),
+            ),
+            _HrAttendanceTabChip(
+              label: 'Faltas y ausencias ${absenceRows.length}',
+              selected: _activeSection == 'faltas',
+              onTap: () => setState(() => _activeSection = 'faltas'),
+            ),
+          ],
         ),
+        const SizedBox(height: 12),
+        _HrAttendanceToolbar(
+          hintText: 'Buscar colaborador, ID o empresa...',
+          value: _searchQuery,
+          onChanged: (value) => setState(() => _searchQuery = value),
+        ),
+        const SizedBox(height: 12),
+        Expanded(child: activeBody),
       ],
     );
   }
 }
 
-class _HrAttendanceImportationsBody extends StatelessWidget {
+class _HrAttendanceImportationsBody extends StatefulWidget {
   final List<_HrAttendanceImportLot> lots;
   final Future<void> Function() onImportNgteco;
   final Future<void> Function() onImportContpaq;
@@ -951,35 +914,101 @@ class _HrAttendanceImportationsBody extends StatelessWidget {
   });
 
   @override
+  State<_HrAttendanceImportationsBody> createState() =>
+      _HrAttendanceImportationsBodyState();
+}
+
+class _HrAttendanceImportationsBodyState
+    extends State<_HrAttendanceImportationsBody> {
+  String _selectedLotId = '';
+
+  @override
   Widget build(BuildContext context) {
+    final sortedLots = [...widget.lots]
+      ..sort((a, b) => b.importedAt.compareTo(a.importedAt));
+    final selectedLot = sortedLots.any((lot) => lot.id == _selectedLotId)
+        ? sortedLots.firstWhere((lot) => lot.id == _selectedLotId)
+        : sortedLots.isNotEmpty
+        ? sortedLots.first
+        : null;
+    final previewEntries =
+        selectedLot?.entries ?? const <_HrAttendanceImportedEntry>[];
+
     return ListView(
       children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            _HrImportSourceCard(
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final useRow = constraints.maxWidth >= 920;
+            final ngtecoCard = _HrImportSourceCard(
               title: 'NGTeco',
               body:
-                  'CSV de reloj checador. Usa employee_id como llave y aporta fichaje bruto por fecha/hora.',
-              buttonLabel: importingNgteco ? 'Importando...' : 'Subir CSV',
+                  'CSV de reloj checador. Requiere employee_id y fecha/hora de fichaje.',
+              buttonLabel: widget.importingNgteco
+                  ? 'Importando...'
+                  : 'Importar NGTeco',
               icon: Icons.fingerprint_rounded,
-              onTap: importingNgteco ? null : onImportNgteco,
-            ),
-            _HrImportSourceCard(
+              onTap: widget.importingNgteco ? null : widget.onImportNgteco,
+            );
+            final contpaqCard = _HrImportSourceCard(
               title: 'CONTPAQ',
               body:
-                  'XLSX de lista de raya. Toma Código, Empleado y neto/percepciones para staging semanal.',
-              buttonLabel: importingContpaq ? 'Importando...' : 'Subir XLSX',
+                  'XLSX de lista de raya. Requiere Codigo, Empleado, Sueldo y Neto.',
+              buttonLabel: widget.importingContpaq
+                  ? 'Importando...'
+                  : 'Importar CONTPAQ',
               icon: Icons.payments_outlined,
-              onTap: importingContpaq ? null : onImportContpaq,
+              onTap: widget.importingContpaq ? null : widget.onImportContpaq,
+            );
+            if (!useRow) {
+              return Column(
+                children: [ngtecoCard, const SizedBox(height: 12), contpaqCard],
+              );
+            }
+            return Row(
+              children: [
+                Expanded(child: ngtecoCard),
+                const SizedBox(width: 12),
+                Expanded(child: contpaqCard),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Sube NGTeco y CONTPAQ a staging. Ningún lote pega directo a prenómina.',
+          style: TextStyle(
+            fontSize: 12.5,
+            fontWeight: FontWeight.w700,
+            height: 1.4,
+            color: Colors.white.withValues(alpha: 0.70),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            const Text(
+              'Lotes importados',
+              style: TextStyle(
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+            const Spacer(),
+            Text(
+              '${sortedLots.length} lote(s)',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+                color: Colors.white.withValues(alpha: 0.62),
+              ),
             ),
           ],
         ),
         const SizedBox(height: 12),
-        if (lots.isEmpty)
+        if (sortedLots.isEmpty)
           const _HrAttendanceEmptyState(
-            icon: Icons.upload_file_rounded,
+            icon: Icons.inventory_2_outlined,
             title: 'Sin lotes importados',
             body:
                 'Sube un CSV de NGTeco o un XLSX de CONTPAQ para registrar el lote, contar filas válidas/rechazadas y abrir el staging inicial.',
@@ -987,13 +1016,62 @@ class _HrAttendanceImportationsBody extends StatelessWidget {
         else
           Column(
             children: [
-              for (var i = 0; i < lots.length; i++) ...[
+              for (var i = 0; i < sortedLots.length; i++) ...[
                 _HrImportLotCard(
-                  lot: lots[i],
-                  onDelete: () => onDeleteLot(lots[i]),
+                  lot: sortedLots[i],
+                  onSelect: () =>
+                      setState(() => _selectedLotId = sortedLots[i].id),
+                  onDelete: () async {
+                    if (_selectedLotId == sortedLots[i].id) {
+                      setState(() => _selectedLotId = '');
+                    }
+                    await widget.onDeleteLot(sortedLots[i]);
+                  },
                 ),
-                if (i != lots.length - 1) const SizedBox(height: 10),
+                if (i != sortedLots.length - 1) const SizedBox(height: 8),
               ],
+            ],
+          ),
+        const SizedBox(height: 12),
+        if (selectedLot == null)
+          const _HrAttendanceEmptyState(
+            icon: Icons.preview_outlined,
+            title: 'Selecciona un lote',
+            body:
+                'Elige un lote importado para revisar qué filas y montos está leyendo la app.',
+          )
+        else
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Vista previa',
+                style: TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 6),
+              Text(
+                '${selectedLot.source.label} · ${selectedLot.fileName}',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                _describeImportPeriod(selectedLot),
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withValues(alpha: 0.68),
+                ),
+              ),
+              const SizedBox(height: 12),
+              _HrImportPreviewPanel(lot: selectedLot, entries: previewEntries),
             ],
           ),
       ],
@@ -1003,14 +1081,8 @@ class _HrAttendanceImportationsBody extends StatelessWidget {
 
 class _HrAttendanceStagingBody extends StatelessWidget {
   final List<_HrAttendanceStageRow> rows;
-  final String ngtecoPeriodLabel;
-  final String contpaqPeriodLabel;
 
-  const _HrAttendanceStagingBody({
-    required this.rows,
-    required this.ngtecoPeriodLabel,
-    required this.contpaqPeriodLabel,
-  });
+  const _HrAttendanceStagingBody({required this.rows});
 
   @override
   Widget build(BuildContext context) {
@@ -1025,30 +1097,6 @@ class _HrAttendanceStagingBody extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _HrStatusChip(
-              label: ngtecoPeriodLabel.isEmpty
-                  ? 'NGTeco sin lote'
-                  : 'NGTeco: $ngtecoPeriodLabel',
-              complete: ngtecoPeriodLabel.isNotEmpty,
-            ),
-            _HrStatusChip(
-              label: contpaqPeriodLabel.isEmpty
-                  ? 'CONTPAQ sin lote'
-                  : 'CONTPAQ: $contpaqPeriodLabel',
-              complete: contpaqPeriodLabel.isNotEmpty,
-            ),
-            _HrStatusChip(
-              label:
-                  'Manual: ${rows.where((row) => row.requiresManualCapture).length}',
-              complete: rows.where((row) => row.requiresManualCapture).isEmpty,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
         Expanded(
           child: Container(
             decoration: BoxDecoration(
@@ -1081,12 +1129,8 @@ class _HrAttendanceStagingBody extends StatelessWidget {
 
 class _HrAttendanceTardinessBody extends StatelessWidget {
   final List<_HrAttendanceTardinessRow> rows;
-  final String ngtecoPeriodLabel;
 
-  const _HrAttendanceTardinessBody({
-    required this.rows,
-    required this.ngtecoPeriodLabel,
-  });
+  const _HrAttendanceTardinessBody({required this.rows});
 
   @override
   Widget build(BuildContext context) {
@@ -1098,74 +1142,9 @@ class _HrAttendanceTardinessBody extends StatelessWidget {
             'Carga NGTeco y completa horario/días labora en Personal para calcular minutos tarde sobre la semana activa.',
       );
     }
-    final calculable = rows
-        .where((row) => row.calculable)
-        .toList(growable: false);
-    final tardies = calculable
-        .where((row) => row.lateMinutes > 0)
-        .toList(growable: false);
-    final lunchTardies = calculable
-        .where((row) => row.lunchLateMinutes > 0)
-        .toList(growable: false);
-    final overtimeRows = calculable
-        .where((row) => row.overtimeMinutes > 0)
-        .toList(growable: false);
-    final unresolved = rows
-        .where((row) => !row.calculable)
-        .toList(growable: false);
-    final totalLateMinutes = tardies.fold<int>(
-      0,
-      (sum, row) => sum + row.lateMinutes,
-    );
-    final totalLunchLateMinutes = lunchTardies.fold<int>(
-      0,
-      (sum, row) => sum + row.lunchLateMinutes,
-    );
-    final totalOvertimeMinutes = overtimeRows.fold<int>(
-      0,
-      (sum, row) => sum + row.overtimeMinutes,
-    );
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Wrap(
-          spacing: 8,
-          runSpacing: 8,
-          children: [
-            _HrStatusChip(
-              label: ngtecoPeriodLabel.isEmpty
-                  ? 'NGTeco sin lote'
-                  : 'NGTeco: $ngtecoPeriodLabel',
-              complete: ngtecoPeriodLabel.isNotEmpty,
-            ),
-            _HrStatusChip(
-              label: 'Calculables: ${calculable.length}',
-              complete: calculable.isNotEmpty,
-            ),
-            _HrStatusChip(
-              label: 'Con retardo: ${tardies.length}',
-              complete: tardies.isNotEmpty,
-            ),
-            _HrStatusChip(
-              label: 'Min tarde: $totalLateMinutes',
-              complete: totalLateMinutes == 0,
-            ),
-            _HrStatusChip(
-              label: 'Comida tarde: $totalLunchLateMinutes min',
-              complete: totalLunchLateMinutes == 0,
-            ),
-            _HrStatusChip(
-              label:
-                  'Horas extra: ${_fmtHrDecimal(totalOvertimeMinutes / 60)} h',
-              complete: totalOvertimeMinutes == 0,
-            ),
-            _HrStatusChip(
-              label: 'Base pendiente: ${unresolved.length}',
-              complete: unresolved.isEmpty,
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
         Expanded(
           child: Container(
             decoration: BoxDecoration(
@@ -1196,74 +1175,50 @@ class _HrAttendanceTardinessBody extends StatelessWidget {
   }
 }
 
-class _HrAttendanceMetricCard extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final String value;
-  final String subtitle;
+class _HrAttendanceAbsenceBody extends StatelessWidget {
+  final List<_HrAttendanceAbsenceRow> rows;
 
-  const _HrAttendanceMetricCard({
-    required this.icon,
-    required this.label,
-    required this.value,
-    required this.subtitle,
-  });
+  const _HrAttendanceAbsenceBody({required this.rows});
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 168),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xE625163A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0x44B084FF)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: 36,
-            height: 36,
+    if (rows.isEmpty) {
+      return const _HrAttendanceEmptyState(
+        icon: Icons.event_busy_outlined,
+        title: 'Sin staging de ausencias',
+        body:
+            'Aquí se consolidarán faltas, ausencias parciales y señales administrativas de CONTPAQ antes del envío a prenómina.',
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: Container(
             decoration: BoxDecoration(
-              color: const Color(0xFF3A2558),
-              borderRadius: BorderRadius.circular(11),
+              color: const Color(0x8B140B25),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
             ),
-            child: Icon(icon, size: 18, color: const Color(0xFFCFAEFF)),
+            child: Column(
+              children: [
+                const _HrAttendanceAbsenceHeader(),
+                Expanded(
+                  child: ListView.separated(
+                    itemCount: rows.length,
+                    separatorBuilder: (_, _) => Divider(
+                      height: 1,
+                      color: Colors.white.withValues(alpha: 0.06),
+                    ),
+                    itemBuilder: (context, index) =>
+                        _HrAttendanceAbsenceRowTile(row: rows[index]),
+                  ),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(width: 10),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label,
-                style: TextStyle(
-                  fontSize: 11.5,
-                  fontWeight: FontWeight.w800,
-                  color: Colors.white.withValues(alpha: 0.70),
-                ),
-              ),
-              Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                ),
-              ),
-              Text(
-                subtitle,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white.withValues(alpha: 0.58),
-                ),
-              ),
-            ],
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -1286,7 +1241,7 @@ class _HrImportSourceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: 360,
+      width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
       decoration: BoxDecoration(
         color: const Color(0xE625163A),
@@ -1343,9 +1298,387 @@ class _HrImportSourceCard extends StatelessWidget {
 
 class _HrImportLotCard extends StatelessWidget {
   final _HrAttendanceImportLot lot;
+  final VoidCallback onSelect;
   final Future<void> Function() onDelete;
 
-  const _HrImportLotCard({required this.lot, required this.onDelete});
+  const _HrImportLotCard({
+    required this.lot,
+    required this.onSelect,
+    required this.onDelete,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onSelect,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+          decoration: BoxDecoration(
+            color: const Color(0xE625163A),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(color: const Color(0x44B084FF)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          lot.source.label,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                            color: Color(0xFFCFAEFF),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          lot.fileName,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _describeImportPeriod(lot),
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white.withValues(alpha: 0.68),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Importado ${_fmtHrImportDateTime(lot.importedAt)}',
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withValues(alpha: 0.62),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 10),
+              Text(
+                '${lot.validRows} filas válidas · ${lot.rejectedRows} rechazadas · ${lot.uniqueEmployeeIds.length} IDs detectados',
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+              if (lot.issues.isNotEmpty) ...[
+                const SizedBox(height: 10),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final issue in lot.issues.take(4))
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 8,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0x33FFB4B4),
+                          borderRadius: BorderRadius.circular(999),
+                          border: Border.all(color: const Color(0x66FFB4B4)),
+                        ),
+                        child: Text(
+                          issue,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w800,
+                            color: Color(0xFFFFE8E8),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+              const SizedBox(height: 12),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: OutlinedButton.icon(
+                  style: contractSecondaryButtonStyle(context),
+                  onPressed: () async => onDelete(),
+                  icon: const Icon(Icons.delete_outline_rounded),
+                  label: const Text('Borrar'),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _HrImportPreviewHeader extends StatelessWidget {
+  final _HrAttendanceImportSource source;
+
+  const _HrImportPreviewHeader({required this.source});
+
+  @override
+  Widget build(BuildContext context) {
+    final isNgteco = source == _HrAttendanceImportSource.ngteco;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: const BoxDecoration(
+        color: Color(0xFF3A2558),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(14)),
+      ),
+      child: Row(
+        children: [
+          const SizedBox(
+            width: 78,
+            child: Text(
+              'ID',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          const Expanded(
+            flex: 3,
+            child: Text(
+              'Empleado',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          if (isNgteco)
+            const Expanded(
+              flex: 2,
+              child: Text(
+                'Fecha / hora',
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+            )
+          else ...[
+            const SizedBox(
+              width: 118,
+              child: Text(
+                'Sueldo',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            const SizedBox(
+              width: 118,
+              child: Text(
+                'Neto',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(width: 12),
+          const SizedBox(
+            width: 90,
+            child: Text(
+              'Estado',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HrImportPreviewEntryTile extends StatelessWidget {
+  final _HrAttendanceImportSource source;
+  final _HrAttendanceImportedEntry entry;
+  final bool isLast;
+
+  const _HrImportPreviewEntryTile({
+    required this.source,
+    required this.entry,
+    required this.isLast,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isNgteco = source == _HrAttendanceImportSource.ngteco;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      decoration: BoxDecoration(
+        border: isLast
+            ? null
+            : Border(
+                bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
+              ),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 78,
+            child: Text(
+              entry.employeeId,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: Colors.white.withValues(alpha: 0.86),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              entry.sourceName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.76),
+              ),
+            ),
+          ),
+          if (isNgteco)
+            Expanded(
+              flex: 2,
+              child: Text(
+                entry.detail,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withValues(alpha: 0.68),
+                ),
+              ),
+            )
+          else ...[
+            SizedBox(
+              width: 118,
+              child: Text(
+                _fmtHrCurrency(entry.salary),
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withValues(alpha: 0.68),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            SizedBox(
+              width: 118,
+              child: Text(
+                _fmtHrCurrency(entry.net),
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w700,
+                  color: Colors.white.withValues(alpha: 0.68),
+                ),
+              ),
+            ),
+          ],
+          const SizedBox(width: 12),
+          const SizedBox(
+            width: 90,
+            child: Center(
+              child: _HrStagePresencePill(label: 'Válido', positive: true),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HrImportPreviewPanel extends StatelessWidget {
+  final _HrAttendanceImportLot lot;
+  final List<_HrAttendanceImportedEntry> entries;
+
+  const _HrImportPreviewPanel({required this.lot, required this.entries});
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) {
+      return const _HrAttendanceEmptyState(
+        icon: Icons.search_off_rounded,
+        title: 'Sin filas para mostrar',
+        body:
+            'La búsqueda actual no encontró empleados dentro del lote seleccionado.',
+      );
+    }
+
+    final previewRows = entries.take(12).toList(growable: false);
+    return Container(
+      width: double.infinity,
+      decoration: BoxDecoration(
+        color: const Color(0x8B140B25),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Column(
+        children: [
+          _HrImportPreviewHeader(source: lot.source),
+          for (var i = 0; i < previewRows.length; i++)
+            _HrImportPreviewEntryTile(
+              source: lot.source,
+              entry: previewRows[i],
+              isLast: i == previewRows.length - 1,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HrAttendanceContextCard extends StatelessWidget {
+  final String title;
+  final String periodLabel;
+  final _HrAttendanceImportLot? ngtecoLot;
+  final _HrAttendanceImportLot? contpaqLot;
+
+  const _HrAttendanceContextCard({
+    required this.title,
+    required this.periodLabel,
+    required this.ngtecoLot,
+    required this.contpaqLot,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1360,210 +1693,187 @@ class _HrImportLotCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Wrap(
-            spacing: 10,
-            runSpacing: 10,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              _HrStatusChip(label: lot.source.label, complete: true),
-              _HrStatusChip(label: lot.fileName, complete: true),
-              if (lot.periodLabel.isNotEmpty)
-                _HrStatusChip(label: lot.periodLabel, complete: true),
-              OutlinedButton.icon(
-                style: contractSecondaryButtonStyle(context),
-                onPressed: () async => onDelete(),
-                icon: const Icon(Icons.delete_outline_rounded),
-                label: const Text('Borrar'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
           Text(
-            '${lot.validRows} filas válidas · ${lot.rejectedRows} rechazadas · ${lot.uniqueEmployeeIds.length} IDs detectados',
+            title,
             style: const TextStyle(
-              fontSize: 14,
+              fontSize: 15,
               fontWeight: FontWeight.w900,
               color: Colors.white,
             ),
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Importado ${_fmtHrImportDateTime(lot.importedAt)}',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Colors.white.withValues(alpha: 0.64),
-            ),
-          ),
-          if (lot.issues.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final issue in lot.issues.take(4))
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0x33FFB4B4),
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: const Color(0x66FFB4B4)),
-                    ),
-                    child: Text(
-                      issue,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFFFFE8E8),
-                      ),
-                    ),
-                  ),
-              ],
+          if (periodLabel.trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              periodLabel,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.72),
+              ),
             ),
           ],
-          if (lot.previewRows.isNotEmpty) ...[
-            const SizedBox(height: 12),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _HrLotContextPill(
+                label: ngtecoLot == null
+                    ? 'NGTeco pendiente'
+                    : 'NGTeco · ${_fmtHrImportDateTime(ngtecoLot!.importedAt)}',
+              ),
+              _HrLotContextPill(
+                label: contpaqLot == null
+                    ? 'CONTPAQ pendiente'
+                    : 'CONTPAQ · ${_fmtHrImportDateTime(contpaqLot!.importedAt)}',
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HrLotContextPill extends StatelessWidget {
+  final String label;
+
+  const _HrLotContextPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF3A2558),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          color: Colors.white,
+        ),
+      ),
+    );
+  }
+}
+
+class _HrSummaryMetric {
+  final String label;
+  final String value;
+
+  const _HrSummaryMetric({required this.label, required this.value});
+}
+
+class _HrAttendanceSummaryCard extends StatelessWidget {
+  final List<_HrSummaryMetric> items;
+
+  const _HrAttendanceSummaryCard({required this.items});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xE625163A),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0x44B084FF)),
+      ),
+      child: Wrap(
+        spacing: 10,
+        runSpacing: 10,
+        children: [
+          for (final item in items)
             Container(
-              width: double.infinity,
+              constraints: const BoxConstraints(minWidth: 130),
+              padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
               decoration: BoxDecoration(
-                color: const Color(0x8B140B25),
+                color: const Color(0xFF3A2558),
                 borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+                border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
               ),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _HrImportPreviewHeader(source: lot.source),
-                  for (var i = 0; i < lot.previewRows.length; i++)
-                    _HrImportPreviewRowTile(
-                      row: lot.previewRows[i],
-                      isLast: i == lot.previewRows.length - 1,
+                  Text(
+                    item.value,
+                    style: const TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
                     ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    item.label,
+                    style: TextStyle(
+                      fontSize: 11.5,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withValues(alpha: 0.68),
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
         ],
       ),
     );
   }
 }
 
-class _HrImportPreviewHeader extends StatelessWidget {
-  final _HrAttendanceImportSource source;
+class _HrAttendanceToolbar extends StatelessWidget {
+  final String hintText;
+  final String value;
+  final ValueChanged<String> onChanged;
 
-  const _HrImportPreviewHeader({required this.source});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFF3A2558),
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(14)),
-      ),
-      child: Row(
-        children: [
-          const SizedBox(
-            width: 90,
-            child: Text(
-              'ID',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          const Expanded(
-            child: Text(
-              'Nombre fuente',
-              style: TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-              ),
-            ),
-          ),
-          SizedBox(
-            width: 180,
-            child: Text(
-              source == _HrAttendanceImportSource.ngteco
-                  ? 'Fecha / hora'
-                  : 'Neto / sueldo',
-              textAlign: TextAlign.right,
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HrImportPreviewRowTile extends StatelessWidget {
-  final _HrAttendanceImportPreviewRow row;
-  final bool isLast;
-
-  const _HrImportPreviewRowTile({required this.row, required this.isLast});
+  const _HrAttendanceToolbar({
+    required this.hintText,
+    required this.value,
+    required this.onChanged,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
       decoration: BoxDecoration(
-        border: isLast
-            ? null
-            : Border(
-                bottom: BorderSide(color: Colors.white.withValues(alpha: 0.08)),
-              ),
+        color: const Color(0xA625163A),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
-      child: Row(
-        children: [
-          SizedBox(
-            width: 90,
-            child: Text(
-              row.employeeId,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w800,
-                color: Colors.white.withValues(alpha: 0.86),
-              ),
-            ),
+      child: TextFormField(
+        initialValue: value,
+        onChanged: onChanged,
+        style: const TextStyle(
+          fontSize: 12.5,
+          fontWeight: FontWeight.w700,
+          color: Colors.white,
+        ),
+        decoration: InputDecoration(
+          isDense: true,
+          border: InputBorder.none,
+          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+          hintText: hintText,
+          hintStyle: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: Colors.white.withValues(alpha: 0.46),
           ),
-          Expanded(
-            child: Text(
-              row.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: Colors.white.withValues(alpha: 0.76),
-              ),
-            ),
+          prefixIcon: Icon(
+            Icons.search_rounded,
+            color: Colors.white.withValues(alpha: 0.66),
+            size: 17,
           ),
-          SizedBox(
-            width: 180,
-            child: Text(
-              row.detail,
-              textAlign: TextAlign.right,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w700,
-                color: Colors.white.withValues(alpha: 0.68),
-              ),
-            ),
+          prefixIconConstraints: const BoxConstraints(
+            minWidth: 28,
+            minHeight: 28,
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1607,7 +1917,18 @@ class _HrAttendanceStageHeader extends StatelessWidget {
           Expanded(
             flex: 2,
             child: Text(
-              'Empresa / horario',
+              'Empresa',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'Jornada',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w900,
@@ -1638,9 +1959,21 @@ class _HrAttendanceStageHeader extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: 132,
+            width: 120,
             child: Text(
-              'Acción RH',
+              'Estado',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 120,
+            child: Text(
+              'Acción',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12,
@@ -1707,7 +2040,19 @@ class _HrAttendanceStageRowTile extends StatelessWidget {
           Expanded(
             flex: 2,
             child: Text(
-              '${row.empresa.isEmpty ? 'Empresa pendiente' : row.empresa}${row.horario.isEmpty ? '' : ' · ${row.horario}'}',
+              row.empresa.isEmpty ? 'Pendiente' : row.empresa,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.72),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              row.horario.isEmpty ? 'Pendiente' : row.horario,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
               style: TextStyle(
@@ -1778,7 +2123,7 @@ class _HrAttendanceStageRowTile extends StatelessWidget {
                   const SizedBox(height: 4),
                   if (row.contpaqSalary.isNotEmpty)
                     Text(
-                      'Sueldo ${row.contpaqSalary}',
+                      'Sueldo ${_fmtHrCurrency(row.contpaqSalary)}',
                       style: TextStyle(
                         fontSize: 11.5,
                         fontWeight: FontWeight.w700,
@@ -1787,7 +2132,7 @@ class _HrAttendanceStageRowTile extends StatelessWidget {
                     ),
                   if (row.contpaqNet.isNotEmpty)
                     Text(
-                      'Neto ${row.contpaqNet}',
+                      'Neto ${_fmtHrCurrency(row.contpaqNet)}',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w700,
@@ -1799,11 +2144,20 @@ class _HrAttendanceStageRowTile extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: 132,
+            width: 120,
             child: Center(
               child: _HrStagePresencePill(
-                label: _hrStageActionLabel(row),
-                positive: _hrStageActionPositive(row),
+                label: _hrStageStatusLabel(row),
+                positive: _hrStageStatusPositive(row),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 120,
+            child: Center(
+              child: _HrStagePresencePill(
+                label: _hrStageNextActionLabel(row),
+                positive: true,
               ),
             ),
           ),
@@ -1851,7 +2205,7 @@ class _HrAttendanceTardinessHeader extends StatelessWidget {
           Expanded(
             flex: 2,
             child: Text(
-              'Fecha',
+              'Día',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w900,
@@ -1862,7 +2216,7 @@ class _HrAttendanceTardinessHeader extends StatelessWidget {
           Expanded(
             flex: 2,
             child: Text(
-              'Jornada esperada',
+              'Jornada',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w900,
@@ -1873,7 +2227,7 @@ class _HrAttendanceTardinessHeader extends StatelessWidget {
           Expanded(
             flex: 3,
             child: Text(
-              'Ocurrió ese día',
+              'Fichajes',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w900,
@@ -1882,9 +2236,9 @@ class _HrAttendanceTardinessHeader extends StatelessWidget {
             ),
           ),
           Expanded(
-            flex: 3,
+            flex: 2,
             child: Text(
-              'Hallazgos',
+              'Retardo',
               style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w900,
@@ -1893,9 +2247,129 @@ class _HrAttendanceTardinessHeader extends StatelessWidget {
             ),
           ),
           SizedBox(
-            width: 148,
+            width: 120,
             child: Text(
               'Estado',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 120,
+            child: Text(
+              'Acción',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HrAttendanceAbsenceHeader extends StatelessWidget {
+  const _HrAttendanceAbsenceHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.08),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      child: const Row(
+        children: [
+          SizedBox(
+            width: 72,
+            child: Text(
+              'ID',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Text(
+              'Colaborador',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'Día',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'Jornada',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'NGTeco',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'CONTPAQ',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              'Clasificación',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 120,
+            child: Text(
+              'Acción',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 12,
@@ -1996,80 +2470,36 @@ class _HrAttendanceTardinessRowTile extends StatelessWidget {
                       color: Colors.white.withValues(alpha: 0.56),
                     ),
                   ),
-                if (row.matchedScheduleLabel.trim().isNotEmpty)
-                  Text(
-                    row.matchedScheduleLabel,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white.withValues(alpha: 0.5),
-                    ),
-                  ),
               ],
             ),
           ),
           Expanded(
             flex: 3,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  row.punchTimeline.isEmpty
-                      ? 'Sin fichajes'
-                      : row.punchTimeline.join(' · '),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white.withValues(alpha: 0.72),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _resolveTardinessEventSummary(row),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Colors.white.withValues(alpha: 0.56),
-                  ),
-                ),
-              ],
+            child: Text(
+              row.punchTimeline.isEmpty
+                  ? 'Sin fichajes'
+                  : row.punchTimeline.join(' · '),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.72),
+              ),
             ),
           ),
           Expanded(
-            flex: 3,
+            flex: 2,
             child: row.calculable
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Entrada ${row.lateMinutes} min · ${_fmtHrDecimal(row.lateHourEquivalent)} h',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white.withValues(alpha: 0.72),
-                        ),
-                      ),
-                      Text(
-                        'Comida ${row.lunchLateMinutes} min · Extra ${row.overtimeMinutes} min',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white.withValues(alpha: 0.56),
-                        ),
-                      ),
-                      Text(
-                        '${_fmtHrPercent(row.lateWorkdayRatio)} de jornada efectiva',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white.withValues(alpha: 0.56),
-                        ),
-                      ),
-                    ],
+                ? Text(
+                    _resolveTardinessMetricSummary(row),
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white.withValues(alpha: 0.68),
+                    ),
                   )
                 : Text(
                     row.reason,
@@ -2083,11 +2513,136 @@ class _HrAttendanceTardinessRowTile extends StatelessWidget {
                   ),
           ),
           SizedBox(
-            width: 148,
+            width: 120,
             child: Center(
               child: _HrStagePresencePill(
                 label: row.statusLabel,
                 positive: positive && !warning,
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 120,
+            child: Center(
+              child: _HrStagePresencePill(
+                label: _resolveTardinessActionLabel(row),
+                positive: true,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HrAttendanceAbsenceRowTile extends StatelessWidget {
+  final _HrAttendanceAbsenceRow row;
+
+  const _HrAttendanceAbsenceRowTile({required this.row});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 72,
+            child: Text(
+              row.employeeId,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: Colors.white.withValues(alpha: 0.88),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 3,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  row.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  row.empresa,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.62),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              '${row.sourceDate} · ${row.weekdayLabel}',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.72),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Text(
+              row.jornadaLabel.isEmpty ? 'Pendiente' : row.jornadaLabel,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Colors.white.withValues(alpha: 0.72),
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Center(
+              child: _HrStagePresencePill(
+                label: row.ngtecoStatus,
+                positive: !row.hasOperationalAbsence,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Center(
+              child: _HrStagePresencePill(
+                label: row.contpaqStatus,
+                positive: !row.hasAdministrativeSignal,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 2,
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: _HrStagePresencePill(
+                label: row.statusLabel,
+                positive: row.statusLabel == 'Vacaciones aplicadas',
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 120,
+            child: Center(
+              child: _HrStagePresencePill(
+                label: _resolveAbsenceActionLabel(row),
+                positive: true,
               ),
             ),
           ),
@@ -2126,60 +2681,76 @@ class _HrStagePresencePill extends StatelessWidget {
   }
 }
 
-String _hrStageActionLabel(_HrAttendanceStageRow row) {
+String _hrStageStatusLabel(_HrAttendanceStageRow row) {
   if (row.missingScheduleBase || row.missingWorkdaysBase) {
-    return 'Completar personal';
+    return 'Base pendiente';
   }
-  if (row.requiresManualCapture) return 'Manual';
+  if (row.requiresManualCapture) return 'Revisión';
   return 'Cruzado';
 }
 
-bool _hrStageActionPositive(_HrAttendanceStageRow row) {
+bool _hrStageStatusPositive(_HrAttendanceStageRow row) {
   if (row.missingScheduleBase || row.missingWorkdaysBase) return false;
   return !row.requiresManualCapture;
 }
 
-class _HrAttendanceInfoCard extends StatelessWidget {
-  final String title;
-  final String body;
-
-  const _HrAttendanceInfoCard({required this.title, required this.body});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 320,
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: const Color(0xE625163A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0x44B084FF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            body,
-            style: TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              height: 1.4,
-              color: Colors.white.withValues(alpha: 0.70),
-            ),
-          ),
-        ],
-      ),
-    );
+String _hrStageNextActionLabel(_HrAttendanceStageRow row) {
+  if (row.missingScheduleBase || row.missingWorkdaysBase) {
+    return 'Completar';
   }
+  if (row.requiresManualCapture) return 'Revisar';
+  return 'Ver';
+}
+
+bool _isRelevantTardinessRow(_HrAttendanceTardinessRow row) {
+  if (row.statusLabel == 'Corregido RH') return true;
+  if (!row.calculable) return false;
+  return row.lateMinutes > 0 ||
+      row.lunchLateMinutes > 0 ||
+      row.overtimeMinutes > 0;
+}
+
+String _resolveTardinessMetricSummary(_HrAttendanceTardinessRow row) {
+  if (!row.calculable) return row.reason;
+  final parts = <String>[];
+  parts.add('${row.lateMinutes} min');
+  if (row.lateMinutes > 0) {
+    parts.add('${row.lateHourEquivalent.toStringAsFixed(2)} h');
+    parts.add('${(row.lateWorkdayRatio * 100).toStringAsFixed(2)}% jornada');
+  }
+  if (row.lunchLateMinutes > 0) {
+    parts.add('Comida ${row.lunchLateMinutes}');
+  }
+  if (row.overtimeMinutes > 0) {
+    parts.add('Extra ${row.overtimeMinutes}');
+  }
+  return parts.join(' · ');
+}
+
+String _resolveTardinessActionLabel(_HrAttendanceTardinessRow row) {
+  if (row.statusLabel == 'Corregido RH') return 'Ver ajuste';
+  if (!row.calculable) return 'Completar';
+  if (row.statusLabel == 'Sin novedad') return 'Ver';
+  return 'Revisar';
+}
+
+String _resolveAbsenceActionLabel(_HrAttendanceAbsenceRow row) {
+  if (row.statusLabel == 'Corregido RH') return 'Ver ajuste';
+  if (row.requiresReview) return 'Revisar';
+  return 'Ver';
+}
+
+bool _matchesAttendanceSearch({
+  required String query,
+  required String employeeId,
+  required String displayName,
+  required String empresa,
+}) {
+  final normalized = query.trim().toLowerCase();
+  if (normalized.isEmpty) return true;
+  return employeeId.toLowerCase().contains(normalized) ||
+      displayName.toLowerCase().contains(normalized) ||
+      empresa.toLowerCase().contains(normalized);
 }
 
 class _HrAttendanceEmptyState extends StatelessWidget {
@@ -2260,12 +2831,15 @@ class _HrAttendanceBrand extends StatelessWidget {
             borderRadius: BorderRadius.circular(18),
             color: Colors.white.withValues(alpha: 0.10),
             border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+            boxShadow: [
+              BoxShadow(
+                color: humanResourcesAreaTokens.glow.withValues(alpha: 0.22),
+                blurRadius: 24,
+                offset: const Offset(0, 12),
+              ),
+            ],
           ),
-          child: const Icon(
-            Icons.schedule_rounded,
-            color: Color(0xFFCFAEFF),
-            size: 28,
-          ),
+          child: const Center(child: DicsaLogoD(size: 36, progress: 1)),
         ),
         const SizedBox(width: 14),
         Column(
@@ -2283,7 +2857,7 @@ class _HrAttendanceBrand extends StatelessWidget {
             ),
             SizedBox(height: 4),
             Text(
-              'Asistencia e incidencias',
+              'Importación y conciliación',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w700,
@@ -2414,6 +2988,9 @@ class _HrAttendanceImportedEntry {
   final String sourceTime;
   final String salary;
   final String net;
+  final String overtime;
+  final String vacations;
+  final String absenceDeduction;
 
   const _HrAttendanceImportedEntry({
     required this.employeeId,
@@ -2423,6 +3000,9 @@ class _HrAttendanceImportedEntry {
     this.sourceTime = '',
     this.salary = '',
     this.net = '',
+    this.overtime = '',
+    this.vacations = '',
+    this.absenceDeduction = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -2433,6 +3013,9 @@ class _HrAttendanceImportedEntry {
     'source_time': sourceTime,
     'salary': salary,
     'net': net,
+    'overtime': overtime,
+    'vacations': vacations,
+    'absence_deduction': absenceDeduction,
   };
 
   static _HrAttendanceImportedEntry fromJson(Map<String, dynamic> json) {
@@ -2444,6 +3027,9 @@ class _HrAttendanceImportedEntry {
       sourceTime: (json['source_time'] ?? '').toString(),
       salary: (json['salary'] ?? '').toString(),
       net: (json['net'] ?? '').toString(),
+      overtime: (json['overtime'] ?? '').toString(),
+      vacations: (json['vacations'] ?? '').toString(),
+      absenceDeduction: (json['absence_deduction'] ?? '').toString(),
     );
   }
 }
@@ -2554,6 +3140,8 @@ class _HrAttendanceTardinessRow {
   final String statusLabel;
   final String reason;
   final String salarioBase;
+  final String manualAdjustmentLabel;
+  final String manualAdjustmentNotes;
 
   const _HrAttendanceTardinessRow({
     required this.employeeId,
@@ -2581,7 +3169,117 @@ class _HrAttendanceTardinessRow {
     required this.statusLabel,
     required this.reason,
     required this.salarioBase,
+    this.manualAdjustmentLabel = '',
+    this.manualAdjustmentNotes = '',
   });
+}
+
+class _HrAttendanceAbsenceRow {
+  final String employeeId;
+  final String displayName;
+  final String empresa;
+  final String sourceDate;
+  final String weekdayLabel;
+  final String jornadaLabel;
+  final String statusLabel;
+  final String ngtecoStatus;
+  final String contpaqStatus;
+  final String detail;
+  final String weeklyContext;
+  final bool requiresReview;
+  final bool hasOperationalAbsence;
+  final bool hasAdministrativeSignal;
+  final String manualAdjustmentLabel;
+  final String manualAdjustmentNotes;
+
+  const _HrAttendanceAbsenceRow({
+    required this.employeeId,
+    required this.displayName,
+    required this.empresa,
+    required this.sourceDate,
+    required this.weekdayLabel,
+    required this.jornadaLabel,
+    required this.statusLabel,
+    required this.ngtecoStatus,
+    required this.contpaqStatus,
+    required this.detail,
+    required this.weeklyContext,
+    required this.requiresReview,
+    required this.hasOperationalAbsence,
+    required this.hasAdministrativeSignal,
+    this.manualAdjustmentLabel = '',
+    this.manualAdjustmentNotes = '',
+  });
+}
+
+enum _HrAttendanceAdjustmentType {
+  falta('Falta'),
+  permiso('Permiso'),
+  vacaciones('Vacaciones'),
+  incapacidad('Incapacidad'),
+  horasExtra('Horas extra'),
+  ajusteManual('Ajuste manual');
+
+  final String label;
+  const _HrAttendanceAdjustmentType(this.label);
+}
+
+class _HrAttendanceManualAdjustment {
+  final String id;
+  final String periodLabel;
+  final String employeeId;
+  final String employeeName;
+  final String sourceDate;
+  final _HrAttendanceAdjustmentType adjustmentType;
+  final String notes;
+  final bool impactsPayroll;
+  final DateTime createdAt;
+
+  const _HrAttendanceManualAdjustment({
+    required this.id,
+    required this.periodLabel,
+    required this.employeeId,
+    required this.employeeName,
+    required this.sourceDate,
+    required this.adjustmentType,
+    required this.notes,
+    required this.impactsPayroll,
+    required this.createdAt,
+  });
+
+  String get adjustmentTypeLabel => adjustmentType.label;
+
+  Map<String, dynamic> toRow() => {
+    'id': id,
+    'period_label': periodLabel,
+    'employee_id': employeeId,
+    'employee_name': employeeName,
+    'source_date': sourceDate,
+    'adjustment_type': adjustmentType.name,
+    'notes': notes,
+    'impacts_payroll': impactsPayroll,
+    'created_at': createdAt.toIso8601String(),
+  };
+
+  static _HrAttendanceManualAdjustment fromRow(Map<String, dynamic> row) {
+    final typeName = (row['adjustment_type'] ?? '').toString();
+    return _HrAttendanceManualAdjustment(
+      id: (row['id'] ?? '').toString(),
+      periodLabel: (row['period_label'] ?? '').toString(),
+      employeeId: (row['employee_id'] ?? '').toString(),
+      employeeName: (row['employee_name'] ?? '').toString(),
+      sourceDate: (row['source_date'] ?? '').toString(),
+      adjustmentType: _HrAttendanceAdjustmentType.values.firstWhere(
+        (item) => item.name == typeName,
+        orElse: () => _HrAttendanceAdjustmentType.ajusteManual,
+      ),
+      notes: (row['notes'] ?? '').toString(),
+      impactsPayroll: row['impacts_payroll'] == true,
+      createdAt:
+          DateTime.tryParse((row['created_at'] ?? '').toString()) ??
+          DateTime.now(),
+    );
+  }
 }
 
 _HrAttendanceImportLot? _latestLotBySource(
@@ -2672,32 +3370,18 @@ List<_HrAttendanceStageRow> _buildAttendanceRows({
       .toList(growable: false);
 }
 
-int _countImportedEmployees(
-  List<_HrAttendanceImportLot> lots,
-  _HrAttendanceImportSource source,
-) {
-  final ids = <String>{};
-  for (final lot in lots.where((lot) => lot.source == source)) {
-    ids.addAll(lot.uniqueEmployeeIds);
-  }
-  return ids.length;
-}
-
 List<_HrAttendanceTardinessRow> _buildTardinessRows({
   required List<_HrAttendanceEmployeeMaster> employees,
   required _HrAttendanceImportLot? ngtecoLot,
+  required List<_HrAttendanceManualAdjustment> adjustments,
 }) {
   if (ngtecoLot == null) return const <_HrAttendanceTardinessRow>[];
+  final adjustmentsByKey = _indexAttendanceAdjustments(adjustments);
   final employeesById = {
     for (final employee in employees)
       _normalizeAttendanceEmployeeId(employee.employeeId): employee,
   };
-  final grouped = <String, List<_HrAttendanceImportedEntry>>{};
-  for (final entry in ngtecoLot.entries) {
-    if (entry.sourceDate.trim().isEmpty) continue;
-    final key = '${entry.employeeId}|${entry.sourceDate.trim()}';
-    grouped.putIfAbsent(key, () => <_HrAttendanceImportedEntry>[]).add(entry);
-  }
+  final grouped = _groupAttendanceEntriesByEmployeeDay(ngtecoLot.entries);
 
   final rows = <_HrAttendanceTardinessRow>[];
   for (final record in grouped.entries) {
@@ -2714,7 +3398,9 @@ List<_HrAttendanceTardinessRow> _buildTardinessRows({
           ..sort();
     if (sorted.isEmpty) continue;
     final firstPunchAt = sorted.first;
+    final sourceDate = _fmtAttendanceDateLabel(firstPunchAt);
     final weekdayLabel = _hrWeekdayLabel(firstPunchAt.weekday);
+    final adjustment = adjustmentsByKey['${employee.employeeId}|$sourceDate'];
     final resolvedSchedule = _resolveAttendanceScheduleForPunch(
       schedules: employee.workSchedules,
       weekdayLabel: weekdayLabel,
@@ -2733,7 +3419,7 @@ List<_HrAttendanceTardinessRow> _buildTardinessRows({
           employeeId: employee.employeeId,
           displayName: employee.displayName,
           empresa: employee.empresa,
-          sourceDate: _fmtAttendanceDateLabel(firstPunchAt),
+          sourceDate: sourceDate,
           weekdayLabel: weekdayLabel,
           horario: employee.horario,
           matchedScheduleLabel: '',
@@ -2756,14 +3442,17 @@ List<_HrAttendanceTardinessRow> _buildTardinessRows({
           lateHourEquivalent: 0,
           lateWorkdayRatio: 0,
           calculable: false,
-          statusLabel: 'Base pendiente',
-          reason:
-              employee.workSchedules.any(
-                (candidate) => candidate.horario.trim().isNotEmpty,
-              )
-              ? 'No hay jornada asignada para $weekdayLabel.'
-              : 'Falta horario para calcular retardo.',
+          statusLabel: adjustment == null ? 'Base pendiente' : 'Corregido RH',
+          reason: adjustment == null
+              ? employee.workSchedules.any(
+                      (candidate) => candidate.horario.trim().isNotEmpty,
+                    )
+                    ? 'No hay jornada asignada para $weekdayLabel.'
+                    : 'Falta horario para calcular retardo.'
+              : _formatAttendanceAdjustmentSummary(adjustment),
           salarioBase: employee.salario,
+          manualAdjustmentLabel: adjustment?.adjustmentTypeLabel ?? '',
+          manualAdjustmentNotes: adjustment?.notes ?? '',
         ),
       );
       continue;
@@ -2774,7 +3463,7 @@ List<_HrAttendanceTardinessRow> _buildTardinessRows({
           employeeId: employee.employeeId,
           displayName: employee.displayName,
           empresa: employee.empresa,
-          sourceDate: _fmtAttendanceDateLabel(firstPunchAt),
+          sourceDate: sourceDate,
           weekdayLabel: weekdayLabel,
           horario: resolvedSchedule.label,
           matchedScheduleLabel: resolvedSchedule.matchReason,
@@ -2797,10 +3486,13 @@ List<_HrAttendanceTardinessRow> _buildTardinessRows({
           lateHourEquivalent: 0,
           lateWorkdayRatio: 0,
           calculable: false,
-          statusLabel: 'Día no laborable',
-          reason:
-              'Hay fichajes en una jornada que no marca este día como laborable.',
+          statusLabel: adjustment == null ? 'Día no laborable' : 'Corregido RH',
+          reason: adjustment == null
+              ? 'Hay fichajes en una jornada que no marca este día como laborable.'
+              : _formatAttendanceAdjustmentSummary(adjustment),
           salarioBase: employee.salario,
+          manualAdjustmentLabel: adjustment?.adjustmentTypeLabel ?? '',
+          manualAdjustmentNotes: adjustment?.notes ?? '',
         ),
       );
       continue;
@@ -2840,7 +3532,7 @@ List<_HrAttendanceTardinessRow> _buildTardinessRows({
         employeeId: employee.employeeId,
         displayName: employee.displayName,
         empresa: employee.empresa,
-        sourceDate: _fmtAttendanceDateLabel(firstPunchAt),
+        sourceDate: sourceDate,
         weekdayLabel: weekdayLabel,
         horario: resolvedSchedule.label,
         matchedScheduleLabel: resolvedSchedule.matchReason,
@@ -2861,17 +3553,23 @@ List<_HrAttendanceTardinessRow> _buildTardinessRows({
         lateHourEquivalent: lateHourEquivalent,
         lateWorkdayRatio: lateWorkdayRatio,
         calculable: true,
-        statusLabel: _resolveTardinessStatusLabel(
-          entryLateMinutes: normalizedLateMinutes,
-          lunchLateMinutes: lunchLateMinutes,
-          overtimeMinutes: overtimeMinutes,
-        ),
-        reason: _resolveTardinessReason(
-          entryLateMinutes: normalizedLateMinutes,
-          lunchLateMinutes: lunchLateMinutes,
-          overtimeMinutes: overtimeMinutes,
-        ),
+        statusLabel: adjustment == null
+            ? _resolveTardinessStatusLabel(
+                entryLateMinutes: normalizedLateMinutes,
+                lunchLateMinutes: lunchLateMinutes,
+                overtimeMinutes: overtimeMinutes,
+              )
+            : 'Corregido RH',
+        reason: adjustment == null
+            ? _resolveTardinessReason(
+                entryLateMinutes: normalizedLateMinutes,
+                lunchLateMinutes: lunchLateMinutes,
+                overtimeMinutes: overtimeMinutes,
+              )
+            : _formatAttendanceAdjustmentSummary(adjustment),
         salarioBase: employee.salario,
+        manualAdjustmentLabel: adjustment?.adjustmentTypeLabel ?? '',
+        manualAdjustmentNotes: adjustment?.notes ?? '',
       ),
     );
   }
@@ -2885,6 +3583,127 @@ List<_HrAttendanceTardinessRow> _buildTardinessRows({
     }
     final lateCmp = b.lateMinutes.compareTo(a.lateMinutes);
     if (lateCmp != 0) return lateCmp;
+    final idA = int.tryParse(a.employeeId);
+    final idB = int.tryParse(b.employeeId);
+    if (idA != null && idB != null) return idA.compareTo(idB);
+    return a.employeeId.compareTo(b.employeeId);
+  });
+  return rows;
+}
+
+List<_HrAttendanceAbsenceRow> _buildAbsenceRows({
+  required List<_HrAttendanceEmployeeMaster> employees,
+  required _HrAttendanceImportLot? ngtecoLot,
+  required _HrAttendanceImportLot? contpaqLot,
+  required List<_HrAttendanceManualAdjustment> adjustments,
+}) {
+  if (ngtecoLot == null) return const <_HrAttendanceAbsenceRow>[];
+  final adjustmentsByKey = _indexAttendanceAdjustments(adjustments);
+  final contpaqById = {
+    for (final entry
+        in contpaqLot?.entries ?? const <_HrAttendanceImportedEntry>[])
+      entry.employeeId: entry,
+  };
+  final grouped = _groupAttendanceEntriesByEmployeeDay(ngtecoLot.entries);
+  final activeDates = _collectAttendanceActiveDates(ngtecoLot.entries);
+  final sortedDates = activeDates.toList(growable: false)..sort();
+  if (sortedDates.isEmpty) return const <_HrAttendanceAbsenceRow>[];
+
+  final rows = <_HrAttendanceAbsenceRow>[];
+  for (final employee in employees) {
+    final normalizedEmployeeId = _normalizeAttendanceEmployeeId(
+      employee.employeeId,
+    );
+    final employeeWeeklyPunches = grouped.entries
+        .where((entry) => entry.key.startsWith('$normalizedEmployeeId|'))
+        .fold<int>(0, (sum, entry) => sum + entry.value.length);
+    final contpaqEntry = contpaqById[normalizedEmployeeId];
+    final vacationAmount = _parseHrDecimalAmount(contpaqEntry?.vacations ?? '');
+    final absenceAmount = _parseHrDecimalAmount(
+      contpaqEntry?.absenceDeduction ?? '',
+    );
+    final overtimeAmount = _parseHrDecimalAmount(contpaqEntry?.overtime ?? '');
+    final hasAdministrativeSignal =
+        vacationAmount > 0 || absenceAmount > 0 || overtimeAmount > 0;
+    for (final date in sortedDates) {
+      final weekdayLabel = _hrWeekdayLabel(date.weekday);
+      final resolvedSchedule = _resolveAttendanceScheduleForPunchlessDay(
+        schedules: employee.workSchedules,
+        weekdayLabel: weekdayLabel,
+      );
+      if (resolvedSchedule == null || !resolvedSchedule.worksThatDay) continue;
+      final sourceDate = _fmtAttendanceDateLabel(date);
+      final adjustment = adjustmentsByKey['${employee.employeeId}|$sourceDate'];
+      final groupedKey = _attendanceEmployeeDayKey(normalizedEmployeeId, date);
+      final punches =
+          grouped[groupedKey] ?? const <_HrAttendanceImportedEntry>[];
+      final hasPunches = punches.isNotEmpty;
+      final ngtecoStatus = hasPunches ? 'Con fichaje' : 'Sin fichaje';
+      final contpaqStatus = _resolveAbsenceContpaqStatus(
+        vacations: vacationAmount,
+        absenceDeduction: absenceAmount,
+        overtime: overtimeAmount,
+      );
+      final detailParts = <String>[
+        if (hasPunches)
+          'Hay fichajes en NGTeco para el día laborable esperado.',
+        if (!hasPunches)
+          'No hay fichajes en NGTeco para un día laborable esperado.',
+        if (vacationAmount > 0)
+          'Vacaciones en CONTPAQ: ${contpaqEntry!.vacations}',
+        if (absenceAmount > 0)
+          'Falta en CONTPAQ: ${contpaqEntry!.absenceDeduction}',
+        if (overtimeAmount > 0)
+          'Horas extra en CONTPAQ: ${contpaqEntry!.overtime}',
+      ];
+      final requiresReview = !hasPunches || hasAdministrativeSignal;
+      final statusLabel = adjustment == null
+          ? _resolveAbsenceStatusLabel(
+              hasPunches: hasPunches,
+              vacations: vacationAmount,
+              absenceDeduction: absenceAmount,
+              overtime: overtimeAmount,
+            )
+          : 'Corregido RH';
+      rows.add(
+        _HrAttendanceAbsenceRow(
+          employeeId: employee.employeeId,
+          displayName: employee.displayName,
+          empresa: employee.empresa,
+          sourceDate: sourceDate,
+          weekdayLabel: weekdayLabel,
+          jornadaLabel: resolvedSchedule.label,
+          statusLabel: statusLabel,
+          ngtecoStatus: ngtecoStatus,
+          contpaqStatus: contpaqStatus,
+          detail: adjustment == null
+              ? detailParts.join(' ')
+              : _formatAttendanceAdjustmentSummary(adjustment),
+          weeklyContext: hasPunches
+              ? 'Con fichaje este día.'
+              : employeeWeeklyPunches > 0
+              ? 'Sin fichaje este día; sí hay registros en otros días de la semana.'
+              : 'Sin fichajes en NGTeco durante la semana importada.',
+          requiresReview: requiresReview,
+          hasOperationalAbsence: !hasPunches,
+          hasAdministrativeSignal: hasAdministrativeSignal,
+          manualAdjustmentLabel: adjustment?.adjustmentTypeLabel ?? '',
+          manualAdjustmentNotes: adjustment?.notes ?? '',
+        ),
+      );
+    }
+  }
+
+  rows.sort((a, b) {
+    final aDate = _parseAttendanceDateLabel(a.sourceDate);
+    final bDate = _parseAttendanceDateLabel(b.sourceDate);
+    if (aDate != null && bDate != null) {
+      final cmp = aDate.compareTo(bDate);
+      if (cmp != 0) return cmp;
+    }
+    if (a.hasOperationalAbsence != b.hasOperationalAbsence) {
+      return a.hasOperationalAbsence ? -1 : 1;
+    }
     final idA = int.tryParse(a.employeeId);
     final idB = int.tryParse(b.employeeId);
     if (idA != null && idB != null) return idA.compareTo(idB);
@@ -2972,11 +3791,17 @@ _HrAttendanceImportLot _parseNgtecoImportLot(String fileName, List<int> bytes) {
     }
   }
 
-  final periodLabel = dates.isEmpty
+  final sortedDates =
+      dates
+          .map(_parseUsImportDate)
+          .whereType<DateTime>()
+          .toList(growable: false)
+        ..sort();
+  final periodLabel = sortedDates.isEmpty
       ? ''
-      : dates.length == 1
-      ? dates.first
-      : '${dates.first} → ${dates.last}';
+      : sortedDates.length == 1
+      ? _fmtAttendanceDateLabel(sortedDates.first)
+      : '${_fmtAttendanceDateLabel(sortedDates.first)} → ${_fmtAttendanceDateLabel(sortedDates.last)}';
   return _HrAttendanceImportLot(
     id: 'ngteco_${DateTime.now().microsecondsSinceEpoch}',
     source: _HrAttendanceImportSource.ngteco,
@@ -3037,6 +3862,11 @@ _HrAttendanceImportLot _parseContpaqImportLot(
   final employeeIndex = header.indexOf('Empleado');
   final salaryIndex = header.indexOf('Sueldo');
   final netIndex = header.indexOf('*NETO*');
+  final overtimeIndex = header.indexOf('Horas extras');
+  final vacationsIndex = header.indexOf('Vacaciones a tiempo');
+  final absenceDeductionIndex = header.indexOf(
+    'Falta sin obligacion empresarial',
+  );
 
   var validRows = 0;
   var rejectedRows = 0;
@@ -3060,19 +3890,40 @@ _HrAttendanceImportLot _parseContpaqImportLot(
     final net = netIndex >= 0 && netIndex < row.length
         ? _formatContpaqAmount(row[netIndex].trim())
         : '';
+    final overtime = overtimeIndex >= 0 && overtimeIndex < row.length
+        ? _formatContpaqAmount(row[overtimeIndex].trim())
+        : '';
+    final vacations = vacationsIndex >= 0 && vacationsIndex < row.length
+        ? _formatContpaqAmount(row[vacationsIndex].trim())
+        : '';
+    final absenceDeduction =
+        absenceDeductionIndex >= 0 && absenceDeductionIndex < row.length
+        ? _formatContpaqAmount(row[absenceDeductionIndex].trim())
+        : '';
     if (employeeId.isEmpty || name.isEmpty) {
       rejectedRows += 1;
       continue;
     }
     validRows += 1;
     ids.add(employeeId);
+    final detailParts = <String>[
+      'Sueldo $salary',
+      'Neto $net',
+      if (_parseHrDecimalAmount(vacations) > 0) 'Vacaciones $vacations',
+      if (_parseHrDecimalAmount(absenceDeduction) > 0)
+        'Falta $absenceDeduction',
+      if (_parseHrDecimalAmount(overtime) > 0) 'Extras $overtime',
+    ];
     entries.add(
       _HrAttendanceImportedEntry(
         employeeId: employeeId,
         sourceName: name,
-        detail: 'Sueldo $salary · Neto $net',
+        detail: detailParts.join(' · '),
         salary: salary,
         net: net,
+        overtime: overtime,
+        vacations: vacations,
+        absenceDeduction: absenceDeduction,
       ),
     );
     if (preview.length < 6) {
@@ -3080,13 +3931,18 @@ _HrAttendanceImportLot _parseContpaqImportLot(
         _HrAttendanceImportPreviewRow(
           employeeId: employeeId,
           name: name,
-          detail: 'Sueldo $salary · Neto $net',
+          detail: detailParts.join(' · '),
         ),
       );
     }
   }
   if (salaryIndex == -1) issues.add('Falta columna Sueldo');
   if (netIndex == -1) issues.add('Falta columna *NETO*');
+  if (overtimeIndex == -1) issues.add('Falta columna Horas extras');
+  if (vacationsIndex == -1) issues.add('Falta columna Vacaciones a tiempo');
+  if (absenceDeductionIndex == -1) {
+    issues.add('Falta columna Falta sin obligacion empresarial');
+  }
 
   return _HrAttendanceImportLot(
     id: 'contpaq_${DateTime.now().microsecondsSinceEpoch}',
@@ -3178,6 +4034,41 @@ DateTime? _parseAttendanceImportedDateTime(_HrAttendanceImportedEntry entry) {
   return DateTime(year, month, day, hour, minute, second);
 }
 
+Map<String, List<_HrAttendanceImportedEntry>>
+_groupAttendanceEntriesByEmployeeDay(List<_HrAttendanceImportedEntry> entries) {
+  final grouped = <String, List<_HrAttendanceImportedEntry>>{};
+  for (final entry in entries) {
+    final parsedDate = _parseAttendanceImportedDateTime(entry);
+    if (parsedDate == null) continue;
+    final key = _attendanceEmployeeDayKey(entry.employeeId, parsedDate);
+    grouped.putIfAbsent(key, () => <_HrAttendanceImportedEntry>[]).add(entry);
+  }
+  return grouped;
+}
+
+Set<DateTime> _collectAttendanceActiveDates(
+  List<_HrAttendanceImportedEntry> entries,
+) {
+  final activeDates = <DateTime>{};
+  for (final entry in entries) {
+    final parsedDate = _parseAttendanceImportedDateTime(entry);
+    if (parsedDate == null) continue;
+    activeDates.add(
+      DateTime(parsedDate.year, parsedDate.month, parsedDate.day),
+    );
+  }
+  return activeDates;
+}
+
+String _attendanceEmployeeDayKey(String employeeId, DateTime date) {
+  final normalizedEmployeeId = _normalizeAttendanceEmployeeId(employeeId);
+  final normalizedDate = DateTime(date.year, date.month, date.day);
+  final year = normalizedDate.year.toString().padLeft(4, '0');
+  final month = normalizedDate.month.toString().padLeft(2, '0');
+  final day = normalizedDate.day.toString().padLeft(2, '0');
+  return '$normalizedEmployeeId|$year-$month-$day';
+}
+
 String _fmtAttendanceDateTimeCompact(DateTime value) {
   final day = value.day.toString().padLeft(2, '0');
   final month = value.month.toString().padLeft(2, '0');
@@ -3203,31 +4094,20 @@ DateTime? _parseAttendanceDateLabel(String raw) {
   return DateTime(year, month, day);
 }
 
+DateTime? _parseUsImportDate(String raw) {
+  final match = RegExp(r'^(\d{2})/(\d{2})/(\d{4})$').firstMatch(raw.trim());
+  if (match == null) return null;
+  final month = int.tryParse(match.group(1)!);
+  final day = int.tryParse(match.group(2)!);
+  final year = int.tryParse(match.group(3)!);
+  if (day == null || month == null || year == null) return null;
+  return DateTime(year, month, day);
+}
+
 String _fmtAttendanceTime(DateTime value) {
   final hour = value.hour.toString().padLeft(2, '0');
   final minute = value.minute.toString().padLeft(2, '0');
   return '$hour:$minute';
-}
-
-String _fmtHrDecimal(double value) => value.toStringAsFixed(2);
-
-String _fmtHrPercent(double ratio) => '${(ratio * 100).toStringAsFixed(2)}%';
-
-String _resolveTardinessEventSummary(_HrAttendanceTardinessRow row) {
-  final segments = <String>[];
-  if (row.firstPunch.isNotEmpty) {
-    segments.add('Entrada ${row.firstPunch}');
-  }
-  if (row.lunchOutPunch.isNotEmpty) {
-    segments.add('Comida sale ${row.lunchOutPunch}');
-  }
-  if (row.lunchReturnPunch.isNotEmpty) {
-    segments.add('Comida regresa ${row.lunchReturnPunch}');
-  }
-  if (row.lastPunch.isNotEmpty && row.lastPunch != row.firstPunch) {
-    segments.add('Salida ${row.lastPunch}');
-  }
-  return segments.isEmpty ? 'Sin eventos interpretados' : segments.join(' · ');
 }
 
 String _hrWeekdayLabel(int weekday) {
@@ -3372,6 +4252,96 @@ _HrResolvedAttendanceSchedule? _resolveAttendanceScheduleForPunch({
   return candidates.first;
 }
 
+_HrResolvedAttendanceSchedule? _resolveAttendanceScheduleForPunchlessDay({
+  required List<_HrAttendanceWorkSchedule> schedules,
+  required String weekdayLabel,
+}) {
+  if (schedules.isEmpty) return null;
+  for (final item in schedules) {
+    final parsed = _parseAttendanceSchedule(item.horario);
+    if (parsed == null) continue;
+    final worksThatDay = item.diasLabora.contains(weekdayLabel);
+    if (!worksThatDay) continue;
+    return _HrResolvedAttendanceSchedule(
+      schedule: parsed,
+      worksThatDay: true,
+      label: item.horario,
+      matchReason: 'Jornada ${item.diasLabora.join(', ')}',
+      score: 0,
+    );
+  }
+  return null;
+}
+
+double _parseHrDecimalAmount(String raw) {
+  final normalized = raw.trim().replaceAll(',', '');
+  if (normalized.isEmpty) return 0;
+  return double.tryParse(normalized) ?? 0;
+}
+
+String _resolveAbsenceContpaqStatus({
+  required double vacations,
+  required double absenceDeduction,
+  required double overtime,
+}) {
+  final labels = <String>[];
+  if (vacations > 0) labels.add('Vacaciones');
+  if (absenceDeduction > 0) labels.add('Falta aplicada');
+  if (overtime > 0) labels.add('Extras aplicadas');
+  if (labels.isEmpty) return 'Sin incidencia';
+  return labels.join(' · ');
+}
+
+String _resolveAbsenceStatusLabel({
+  required bool hasPunches,
+  required double vacations,
+  required double absenceDeduction,
+  required double overtime,
+}) {
+  final hasVacations = vacations > 0;
+  final hasAbsence = absenceDeduction > 0;
+  final hasExtras = overtime > 0;
+  if (hasPunches && !hasVacations && !hasAbsence && !hasExtras) {
+    return 'Sin novedad';
+  }
+  if (!hasPunches && hasVacations) return 'Vacaciones aplicadas';
+  if (!hasPunches && hasAbsence) return 'Falta aplicada';
+  if (!hasPunches && !hasVacations && !hasAbsence && !hasExtras) {
+    return 'Falta probable';
+  }
+  if (hasPunches && (hasVacations || hasAbsence || hasExtras)) {
+    return 'Solo señal administrativa';
+  }
+  if (!hasPunches && hasExtras) return 'Ausencia por revisar';
+  return 'Ausencia por revisar';
+}
+
+String _resolveActiveAttendancePeriodLabel({
+  required _HrAttendanceImportLot? ngtecoLot,
+  required _HrAttendanceImportLot? contpaqLot,
+}) {
+  final ngteco = ngtecoLot?.periodLabel.trim() ?? '';
+  if (ngteco.isNotEmpty) return ngteco;
+  return contpaqLot?.periodLabel.trim() ?? '';
+}
+
+Map<String, _HrAttendanceManualAdjustment> _indexAttendanceAdjustments(
+  List<_HrAttendanceManualAdjustment> adjustments,
+) {
+  return {
+    for (final adjustment in adjustments)
+      '${adjustment.employeeId}|${adjustment.sourceDate}': adjustment,
+  };
+}
+
+String _formatAttendanceAdjustmentSummary(
+  _HrAttendanceManualAdjustment adjustment,
+) {
+  final note = adjustment.notes.trim();
+  if (note.isEmpty) return 'Corrección RH: ${adjustment.adjustmentTypeLabel}.';
+  return 'Corrección RH: ${adjustment.adjustmentTypeLabel} · $note';
+}
+
 String _resolveTardinessStatusLabel({
   required int entryLateMinutes,
   required int lunchLateMinutes,
@@ -3438,6 +4408,59 @@ String _formatContpaqAmount(String raw) {
   return parsed.toStringAsFixed(2);
 }
 
+String _fmtHrCurrency(String raw) {
+  final normalized = raw.trim().replaceAll(',', '');
+  if (normalized.isEmpty) return '';
+  final parsed = double.tryParse(normalized);
+  if (parsed == null) return raw;
+  final sign = parsed < 0 ? '-' : '';
+  final fixed = parsed.abs().toStringAsFixed(2);
+  final parts = fixed.split('.');
+  final whole = parts.first;
+  final decimal = parts.last;
+  final buffer = StringBuffer();
+  for (var i = 0; i < whole.length; i++) {
+    final reverseIndex = whole.length - i;
+    buffer.write(whole[i]);
+    if (reverseIndex > 1 && reverseIndex % 3 == 1) {
+      buffer.write(',');
+    }
+  }
+  return '$sign\$$buffer.$decimal';
+}
+
+String _describeImportPeriod(_HrAttendanceImportLot lot) {
+  final raw = lot.periodLabel.trim();
+  if (raw.isEmpty) return 'Periodo no detectado';
+  if (lot.source == _HrAttendanceImportSource.ngteco) {
+    final segments = raw.split('→').map((part) => part.trim()).toList();
+    if (segments.length == 2) {
+      final first = _parseUsImportDate(segments[0]);
+      final second = _parseUsImportDate(segments[1]);
+      if (first != null && second != null) {
+        final ordered = [first, second]..sort();
+        return '${_fmtAttendanceDateLabel(ordered.first)} - ${_fmtAttendanceDateLabel(ordered.last)}';
+      }
+    }
+    return raw;
+  }
+
+  final periodMatch = RegExp(
+    r'Periodo\s+(\d+)\s+al\s+\d+\s+Semanal\s+del\s+(\d{2}/\d{2}/\d{4})\s+al\s+(\d{2}/\d{2}/\d{4})(?:\s+·\s+Hora:\s+(\d{2}:\d{2}:\d{2}))?',
+    caseSensitive: false,
+  ).firstMatch(raw);
+  if (periodMatch != null) {
+    final week = periodMatch.group(1)!;
+    final start = periodMatch.group(2)!;
+    final end = periodMatch.group(3)!;
+    final time = periodMatch.group(4);
+    return time == null
+        ? 'Periodo $week semanal · $start - $end'
+        : 'Periodo $week semanal · $start - $end · Archivo $time';
+  }
+  return raw;
+}
+
 int _asInt(Object? value) {
   if (value is int) return value;
   if (value is num) return value.toInt();
@@ -3497,35 +4520,6 @@ bool _isContpaqStructuralRow(List<String> row) {
     if (allNumericLike) return true;
   }
   return false;
-}
-
-class _HrStatusChip extends StatelessWidget {
-  final String label;
-  final bool complete;
-
-  const _HrStatusChip({required this.label, required this.complete});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: complete ? const Color(0xFFDCC5FF) : const Color(0xFFF7F0FF),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: complete ? const Color(0xFF9F6BFF) : const Color(0x44B084FF),
-        ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w900,
-          color: complete ? const Color(0xFF24103D) : const Color(0xFF6E47A8),
-        ),
-      ),
-    );
-  }
 }
 
 class _SimpleXlsxWorkbook {

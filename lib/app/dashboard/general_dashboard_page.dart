@@ -14,6 +14,7 @@ import '../direction/direction_maintenance_page.dart';
 import '../direction/direction_menudeo_analysis_page.dart';
 import '../direction/direction_operations_repository.dart';
 import '../direction/direction_purchase_orders_page.dart';
+import '../direction/direction_trade_analysis_page.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
 import '../hr/human_resources_dashboard_page.dart';
@@ -183,6 +184,17 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     );
   }
 
+  Future<void> _openDirectionTradeAnalysis() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const DirectionTradeAnalysisPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   Future<void> _openDirectionPurchaseOrders() async {
     if (!mounted) return;
     await Navigator.of(context).push(
@@ -259,6 +271,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       onOpenDirectionCashWorkspace: _openDirectionCashWorkspace,
       onOpenDirectionCashCatalog: _openDirectionCashCatalog,
       onOpenDirectionMenudeoAnalysis: _openDirectionMenudeoAnalysis,
+      onOpenDirectionTradeAnalysis: _openDirectionTradeAnalysis,
       onOpenOperationalDashboard: _openOperationalDashboard,
       onOpenMenudeo: _openRetailDashboard,
       onOpenMayoreo: _openMayoreoPreviewDashboard,
@@ -282,6 +295,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
           child: _DirectionDashboardCanvas(
             onOpenVault: _openDirectionCashWorkspace,
             onOpenMenudeoAnalysis: _openDirectionMenudeoAnalysis,
+            onOpenTradeAnalysis: _openDirectionTradeAnalysis,
             onOpenPurchaseOrders: _openDirectionPurchaseOrders,
             onOpenMaintenance: _openDirectionMaintenance,
             onOpenHumanResources: _openHumanResourcesDashboard,
@@ -335,6 +349,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
 class _DirectionDashboardCanvas extends StatelessWidget {
   final Future<void> Function() onOpenVault;
   final Future<void> Function() onOpenMenudeoAnalysis;
+  final Future<void> Function() onOpenTradeAnalysis;
   final Future<void> Function() onOpenPurchaseOrders;
   final Future<void> Function() onOpenMaintenance;
   final Future<void> Function() onOpenHumanResources;
@@ -344,6 +359,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
   const _DirectionDashboardCanvas({
     required this.onOpenVault,
     required this.onOpenMenudeoAnalysis,
+    required this.onOpenTradeAnalysis,
     required this.onOpenPurchaseOrders,
     required this.onOpenMaintenance,
     required this.onOpenHumanResources,
@@ -408,6 +424,17 @@ class _DirectionDashboardCanvas extends StatelessWidget {
                   badge: 'Mercado activo',
                   icon: Icons.storefront_rounded,
                   onTap: onOpenMenudeoAnalysis,
+                ),
+              ),
+              SizedBox(
+                width: 420,
+                child: _DirectionAnalysisEntryCard(
+                  title: 'Compra-Venta',
+                  subtitle:
+                      'Entradas, salidas, spreads y volumen consolidado por material general.',
+                  badge: 'Nueva propuesta',
+                  icon: Icons.swap_horiz_rounded,
+                  onTap: onOpenTradeAnalysis,
                 ),
               ),
               SizedBox(
@@ -1396,6 +1423,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final Future<void> Function()? onOpenDirectionCashWorkspace;
   final Future<void> Function()? onOpenDirectionCashCatalog;
   final Future<void> Function()? onOpenDirectionMenudeoAnalysis;
+  final Future<void> Function()? onOpenDirectionTradeAnalysis;
   final Future<void> Function()? onOpenOperationalDashboard;
   final Future<void> Function()? onOpenMenudeo;
   final Future<void> Function()? onOpenMayoreo;
@@ -1414,6 +1442,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onOpenDirectionCashWorkspace,
     this.onOpenDirectionCashCatalog,
     this.onOpenDirectionMenudeoAnalysis,
+    this.onOpenDirectionTradeAnalysis,
     this.onOpenOperationalDashboard,
     this.onOpenMenudeo,
     this.onOpenMayoreo,
@@ -1503,6 +1532,13 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                       title: 'Análisis Menudeo',
                       subtitle: 'Mercado, efectivo y operación',
                       onTap: onOpenDirectionMenudeoAnalysis,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.swap_horiz_rounded,
+                      title: 'Compra-Venta',
+                      subtitle: 'Consolidado ejecutivo por material general',
+                      onTap: onOpenDirectionTradeAnalysis,
                     ),
                   ],
                 ),

@@ -4,9 +4,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
+import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
+import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
+import 'human_resources_vacations_page.dart';
 
 class HumanResourcesDashboardPage extends StatelessWidget {
   final bool instantOpen;
@@ -89,9 +93,9 @@ class HumanResourcesDashboardPage extends StatelessWidget {
       ),
       DashboardPlaceholderCard(
         icon: Icons.schedule_rounded,
-        title: 'Asistencia e incidencias',
+        title: 'Importación y conciliación',
         description:
-            'Importaciones de reloj checador, permisos, vacaciones y horas extra con staging validable.',
+            'Lectura y cruce de NGTeco y CONTPAQ para conciliación operativa.',
       ),
       DashboardPlaceholderCard(
         icon: Icons.payments_outlined,
@@ -115,7 +119,39 @@ class HumanResourcesDashboardPage extends StatelessWidget {
     Future<void> openAttendance() async {
       await Navigator.of(context).push(
         appPageRoute(
+          page: const HumanResourcesAttendancePage(instantOpen: true),
+        ),
+      );
+    }
+
+    Future<void> openImportConciliation() async {
+      await Navigator.of(context).push(
+        appPageRoute(
           page: const HumanResourcesAttendanceIncidentsPage(instantOpen: true),
+        ),
+      );
+    }
+
+    Future<void> openVacations() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const HumanResourcesVacationsPage(instantOpen: true),
+        ),
+      );
+    }
+
+    Future<void> openPermissions() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const HumanResourcesPermissionsPage(instantOpen: true),
+        ),
+      );
+    }
+
+    Future<void> openPrenomina() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const HumanResourcesPrenominaPage(instantOpen: true),
         ),
       );
     }
@@ -127,6 +163,10 @@ class HumanResourcesDashboardPage extends StatelessWidget {
           width: width,
           onOpenPersonnel: openPersonnel,
           onOpenAttendance: openAttendance,
+          onOpenImportConciliation: openImportConciliation,
+          onOpenVacations: openVacations,
+          onOpenPermissions: openPermissions,
+          onOpenPrenomina: openPrenomina,
         ),
         showHeroPanel: false,
         showContractPanel: false,
@@ -146,10 +186,34 @@ class HumanResourcesDashboardPage extends StatelessWidget {
             onTap: openPersonnel,
           ),
           DashboardNavAction(
-            title: 'Asistencia e incidencias',
-            subtitle: 'Staging semanal e importaciones',
-            icon: Icons.schedule_rounded,
+            title: 'Asistencia',
+            subtitle: 'Cierre editable semanal por colaborador',
+            icon: Icons.fact_check_outlined,
             onTap: openAttendance,
+          ),
+          DashboardNavAction(
+            title: 'Importación y conciliación',
+            subtitle: 'Lectura y cruce de NGTeco y CONTPAQ',
+            icon: Icons.schedule_rounded,
+            onTap: openImportConciliation,
+          ),
+          DashboardNavAction(
+            title: 'Vacaciones',
+            subtitle: 'Derecho, saldo y aplicación por ejercicio',
+            icon: Icons.beach_access_rounded,
+            onTap: openVacations,
+          ),
+          DashboardNavAction(
+            title: 'Permisos',
+            subtitle: 'Ledger operativo por periodo y colaborador',
+            icon: Icons.assignment_turned_in_outlined,
+            onTap: openPermissions,
+          ),
+          DashboardNavAction(
+            title: 'Prenómina',
+            subtitle: 'Corrida borrador semanal por colaborador',
+            icon: Icons.payments_outlined,
+            onTap: openPrenomina,
           ),
         ],
       ),
@@ -163,11 +227,19 @@ class _HrDashboardWorkspace extends StatelessWidget {
   final double width;
   final Future<void> Function() onOpenPersonnel;
   final Future<void> Function() onOpenAttendance;
+  final Future<void> Function() onOpenImportConciliation;
+  final Future<void> Function() onOpenVacations;
+  final Future<void> Function() onOpenPermissions;
+  final Future<void> Function() onOpenPrenomina;
 
   const _HrDashboardWorkspace({
     required this.width,
     required this.onOpenPersonnel,
     required this.onOpenAttendance,
+    required this.onOpenImportConciliation,
+    required this.onOpenVacations,
+    required this.onOpenPermissions,
+    required this.onOpenPrenomina,
   });
 
   @override
@@ -182,10 +254,34 @@ class _HrDashboardWorkspace extends StatelessWidget {
           children: [
             _HrDashboardPersonnelSummaryCard(onTap: onOpenPersonnel),
             _HrDashboardSimpleShortcutCard(
-              icon: Icons.schedule_rounded,
+              icon: Icons.fact_check_outlined,
               title: 'Asistencia',
-              subtitle: 'Importaciones y staging semanal',
+              subtitle: 'Cierre editable semanal por colaborador',
               onTap: onOpenAttendance,
+            ),
+            _HrDashboardSimpleShortcutCard(
+              icon: Icons.schedule_rounded,
+              title: 'Importación y conciliación',
+              subtitle: 'Lectura y cruce de NGTeco y CONTPAQ',
+              onTap: onOpenImportConciliation,
+            ),
+            _HrDashboardSimpleShortcutCard(
+              icon: Icons.beach_access_rounded,
+              title: 'Vacaciones',
+              subtitle: 'Derecho, aplicación y saldo por ejercicio',
+              onTap: onOpenVacations,
+            ),
+            _HrDashboardSimpleShortcutCard(
+              icon: Icons.assignment_turned_in_outlined,
+              title: 'Permisos',
+              subtitle: 'Captura administrativa por colaborador y periodo',
+              onTap: onOpenPermissions,
+            ),
+            _HrDashboardSimpleShortcutCard(
+              icon: Icons.payments_outlined,
+              title: 'Prenómina',
+              subtitle: 'Corrida borrador semanal por colaborador',
+              onTap: onOpenPrenomina,
             ),
           ],
         ),

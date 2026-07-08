@@ -374,30 +374,39 @@ class GerenciaBaleWeeklyTrackingStore {
         }
       }
 
-      for (final row
-          in (legacyProductionRows as List<dynamic>)
-              .cast<Map<String, dynamic>>()) {
-        final typeKey = _mapExecutiveBaleTypeKey(
-          row['bale_material']?.toString(),
-        );
-        final count = (row['bale_count'] as num?)?.toInt() ?? 0;
-        if (count <= 0) continue;
-        if (typeKey == null) {
-          final raw = (row['bale_material'] ?? '').toString().trim();
-          if (raw.isNotEmpty) unmappedProductionCodes.add(raw);
-          continue;
+      final hasTransformationProduction = productionByType.values.any(
+        (value) => value > 0,
+      );
+      if (!hasTransformationProduction) {
+        for (final row
+            in (legacyProductionRows as List<dynamic>)
+                .cast<Map<String, dynamic>>()) {
+          final typeKey = _mapExecutiveBaleTypeKey(
+            row['bale_material']?.toString(),
+          );
+          final count = (row['bale_count'] as num?)?.toInt() ?? 0;
+          if (count <= 0) continue;
+          if (typeKey == null) {
+            final raw = (row['bale_material'] ?? '').toString().trim();
+            if (raw.isNotEmpty) unmappedProductionCodes.add(raw);
+            continue;
+          }
+          final opDate = _parseDate(row['op_date']);
+          productionByType.update(
+            typeKey,
+            (value) => value + count,
+            ifAbsent: () => count,
+          );
+          final bucket = dailyProductionByType.putIfAbsent(
+            typeKey,
+            () => <DateTime, int>{},
+          );
+          bucket.update(
+            opDate,
+            (value) => value + count,
+            ifAbsent: () => count,
+          );
         }
-        final opDate = _parseDate(row['op_date']);
-        productionByType.update(
-          typeKey,
-          (value) => value + count,
-          ifAbsent: () => count,
-        );
-        final bucket = dailyProductionByType.putIfAbsent(
-          typeKey,
-          () => <DateTime, int>{},
-        );
-        bucket.update(opDate, (value) => value + count, ifAbsent: () => count);
       }
 
       for (final row

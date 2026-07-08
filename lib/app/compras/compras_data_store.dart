@@ -455,6 +455,7 @@ Future<List<Map<String, dynamic>>> _fetchAllRows(
 
 const List<String> _kMayoreoCanonicalGeneralCategories = <String>[
   'CARTON',
+  'BASURA',
   'CHATARRA',
   'METAL',
   'PLASTICO',
@@ -535,16 +536,9 @@ ComprasCatalogSnapshot _normalizeCatalogSnapshot(ComprasCatalogSnapshot input) {
 
   final companies = input.companies.toList(growable: false)
     ..sort((a, b) => compareMayoreoAlpha(a.name, b.name));
-  final extraGeneralRows = existingGeneralRows
-      .where(
-        (row) =>
-            !canonicalGeneralRows.any((canonical) => canonical.id == row.id),
-      )
-      .toList(growable: false);
   final materials =
       <ComprasCatalogMaterialRecord>[
         ...canonicalGeneralRows,
-        ...extraGeneralRows,
         ...normalizedCommercialRows,
       ]..sort((a, b) {
         final levelCompare = compareMayoreoAlpha(a.level, b.level);
@@ -575,8 +569,16 @@ String _canonicalMayoreoGeneralCategory(
   final merged = <String>[?raw, ?family, ?name].join(' ').toUpperCase();
 
   if (merged.contains('CARTON')) return 'CARTON';
+  if (merged.contains('BASURA')) return 'BASURA';
   if (merged.contains('CHATARRA') || merged.contains('FIERRO')) {
     return 'CHATARRA';
+  }
+  if (merged.contains('METAL') ||
+      merged.contains('ACERO') ||
+      merged.contains('ALUMINIO') ||
+      merged.contains('COBRE') ||
+      merged.contains('BRONCE')) {
+    return 'METAL';
   }
   if (merged.contains('PLASTICO') || merged.contains('PET')) {
     return 'PLASTICO';

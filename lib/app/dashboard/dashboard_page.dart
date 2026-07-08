@@ -2755,6 +2755,8 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       final commercialBalanceRows = (responses[1] as List)
           .cast<Map<String, dynamic>>();
       final catalogRows = (responses[2] as List).cast<Map<String, dynamic>>();
+      final transformationRuns = (responses[3] as List)
+          .cast<Map<String, dynamic>>();
       final transformationOutputs = (responses[4] as List)
           .cast<Map<String, dynamic>>();
       final manualCountRows = (responses[5] as List)
@@ -2796,6 +2798,10 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
           <String, Map<DateTime, double>>{};
       final dailySeparationByCommercialAndDate =
           <String, Map<DateTime, double>>{};
+      final allowedTransformationRunIds = transformationRuns
+          .map((row) => (row['id'] ?? '').toString())
+          .where((id) => id.isNotEmpty)
+          .toSet();
 
       for (final row in commercialBalanceRows) {
         final code = (row['code'] ?? '').toString().trim();
@@ -2836,6 +2842,8 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       }
 
       for (final row in transformationOutputs) {
+        final runId = (row['run_id'] ?? '').toString();
+        if (!allowedTransformationRunIds.contains(runId)) continue;
         final run = (row['run'] as Map?)?.cast<String, dynamic>();
         final commercial = (row['commercial_material'] as Map?)
             ?.cast<String, dynamic>();
