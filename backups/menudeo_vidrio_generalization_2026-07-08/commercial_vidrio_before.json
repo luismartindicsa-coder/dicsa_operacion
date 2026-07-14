@@ -1,0 +1,20 @@
+[
+  {
+    "id": "a2b5e9cd-62b1-4241-94f0-a3fbe78b4a6c",
+    "code": "VIDRIO",
+    "name": "VIDRIO",
+    "family": "other",
+    "general_material_id": "a3b39add-83a8-4b9e-92db-242b2b852a40",
+    "classification_kind": "classified_stock",
+    "flow_scope": "BOTH",
+    "tracks_patio_stock": true,
+    "allows_direct_entry": true,
+    "allows_transformation_output": true,
+    "allows_sale": true,
+    "is_active": true,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-05-22T23:08:45.372479+00:00",
+    "updated_at": "2026-07-08T20:00:40.251465+00:00"
+  }
+]

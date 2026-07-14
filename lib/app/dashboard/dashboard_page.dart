@@ -2849,6 +2849,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
             ?.cast<String, dynamic>();
         final commercialCode = (commercial?['code'] ?? '').toString().trim();
         if (commercialCode.isEmpty) continue;
+        final commercialOption = commercialOptionsByCode[commercialCode];
         final opDate = DateUtils.dateOnly(_parseDate(run?['op_date']));
         final generalCode = _normalizeOperational(
           (((commercial?['general_material'] as Map?) ?? const {})['code'] ??
@@ -2859,6 +2860,15 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         final outputKg = _num(row['output_weight_kg']);
         final outputUnits = _num(row['output_unit_count']);
         if (generalCode == 'CARTON') {
+          final inventoryMaterial = _normalizeOperational(
+            commercialOption?.inventoryMaterial ?? '',
+          );
+          final isBaleOutput =
+              _isBaleCommercialMaterialCode(commercialCode) ||
+              _isBaleOperationalMaterial(inventoryMaterial);
+          if (!isBaleOutput) {
+            continue;
+          }
           final key = _normalizeOperational(commercialCode);
           final producedBales = outputUnits > 0
               ? outputUnits

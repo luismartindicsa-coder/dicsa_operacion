@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
+import '../shared/production_daily_summary_widget.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
@@ -272,6 +273,24 @@ class _GerenciaWorkspace extends StatelessWidget {
                 ),
               ],
             ),
+          if (!loading) ...[
+            const SizedBox(height: 18),
+            const ProductionDailySummaryWidget(
+              title: 'Producción diaria consolidada',
+              subtitle:
+                  'Semana actual por turno para seguimiento ejecutivo. Revuelta C1 y C2 se separan desde el comentario de Producción.',
+              palette: ProductionDailySummaryPalette(
+                surface: Color(0x5916070D),
+                border: Color(0x40FF9AA6),
+                accent: Color(0xFFFF9FA7),
+                accentSoft: Color(0xFFFFE4E8),
+                text: Color(0xFFFFFFFF),
+                mutedText: Color(0xCCFFE4E8),
+                gridLine: Color(0x30FFB5BE),
+                highlightSurface: Color(0xA319070D),
+              ),
+            ),
+          ],
           if (!loading && bundle != null) ...[
             const SizedBox(height: 18),
             _HistoricTrackingCard(history: history),

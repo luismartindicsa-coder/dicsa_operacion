@@ -207,30 +207,61 @@ class _DirectionPurchaseOrdersPageState
     return showDialog<String>(
       context: context,
       builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Motivo del rechazo'),
-          content: SizedBox(
-            width: 420,
-            child: TextField(
-              controller: controller,
-              autofocus: true,
-              minLines: 3,
-              maxLines: 5,
-              decoration: const InputDecoration(
-                labelText: 'Comentario para Operación/Contabilidad',
-              ),
+        final baseTheme = Theme.of(dialogContext);
+        return Theme(
+          data: baseTheme.copyWith(
+            colorScheme: baseTheme.colorScheme.copyWith(
+              primary: kDirectionLimeAccent,
+              onPrimary: kDirectionBg,
+              surface: kDirectionBgMid,
+              onSurface: kDirectionSurfaceText,
+            ),
+            dialogTheme: baseTheme.dialogTheme.copyWith(
+              backgroundColor: kDirectionBgMid,
             ),
           ),
-          actions: [
-            OutlinedButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Cancelar'),
+          child: AlertDialog(
+            title: const Text('Motivo del rechazo'),
+            content: SizedBox(
+              width: 420,
+              child: TextField(
+                controller: controller,
+                autofocus: true,
+                minLines: 3,
+                maxLines: 5,
+                style: const TextStyle(color: kDirectionSurfaceText),
+                decoration: InputDecoration(
+                  labelText: 'Comentario para Operación/Contabilidad',
+                  labelStyle: const TextStyle(color: kDirectionMutedText),
+                  filled: true,
+                  fillColor: kDirectionOliveDeep.withValues(alpha: 0.78),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(
+                      color: Colors.white.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(16),
+                    borderSide: BorderSide(
+                      color: kDirectionOliveGlow.withValues(alpha: 0.78),
+                      width: 1.3,
+                    ),
+                  ),
+                ),
+              ),
             ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, controller.text),
-              child: const Text('Rechazar'),
-            ),
-          ],
+            actions: [
+              OutlinedButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('Cancelar'),
+              ),
+              FilledButton(
+                onPressed: () => Navigator.pop(dialogContext, controller.text),
+                child: const Text('Rechazar'),
+              ),
+            ],
+          ),
         );
       },
     );
@@ -339,7 +370,7 @@ class _DirectionPurchaseOrdersPageState
                 title: 'CRÍTICAS',
                 value: '${summary.criticalCount}',
                 detail: 'Más de 48h sin resolución',
-                accent: const Color(0xFFFF7B7B),
+                accent: kDirectionDanger,
               ),
               DirectionMetricCard(
                 icon: Icons.attach_money_rounded,
@@ -355,7 +386,7 @@ class _DirectionPurchaseOrdersPageState
                     ? '0 h'
                     : '${summary.oldestHours.round()} h',
                 detail: 'Antigüedad máxima pendiente',
-                accent: const Color(0xFFFFC36D),
+                accent: kDirectionWarning,
               ),
             ],
           ),
@@ -498,9 +529,9 @@ class _DirectionAlertsCard extends StatelessWidget {
             ),
           ...alerts.map((alert) {
             final color = switch (alert.severity) {
-              DirectionFollowupSeverity.info => const Color(0xFF7FD7FF),
-              DirectionFollowupSeverity.warning => const Color(0xFFFFC36D),
-              DirectionFollowupSeverity.critical => const Color(0xFFFF7B7B),
+              DirectionFollowupSeverity.info => kDirectionOliveGlow,
+              DirectionFollowupSeverity.warning => kDirectionWarning,
+              DirectionFollowupSeverity.critical => kDirectionDanger,
             };
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -557,8 +588,8 @@ class _DirectionImmediateAttentionBanner extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final accent = summary.criticalCount > 0
-        ? const Color(0xFFFF6B7A)
-        : const Color(0xFFFFB45E);
+        ? kDirectionDanger
+        : kDirectionWarning;
     final top = summary.pendingItems.isNotEmpty
         ? summary.pendingItems.first
         : null;
@@ -668,10 +699,10 @@ class _DirectionPurchasePendingListCard extends StatelessWidget {
             final critical = item.ageHours >= 48;
             final warning = item.ageHours >= 24 && item.ageHours < 48;
             final accent = critical
-                ? const Color(0xFFFF7B7B)
+                ? kDirectionDanger
                 : warning
-                ? const Color(0xFFFFC36D)
-                : const Color(0xFF7FD7FF);
+                ? kDirectionWarning
+                : kDirectionOliveGlow;
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),

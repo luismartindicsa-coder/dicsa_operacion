@@ -265,14 +265,14 @@ class _DirectionMaintenancePageState extends State<DirectionMaintenancePage> {
                 title: 'CRÍTICAS',
                 value: '${summary.criticalCount}',
                 detail: 'Paro total o alta prioridad',
-                accent: const Color(0xFFFF7B7B),
+                accent: kDirectionDanger,
               ),
               DirectionMetricCard(
                 icon: Icons.timelapse_rounded,
                 title: 'SIN MOVIMIENTO',
                 value: '${summary.staleCount}',
                 detail: 'Más de 48h sin actualización',
-                accent: const Color(0xFFFFC36D),
+                accent: kDirectionWarning,
               ),
               DirectionMetricCard(
                 icon: Icons.rule_folder_outlined,
@@ -417,9 +417,9 @@ class _DirectionMaintenanceAlertsCard extends StatelessWidget {
             ),
           ...alerts.map((alert) {
             final color = switch (alert.severity) {
-              DirectionFollowupSeverity.info => const Color(0xFF7FD7FF),
-              DirectionFollowupSeverity.warning => const Color(0xFFFFC36D),
-              DirectionFollowupSeverity.critical => const Color(0xFFFF7B7B),
+              DirectionFollowupSeverity.info => kDirectionOliveGlow,
+              DirectionFollowupSeverity.warning => kDirectionWarning,
+              DirectionFollowupSeverity.critical => kDirectionDanger,
             };
             return Padding(
               padding: const EdgeInsets.only(bottom: 10),
@@ -508,10 +508,10 @@ class _DirectionMaintenancePendingListCard extends StatelessWidget {
                 (item.priority == 'alta' && item.ageHours >= 24);
             final warning = item.ageHours >= 48 || item.waitingDirection;
             final accent = critical
-                ? const Color(0xFFFF7B7B)
+                ? kDirectionDanger
                 : warning
-                ? const Color(0xFFFFC36D)
-                : const Color(0xFF7FD7FF);
+                ? kDirectionWarning
+                : kDirectionOliveGlow;
             return Container(
               margin: const EdgeInsets.only(bottom: 10),
               padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),

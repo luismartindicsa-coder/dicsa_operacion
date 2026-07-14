@@ -5,27 +5,95 @@ import 'package:flutter/material.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
 
+const Color kDirectionBg = Color(0xFF141805);
+const Color kDirectionBgMid = Color(0xFF272B00);
+const Color kDirectionBgDeep = Color(0xFF35380D);
+
+const Color kDirectionOliveDeep = Color(0xFF272B00);
+const Color kDirectionOliveMid = Color(0xFF54582F);
+const Color kDirectionOliveSoft = Color(0xFF86895D);
+const Color kDirectionOliveMist = Color(0xFFBEC092);
+const Color kDirectionIvory = Color(0xFFF8FBCA);
+const Color kDirectionOliveGlow = Color(0xFFD8E38A);
+const Color kDirectionLimeAccent = Color(0xFFAECF63);
+const Color kDirectionGoldAccent = Color(0xFFE5C56D);
+const Color kDirectionDanger = Color(0xFFFF8D7E);
+const Color kDirectionWarning = Color(0xFFE7C56F);
+const Color kDirectionSuccess = Color(0xFFB9E37D);
+
 const ContractAreaTokens directionAreaTokens = ContractAreaTokens(
-  primary: Color(0xFF7FD7FF),
-  primaryStrong: Color(0xFFF4F8FF),
-  primarySoft: Color(0xFFB7D8FF),
-  accent: Color(0xFF52F0E4),
-  surfaceTint: Color(0xFF081A39),
-  border: Color(0xFF6EA7D6),
-  badgeBackground: Color(0xFF183A73),
-  badgeText: Color(0xFFD7E8FF),
-  glow: Color(0xFF62D8FF),
+  primary: kDirectionOliveGlow,
+  primaryStrong: kDirectionIvory,
+  primarySoft: kDirectionOliveMist,
+  accent: kDirectionLimeAccent,
+  surfaceTint: kDirectionBgMid,
+  border: Color(0xFFB5C175),
+  badgeBackground: Color(0xFF384117),
+  badgeText: Color(0xFFF1F6C8),
+  glow: kDirectionOliveGlow,
+  darkGlass: true,
+  glassSurface: Color(0xCC21260B),
+  fieldSurface: Color(0xD9343A15),
+  onGlass: kDirectionSurfaceText,
 );
 
-const Color kDirectionSurfaceText = Color(0xFFF4F8FF);
-const Color kDirectionMutedText = Color(0xFFB9CBE7);
-const Color kDirectionSubtleText = Color(0xFF8EA9CF);
+const Color kDirectionSurfaceText = Color(0xFFF6F8E2);
+const Color kDirectionMutedText = Color(0xFFD2D8B4);
+const Color kDirectionSubtleText = Color(0xFFA0AA7A);
+const Color kDirectionInteractiveSurface = Color(0xFF343A15);
+const Color kDirectionInteractiveSurfaceStrong = Color(0xFF3F4720);
+const Color kDirectionInteractiveSurfaceSoft = Color(0xFF505A28);
+const Color kDirectionInteractiveSelected = Color(0xFF6D7640);
+const Color kDirectionInteractiveSelectedSoft = Color(0xFF879354);
+const Color kDirectionMenuSurface = Color(0xFF2C3110);
+
+const LinearGradient kDirectionInteractiveGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [Color(0x26FFFFFF), Color(0xCC353B14)],
+);
+
+const LinearGradient kDirectionInteractiveHoverGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [Color(0x2BFFFFFF), Color(0xD1454D1C)],
+);
+
+const LinearGradient kDirectionInteractiveSelectedGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [Color(0x40DCE8A7), Color(0xEA4D5523)],
+);
 
 const LinearGradient kDirectionSelectionGradient = LinearGradient(
   begin: Alignment.topLeft,
   end: Alignment.bottomRight,
-  colors: [Color(0x2AFFFFFF), Color(0x1E7FD7FF), Color(0x2816346C)],
+  colors: [Color(0x2AFFFFFF), Color(0x20BEC092), Color(0x28353F12)],
   stops: [0.0, 0.48, 1.0],
+);
+
+const LinearGradient kDirectionExecutiveGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [kDirectionBg, kDirectionBgMid, kDirectionBgDeep],
+);
+
+const LinearGradient kDirectionBlobGradientPrimary = LinearGradient(
+  colors: [kDirectionIvory, kDirectionOliveMist],
+);
+
+const LinearGradient kDirectionBlobGradientAccent = LinearGradient(
+  colors: [Color(0xFFE6F2A6), kDirectionLimeAccent],
+);
+
+const LinearGradient kDirectionBlobGradientDeep = LinearGradient(
+  colors: [kDirectionOliveMid, Color(0xFF9EAA63)],
+);
+
+const LinearGradient kDirectionBlobGradientPill = LinearGradient(
+  begin: Alignment.topCenter,
+  end: Alignment.bottomCenter,
+  colors: [Color(0xFFD8E595), kDirectionOliveMid],
 );
 
 class DirectionExecutiveBackground extends StatelessWidget {
@@ -36,44 +104,23 @@ class DirectionExecutiveBackground extends StatelessWidget {
     return Stack(
       children: [
         const DecoratedBox(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF04142E), Color(0xFF0C2147), Color(0xFF133963)],
-            ),
-          ),
+          decoration: BoxDecoration(gradient: kDirectionExecutiveGradient),
           child: SizedBox.expand(),
         ),
         Positioned(
           left: -250,
           top: -120,
-          child: _bubbleCircle(
-            700,
-            const LinearGradient(
-              colors: [Color(0xFFF3F8FF), Color(0xFF7AAFFF)],
-            ),
-          ),
+          child: _bubbleCircle(700, kDirectionBlobGradientPrimary),
         ),
         Positioned(
           right: -200,
           top: -80,
-          child: _bubbleCircle(
-            600,
-            const LinearGradient(
-              colors: [Color(0xFF4BFFE0), Color(0xFF00B7FF)],
-            ),
-          ),
+          child: _bubbleCircle(600, kDirectionBlobGradientAccent),
         ),
         Positioned(
           left: -150,
           bottom: -250,
-          child: _bubbleCircle(
-            600,
-            const LinearGradient(
-              colors: [Color(0xFF224CFF), Color(0xFF7D63FF)],
-            ),
-          ),
+          child: _bubbleCircle(600, kDirectionBlobGradientDeep),
         ),
         Positioned(
           right: -120,
@@ -83,11 +130,7 @@ class DirectionExecutiveBackground extends StatelessWidget {
               width: 300,
               height: 500,
               radius: 200,
-              gradient: const LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0xFF39F0E1), Color(0xFF0C8CFF)],
-              ),
+              gradient: kDirectionBlobGradientPill,
             ),
           ),
         ),
@@ -304,12 +347,12 @@ class DirectionGlassPanel extends StatelessWidget {
     this.padding = const EdgeInsets.all(16),
     this.borderRadius = const BorderRadius.all(Radius.circular(20)),
     this.blurSigma = 22,
-    this.fillColor = const Color(0x141D4A88),
+    this.fillColor = const Color(0xC21B2009),
     this.borderColor = const Color(0x52FFFFFF),
     this.shadowColor = const Color(0x12000000),
     this.edgeHighlightColor = const Color(0xCCFFFFFF),
     this.bevelShadowColor = const Color(0x18000000),
-    this.glowColor = const Color(0x105BD6FF),
+    this.glowColor = const Color(0x30D8E38A),
     this.width,
     this.height,
   });
@@ -332,8 +375,8 @@ class DirectionGlassPanel extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: [
                 Colors.white.withValues(alpha: 0.10),
-                const Color(0xFF7AD9FF).withValues(alpha: 0.04),
-                const Color(0xFF102D61).withValues(alpha: 0.16),
+                kDirectionOliveGlow.withValues(alpha: 0.05),
+                kDirectionOliveDeep.withValues(alpha: 0.24),
               ],
               stops: const [0.0, 0.38, 1.0],
             ),
@@ -362,7 +405,7 @@ class DirectionGlassPanel extends StatelessWidget {
                         end: Alignment.bottomRight,
                         colors: [
                           edgeHighlightColor,
-                          const Color(0xFF95EAFF).withValues(alpha: 0.08),
+                          kDirectionOliveGlow.withValues(alpha: 0.08),
                           Colors.transparent,
                         ],
                         stops: const [0.0, 0.22, 0.56],
@@ -422,7 +465,7 @@ class DirectionGlassPanel extends StatelessWidget {
                         radius: 1.0,
                         colors: [
                           Colors.white.withValues(alpha: 0.12),
-                          const Color(0xFF76D9FF).withValues(alpha: 0.03),
+                          kDirectionOliveGlow.withValues(alpha: 0.03),
                           Colors.transparent,
                         ],
                         stops: const [0.0, 0.18, 0.58],
@@ -468,14 +511,12 @@ class DirectionHeaderBrand extends StatelessWidget {
                     padding: EdgeInsets.zero,
                     borderRadius: BorderRadius.circular(22),
                     blurSigma: 24,
-                    fillColor: const Color(0xFF8FD3FF).withValues(alpha: 0.08),
+                    fillColor: kDirectionOliveMist.withValues(alpha: 0.10),
                     borderColor: Colors.white.withValues(alpha: 0.34),
-                    shadowColor: const Color(
-                      0xFF5EC8FF,
-                    ).withValues(alpha: 0.08),
+                    shadowColor: kDirectionOliveGlow.withValues(alpha: 0.08),
                     edgeHighlightColor: Colors.white.withValues(alpha: 0.72),
                     bevelShadowColor: Colors.black.withValues(alpha: 0.10),
-                    glowColor: const Color(0xFF6BD5FF).withValues(alpha: 0.10),
+                    glowColor: kDirectionOliveGlow.withValues(alpha: 0.10),
                     child: const SizedBox(
                       width: 72,
                       height: 72,
@@ -577,21 +618,21 @@ class _DirectionHeaderButtonState extends State<DirectionHeaderButton> {
               borderRadius: BorderRadius.circular(16),
               blurSigma: 26,
               fillColor: enabled
-                  ? const Color(
-                      0xFF8BCFFF,
-                    ).withValues(alpha: highlighted ? 0.16 : 0.11)
+                  ? kDirectionOliveMist.withValues(
+                      alpha: highlighted ? 0.18 : 0.12,
+                    )
                   : Colors.white.withValues(alpha: 0.05),
               borderColor: enabled
                   ? Colors.white.withValues(alpha: highlighted ? 0.54 : 0.34)
                   : Colors.white.withValues(alpha: 0.16),
               shadowColor: highlighted
-                  ? const Color(0xFF5FE3FF).withValues(alpha: 0.14)
+                  ? kDirectionOliveGlow.withValues(alpha: 0.16)
                   : Colors.black.withValues(alpha: 0.06),
               edgeHighlightColor: Colors.white.withValues(alpha: 0.78),
               bevelShadowColor: Colors.black.withValues(alpha: 0.12),
               glowColor: highlighted
-                  ? const Color(0xFF5FE3FF).withValues(alpha: 0.18)
-                  : const Color(0xFF6BA8FF).withValues(alpha: 0.08),
+                  ? kDirectionOliveGlow.withValues(alpha: 0.20)
+                  : kDirectionOliveSoft.withValues(alpha: 0.10),
               child: Row(
                 children: [
                   Icon(widget.icon, size: 19, color: Colors.white),
@@ -656,12 +697,12 @@ class DirectionModuleMenuPanel extends StatelessWidget {
     return DirectionGlassPanel(
       borderRadius: BorderRadius.circular(24),
       blurSigma: 30,
-      fillColor: const Color(0xFF173A78).withValues(alpha: 0.28),
+      fillColor: kDirectionOliveDeep.withValues(alpha: 0.34),
       borderColor: Colors.white.withValues(alpha: 0.34),
-      shadowColor: const Color(0xFF4DC7FF).withValues(alpha: 0.08),
+      shadowColor: kDirectionOliveGlow.withValues(alpha: 0.08),
       edgeHighlightColor: Colors.white.withValues(alpha: 0.72),
       bevelShadowColor: Colors.black.withValues(alpha: 0.16),
-      glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.12),
+      glowColor: kDirectionOliveGlow.withValues(alpha: 0.14),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -678,7 +719,7 @@ class DirectionModuleMenuPanel extends StatelessWidget {
           Text(
             subtitle,
             style: const TextStyle(
-              color: Color(0xB8D5E5FF),
+              color: kDirectionMutedText,
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -722,8 +763,8 @@ class _DirectionModuleMenuActionState
           borderRadius: BorderRadius.circular(18),
           blurSigma: 26,
           fillColor: highlighted
-              ? const Color(0xFF5EDCFF).withValues(alpha: 0.16)
-              : const Color(0xFF173A78).withValues(alpha: 0.18),
+              ? kDirectionOliveGlow.withValues(alpha: 0.18)
+              : kDirectionOliveDeep.withValues(alpha: 0.22),
           borderColor: Colors.white.withValues(
             alpha: highlighted ? 0.32 : 0.20,
           ),
@@ -731,8 +772,8 @@ class _DirectionModuleMenuActionState
           edgeHighlightColor: Colors.white.withValues(alpha: 0.68),
           bevelShadowColor: Colors.black.withValues(alpha: 0.14),
           glowColor: highlighted
-              ? const Color(0xFF66D5FF).withValues(alpha: 0.14)
-              : const Color(0xFF66D5FF).withValues(alpha: 0.06),
+              ? kDirectionOliveGlow.withValues(alpha: 0.16)
+              : kDirectionOliveSoft.withValues(alpha: 0.08),
           child: Row(
             children: [
               Icon(widget.entry.icon, size: 18, color: Colors.white),
@@ -764,7 +805,7 @@ class _DirectionModuleMenuActionState
               if (widget.entry.current)
                 const Icon(
                   Icons.check_circle_rounded,
-                  color: Color(0xFF8EF1FF),
+                  color: kDirectionOliveGlow,
                   size: 20,
                 )
               else
@@ -813,7 +854,7 @@ class DirectionMetricCard extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
         borderRadius: BorderRadius.circular(16),
         blurSigma: 26,
-        fillColor: const Color(0xFF173A78).withValues(alpha: 0.24),
+        fillColor: kDirectionOliveDeep.withValues(alpha: 0.26),
         borderColor: Colors.white.withValues(alpha: 0.26),
         shadowColor: Colors.black.withValues(alpha: 0.08),
         edgeHighlightColor: Colors.white.withValues(alpha: 0.64),
@@ -901,12 +942,12 @@ class DirectionToolbarPanel extends StatelessWidget {
       padding: padding,
       borderRadius: BorderRadius.circular(20),
       blurSigma: 26,
-      fillColor: const Color(0xFF173A78).withValues(alpha: 0.24),
+      fillColor: kDirectionOliveDeep.withValues(alpha: 0.26),
       borderColor: Colors.white.withValues(alpha: 0.26),
       shadowColor: Colors.black.withValues(alpha: 0.08),
       edgeHighlightColor: Colors.white.withValues(alpha: 0.62),
       bevelShadowColor: Colors.black.withValues(alpha: 0.16),
-      glowColor: const Color(0xFF6DD7FF).withValues(alpha: 0.08),
+      glowColor: kDirectionOliveGlow.withValues(alpha: 0.10),
       child: child,
     );
   }
@@ -940,8 +981,8 @@ class DirectionGridHeaderFilterCell extends StatelessWidget {
               padding: const EdgeInsets.all(6),
               decoration: BoxDecoration(
                 color: active
-                    ? const Color(0xFF5EDCFF).withValues(alpha: 0.22)
-                    : const Color(0xFF183A73).withValues(alpha: 0.74),
+                    ? kDirectionOliveGlow.withValues(alpha: 0.22)
+                    : kDirectionOliveMid.withValues(alpha: 0.56),
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(
                   color: active
@@ -994,7 +1035,7 @@ class DirectionGridPager extends StatelessWidget {
         secondaryButtonStyle ??
         OutlinedButton.styleFrom(
           foregroundColor: kDirectionSurfaceText,
-          backgroundColor: const Color(0xFF16376F).withValues(alpha: 0.30),
+          backgroundColor: kDirectionOliveMid.withValues(alpha: 0.26),
           side: BorderSide(color: Colors.white.withValues(alpha: 0.24)),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           shape: RoundedRectangleBorder(
@@ -1040,7 +1081,7 @@ class DirectionGridPager extends StatelessWidget {
             child: DropdownButtonFormField<int>(
               initialValue: pageSize,
               isDense: true,
-              dropdownColor: const Color(0xFF153160),
+              dropdownColor: kDirectionOliveDeep,
               iconEnabledColor: kDirectionSurfaceText,
               style: const TextStyle(
                 fontWeight: FontWeight.w700,
@@ -1049,7 +1090,7 @@ class DirectionGridPager extends StatelessWidget {
               decoration: InputDecoration(
                 isDense: true,
                 filled: true,
-                fillColor: const Color(0xFF10274E).withValues(alpha: 0.86),
+                fillColor: kDirectionOliveDeep.withValues(alpha: 0.86),
                 contentPadding: const EdgeInsets.symmetric(
                   horizontal: 12,
                   vertical: 10,
@@ -1066,7 +1107,7 @@ class DirectionGridPager extends StatelessWidget {
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(14),
                   borderSide: BorderSide(
-                    color: const Color(0xFF6FE1FF).withValues(alpha: 0.78),
+                    color: kDirectionOliveGlow.withValues(alpha: 0.78),
                     width: 1.3,
                   ),
                 ),

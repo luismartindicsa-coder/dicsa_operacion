@@ -4,6 +4,8 @@ import 'package:flutter/services.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
+import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/ui_contract_core/theme/contract_tokens.dart';
 import '../shared/utils/date_picker_defaults.dart';
 import 'menudeo_sorting.dart';
 import 'menudeo_theme.dart';
@@ -181,6 +183,7 @@ Future<Set<String>?> showMenudeoValueFilterDialog(
   required String title,
   required List<String> options,
   required Set<String> initialValues,
+  ContractAreaTokens? tokens,
 }) {
   final normalizedOptions = sortedMenudeoOptions(options);
   return showDialog<Set<String>>(
@@ -209,7 +212,7 @@ Future<Set<String>?> showMenudeoValueFilterDialog(
       }
 
       return AreaThemeScope(
-        tokens: menudeoAreaTokens,
+        tokens: tokens ?? menudeoAreaTokens,
         child: StatefulBuilder(
           builder: (context, setLocalState) {
             final tokens = AreaThemeScope.of(context);
@@ -273,40 +276,17 @@ Future<Set<String>?> showMenudeoValueFilterDialog(
                             controller: searchC,
                             focusNode: searchFocus,
                             autofocus: true,
-                            decoration: InputDecoration(
+                            style: TextStyle(
+                              color: tokens.onGlass,
+                              fontWeight: FontWeight.w700,
+                            ),
+                            cursorColor: tokens.primary,
+                            decoration: contractGlassFieldDecoration(
+                              context,
                               hintText: 'Buscar',
-                              prefixIcon: const Icon(Icons.search_rounded),
-                              isDense: true,
-                              filled: true,
-                              fillColor: Colors.white.withValues(alpha: 0.82),
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 14,
-                                vertical: 12,
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide(
-                                  color: tokens.primarySoft.withValues(
-                                    alpha: 0.9,
-                                  ),
-                                ),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide(
-                                  color: tokens.primaryStrong.withValues(
-                                    alpha: 0.42,
-                                  ),
-                                  width: 1.4,
-                                ),
-                              ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(16),
-                                borderSide: BorderSide(
-                                  color: tokens.primarySoft.withValues(
-                                    alpha: 0.9,
-                                  ),
-                                ),
+                              prefixIcon: Icon(
+                                Icons.search_rounded,
+                                color: tokens.onGlass.withValues(alpha: 0.72),
                               ),
                             ),
                             onChanged: (value) =>
@@ -321,7 +301,7 @@ Future<Set<String>?> showMenudeoValueFilterDialog(
                                 setLocalState(selectedValues.clear),
                             child: Text(
                               'Limpiar selección',
-                              style: TextStyle(color: tokens.primaryStrong),
+                              style: TextStyle(color: tokens.onGlass),
                             ),
                           ),
                         ),
@@ -414,9 +394,8 @@ Future<Set<String>?> showMenudeoValueFilterDialog(
                                                 ? tokens.badgeBackground
                                                       .withValues(alpha: 0.76)
                                                 : highlighted
-                                                ? Colors.white.withValues(
-                                                    alpha: 0.72,
-                                                  )
+                                                ? tokens.fieldSurface
+                                                      .withValues(alpha: 0.94)
                                                 : Colors.transparent,
                                             borderRadius: BorderRadius.circular(
                                               14,
@@ -437,7 +416,7 @@ Future<Set<String>?> showMenudeoValueFilterDialog(
                                                     fontWeight: selected
                                                         ? FontWeight.w900
                                                         : FontWeight.w700,
-                                                    color: tokens.primaryStrong,
+                                                    color: tokens.onGlass,
                                                   ),
                                                 ),
                                               ),
@@ -445,7 +424,7 @@ Future<Set<String>?> showMenudeoValueFilterDialog(
                                                 Icon(
                                                   Icons.check_rounded,
                                                   size: 18,
-                                                  color: tokens.primaryStrong,
+                                                  color: tokens.onGlass,
                                                 ),
                                             ],
                                           ),
@@ -460,8 +439,21 @@ Future<Set<String>?> showMenudeoValueFilterDialog(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             OutlinedButton(
-                              style: contractSecondaryButtonStyle(
-                                dialogContext,
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: tokens.onGlass,
+                                backgroundColor: tokens.fieldSurface.withValues(
+                                  alpha: 0.92,
+                                ),
+                                side: BorderSide(
+                                  color: Colors.white.withValues(alpha: 0.18),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
                               ),
                               onPressed: () =>
                                   Navigator.of(dialogContext).pop(),
@@ -469,7 +461,17 @@ Future<Set<String>?> showMenudeoValueFilterDialog(
                             ),
                             const SizedBox(width: 8),
                             FilledButton(
-                              style: contractPrimaryButtonStyle(dialogContext),
+                              style: FilledButton.styleFrom(
+                                foregroundColor: tokens.onGlass,
+                                backgroundColor: tokens.accent,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 18,
+                                  vertical: 14,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(18),
+                                ),
+                              ),
                               onPressed: () => Navigator.of(
                                 dialogContext,
                               ).pop(<String>{...selectedValues}),
@@ -495,6 +497,7 @@ Future<MenudeoDateFilterResult?> showMenudeoDateRangeFilterDialog(
   required String label,
   required DateTimeRange bounds,
   DateTimeRange? initialRange,
+  ContractAreaTokens? tokens,
 }) {
   return showDialog<MenudeoDateFilterResult>(
     context: context,
@@ -513,7 +516,7 @@ Future<MenudeoDateFilterResult?> showMenudeoDateRangeFilterDialog(
       DateTime dateOnly(DateTime d) => DateTime(d.year, d.month, d.day);
 
       return AreaThemeScope(
-        tokens: menudeoAreaTokens,
+        tokens: tokens ?? menudeoAreaTokens,
         child: StatefulBuilder(
           builder: (context, setLocalState) {
             final tokens = AreaThemeScope.of(context);

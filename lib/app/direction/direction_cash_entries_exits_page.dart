@@ -1141,6 +1141,7 @@ class _DirectionCashEntriesExitsPageState
       subtitle: selectedRows.length == 1
           ? 'Confirma la baja del movimiento visible.'
           : 'Confirma la baja de la selección activa.',
+      tokens: directionAreaTokens,
     );
     if (confirmed != true || !mounted) return;
     final nextRows = _rows
@@ -1182,7 +1183,7 @@ class _DirectionCashEntriesExitsPageState
     final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
     final result = await showMenu<_VoucherGridMenuAction>(
       context: context,
-      color: const Color(0xFF102448).withValues(alpha: 0.98),
+      color: kDirectionOliveDeep.withValues(alpha: 0.98),
       elevation: 8,
       shadowColor: Colors.black.withValues(alpha: 0.12),
       shape: RoundedRectangleBorder(
@@ -1236,6 +1237,7 @@ class _DirectionCashEntriesExitsPageState
       label: 'FECHA',
       bounds: DateTimeRange(start: sorted.first, end: sorted.last),
       initialRange: _voucherDateFilter,
+      tokens: directionAreaTokens,
     );
     if (result == null || !mounted) return;
     setState(() {
@@ -1258,13 +1260,17 @@ class _DirectionCashEntriesExitsPageState
       title: title,
       options: options,
       initialValues: current,
+      tokens: directionAreaTokens,
     );
     if (selected == null || !mounted) return;
     setState(() => onApply(selected));
   }
 
   Future<void> _logout() async {
-    final ok = await showMenudeoSessionConfirmDialog(context);
+    final ok = await showMenudeoSessionConfirmDialog(
+      context,
+      tokens: directionAreaTokens,
+    );
     if (ok != true || !mounted) return;
     await signOutAndRouteToLogin(context);
   }
@@ -1597,9 +1603,9 @@ class _DirectionCashEntriesExitsPageState
                               ),
                               borderRadius: BorderRadius.circular(28),
                               blurSigma: 30,
-                              fillColor: const Color(
-                                0xFF173A78,
-                              ).withValues(alpha: 0.24),
+                              fillColor: kDirectionOliveDeep.withValues(
+                                alpha: 0.24,
+                              ),
                               borderColor: Colors.white.withValues(alpha: 0.26),
                               shadowColor: Colors.black.withValues(alpha: 0.10),
                               edgeHighlightColor: Colors.white.withValues(
@@ -1608,9 +1614,9 @@ class _DirectionCashEntriesExitsPageState
                               bevelShadowColor: Colors.black.withValues(
                                 alpha: 0.18,
                               ),
-                              glowColor: const Color(
-                                0xFF66D5FF,
-                              ).withValues(alpha: 0.08),
+                              glowColor: kDirectionOliveGlow.withValues(
+                                alpha: 0.10,
+                              ),
                               child: _loadingRows
                                   ? const Center(
                                       child: CircularProgressIndicator(),
@@ -1977,12 +1983,12 @@ class _VoucherGrid extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           borderRadius: BorderRadius.circular(20),
           blurSigma: 22,
-          fillColor: const Color(0xFF16376C).withValues(alpha: 0.32),
+          fillColor: kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.42),
           borderColor: Colors.white.withValues(alpha: 0.18),
           shadowColor: Colors.black.withValues(alpha: 0.08),
           edgeHighlightColor: Colors.white.withValues(alpha: 0.54),
           bevelShadowColor: Colors.black.withValues(alpha: 0.16),
-          glowColor: const Color(0xFF6BD5FF).withValues(alpha: 0.06),
+          glowColor: kDirectionOliveGlow.withValues(alpha: 0.08),
           child: LayoutBuilder(
             builder: (context, constraints) {
               return SizedBox(
@@ -2201,23 +2207,27 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                 end: Alignment.bottomRight,
                 colors: selectedContext
                     ? [
-                        const Color(0xFF2A5799).withValues(alpha: 0.74),
-                        const Color(0xFF17376C).withValues(alpha: 0.92),
+                        kDirectionInteractiveSelectedSoft.withValues(
+                          alpha: 0.72,
+                        ),
+                        kDirectionInteractiveSelected.withValues(alpha: 0.92),
                       ]
                     : _hovering
                     ? [
                         Colors.white.withValues(alpha: 0.12),
-                        const Color(0xFF17376C).withValues(alpha: 0.84),
+                        kDirectionInteractiveSurfaceSoft.withValues(
+                          alpha: 0.84,
+                        ),
                       ]
                     : [
                         Colors.white.withValues(alpha: 0.08),
-                        const Color(0xFF132D59).withValues(alpha: 0.78),
+                        kDirectionInteractiveSurface.withValues(alpha: 0.80),
                       ],
               ),
               borderRadius: BorderRadius.circular(22),
               border: Border.all(
                 color: selectedContext
-                    ? const Color(0xFF73D8FF).withValues(alpha: 0.50)
+                    ? kDirectionOliveGlow.withValues(alpha: 0.50)
                     : _hovering
                     ? Colors.white.withValues(alpha: 0.20)
                     : Colors.white.withValues(alpha: 0.14),
@@ -2356,9 +2366,8 @@ class _VoucherGridRowState extends State<_VoucherGridRow> {
                                           width: 36,
                                           height: 36,
                                           decoration: BoxDecoration(
-                                            color: const Color(
-                                              0xFF183A73,
-                                            ).withValues(alpha: 0.82),
+                                            color: kDirectionInteractiveSelected
+                                                .withValues(alpha: 0.82),
                                             borderRadius: BorderRadius.circular(
                                               12,
                                             ),
@@ -2403,14 +2412,14 @@ class _VoucherTypeBadge extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDeposit = type == _VoucherType.deposit;
     final start = isDeposit
-        ? const Color(0xFF1F7E93).withValues(alpha: 0.92)
-        : const Color(0xFF2A4C88).withValues(alpha: 0.92);
+        ? kDirectionLimeAccent.withValues(alpha: 0.92)
+        : kDirectionInteractiveSelected.withValues(alpha: 0.92);
     final end = isDeposit
-        ? const Color(0xFF12465E).withValues(alpha: 0.94)
-        : const Color(0xFF18315E).withValues(alpha: 0.94);
+        ? kDirectionOliveMid.withValues(alpha: 0.94)
+        : kDirectionInteractiveSurface.withValues(alpha: 0.94);
     final border = isDeposit
-        ? const Color(0xFF7EF2E9).withValues(alpha: 0.42)
-        : const Color(0xFF8CB6FF).withValues(alpha: 0.38);
+        ? kDirectionIvory.withValues(alpha: 0.42)
+        : kDirectionOliveGlow.withValues(alpha: 0.38);
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
@@ -2574,7 +2583,7 @@ class _VouchersModuleTopBar extends StatelessWidget {
                 title: 'TOTAL EN BÓVEDA',
                 value: _money(visibleDepositTotal - visibleExpenseTotal),
                 detail: 'Entradas - salidas visibles',
-                accent: const Color(0xFF7ED7FF),
+                accent: kDirectionOliveGlow,
               ),
               DirectionMetricCard(
                 icon: Icons.receipt_long_rounded,
@@ -2597,7 +2606,7 @@ class _VouchersModuleTopBar extends StatelessWidget {
                 detail: activeFilterCount > 0
                     ? '$expenseCount visibles · $activeFilterCount filtros'
                     : '$expenseCount visibles',
-                accent: const Color(0xFF84A7FF),
+                accent: kDirectionOliveMist,
               ),
             ],
           ),
@@ -2669,7 +2678,7 @@ class _VouchersSelectionInfo extends StatelessWidget {
 ButtonStyle _vouchersGlassToolbarActionStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: directionAreaTokens.primaryStrong,
-    backgroundColor: const Color(0xFF16376F).withValues(alpha: 0.28),
+    backgroundColor: kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.34),
     disabledForegroundColor: directionAreaTokens.primaryStrong.withValues(
       alpha: 0.42,
     ),
@@ -2682,10 +2691,12 @@ ButtonStyle _vouchersGlassToolbarActionStyle() {
 
 ButtonStyle _vouchersPrimaryToolbarActionStyle() {
   return FilledButton.styleFrom(
-    backgroundColor: const Color(0xFF1E4C8F).withValues(alpha: 0.94),
-    foregroundColor: Colors.white,
-    disabledBackgroundColor: const Color(0xFF26456F).withValues(alpha: 0.54),
-    disabledForegroundColor: Colors.white.withValues(alpha: 0.45),
+    backgroundColor: kDirectionInteractiveSelected.withValues(alpha: 0.94),
+    foregroundColor: kDirectionSurfaceText,
+    disabledBackgroundColor: kDirectionInteractiveSurface.withValues(
+      alpha: 0.54,
+    ),
+    disabledForegroundColor: kDirectionSurfaceText.withValues(alpha: 0.45),
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
@@ -2798,6 +2809,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
       title: 'Selecciona fecha del movimiento',
+      tokens: directionAreaTokens,
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -2920,8 +2932,8 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
               colorScheme: Theme.of(context).colorScheme.copyWith(
                 primary: directionAreaTokens.primary,
                 secondary: directionAreaTokens.accent,
-                surface: const Color(0xFF0D2146),
-                onSurface: const Color(0xFFF4F8FF),
+                surface: kDirectionMenuSurface,
+                onSurface: kDirectionSurfaceText,
               ),
               textSelectionTheme: TextSelectionThemeData(
                 cursorColor: directionAreaTokens.primary,
@@ -2958,9 +2970,8 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                   selectedForegroundColor: directionAreaTokens.primaryStrong,
                   selectedBackgroundColor: directionAreaTokens.badgeBackground
                       .withValues(alpha: 0.92),
-                  backgroundColor: const Color(
-                    0xFF17396F,
-                  ).withValues(alpha: 0.46),
+                  backgroundColor: kDirectionInteractiveSurfaceStrong
+                      .withValues(alpha: 0.52),
                   side: BorderSide(
                     color: directionAreaTokens.primarySoft.withValues(
                       alpha: 0.42,
@@ -2973,7 +2984,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                 ),
               ),
               popupMenuTheme: PopupMenuThemeData(
-                color: const Color(0xFF102448).withValues(alpha: 0.98),
+                color: kDirectionMenuSurface.withValues(alpha: 0.98),
                 elevation: 8,
                 shadowColor: Colors.black.withValues(alpha: 0.28),
                 shape: RoundedRectangleBorder(
@@ -2996,12 +3007,12 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                 padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
                 borderRadius: BorderRadius.circular(32),
                 blurSigma: 34,
-                fillColor: const Color(0xFF10254B).withValues(alpha: 0.72),
+                fillColor: kDirectionOliveDeep.withValues(alpha: 0.76),
                 borderColor: Colors.white.withValues(alpha: 0.26),
                 shadowColor: Colors.black.withValues(alpha: 0.24),
                 edgeHighlightColor: Colors.white.withValues(alpha: 0.70),
                 bevelShadowColor: Colors.black.withValues(alpha: 0.18),
-                glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.08),
+                glowColor: kDirectionOliveGlow.withValues(alpha: 0.10),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
@@ -3047,9 +3058,9 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                               ),
                               borderRadius: BorderRadius.circular(24),
                               blurSigma: 22,
-                              fillColor: const Color(
-                                0xFF173A78,
-                              ).withValues(alpha: 0.24),
+                              fillColor: kDirectionOliveDeep.withValues(
+                                alpha: 0.24,
+                              ),
                               borderColor: Colors.white.withValues(alpha: 0.22),
                               shadowColor: Colors.black.withValues(alpha: 0.10),
                               edgeHighlightColor: Colors.white.withValues(
@@ -3058,9 +3069,9 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                               bevelShadowColor: Colors.black.withValues(
                                 alpha: 0.16,
                               ),
-                              glowColor: const Color(
-                                0xFF66D5FF,
-                              ).withValues(alpha: 0.08),
+                              glowColor: kDirectionOliveGlow.withValues(
+                                alpha: 0.10,
+                              ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -3235,9 +3246,8 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                               ),
                               borderRadius: BorderRadius.circular(24),
                               blurSigma: 22,
-                              fillColor: const Color(
-                                0xFF173A78,
-                              ).withValues(alpha: 0.22),
+                              fillColor: kDirectionInteractiveSurfaceStrong
+                                  .withValues(alpha: 0.30),
                               borderColor: Colors.white.withValues(alpha: 0.20),
                               shadowColor: Colors.black.withValues(alpha: 0.10),
                               edgeHighlightColor: Colors.white.withValues(
@@ -3246,9 +3256,9 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
                               bevelShadowColor: Colors.black.withValues(
                                 alpha: 0.16,
                               ),
-                              glowColor: const Color(
-                                0xFF66D5FF,
-                              ).withValues(alpha: 0.06),
+                              glowColor: kDirectionOliveGlow.withValues(
+                                alpha: 0.08,
+                              ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
@@ -3349,10 +3359,12 @@ TextStyle _voucherHintTextStyle(ContractAreaTokens tokens) => TextStyle(
 
 ButtonStyle _voucherPrimaryButtonStyle(ContractAreaTokens tokens) {
   return FilledButton.styleFrom(
-    backgroundColor: const Color(0xFF1F4D8F).withValues(alpha: 0.96),
-    foregroundColor: Colors.white,
-    disabledBackgroundColor: const Color(0xFF234371).withValues(alpha: 0.58),
-    disabledForegroundColor: Colors.white.withValues(alpha: 0.46),
+    backgroundColor: kDirectionInteractiveSelected.withValues(alpha: 0.96),
+    foregroundColor: kDirectionSurfaceText,
+    disabledBackgroundColor: kDirectionInteractiveSurface.withValues(
+      alpha: 0.58,
+    ),
+    disabledForegroundColor: kDirectionSurfaceText.withValues(alpha: 0.46),
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
@@ -3364,7 +3376,7 @@ ButtonStyle _voucherPrimaryButtonStyle(ContractAreaTokens tokens) {
 ButtonStyle _voucherSecondaryButtonStyle(ContractAreaTokens tokens) {
   return OutlinedButton.styleFrom(
     foregroundColor: kDirectionSurfaceText,
-    backgroundColor: const Color(0xFF15305D).withValues(alpha: 0.48),
+    backgroundColor: kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.58),
     side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -3374,18 +3386,18 @@ ButtonStyle _voucherSecondaryButtonStyle(ContractAreaTokens tokens) {
 
 ButtonStyle _voucherTypeSegmentedButtonStyle(_VoucherType type) {
   final selectedBackground = type == _VoucherType.deposit
-      ? const Color(0xFF1D7F95).withValues(alpha: 0.92)
-      : const Color(0xFF2A4E89).withValues(alpha: 0.92);
+      ? kDirectionLimeAccent.withValues(alpha: 0.92)
+      : kDirectionInteractiveSelected.withValues(alpha: 0.92);
   final selectedBorder = type == _VoucherType.deposit
-      ? const Color(0xFF7EF2E9).withValues(alpha: 0.54)
-      : const Color(0xFF8CB5FF).withValues(alpha: 0.54);
+      ? kDirectionIvory.withValues(alpha: 0.54)
+      : kDirectionOliveGlow.withValues(alpha: 0.54);
   return SegmentedButton.styleFrom(
     visualDensity: VisualDensity.compact,
     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
     foregroundColor: kDirectionMutedText,
-    selectedForegroundColor: Colors.white,
+    selectedForegroundColor: kDirectionSurfaceText,
     selectedBackgroundColor: selectedBackground,
-    backgroundColor: const Color(0xFF132A52).withValues(alpha: 0.74),
+    backgroundColor: kDirectionInteractiveSurface.withValues(alpha: 0.74),
     side: BorderSide(color: selectedBorder),
     textStyle: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800),
   );
@@ -3414,7 +3426,7 @@ class _VoucherField extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             Colors.white.withValues(alpha: 0.10),
-            const Color(0xFF12305F).withValues(alpha: 0.74),
+            kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.78),
           ],
         ),
         borderRadius: BorderRadius.circular(16),
@@ -3477,7 +3489,7 @@ class _VoucherDialogHeader extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             Colors.white.withValues(alpha: 0.12),
-            const Color(0xFF11284F).withValues(alpha: 0.88),
+            kDirectionInteractiveSurface.withValues(alpha: 0.90),
           ],
         ),
         border: Border.all(color: Colors.white.withValues(alpha: 0.26)),
@@ -3573,7 +3585,7 @@ class _VoucherDialogActionButton extends StatelessWidget {
               end: Alignment.bottomCenter,
               colors: [
                 Colors.white.withValues(alpha: 0.12),
-                const Color(0xFF173969).withValues(alpha: 0.92),
+                kDirectionInteractiveSelected.withValues(alpha: 0.92),
               ],
             ),
             borderRadius: BorderRadius.circular(999),
@@ -3625,17 +3637,17 @@ class _VoucherTopChip extends StatelessWidget {
           end: Alignment.bottomCenter,
           colors: [
             emphasized
-                ? const Color(0xFF1A6C8A).withValues(alpha: 0.96)
+                ? kDirectionInteractiveSelectedSoft.withValues(alpha: 0.96)
                 : Colors.white.withValues(alpha: 0.10),
             emphasized
-                ? const Color(0xFF173D71).withValues(alpha: 0.92)
-                : const Color(0xFF132C58).withValues(alpha: 0.88),
+                ? kDirectionInteractiveSelected.withValues(alpha: 0.92)
+                : kDirectionInteractiveSurface.withValues(alpha: 0.88),
           ],
         ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(
           color: emphasized
-              ? const Color(0xFF7EF2E9).withValues(alpha: 0.34)
+              ? kDirectionOliveGlow.withValues(alpha: 0.34)
               : Colors.white.withValues(alpha: 0.16),
         ),
         boxShadow: [
@@ -3709,7 +3721,7 @@ class _VoucherLineCard extends StatelessWidget {
           end: Alignment.bottomRight,
           colors: [
             Colors.white.withValues(alpha: 0.08),
-            const Color(0xFF14315F).withValues(alpha: 0.78),
+            kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.80),
           ],
         ),
         borderRadius: BorderRadius.circular(18),

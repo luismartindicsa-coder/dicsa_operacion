@@ -1,0 +1,21 @@
+kind	name	rows	json_bytes	csv_bytes	note
+table	material_general_catalog_v2	14	4201	2216	shared general catalog used by menudeo
+table	material_commercial_catalog_v2	120	72002	29495	shared commercial catalog used by menudeo
+table	men_counterparties	80	25593	12148	menudeo counterparties
+table	men_material_aliases	0	2	0	menudeo aliases
+table	men_counterparty_material_prices	224	112795	47326	menudeo price rows
+table	men_price_adjustment_history	291	256663	109847	menudeo price adjustment history
+table	men_tickets	2675	3201750	1287294	menudeo tickets
+table	men_cash_cuts	53	46236	14654	menudeo cash cuts
+table	men_cash_cut_checks	3908	1747051	934281	menudeo cash cut checks
+table	men_cash_vouchers	1071	717171	323301	menudeo vouchers
+table	men_cash_voucher_lines	1179	694988	228306	menudeo voucher lines
+table	inventory_movements_v2	6177	6074794	1987242	shared inventory movements used by menudeo
+table	inventory_opening_balances_v2	6	3034	1559	shared opening balances used by menudeo
+view	vw_men_counterparty_price_catalog	224	195008	64321	snapshot of menudeo price catalog view
+view	vw_men_effective_prices	223	197853	73759	snapshot of effective menudeo prices
+view	vw_men_price_adjustment_history	291	317928	120876	snapshot of price adjustment history view
+view	vw_men_price_audit_catalog	224	257063	84002	snapshot of price audit catalog view
+view	vw_men_tickets_grid	2675	3201750	1287294	snapshot of tickets grid view
+view	vw_men_cash_vouchers_grid	1071	708476	313530	snapshot of vouchers grid view
+view	vw_men_cash_cuts_grid	53	46228	14646	snapshot of cash cuts grid view

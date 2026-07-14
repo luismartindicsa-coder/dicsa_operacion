@@ -5,6 +5,7 @@ import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
 import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
+import '../shared/ui_contract_core/theme/contract_tokens.dart';
 import 'menudeo_theme.dart';
 
 Future<bool?> showMenudeoDeleteConfirmDialog(
@@ -14,13 +15,14 @@ Future<bool?> showMenudeoDeleteConfirmDialog(
   required String impactLabel,
   String confirmLabel = 'Eliminar',
   String subtitle = 'Confirma la baja del registro visible.',
+  ContractAreaTokens? tokens,
 }) {
   return showDialog<bool>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       return AreaThemeScope(
-        tokens: menudeoAreaTokens,
+        tokens: tokens ?? menudeoAreaTokens,
         child: _MenudeoDeleteConfirmDialog(
           title: title,
           message: message,

@@ -35,6 +35,14 @@ const double _kCounterpartyContentW = 1286;
 const double _kMaterialsContentW = 1286;
 const double _kPricesContentW = 1586;
 final Object _kCatalogEditTapRegionGroup = Object();
+const List<String> _kMenudeoCanonicalGeneralMaterials = <String>[
+  'CARTON',
+  'CHATARRA',
+  'PAPEL',
+  'METAL',
+  'MADERA',
+  'PLASTICO',
+];
 const List<_MenudeoPickerOption<String>> _kCounterpartyGroupOptions = [
   _MenudeoPickerOption(value: 'PUBLICO GENERAL', label: 'PUBLICO GENERAL'),
   _MenudeoPickerOption(value: 'PROVEEDOR GRANDE', label: 'PROVEEDOR GRANDE'),
@@ -112,6 +120,11 @@ String _materialCodeFromName(String raw) {
       .replaceAll(RegExp(r'^_|_$'), '');
 }
 
+bool _isCanonicalMenudeoGeneralName(String raw) {
+  final normalized = _normalizeName(raw);
+  return _kMenudeoCanonicalGeneralMaterials.contains(normalized);
+}
+
 String _counterpartyKindLabel(String raw) {
   switch (_normalizeName(raw)) {
     case 'SUPPLIER':
@@ -122,6 +135,31 @@ String _counterpartyKindLabel(String raw) {
       return 'AMBOS';
     default:
       return _normalizeName(raw);
+  }
+}
+
+String _materialFamilyLabel(String raw) {
+  switch (_normalizeName(raw)) {
+    case 'CARDBOARD':
+      return 'Carton';
+    case 'SCRAP':
+      return 'Chatarra';
+    case 'METAL':
+      return 'Metal';
+    case 'PAPER':
+      return 'Papel';
+    case 'PLASTIC':
+      return 'Plastico';
+    case 'WOOD':
+      return 'Madera';
+    case 'OTHER':
+      return 'Otros';
+    case 'POLYMER':
+      return 'Polimero';
+    case 'FIBER':
+      return 'Fibra';
+    default:
+      return raw.trim().isEmpty ? 'Otros' : raw;
   }
 }
 
@@ -259,7 +297,7 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
   String _counterpartyDraftKind = 'supplier';
   String _counterpartyDraftGroup = 'PUBLICO GENERAL';
   String? _counterpartyDraftSiteId;
-  String _materialDraftLevel = 'GENERAL';
+  String _materialDraftLevel = 'COMERCIAL';
   String _materialDraftFamily = 'other';
   String? _materialDraftGeneralMaterialId;
   String? _priceDraftCounterpartyId;
@@ -1447,7 +1485,7 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
               'COMERCIAL',
               (row['code'] ?? '').toString(),
               (row['name'] ?? '').toString(),
-              (row['family'] ?? '').toString(),
+              _materialFamilyLabel((row['family'] ?? '').toString()),
               _generalMaterialLabel(row['general_material_id']?.toString()) ??
                   '',
               _isActive(row) ? 'SI' : 'NO',
@@ -1772,6 +1810,22 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
       _toast('El nombre del material es obligatorio');
       return;
     }
+    if (!_isCanonicalMenudeoGeneralName(name)) {
+      _toast(
+        'En menudeo los materiales generales se limitan a: ${_kMenudeoCanonicalGeneralMaterials.join(', ')}.',
+      );
+      return;
+    }
+    final existingId = (existing['id'] ?? '').toString();
+    final duplicate = _generalMaterials.any(
+      (row) =>
+          (row['id'] ?? '').toString() != existingId &&
+          _normalizeName((row['name'] ?? '').toString()) == name,
+    );
+    if (duplicate) {
+      _toast('Ese material general ya existe.');
+      return;
+    }
     try {
       await _supa
           .from('material_general_catalog_v2')
@@ -1835,7 +1889,7 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
   void _resetMaterialDraft() {
     _materialDraftNameC.clear();
     _materialDraftNotesC.clear();
-    _materialDraftLevel = 'GENERAL';
+    _materialDraftLevel = 'COMERCIAL';
     _materialDraftFamily = 'other';
     _materialDraftGeneralMaterialId = null;
   }
@@ -1845,6 +1899,12 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
     final name = _normalizeName(_materialDraftNameC.text);
     if (name.isEmpty) {
       _toast('El nombre del material es obligatorio');
+      return;
+    }
+    if (_materialDraftLevel == 'GENERAL') {
+      _toast(
+        'Para no romper la consolidación, en menudeo ya no se capturan generales libres. Agrega el material como COMERCIAL y asígnale su general.',
+      );
       return;
     }
     if (_materialDraftLevel == 'COMERCIAL' &&
@@ -2772,7 +2832,11 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
                   columnId: 'material_family',
                   title: 'Filtrar familia',
                   values: commercialRows
-                      .map((row) => (row['family'] ?? '').toString())
+                      .map(
+                        (row) => _materialFamilyLabel(
+                          (row['family'] ?? '').toString(),
+                        ),
+                      )
                       .toList(),
                 ),
               ),
@@ -2833,7 +2897,6 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
                   dialogTitle: 'Seleccionar nivel',
                   initialValue: _materialDraftLevel,
                   options: const [
-                    _MenudeoPickerOption(value: 'GENERAL', label: 'GENERAL'),
                     _MenudeoPickerOption(
                       value: 'COMERCIAL',
                       label: 'COMERCIAL',
@@ -2898,23 +2961,28 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
                     : _CatalogPickerButtonField<String>(
                         focusNode: _materialDraftFamilyFocus,
                         label: 'Familia',
-                        displayValue: _materialDraftFamily,
+                        displayValue: _materialFamilyLabel(
+                          _materialDraftFamily,
+                        ),
                         dialogTitle: 'Seleccionar familia',
                         initialValue: _materialDraftFamily,
                         options: const [
                           _MenudeoPickerOption(
                             value: 'cardboard',
-                            label: 'cardboard',
+                            label: 'Carton',
                           ),
-                          _MenudeoPickerOption(value: 'scrap', label: 'scrap'),
-                          _MenudeoPickerOption(value: 'metal', label: 'metal'),
-                          _MenudeoPickerOption(value: 'paper', label: 'paper'),
+                          _MenudeoPickerOption(
+                            value: 'scrap',
+                            label: 'Chatarra',
+                          ),
+                          _MenudeoPickerOption(value: 'metal', label: 'Metal'),
+                          _MenudeoPickerOption(value: 'paper', label: 'Papel'),
                           _MenudeoPickerOption(
                             value: 'plastic',
-                            label: 'plastic',
+                            label: 'Plastico',
                           ),
-                          _MenudeoPickerOption(value: 'wood', label: 'wood'),
-                          _MenudeoPickerOption(value: 'other', label: 'other'),
+                          _MenudeoPickerOption(value: 'wood', label: 'Madera'),
+                          _MenudeoPickerOption(value: 'other', label: 'Otros'),
                         ],
                         onChanged: (value) {
                           if (value == null) return;
@@ -3088,7 +3156,9 @@ class _MenudeoCatalogPageState extends State<MenudeoCatalogPage> {
                               width: 220,
                               text: row['_level'] == 'GENERAL'
                                   ? '—'
-                                  : (row['family'] ?? '').toString(),
+                                  : _materialFamilyLabel(
+                                      (row['family'] ?? '').toString(),
+                                    ),
                             ),
                             _CatalogTableCell.text(
                               width: 220,
@@ -4779,14 +4849,14 @@ class _CommercialMaterialInlineEditRowState
               child: _CatalogPickerButtonField<String>(
                 focusNode: _familyFocus,
                 label: 'Familia',
-                displayValue: _family,
+                displayValue: _materialFamilyLabel(_family),
                 dialogTitle: 'Seleccionar familia',
                 initialValue: _family,
                 options: _familyOptions
                     .map(
                       (value) => _MenudeoPickerOption<String>(
                         value: value,
-                        label: value,
+                        label: _materialFamilyLabel(value),
                       ),
                     )
                     .toList(growable: false),

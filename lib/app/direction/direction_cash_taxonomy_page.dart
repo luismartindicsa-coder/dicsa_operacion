@@ -257,18 +257,14 @@ class _DirectionCashTaxonomyPageState extends State<DirectionCashTaxonomyPage> {
                         padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
                         borderRadius: BorderRadius.circular(24),
                         blurSigma: 28,
-                        fillColor: const Color(
-                          0xFF173A78,
-                        ).withValues(alpha: 0.24),
+                        fillColor: kDirectionOliveDeep.withValues(alpha: 0.24),
                         borderColor: Colors.white.withValues(alpha: 0.24),
                         shadowColor: Colors.black.withValues(alpha: 0.10),
                         edgeHighlightColor: Colors.white.withValues(
                           alpha: 0.62,
                         ),
                         bevelShadowColor: Colors.black.withValues(alpha: 0.18),
-                        glowColor: const Color(
-                          0xFF66D5FF,
-                        ).withValues(alpha: 0.08),
+                        glowColor: kDirectionOliveGlow.withValues(alpha: 0.10),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -302,12 +298,12 @@ class _DirectionCashTaxonomyPageState extends State<DirectionCashTaxonomyPage> {
                                   ChoiceChip(
                                     label: Text(rubric.label),
                                     selected: _selectedRubric == rubric.label,
-                                    selectedColor: const Color(
-                                      0xFF22477F,
-                                    ).withValues(alpha: 0.92),
-                                    backgroundColor: const Color(
-                                      0xFF14305E,
-                                    ).withValues(alpha: 0.52),
+                                    selectedColor: kDirectionInteractiveSelected
+                                        .withValues(alpha: 0.92),
+                                    backgroundColor:
+                                        kDirectionInteractiveSurface.withValues(
+                                          alpha: 0.58,
+                                        ),
                                     checkmarkColor: kDirectionSurfaceText,
                                     labelStyle: TextStyle(
                                       fontWeight: FontWeight.w700,
@@ -317,9 +313,9 @@ class _DirectionCashTaxonomyPageState extends State<DirectionCashTaxonomyPage> {
                                     ),
                                     side: BorderSide(
                                       color: _selectedRubric == rubric.label
-                                          ? const Color(
-                                              0xFF7ED7FF,
-                                            ).withValues(alpha: 0.40)
+                                          ? kDirectionOliveGlow.withValues(
+                                              alpha: 0.44,
+                                            )
                                           : Colors.white.withValues(
                                               alpha: 0.16,
                                             ),
@@ -341,18 +337,14 @@ class _DirectionCashTaxonomyPageState extends State<DirectionCashTaxonomyPage> {
                         padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
                         borderRadius: BorderRadius.circular(24),
                         blurSigma: 28,
-                        fillColor: const Color(
-                          0xFF173A78,
-                        ).withValues(alpha: 0.24),
+                        fillColor: kDirectionOliveDeep.withValues(alpha: 0.24),
                         borderColor: Colors.white.withValues(alpha: 0.24),
                         shadowColor: Colors.black.withValues(alpha: 0.10),
                         edgeHighlightColor: Colors.white.withValues(
                           alpha: 0.62,
                         ),
                         bevelShadowColor: Colors.black.withValues(alpha: 0.18),
-                        glowColor: const Color(
-                          0xFF66D5FF,
-                        ).withValues(alpha: 0.08),
+                        glowColor: kDirectionOliveGlow.withValues(alpha: 0.10),
                         child: Row(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
@@ -420,9 +412,9 @@ class _DirectionCashTaxonomyPageState extends State<DirectionCashTaxonomyPage> {
                                 ),
                                 borderRadius: BorderRadius.circular(24),
                                 blurSigma: 28,
-                                fillColor: const Color(
-                                  0xFF173A78,
-                                ).withValues(alpha: 0.24),
+                                fillColor: kDirectionOliveDeep.withValues(
+                                  alpha: 0.24,
+                                ),
                                 borderColor: Colors.white.withValues(
                                   alpha: 0.22,
                                 ),
@@ -435,9 +427,9 @@ class _DirectionCashTaxonomyPageState extends State<DirectionCashTaxonomyPage> {
                                 bevelShadowColor: Colors.black.withValues(
                                   alpha: 0.18,
                                 ),
-                                glowColor: const Color(
-                                  0xFF66D5FF,
-                                ).withValues(alpha: 0.08),
+                                glowColor: kDirectionOliveGlow.withValues(
+                                  alpha: 0.10,
+                                ),
                                 child: Column(
                                   crossAxisAlignment:
                                       CrossAxisAlignment.stretch,
@@ -455,17 +447,17 @@ class _DirectionCashTaxonomyPageState extends State<DirectionCashTaxonomyPage> {
                                         ),
                                         FilledButton(
                                           style: FilledButton.styleFrom(
-                                            backgroundColor: const Color(
-                                              0xFF1E4C8F,
-                                            ).withValues(alpha: 0.94),
-                                            foregroundColor: Colors.white,
+                                            backgroundColor:
+                                                kDirectionInteractiveSelected
+                                                    .withValues(alpha: 0.94),
+                                            foregroundColor:
+                                                kDirectionSurfaceText,
                                             disabledBackgroundColor:
-                                                const Color(
-                                                  0xFF26456F,
-                                                ).withValues(alpha: 0.54),
-                                            disabledForegroundColor: Colors
-                                                .white
-                                                .withValues(alpha: 0.45),
+                                                kDirectionInteractiveSurface
+                                                    .withValues(alpha: 0.54),
+                                            disabledForegroundColor:
+                                                kDirectionSurfaceText
+                                                    .withValues(alpha: 0.45),
                                             padding: const EdgeInsets.symmetric(
                                               horizontal: 14,
                                               vertical: 10,
@@ -516,9 +508,10 @@ class _DirectionCashTaxonomyPageState extends State<DirectionCashTaxonomyPage> {
                                                     : null,
                                                 color: selected
                                                     ? null
-                                                    : const Color(
-                                                        0xFF16376C,
-                                                      ).withValues(alpha: 0.30),
+                                                    : kDirectionInteractiveSurface
+                                                          .withValues(
+                                                            alpha: 0.34,
+                                                          ),
                                                 borderRadius:
                                                     BorderRadius.circular(18),
                                                 border: Border.all(
@@ -648,12 +641,12 @@ class _NewConceptDialogState extends State<_NewConceptDialog> {
         padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
         borderRadius: BorderRadius.circular(28),
         blurSigma: 30,
-        fillColor: const Color(0xFF10254B).withValues(alpha: 0.72),
+        fillColor: kDirectionOliveDeep.withValues(alpha: 0.76),
         borderColor: Colors.white.withValues(alpha: 0.24),
         shadowColor: Colors.black.withValues(alpha: 0.24),
         edgeHighlightColor: Colors.white.withValues(alpha: 0.68),
         bevelShadowColor: Colors.black.withValues(alpha: 0.18),
-        glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.08),
+        glowColor: kDirectionOliveGlow.withValues(alpha: 0.10),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -865,12 +858,12 @@ class _ConceptEditorCardState extends State<_ConceptEditorCard> {
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
       borderRadius: BorderRadius.circular(24),
       blurSigma: 28,
-      fillColor: const Color(0xFF173A78).withValues(alpha: 0.24),
+      fillColor: kDirectionOliveDeep.withValues(alpha: 0.24),
       borderColor: Colors.white.withValues(alpha: 0.22),
       shadowColor: Colors.black.withValues(alpha: 0.10),
       edgeHighlightColor: Colors.white.withValues(alpha: 0.60),
       bevelShadowColor: Colors.black.withValues(alpha: 0.18),
-      glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.08),
+      glowColor: kDirectionOliveGlow.withValues(alpha: 0.10),
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -1193,8 +1186,8 @@ class _ConceptCapturePreview extends StatelessWidget {
 
 ButtonStyle _directionPrimaryButtonStyle() {
   return FilledButton.styleFrom(
-    backgroundColor: const Color(0xFF1F4D8F).withValues(alpha: 0.96),
-    foregroundColor: Colors.white,
+    backgroundColor: kDirectionInteractiveSelected.withValues(alpha: 0.96),
+    foregroundColor: kDirectionSurfaceText,
     padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
     side: BorderSide(color: Colors.white.withValues(alpha: 0.14)),
@@ -1206,7 +1199,7 @@ ButtonStyle _directionPrimaryButtonStyle() {
 ButtonStyle _directionSecondaryButtonStyle() {
   return OutlinedButton.styleFrom(
     foregroundColor: kDirectionSurfaceText,
-    backgroundColor: const Color(0xFF15305D).withValues(alpha: 0.48),
+    backgroundColor: kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.56),
     side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
     padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
     shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -1222,7 +1215,7 @@ InputDecoration _directionInputDecoration(String label) {
       fontWeight: FontWeight.w700,
     ),
     filled: true,
-    fillColor: const Color(0xFF153262).withValues(alpha: 0.42),
+    fillColor: kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.48),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(18),
       borderSide: BorderSide(color: directionAreaTokens.border),
@@ -1258,7 +1251,7 @@ class _DirectionValueChip extends StatelessWidget {
           fontWeight: FontWeight.w700,
         ),
       ),
-      backgroundColor: const Color(0xFF16376C).withValues(alpha: 0.56),
+      backgroundColor: kDirectionInteractiveSurfaceSoft.withValues(alpha: 0.62),
       deleteIconColor: kDirectionMutedText,
       side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
       onDeleted: onDeleted,
@@ -1307,12 +1300,12 @@ class _EditorToggleChip extends StatelessWidget {
         ),
       ),
       selected: value,
-      selectedColor: const Color(0xFF22477F).withValues(alpha: 0.92),
-      backgroundColor: const Color(0xFF14305E).withValues(alpha: 0.52),
+      selectedColor: kDirectionInteractiveSelected.withValues(alpha: 0.92),
+      backgroundColor: kDirectionInteractiveSurface.withValues(alpha: 0.58),
       checkmarkColor: kDirectionSurfaceText,
       side: BorderSide(
         color: value
-            ? const Color(0xFF7ED7FF).withValues(alpha: 0.40)
+            ? kDirectionOliveGlow.withValues(alpha: 0.44)
             : Colors.white.withValues(alpha: 0.16),
       ),
       onSelected: onChanged,
@@ -1329,12 +1322,12 @@ class _EmptyEditorState extends StatelessWidget {
       padding: const EdgeInsets.all(24),
       borderRadius: BorderRadius.circular(24),
       blurSigma: 28,
-      fillColor: const Color(0xFF173A78).withValues(alpha: 0.24),
+      fillColor: kDirectionOliveDeep.withValues(alpha: 0.24),
       borderColor: Colors.white.withValues(alpha: 0.22),
       shadowColor: Colors.black.withValues(alpha: 0.10),
       edgeHighlightColor: Colors.white.withValues(alpha: 0.60),
       bevelShadowColor: Colors.black.withValues(alpha: 0.18),
-      glowColor: const Color(0xFF66D5FF).withValues(alpha: 0.08),
+      glowColor: kDirectionOliveGlow.withValues(alpha: 0.10),
       child: const Center(
         child: Text(
           'Selecciona un concepto para editar sus parámetros.',

@@ -65,14 +65,14 @@ class MenudeoMarketTab extends StatelessWidget {
               title: 'IMPACTO POTENCIAL',
               value: formatMoney(view.snapshot.potentialImpact),
               detail: 'Delta estimado por volumen reciente',
-              accent: const Color(0xFF7CE0FF),
+              accent: kDirectionOliveMist,
             ),
             DirectionMetricCard(
               icon: Icons.warning_amber_rounded,
               title: 'SPREADS EN PRESIÓN',
               value: '${view.snapshot.pressuredMaterials}',
               detail: 'Materiales con spread crítico',
-              accent: const Color(0xFFFFB468),
+              accent: kDirectionWarning,
             ),
           ],
         ),
@@ -238,6 +238,7 @@ class _MarketFiltersBar extends StatelessWidget {
       label: 'VENTANA',
       bounds: DateTimeRange(start: DateTime(2024, 1, 1), end: DateTime.now()),
       initialRange: state.filters.dateRange,
+      tokens: directionAreaTokens,
     );
     if (result == null) return;
     if (result.clear) {
@@ -269,7 +270,7 @@ class _DateRangeFilterButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFF10274E).withValues(alpha: 0.82),
+            color: kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
           ),
@@ -339,7 +340,7 @@ class _ExecutiveToggleChip extends StatelessWidget {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
           color: selected
-              ? const Color(0xFF66D5FF).withValues(alpha: 0.18)
+              ? kDirectionOliveGlow.withValues(alpha: 0.18)
               : Colors.white.withValues(alpha: 0.04),
           border: Border.all(
             color: selected
@@ -385,7 +386,7 @@ class _FilterDropdown<T> extends StatelessWidget {
         initialValue: value,
         isDense: true,
         isExpanded: true,
-        dropdownColor: const Color(0xFF153160),
+        dropdownColor: kDirectionMenuSurface,
         iconEnabledColor: kDirectionSurfaceText,
         style: const TextStyle(
           color: kDirectionSurfaceText,
@@ -400,7 +401,7 @@ class _FilterDropdown<T> extends StatelessWidget {
           ),
           isDense: true,
           filled: true,
-          fillColor: const Color(0xFF10274E).withValues(alpha: 0.82),
+          fillColor: kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.82),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 10,
@@ -887,7 +888,7 @@ List<_InsightItem> _buildInsights(MenudeoMarketViewData view) {
         title: 'Cambio reciente a vigilar',
         detail:
             '${recent.counterparty} en ${recent.material} movió ${recent.previousPrice.toStringAsFixed(2)} → ${recent.newPrice.toStringAsFixed(2)}. Motivo: ${recent.reason}.',
-        color: const Color(0xFF7CCEFF),
+        color: kDirectionOliveGlow,
       ),
     );
   }
@@ -897,7 +898,7 @@ List<_InsightItem> _buildInsights(MenudeoMarketViewData view) {
         title: 'Sin hallazgos fuertes',
         detail:
             'Con los filtros actuales no aparecen desviaciones claras, spreads presionados ni cambios recientes que requieran intervención inmediata.',
-        color: Color(0xFF7CCEFF),
+        color: kDirectionOliveGlow,
       ),
     );
   }
@@ -947,7 +948,7 @@ class _PositioningCard extends StatelessWidget {
             children: const [
               _MarketLegendChip(
                 label: 'Eje X: volumen reciente',
-                color: Color(0xFF7CCEFF),
+                color: kDirectionOliveGlow,
               ),
               _MarketLegendChip(
                 label: 'Eje Y: desviación vs referencia',

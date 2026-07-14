@@ -106,21 +106,21 @@ class _MenudeoOperationsTabState extends State<MenudeoOperationsTab> {
               title: 'COMPRAS PAGADAS',
               value: formatMoney(dataset.snapshot.purchaseAmount),
               detail: 'Flujo pagado de compra',
-              accent: const Color(0xFFFFC86B),
+              accent: kDirectionWarning,
             ),
             DirectionMetricCard(
               icon: Icons.point_of_sale_rounded,
               title: 'VENTAS PAGADAS',
               value: formatMoney(dataset.snapshot.saleAmount),
               detail: 'Flujo pagado de venta',
-              accent: const Color(0xFF66F0DC),
+              accent: kDirectionSuccess,
             ),
             DirectionMetricCard(
               icon: Icons.swap_vert_circle_rounded,
               title: 'FLUJO COMERCIAL',
               value: formatMoney(dataset.snapshot.netCommercialFlow),
               detail: 'Ventas menos compras',
-              accent: const Color(0xFF7CCEFF),
+              accent: kDirectionOliveMist,
             ),
             DirectionMetricCard(
               icon: Icons.fact_check_rounded,
@@ -129,7 +129,7 @@ class _MenudeoOperationsTabState extends State<MenudeoOperationsTab> {
                   '${dataset.snapshot.paidTickets} pagados · ${dataset.snapshot.pendingTickets} pendientes',
               detail:
                   '${dataset.snapshot.pendingChecks} checks con observación en cortes',
-              accent: const Color(0xFFFF9A8B),
+              accent: kDirectionDanger,
             ),
           ],
         ),
@@ -293,6 +293,7 @@ class _OperationsFiltersBar extends StatelessWidget {
       label: 'VENTANA',
       bounds: DateTimeRange(start: DateTime(2024, 1, 1), end: DateTime.now()),
       initialRange: state.filters.dateRange,
+      tokens: directionAreaTokens,
     );
     if (result == null) return;
     if (result.clear) {
@@ -324,7 +325,7 @@ class _OperationsDateRangeButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFF10274E).withValues(alpha: 0.82),
+            color: kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
           ),
@@ -397,7 +398,7 @@ class _OperationsDropdown<T> extends StatelessWidget {
         initialValue: value,
         isDense: true,
         isExpanded: true,
-        dropdownColor: const Color(0xFF153160),
+        dropdownColor: kDirectionMenuSurface,
         iconEnabledColor: kDirectionSurfaceText,
         style: const TextStyle(
           color: kDirectionSurfaceText,
@@ -412,7 +413,7 @@ class _OperationsDropdown<T> extends StatelessWidget {
           ),
           isDense: true,
           filled: true,
-          fillColor: const Color(0xFF10274E).withValues(alpha: 0.82),
+          fillColor: kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.82),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 10,
@@ -495,7 +496,7 @@ class _OperationMixCard extends StatelessWidget {
           _OperationBreakdownSection(
             title: 'Materiales',
             rows: materialRows.take(6).toList(growable: false),
-            color: const Color(0xFF7CCEFF),
+            color: kDirectionOliveGlow,
             selectedRow: selectedMaterialRow,
             onSelectRow: onSelectMaterial,
           ),
@@ -535,7 +536,7 @@ class _OperationFocusSummary extends StatelessWidget {
             amount: materialRow!.amount,
             weight: materialRow!.weight,
             count: materialRow!.count,
-            color: const Color(0xFF7CCEFF),
+            color: kDirectionOliveGlow,
           ),
         if (counterpartyRow != null)
           _OperationFocusPill(
@@ -836,7 +837,7 @@ class _OperationTimelineCard extends StatelessWidget {
                     label: 'Neto',
                     value: formatMoney(selectedPoint!.netAmount),
                     color: selectedPoint!.netAmount >= 0
-                        ? const Color(0xFF7CCEFF)
+                        ? kDirectionOliveGlow
                         : const Color(0xFFFF9A8B),
                   ),
                 ],
@@ -927,7 +928,7 @@ class _OperationDayColumn extends StatelessWidget {
                 : Colors.transparent,
             border: Border.all(
               color: selected
-                  ? const Color(0xFF7CCEFF).withValues(alpha: 0.30)
+                  ? kDirectionOliveGlow.withValues(alpha: 0.30)
                   : Colors.transparent,
             ),
           ),
@@ -959,7 +960,7 @@ class _OperationDayColumn extends StatelessWidget {
                         value: point.netAmount.abs(),
                         maxValue: maxValue,
                         color: point.netAmount >= 0
-                            ? const Color(0xFF7CCEFF)
+                            ? kDirectionOliveGlow
                             : const Color(0xFFFF9A8B),
                       ),
                   ],
@@ -1044,7 +1045,7 @@ class _OperationLegend extends StatelessWidget {
         _OperationLegendPill(
           label: 'Neto',
           value: 'Flujo',
-          color: Color(0xFF7CCEFF),
+          color: kDirectionOliveGlow,
         ),
       ],
     );
@@ -1366,7 +1367,7 @@ Color _severityColor(MenudeoOpportunitySeverity severity) {
     case MenudeoOpportunitySeverity.outOfRange:
       return const Color(0xFFFFC86B);
     case MenudeoOpportunitySeverity.watch:
-      return const Color(0xFF7CCEFF);
+      return kDirectionOliveGlow;
     case MenudeoOpportunitySeverity.healthy:
     case MenudeoOpportunitySeverity.all:
       return const Color(0xFF66F0DC);

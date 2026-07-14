@@ -9,6 +9,7 @@ import '../commercial/commercial_dashboard_page.dart';
 import '../commercial/commercial_store.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
+import '../shared/archetypes/auxiliary_surfaces/date_picker_surface.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/utils/file_download_save.dart';
@@ -107,13 +108,13 @@ class _DirectionTradeAnalysisPageState
           ..sort();
     if (dated.isEmpty) return;
     final bounds = DateTimeRange(start: dated.first, end: dated.last);
-    final picked = await showDateRangePicker(
-      context: context,
+    final picked = await showContractDateRangePickerSurface(
+      context,
       firstDate: bounds.start,
       lastDate: bounds.end,
       initialDateRange: _effectiveDateRange(bundle.marketEvents),
-      helpText: 'Selecciona el rango de fechas',
-      saveText: 'Aplicar',
+      title: 'Selecciona el rango de fechas',
+      tokens: directionAreaTokens,
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -311,15 +312,7 @@ class _DirectionTradeAnalysisPageState
                               title: 'SPREADS',
                               value: '${proposal.opportunities.length}',
                               detail: 'Oportunidades detectadas',
-                              accent: const Color(0xFF89FFE4),
-                            ),
-                            DirectionMetricCard(
-                              icon: Icons.inventory_2_rounded,
-                              title: 'STOCK',
-                              value:
-                                  '${formatDecimal(proposal.totalOnHandKg, decimals: 0)} kg',
-                              detail: 'Inventario general ligado al análisis',
-                              accent: const Color(0xFFFFD58A),
+                              accent: kDirectionSuccess,
                             ),
                           ],
                         ),
@@ -329,20 +322,20 @@ class _DirectionTradeAnalysisPageState
                             padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
                             borderRadius: BorderRadius.circular(28),
                             blurSigma: 30,
-                            fillColor: const Color(
-                              0xFF173A78,
-                            ).withValues(alpha: 0.22),
+                            fillColor: kDirectionOliveDeep.withValues(
+                              alpha: 0.30,
+                            ),
                             borderColor: Colors.white.withValues(alpha: 0.24),
                             shadowColor: Colors.black.withValues(alpha: 0.10),
                             edgeHighlightColor: Colors.white.withValues(
-                              alpha: 0.62,
+                              alpha: 0.34,
                             ),
                             bevelShadowColor: Colors.black.withValues(
                               alpha: 0.16,
                             ),
-                            glowColor: const Color(
-                              0xFF66D5FF,
-                            ).withValues(alpha: 0.08),
+                            glowColor: kDirectionOliveGlow.withValues(
+                              alpha: 0.04,
+                            ),
                             child: _loading
                                 ? const Center(
                                     child: CircularProgressIndicator(),
@@ -430,7 +423,6 @@ class _DirectionTradeAnalysisPageState
   _TradeProposal _buildProposal() {
     final bundle = _bundle;
     if (bundle == null) return const _TradeProposal.empty();
-    final inventoryRows = bundle.inventoryGeneralRows;
     final allChannelEvents = bundle.marketEvents
         .where(
           (row) => _matchesChannel(
@@ -462,19 +454,6 @@ class _DirectionTradeAnalysisPageState
                   ))
               .mergeEvent(event);
       materialMap[key] = next;
-    }
-
-    final inventoryByCode = <String, CommercialInventoryGeneralBalanceRecord>{
-      for (final row in inventoryRows) row.code.trim().toUpperCase(): row,
-    };
-    final inventoryUnmatched = <CommercialInventoryGeneralBalanceRecord>[
-      ...inventoryRows,
-    ];
-    for (final entry in materialMap.entries) {
-      final inventory = inventoryByCode[entry.key.trim().toUpperCase()];
-      if (inventory == null) continue;
-      materialMap[entry.key] = entry.value.withInventory(inventory);
-      inventoryUnmatched.removeWhere((row) => row.code == inventory.code);
     }
 
     final materialRows = materialMap.values.toList(growable: false)
@@ -527,10 +506,6 @@ class _DirectionTradeAnalysisPageState
       0,
       (sum, row) => sum + row.sellAmount,
     );
-    final totalOnHandKg = materialRows.fold<double>(
-      0,
-      (sum, row) => sum + row.onHandKg,
-    );
     final avgBuyPrice = buyVolume > 0 ? buyAmount / buyVolume : null;
     final avgSellPrice = sellVolume > 0 ? sellAmount / sellVolume : null;
     final avgSpread = avgBuyPrice != null && avgSellPrice != null
@@ -540,12 +515,7 @@ class _DirectionTradeAnalysisPageState
     final lowestCoverage = const <_TradeMaterialRow>[];
     final actionRows =
         materialRows
-            .where(
-              (row) =>
-                  row.coverageDays != null ||
-                  row.spread != null ||
-                  row.volumeGap.abs() > 0,
-            )
+            .where((row) => row.spread != null || row.volumeGap.abs() > 0)
             .map(_TradeActionRow.fromMaterial)
             .toList(growable: false)
           ..sort((a, b) => b.priorityScore.compareTo(a.priorityScore));
@@ -583,7 +553,6 @@ class _DirectionTradeAnalysisPageState
       avgBuyPrice: avgBuyPrice,
       avgSellPrice: avgSellPrice,
       avgSpread: avgSpread,
-      totalOnHandKg: totalOnHandKg,
       topMaterials: barRows,
       priceRows: priceRows.take(6).toList(growable: false),
       opportunities: opportunities.take(6).toList(growable: false),
@@ -601,7 +570,6 @@ class _DirectionTradeAnalysisPageState
       simpleTrend: simpleTrend,
       rangeLabel: _formatRangeLabel(effectiveRange),
       stoplight: stoplight,
-      unmatchedInventory: inventoryUnmatched.take(5).toList(growable: false),
       mainInsight: _buildMainInsight(
         opportunities: opportunities,
         biggestGap: biggestGap,
@@ -874,13 +842,6 @@ class _ExecutiveSummaryCard extends StatelessWidget {
                 detail: 'Salida menos entrada',
                 accent: const Color(0xFFFFD58A),
               ),
-              _MiniMetric(
-                label: 'Stock general',
-                value:
-                    '${formatDecimal(proposal.totalOnHandKg, decimals: 0)} kg',
-                detail: 'Saldo operativo actual',
-                accent: const Color(0xFFFFB978),
-              ),
             ],
           ),
           const SizedBox(height: 16),
@@ -1080,6 +1041,7 @@ class _SimpleMaterialsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final totals = _TradeMaterialTotals.fromRows(rows);
     return _SectionCard(
       title: 'Materiales',
       subtitle:
@@ -1092,6 +1054,8 @@ class _SimpleMaterialsCard extends StatelessWidget {
                 const _SimpleMaterialsHeader(),
                 const SizedBox(height: 8),
                 ...rows.map((row) => _SimpleMaterialLine(row: row)),
+                const SizedBox(height: 4),
+                _SimpleMaterialsTotalsLine(totals: totals),
               ],
             ),
     );
@@ -1282,10 +1246,9 @@ class _DecisionSignalsCard extends StatelessWidget {
           const SizedBox(height: 10),
           _SignalTile(
             title: 'Abasto / rotación',
-            subtitle: proposal.lowestCoverage.isEmpty
-                ? 'Aún no hay suficientes cruces con inventario para priorizar cobertura.'
-                : '${proposal.lowestCoverage.first.label} trae la cobertura más corta con ${proposal.lowestCoverage.first.coverageLabel}.',
-            badge: proposal.lowestCoverage.isEmpty ? 'Sin stock' : 'Cobertura',
+            subtitle:
+                'Esta pantalla ya no cruza inventario. La prioridad aquí es leer flujo real de compra contra venta por material.',
+            badge: 'Solo flujo',
           ),
         ],
       ),
@@ -1300,49 +1263,19 @@ class _InventoryCoverageCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final row = proposal.lowestCoverage.isEmpty
-        ? null
-        : proposal.lowestCoverage.first;
     return _SectionCard(
-      title: 'Inventario y cobertura',
-      subtitle: 'Cruce entre stock general actual y ritmo reciente de salida.',
+      title: 'Cobertura e inventario',
+      subtitle:
+          'La pantalla ya no mezcla flujo comercial con inventario operativo.',
       icon: Icons.inventory_rounded,
-      child: Column(
+      child: const Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Wrap(
-            spacing: 12,
-            runSpacing: 12,
-            children: [
-              _MiniMetric(
-                label: 'Stock total',
-                value:
-                    '${formatDecimal(proposal.totalOnHandKg, decimals: 0)} kg',
-                detail: 'Inventario general visible',
-                accent: const Color(0xFFFFC98A),
-              ),
-              _MiniMetric(
-                label: 'Cobertura crítica',
-                value: row == null ? 'N/D' : row.coverageLabel,
-                detail: row == null ? 'Sin cruce' : row.label,
-                accent: const Color(0xFF8DEBFF),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
           _InsightCallout(
-            title: 'Cómo leerlo',
+            title: 'Ajuste aplicado',
             message:
-                'La cobertura se estima como stock general actual dividido entre la salida promedio diaria de los últimos 30 días. Sirve para detectar presión de abasto, no como promesa exacta de inventario comercial.',
+                'El analisis de compra-venta ahora se construye solo con eventos de menudeo, compras mayoreo y ventas mayoreo. No usa stock operativo ni cruces de cobertura.',
           ),
-          if (proposal.unmatchedInventory.isNotEmpty) ...[
-            const SizedBox(height: 10),
-            _InsightCallout(
-              title: 'Pendientes de homologación',
-              message:
-                  'Hay stock visible en ${proposal.unmatchedInventory.map((row) => row.name).join(', ')} que todavía no cae limpio en esta lectura de compra-venta.',
-            ),
-          ],
         ],
       ),
     );
@@ -1569,10 +1502,8 @@ class _RotationCard extends StatelessWidget {
                     (row) => _SignalTile(
                       title: row.label,
                       subtitle:
-                          'Stock ${formatDecimal(row.onHandKg, decimals: 0)} kg · Venta 30d ${formatDecimal(row.sellVolume, decimals: 0)} kg · ${row.businessMixLabel}',
-                      badge: row.coverageDays != null
-                          ? row.coverageLabel
-                          : row.rotationBadge,
+                          'Compra 30d ${formatDecimal(row.buyVolume, decimals: 0)} kg · Venta 30d ${formatDecimal(row.sellVolume, decimals: 0)} kg · ${row.businessMixLabel}',
+                      badge: row.reading,
                     ),
                   )
                   .toList(growable: false),
@@ -1950,8 +1881,10 @@ class _SectionCard extends StatelessWidget {
     return DirectionGlassPanel(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       borderRadius: BorderRadius.circular(24),
-      fillColor: Colors.white.withValues(alpha: 0.05),
-      borderColor: Colors.white.withValues(alpha: 0.12),
+      fillColor: kDirectionOliveDeep.withValues(alpha: 0.22),
+      borderColor: Colors.white.withValues(alpha: 0.10),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.26),
+      glowColor: kDirectionOliveGlow.withValues(alpha: 0.03),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -2084,8 +2017,8 @@ class _MiniMetric extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        color: accent.withValues(alpha: 0.08),
-        border: Border.all(color: accent.withValues(alpha: 0.20)),
+        color: accent.withValues(alpha: 0.05),
+        border: Border.all(color: accent.withValues(alpha: 0.16)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2135,7 +2068,7 @@ class _InsightCallout extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        color: Colors.white.withValues(alpha: 0.04),
+        color: kDirectionOliveDeep.withValues(alpha: 0.14),
         border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
       ),
       child: Column(
@@ -2222,7 +2155,7 @@ class _SimpleMaterialsHeader extends StatelessWidget {
         Expanded(flex: 12, child: Text('Balance kg', style: style)),
         Expanded(flex: 14, child: Text('Compra \$', style: style)),
         Expanded(flex: 14, child: Text('Venta \$', style: style)),
-        Expanded(flex: 12, child: Text('Balance \$', style: style)),
+        Expanded(flex: 12, child: Text('Utilidad bruta', style: style)),
       ],
     );
   }
@@ -2322,6 +2255,84 @@ class _SimpleMaterialLine extends StatelessWidget {
                     : const Color(0xFFFFB18E),
                 fontSize: 12.5,
                 fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SimpleMaterialsTotalsLine extends StatelessWidget {
+  final _TradeMaterialTotals totals;
+
+  const _SimpleMaterialsTotalsLine({required this.totals});
+
+  @override
+  Widget build(BuildContext context) {
+    final grossProfit = totals.sellAmount - totals.buyAmount;
+    const baseStyle = TextStyle(
+      color: Colors.white,
+      fontSize: 12.5,
+      fontWeight: FontWeight.w800,
+    );
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 14),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: Colors.white.withValues(alpha: 0.06),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+      ),
+      child: Row(
+        children: [
+          const Expanded(flex: 24, child: Text('TOTAL', style: baseStyle)),
+          Expanded(
+            flex: 12,
+            child: Text(
+              formatDecimal(totals.buyVolume, decimals: 0),
+              style: baseStyle,
+            ),
+          ),
+          Expanded(
+            flex: 12,
+            child: Text(
+              formatDecimal(totals.sellVolume, decimals: 0),
+              style: baseStyle,
+            ),
+          ),
+          Expanded(
+            flex: 12,
+            child: Text(
+              formatDecimal(totals.sellVolume - totals.buyVolume, decimals: 0),
+              style: TextStyle(
+                color: totals.sellVolume - totals.buyVolume >= 0
+                    ? const Color(0xFF8EFFD5)
+                    : const Color(0xFFFFB18E),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+          Expanded(
+            flex: 14,
+            child: Text(formatMoney(totals.buyAmount), style: baseStyle),
+          ),
+          Expanded(
+            flex: 14,
+            child: Text(formatMoney(totals.sellAmount), style: baseStyle),
+          ),
+          Expanded(
+            flex: 12,
+            child: Text(
+              formatMoney(grossProfit),
+              style: TextStyle(
+                color: grossProfit >= 0
+                    ? const Color(0xFF8EFFD5)
+                    : const Color(0xFFFFB18E),
+                fontSize: 12.5,
+                fontWeight: FontWeight.w900,
               ),
             ),
           ),
@@ -2570,7 +2581,6 @@ class _TradeProposal {
   final double? avgBuyPrice;
   final double? avgSellPrice;
   final double? avgSpread;
-  final double totalOnHandKg;
   final List<_TradeMaterialRow> topMaterials;
   final List<_TradePriceRow> priceRows;
   final List<_TradeOpportunityRow> opportunities;
@@ -2588,7 +2598,6 @@ class _TradeProposal {
   final List<_TradeTrendPoint> simpleTrend;
   final String rangeLabel;
   final _TradeStoplightSummary stoplight;
-  final List<CommercialInventoryGeneralBalanceRecord> unmatchedInventory;
   final String mainInsight;
   final String secondaryInsight;
 
@@ -2601,7 +2610,6 @@ class _TradeProposal {
     required this.avgBuyPrice,
     required this.avgSellPrice,
     required this.avgSpread,
-    required this.totalOnHandKg,
     required this.topMaterials,
     required this.priceRows,
     required this.opportunities,
@@ -2619,7 +2627,6 @@ class _TradeProposal {
     required this.simpleTrend,
     required this.rangeLabel,
     required this.stoplight,
-    required this.unmatchedInventory,
     required this.mainInsight,
     required this.secondaryInsight,
   });
@@ -2633,7 +2640,6 @@ class _TradeProposal {
       avgBuyPrice = null,
       avgSellPrice = null,
       avgSpread = null,
-      totalOnHandKg = 0,
       topMaterials = const <_TradeMaterialRow>[],
       priceRows = const <_TradePriceRow>[],
       opportunities = const <_TradeOpportunityRow>[],
@@ -2651,7 +2657,6 @@ class _TradeProposal {
       simpleTrend = const <_TradeTrendPoint>[],
       rangeLabel = 'Sin rango',
       stoplight = const _TradeStoplightSummary.empty(),
-      unmatchedInventory = const <CommercialInventoryGeneralBalanceRecord>[],
       mainInsight =
           'Todavía no hay lectura suficiente para construir propuesta.',
       secondaryInsight =
@@ -2666,8 +2671,6 @@ class _TradeMaterialRow {
   final double sellVolume;
   final double buyAmount;
   final double sellAmount;
-  final double onHandKg;
-  final int onHandUnits;
   final Set<String> businessMixes;
 
   const _TradeMaterialRow({
@@ -2678,8 +2681,6 @@ class _TradeMaterialRow {
     required this.sellVolume,
     required this.buyAmount,
     required this.sellAmount,
-    required this.onHandKg,
-    required this.onHandUnits,
     required this.businessMixes,
   });
 
@@ -2689,8 +2690,6 @@ class _TradeMaterialRow {
       buyAmount = 0,
       sellAmount = 0,
       channels = const <String>{},
-      onHandKg = 0,
-      onHandUnits = 0,
       businessMixes = const <String>{};
 
   _TradeMaterialRow merge({
@@ -2708,27 +2707,10 @@ class _TradeMaterialRow {
       sellVolume: this.sellVolume + sellVolume,
       buyAmount: this.buyAmount + buyAmount,
       sellAmount: this.sellAmount + sellAmount,
-      onHandKg: onHandKg,
-      onHandUnits: onHandUnits,
       businessMixes: {
         ...businessMixes,
         if (businessMix.trim().isNotEmpty) businessMix.trim(),
       },
-    );
-  }
-
-  _TradeMaterialRow withInventory(CommercialInventoryGeneralBalanceRecord row) {
-    return _TradeMaterialRow(
-      label: label,
-      channel: channel,
-      channels: channels,
-      buyVolume: buyVolume,
-      sellVolume: sellVolume,
-      buyAmount: buyAmount,
-      sellAmount: sellAmount,
-      onHandKg: row.onHandKg,
-      onHandUnits: row.onHandUnits,
-      businessMixes: businessMixes,
     );
   }
 
@@ -2745,8 +2727,6 @@ class _TradeMaterialRow {
         sellVolume: sellVolume,
         buyAmount: buyAmount + event.amountTotal,
         sellAmount: sellAmount,
-        onHandKg: onHandKg,
-        onHandUnits: onHandUnits,
         businessMixes: businessMixes,
       );
     }
@@ -2761,8 +2741,6 @@ class _TradeMaterialRow {
       sellVolume: sellVolume + event.volumeKg,
       buyAmount: buyAmount,
       sellAmount: sellAmount + event.amountTotal,
-      onHandKg: onHandKg,
-      onHandUnits: onHandUnits,
       businessMixes: businessMixes,
     );
   }
@@ -2772,16 +2750,11 @@ class _TradeMaterialRow {
   double get volumeGap => sellVolume - buyVolume;
   double? get avgBuyPrice => buyVolume > 0 ? buyAmount / buyVolume : null;
   double? get avgSellPrice => sellVolume > 0 ? sellAmount / sellVolume : null;
-  double get sellDailyRate30d => sellVolume > 0 ? sellVolume / 30 : 0;
-  double? get coverageDays =>
-      sellDailyRate30d > 0 && onHandKg > 0 ? onHandKg / sellDailyRate30d : null;
-  double? get rotationRate30d =>
-      onHandKg > 0 && sellVolume > 0 ? sellVolume / onHandKg : null;
   bool get missingBenchmark => avgBuyPrice == null || avgSellPrice == null;
   bool get isOverbought =>
       buyVolume > sellVolume * 1.25 ||
       volumeGap < -max(150, totalVolume * 0.15);
-  double get overboughtScore => volumeGap < 0 ? volumeGap.abs() + onHandKg : 0;
+  double get overboughtScore => volumeGap < 0 ? volumeGap.abs() : 0;
   double? get spread => avgBuyPrice != null && avgSellPrice != null
       ? avgSellPrice! - avgBuyPrice!
       : null;
@@ -2801,12 +2774,6 @@ class _TradeMaterialRow {
     return 'Sin canal';
   }
 
-  String get coverageLabel => coverageDays == null
-      ? 'N/D'
-      : '${formatDecimal(coverageDays!, decimals: 1)} días';
-  String get rotationBadge => rotationRate30d == null
-      ? 'Sin rotación'
-      : '${formatDecimal(rotationRate30d! * 100, decimals: 0)}% / 30d';
   String get reading {
     if (buyVolume <= 0 && sellVolume <= 0) return 'Sin movimiento';
     if (spread == null) return 'Sin benchmark';
@@ -2814,6 +2781,29 @@ class _TradeMaterialRow {
     if (volumeGap > 0) return 'Sale más';
     if (volumeGap < 0) return 'Entra más';
     return 'Balanceado';
+  }
+}
+
+class _TradeMaterialTotals {
+  final double buyVolume;
+  final double sellVolume;
+  final double buyAmount;
+  final double sellAmount;
+
+  const _TradeMaterialTotals({
+    required this.buyVolume,
+    required this.sellVolume,
+    required this.buyAmount,
+    required this.sellAmount,
+  });
+
+  factory _TradeMaterialTotals.fromRows(List<_TradeMaterialRow> rows) {
+    return _TradeMaterialTotals(
+      buyVolume: rows.fold<double>(0, (sum, row) => sum + row.buyVolume),
+      sellVolume: rows.fold<double>(0, (sum, row) => sum + row.sellVolume),
+      buyAmount: rows.fold<double>(0, (sum, row) => sum + row.buyAmount),
+      sellAmount: rows.fold<double>(0, (sum, row) => sum + row.sellAmount),
+    );
   }
 }
 
@@ -3008,7 +2998,7 @@ class _TradePriceRow {
     final sellPrice = row.avgSellPrice ?? 0;
     final spread = row.spread ?? 0;
     final spreadRatio = sellPrice <= 0 ? 0.0 : spread / sellPrice;
-    final stockPressure =
+    final flowPressure =
         row.volumeGap < -max(120, row.totalVolume * 0.15) || row.isOverbought;
 
     if (spread <= 0) {
@@ -3024,7 +3014,7 @@ class _TradePriceRow {
         priorityScore: spread.abs() + row.totalVolume,
       );
     }
-    if (stockPressure) {
+    if (flowPressure) {
       return _TradePriceRow(
         materialLabel: row.label,
         buyPrice: buyPrice,
@@ -3032,9 +3022,9 @@ class _TradePriceRow {
         spread: spread,
         actionLabel: 'Bajar / mover',
         message:
-            'Hay presion de entrada o inventario. Aunque existe margen, conviene mover salida antes que seguir acumulando.',
+            'Hay presion de entrada contra salida. Aunque existe margen, conviene mover venta antes de seguir cargando volumen.',
         tone: const Color(0xFFFFD58A),
-        priorityScore: row.volumeGap.abs() + row.onHandKg,
+        priorityScore: row.volumeGap.abs() + row.totalVolume,
       );
     }
     if (spreadRatio >= 0.18 && row.sellVolume > 0) {
@@ -3080,17 +3070,6 @@ class _TradeActionRow {
   });
 
   factory _TradeActionRow.fromMaterial(_TradeMaterialRow row) {
-    final coverage = row.coverageDays;
-    if (coverage != null && coverage < 10) {
-      return _TradeActionRow(
-        materialLabel: row.label,
-        actionTitle: 'Asegurar abasto',
-        actionBody:
-            'Cobertura estimada de ${row.coverageLabel} con salida de ${formatDecimal(row.sellVolume, decimals: 0)} kg en 30 días. Conviene revisar compra, producción o ritmo de salida.',
-        priorityLabel: 'Alta',
-        priorityScore: 100 - coverage,
-      );
-    }
     final spread = row.spread;
     if (spread != null && spread > 0) {
       return _TradeActionRow(

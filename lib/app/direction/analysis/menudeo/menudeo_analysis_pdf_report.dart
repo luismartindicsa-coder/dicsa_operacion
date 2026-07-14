@@ -262,7 +262,7 @@ pw.Widget _pdfHeader({
                 style: pw.TextStyle(
                   fontSize: 20,
                   fontWeight: pw.FontWeight.bold,
-                  color: const PdfColor.fromInt(0xFF173A78),
+                  color: const PdfColor.fromInt(0xFF54582F),
                 ),
               ),
               pw.SizedBox(height: 4),
@@ -306,7 +306,7 @@ pw.Widget _pdfSection({required String title, required pw.Widget child}) {
           style: pw.TextStyle(
             fontSize: 13.5,
             fontWeight: pw.FontWeight.bold,
-            color: const PdfColor.fromInt(0xFF173A78),
+            color: const PdfColor.fromInt(0xFF54582F),
           ),
         ),
         pw.SizedBox(height: 10),
@@ -366,7 +366,7 @@ pw.Widget _metricGrid(List<MapEntry<String, String>> metrics) {
                 style: pw.TextStyle(
                   fontSize: 13,
                   fontWeight: pw.FontWeight.bold,
-                  color: const PdfColor.fromInt(0xFF173A78),
+                  color: const PdfColor.fromInt(0xFF54582F),
                 ),
               ),
             ],
@@ -399,7 +399,7 @@ pw.Widget _simpleTable({
       color: PdfColors.white,
     ),
     headerDecoration: const pw.BoxDecoration(
-      color: PdfColor.fromInt(0xFF173A78),
+      color: PdfColor.fromInt(0xFF54582F),
     ),
     cellStyle: const pw.TextStyle(
       fontSize: 9.5,

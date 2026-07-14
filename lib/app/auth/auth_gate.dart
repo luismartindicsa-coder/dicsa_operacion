@@ -176,8 +176,11 @@ class _AuthGateState extends State<AuthGate>
     _watchingDirectionPurchaseOrders = false;
     _directionPurchaseOrderTimer?.cancel();
     _directionPurchaseOrderTimer = null;
-    _directionPurchaseOrderChannel?.unsubscribe();
+    final channel = _directionPurchaseOrderChannel;
     _directionPurchaseOrderChannel = null;
+    if (channel != null) {
+      unawaited(Supabase.instance.client.removeChannel(channel));
+    }
     _lastDirectionPurchaseSignature = null;
   }
 

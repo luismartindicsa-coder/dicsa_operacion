@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../direction_theme.dart';
+
 enum MenudeoAnalysisFlow { all, purchase, sale }
 
 enum MenudeoOpportunitySeverity { all, healthy, watch, outOfRange, critical }
@@ -524,14 +526,14 @@ String menudeoCashMovementLabel(MenudeoCashMovementFilter filter) {
 Color menudeoSeverityColor(MenudeoOpportunitySeverity severity) {
   switch (severity) {
     case MenudeoOpportunitySeverity.healthy:
-      return const Color(0xFF5EDCFF);
+      return kDirectionSuccess;
     case MenudeoOpportunitySeverity.watch:
-      return const Color(0xFF8AD8FF);
+      return kDirectionOliveMist;
     case MenudeoOpportunitySeverity.outOfRange:
-      return const Color(0xFFFFC86B);
+      return kDirectionWarning;
     case MenudeoOpportunitySeverity.critical:
-      return const Color(0xFFFF8B7A);
+      return kDirectionDanger;
     case MenudeoOpportunitySeverity.all:
-      return const Color(0xFFB9CBE7);
+      return kDirectionMutedText;
   }
 }

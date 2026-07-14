@@ -3719,6 +3719,7 @@ class _VoucherEditorDialogState extends State<_VoucherEditorDialog> {
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
       title: 'Selecciona fecha del voucher',
+      tokens: menudeoAreaTokens,
     );
     if (picked == null || !mounted) return;
     setState(() {

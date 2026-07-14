@@ -245,6 +245,15 @@ class GerenciaBaleWeeklyHistorySnapshot {
 
 class GerenciaBaleWeeklyTrackingStore {
   static final SupabaseClient _supa = Supabase.instance.client;
+  static const Duration _kBundleCacheTtl = Duration(seconds: 20);
+  static const Duration _kBaleTypeCacheTtl = Duration(minutes: 10);
+  static final Map<String, _GerenciaBundleCacheEntry> _bundleCache =
+      <String, _GerenciaBundleCacheEntry>{};
+  static final Map<String, Future<GerenciaBaleWeeklyTrackingBundle>>
+  _bundleLoadsInFlight = <String, Future<GerenciaBaleWeeklyTrackingBundle>>{};
+  static List<GerenciaBaleTypeRecord>? _cachedBaleTypes;
+  static DateTime? _cachedBaleTypesAt;
+  static Future<List<GerenciaBaleTypeRecord>>? _baleTypesLoadInFlight;
 
   static Future<GerenciaBaleWeeklyTrackingBundle> loadCurrentWeek() async {
     final weekStartDate = _weekStartMonday(DateTime.now());
@@ -255,18 +264,37 @@ class GerenciaBaleWeeklyTrackingStore {
     DateTime weekStartDate,
   ) async {
     final normalizedWeekStart = _weekStartMonday(weekStartDate);
+    final cacheKey = _fmtDate(normalizedWeekStart);
+    final cachedBundle = _bundleCache[cacheKey];
+    final now = DateTime.now();
+    if (cachedBundle != null &&
+        now.difference(cachedBundle.loadedAt) <= _kBundleCacheTtl) {
+      return cachedBundle.bundle;
+    }
+    final inFlight = _bundleLoadsInFlight[cacheKey];
+    if (inFlight != null) {
+      return inFlight;
+    }
+    final future = _loadWeekUncached(normalizedWeekStart);
+    _bundleLoadsInFlight[cacheKey] = future;
+    try {
+      final bundle = await future;
+      _bundleCache[cacheKey] = _GerenciaBundleCacheEntry(
+        bundle: bundle,
+        loadedAt: DateTime.now(),
+      );
+      return bundle;
+    } finally {
+      _bundleLoadsInFlight.remove(cacheKey);
+    }
+  }
+
+  static Future<GerenciaBaleWeeklyTrackingBundle> _loadWeekUncached(
+    DateTime normalizedWeekStart,
+  ) async {
     final weekEndDate = normalizedWeekStart.add(const Duration(days: 5));
     try {
-      final typeRows = await _supa
-          .from(_kGerenciaBaleTypeCatalogTable)
-          .select('key,label,sort_order,is_active')
-          .eq('is_active', true)
-          .order('sort_order', ascending: true)
-          .order('label', ascending: true);
-      final baleTypes = (typeRows as List<dynamic>)
-          .cast<Map<String, dynamic>>()
-          .map(GerenciaBaleTypeRecord.fromRow)
-          .toList(growable: false);
+      final baleTypes = await _loadBaleTypes();
 
       final planRow = await _supa
           .from(_kGerenciaBaleWeeklyPlansTable)
@@ -612,6 +640,7 @@ class GerenciaBaleWeeklyTrackingStore {
             .from(_kGerenciaBaleWeeklyPlanLinesTable)
             .insert(linePayload);
       }
+      _invalidateWeekCache(weekStartDate);
     } catch (e, st) {
       AppErrorReporter.report(
         e,
@@ -637,6 +666,7 @@ class GerenciaBaleWeeklyTrackingStore {
             'notes': notes.trim().isEmpty ? null : notes.trim(),
           })
           .eq('id', line.id);
+      _invalidateAllWeekCaches();
     } catch (e, st) {
       AppErrorReporter.report(
         e,
@@ -646,6 +676,60 @@ class GerenciaBaleWeeklyTrackingStore {
       rethrow;
     }
   }
+
+  static Future<List<GerenciaBaleTypeRecord>> _loadBaleTypes() async {
+    final cached = _cachedBaleTypes;
+    final cachedAt = _cachedBaleTypesAt;
+    final now = DateTime.now();
+    if (cached != null &&
+        cachedAt != null &&
+        now.difference(cachedAt) <= _kBaleTypeCacheTtl) {
+      return cached;
+    }
+    final inFlight = _baleTypesLoadInFlight;
+    if (inFlight != null) {
+      return inFlight;
+    }
+    final future = () async {
+      final typeRows = await _supa
+          .from(_kGerenciaBaleTypeCatalogTable)
+          .select('key,label,sort_order,is_active')
+          .eq('is_active', true)
+          .order('sort_order', ascending: true)
+          .order('label', ascending: true);
+      final baleTypes = (typeRows as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .map(GerenciaBaleTypeRecord.fromRow)
+          .toList(growable: false);
+      _cachedBaleTypes = baleTypes;
+      _cachedBaleTypesAt = DateTime.now();
+      return baleTypes;
+    }();
+    _baleTypesLoadInFlight = future;
+    try {
+      return await future;
+    } finally {
+      _baleTypesLoadInFlight = null;
+    }
+  }
+
+  static void _invalidateWeekCache(DateTime weekStartDate) {
+    _bundleCache.remove(_fmtDate(_weekStartMonday(weekStartDate)));
+  }
+
+  static void _invalidateAllWeekCaches() {
+    _bundleCache.clear();
+  }
+}
+
+class _GerenciaBundleCacheEntry {
+  final GerenciaBaleWeeklyTrackingBundle bundle;
+  final DateTime loadedAt;
+
+  const _GerenciaBundleCacheEntry({
+    required this.bundle,
+    required this.loadedAt,
+  });
 }
 
 DateTime _weekStartMonday(DateTime dateTime) {

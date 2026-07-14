@@ -1401,6 +1401,7 @@ class _CashCutEditorDialogState extends State<_CashCutEditorDialog> {
       firstDate: DateTime(2020),
       lastDate: DateTime(2035),
       title: 'Selecciona fecha del corte',
+      tokens: menudeoAreaTokens,
     );
     if (picked == null) return;
     setLocalState(() => _dateC.text = _fmtDate(picked));

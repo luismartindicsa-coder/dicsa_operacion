@@ -17,6 +17,7 @@ import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/archetypes/auxiliary_surfaces/confirmation_dialog.dart';
 import '../shared/page_routes.dart';
+import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/file_download_save.dart';
 import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
@@ -1779,6 +1780,7 @@ class _FinanzasProviderAccountsPageState
       pw.MultiPage(
         pageFormat: PdfPageFormat.a4.landscape,
         margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 28),
+        maxPages: 300,
         build: (_) => [
           pw.Row(
             children: [
@@ -3421,6 +3423,286 @@ class _FinanzasProviderAccountsPageState
     }
   }
 
+  List<_GlobalPendingInvoiceReportRow> _buildGlobalPendingInvoiceReportRows() {
+    final byInvoiceId = <String, _GlobalPendingInvoiceReportRow>{};
+    for (final account in _accounts) {
+      for (final row in account.invoices) {
+        final pendingAmount = row.invoice.balanceAmount
+            .clamp(0, double.infinity)
+            .toDouble();
+        if (pendingAmount <= 0.009) continue;
+        byInvoiceId[row.invoice.id] = _GlobalPendingInvoiceReportRow(
+          invoiceId: row.invoice.id,
+          date: row.invoice.dueDate ?? row.invoice.invoiceDate,
+          companyName: account.company.companyName,
+          folio: row.invoice.folio.trim().isEmpty
+              ? 'SIN FOLIO'
+              : row.invoice.folio.trim(),
+          totalAmount: row.invoice.totalAmount,
+          pendingAmount: pendingAmount,
+        );
+      }
+    }
+    final rows = byInvoiceId.values.toList(growable: false)
+      ..sort((a, b) {
+        final byDate = a.date.compareTo(b.date);
+        if (byDate != 0) return byDate;
+        final byCompany = a.companyName.compareTo(b.companyName);
+        if (byCompany != 0) return byCompany;
+        return a.folio.compareTo(b.folio);
+      });
+    return rows;
+  }
+
+  String _csvCell(String value) =>
+      '"${value.replaceAll('"', '""').replaceAll('\n', ' ')}"';
+
+  Future<void> _exportGlobalPendingInvoicesCsv() async {
+    final rows = _buildGlobalPendingInvoiceReportRows();
+    if (rows.isEmpty) {
+      _toast('No hay facturas pendientes para exportar.');
+      return;
+    }
+    final csv = StringBuffer()
+      ..writeln(
+        [
+          'Fecha',
+          'Empresa',
+          'Factura',
+          'Monto',
+          'Importe pendiente',
+        ].map(_csvCell).join(','),
+      );
+    for (final row in rows) {
+      csv.writeln(
+        <String>[
+          _dateLabel(row.date),
+          row.companyName,
+          row.folio,
+          row.totalAmount.toStringAsFixed(2),
+          row.pendingAmount.toStringAsFixed(2),
+        ].map(_csvCell).join(','),
+      );
+    }
+    final stamp = DateTime.now().millisecondsSinceEpoch;
+    final path = await saveCsvFile(
+      fileName: 'finanzas_facturas_pendientes_global_$stamp.csv',
+      content: csv.toString(),
+      dialogTitle: 'Guardar reporte CSV de facturas pendientes',
+    );
+    if (!mounted || path == null) return;
+    _toast('CSV guardado en $path');
+  }
+
+  Future<Uint8List> _buildGlobalPendingInvoicesPdfBytes(
+    List<_GlobalPendingInvoiceReportRow> rows,
+  ) async {
+    final doc = pw.Document();
+    final dicsaBlueSoft = PdfColor.fromHex('#E9F0FF');
+    final dicsaBlueDeep = PdfColor.fromHex('#173A7A');
+    final dicsaGreenSoft = PdfColor.fromHex('#EEF9F1');
+    final dicsaInk = PdfColor.fromHex('#16202B');
+    final dicsaMuted = PdfColor.fromHex('#5E6B78');
+    final dicsaBorder = PdfColor.fromHex('#B8C7DD');
+    pw.MemoryImage? logoImage;
+    try {
+      final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+      logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+    } catch (_) {}
+
+    final now = DateTime.now();
+    final printedAt =
+        '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year} '
+        '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+    final totalAmount = rows.fold<double>(
+      0,
+      (sum, row) => sum + row.totalAmount,
+    );
+    final pendingAmount = rows.fold<double>(
+      0,
+      (sum, row) => sum + row.pendingAmount,
+    );
+
+    pw.Widget summaryCard(String label, String value) {
+      return pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: pw.BoxDecoration(
+            color: dicsaBlueSoft,
+            borderRadius: pw.BorderRadius.circular(14),
+            border: pw.Border.all(color: dicsaBorder),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                label,
+                style: pw.TextStyle(
+                  fontSize: 9.2,
+                  fontWeight: pw.FontWeight.bold,
+                  color: dicsaBlueDeep,
+                ),
+              ),
+              pw.SizedBox(height: 6),
+              pw.Text(
+                value,
+                style: pw.TextStyle(
+                  fontSize: 15.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: dicsaInk,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 28),
+        build: (_) => [
+          pw.Row(
+            children: [
+              if (logoImage != null)
+                pw.SizedBox(
+                  width: 42,
+                  height: 28,
+                  child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                ),
+              if (logoImage != null) pw.SizedBox(width: 10),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'REPORTE GLOBAL DE FACTURAS PENDIENTES',
+                      style: pw.TextStyle(
+                        fontSize: 17,
+                        fontWeight: pw.FontWeight.bold,
+                        color: dicsaBlueDeep,
+                      ),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      'Cuentas por Proveedor',
+                      style: pw.TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: dicsaMuted,
+                      ),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      '${rows.length} factura(s) pendiente(s) en todas las empresas',
+                      style: pw.TextStyle(fontSize: 9.4, color: dicsaBlueDeep),
+                    ),
+                  ],
+                ),
+              ),
+              pw.Text(printedAt, style: const pw.TextStyle(fontSize: 9.5)),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.Row(
+            children: [
+              summaryCard('FACTURAS', '${rows.length}'),
+              pw.SizedBox(width: 10),
+              summaryCard('MONTO', _money(totalAmount)),
+              pw.SizedBox(width: 10),
+              summaryCard('IMPORTE PENDIENTE', _money(pendingAmount)),
+            ],
+          ),
+          pw.SizedBox(height: 18),
+          pw.Text(
+            'DETALLE GLOBAL',
+            style: pw.TextStyle(
+              fontSize: 12.5,
+              fontWeight: pw.FontWeight.bold,
+              color: dicsaBlueDeep,
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Table(
+            border: pw.TableBorder.all(color: dicsaBorder),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(0.9),
+              1: const pw.FlexColumnWidth(1.9),
+              2: const pw.FlexColumnWidth(1.1),
+              3: const pw.FlexColumnWidth(1.0),
+              4: const pw.FlexColumnWidth(1.15),
+            },
+            children: [
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
+                children: ['FECHA', 'EMPRESA', 'FACTURA', 'MONTO', 'IMPORTE']
+                    .map(
+                      (label) => pw.Padding(
+                        padding: const pw.EdgeInsets.all(7),
+                        child: pw.Text(
+                          label,
+                          style: pw.TextStyle(
+                            fontSize: 9.4,
+                            fontWeight: pw.FontWeight.bold,
+                            color: dicsaBlueDeep,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
+              for (final row in rows)
+                pw.TableRow(
+                  children:
+                      <String>[
+                            _dateLabel(row.date),
+                            row.companyName,
+                            row.folio,
+                            _money(row.totalAmount),
+                            _money(row.pendingAmount),
+                          ]
+                          .map(
+                            (value) => pw.Padding(
+                              padding: const pw.EdgeInsets.all(7),
+                              child: pw.Text(
+                                value,
+                                style: const pw.TextStyle(fontSize: 9.2),
+                              ),
+                            ),
+                          )
+                          .toList(growable: false),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+    return doc.save();
+  }
+
+  Future<void> _exportGlobalPendingInvoicesPdf() async {
+    final rows = _buildGlobalPendingInvoiceReportRows();
+    if (rows.isEmpty) {
+      _toast('No hay facturas pendientes para exportar.');
+      return;
+    }
+    try {
+      final bytes = await _buildGlobalPendingInvoicesPdfBytes(rows);
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final path = await saveBytesAs(
+        bytes: bytes,
+        suggestedFileName: 'finanzas_facturas_pendientes_global_$stamp.pdf',
+        dialogTitle: 'Guardar reporte PDF de facturas pendientes',
+      );
+      if (!mounted || path == null) return;
+      _toast('PDF guardado en $path');
+    } catch (error) {
+      if (!mounted) return;
+      _toast('No se pudo generar el PDF de pendientes. $error');
+    }
+  }
+
   Future<void> _openDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -3628,10 +3910,27 @@ class _FinanzasProviderAccountsPageState
             onTapSync: () => setState(() => _menuOpen = !_menuOpen),
           ),
           centerBuilder: (_, _) => const _FinProviderAccountsHeaderBrand(),
-          trailingBuilder: (_, _) => _FinHeaderButton(
-            label: 'Cerrar sesión',
-            icon: Icons.logout_rounded,
-            onTap: _logout,
+          trailingBuilder: (_, _) => Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _FinHeaderButton(
+                label: 'PDF pendientes',
+                icon: Icons.picture_as_pdf_rounded,
+                onTap: _exportGlobalPendingInvoicesPdf,
+              ),
+              _FinHeaderButton(
+                label: 'CSV pendientes',
+                icon: Icons.table_chart_rounded,
+                onTap: _exportGlobalPendingInvoicesCsv,
+              ),
+              _FinHeaderButton(
+                label: 'Cerrar sesión',
+                icon: Icons.logout_rounded,
+                onTap: _logout,
+              ),
+            ],
           ),
           child: Stack(
             children: [
@@ -3834,6 +4133,24 @@ class _ProviderInvoiceView {
     required this.bankMovement,
     required this.tickets,
     required this.evidences,
+  });
+}
+
+class _GlobalPendingInvoiceReportRow {
+  final String invoiceId;
+  final DateTime date;
+  final String companyName;
+  final String folio;
+  final double totalAmount;
+  final double pendingAmount;
+
+  const _GlobalPendingInvoiceReportRow({
+    required this.invoiceId,
+    required this.date,
+    required this.companyName,
+    required this.folio,
+    required this.totalAmount,
+    required this.pendingAmount,
   });
 }
 

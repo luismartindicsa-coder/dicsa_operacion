@@ -86,21 +86,21 @@ class _MenudeoCashTabState extends State<MenudeoCashTab> {
               title: 'DEPÓSITOS',
               value: formatMoney(dataset.snapshot.deposits),
               detail: 'Entradas capturadas en caja',
-              accent: const Color(0xFF66F0DC),
+              accent: kDirectionSuccess,
             ),
             DirectionMetricCard(
               icon: Icons.north_east_rounded,
               title: 'GASTOS',
               value: formatMoney(dataset.snapshot.expenses),
               detail: 'Salidas capturadas en caja',
-              accent: const Color(0xFFFFC86B),
+              accent: kDirectionWarning,
             ),
             DirectionMetricCard(
               icon: Icons.account_balance_wallet_rounded,
               title: 'FLUJO NETO',
               value: formatMoney(dataset.snapshot.netFlow),
               detail: 'Depósitos menos gastos',
-              accent: const Color(0xFF7CE0FF),
+              accent: kDirectionOliveMist,
             ),
             DirectionMetricCard(
               icon: Icons.rule_folder_rounded,
@@ -108,7 +108,7 @@ class _MenudeoCashTabState extends State<MenudeoCashTab> {
               value:
                   '${dataset.snapshot.cutsWithDifference} cortes · ${dataset.snapshot.pendingChecks} checks',
               detail: 'Descuadres y conciliaciones pendientes',
-              accent: const Color(0xFFFF9A8B),
+              accent: kDirectionDanger,
             ),
           ],
         ),
@@ -309,6 +309,7 @@ class _CashFiltersBar extends StatelessWidget {
       label: 'VENTANA',
       bounds: DateTimeRange(start: DateTime(2024, 1, 1), end: DateTime.now()),
       initialRange: state.filters.dateRange,
+      tokens: directionAreaTokens,
     );
     if (result == null) return;
     if (result.clear) {
@@ -340,7 +341,7 @@ class _CashDateRangeButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
-            color: const Color(0xFF10274E).withValues(alpha: 0.82),
+            color: kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.82),
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
           ),
@@ -413,7 +414,7 @@ class _CashDropdown<T> extends StatelessWidget {
         initialValue: value,
         isDense: true,
         isExpanded: true,
-        dropdownColor: const Color(0xFF153160),
+        dropdownColor: kDirectionMenuSurface,
         iconEnabledColor: kDirectionSurfaceText,
         style: const TextStyle(
           color: kDirectionSurfaceText,
@@ -428,7 +429,7 @@ class _CashDropdown<T> extends StatelessWidget {
           ),
           isDense: true,
           filled: true,
-          fillColor: const Color(0xFF10274E).withValues(alpha: 0.82),
+          fillColor: kDirectionInteractiveSurfaceStrong.withValues(alpha: 0.82),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 10,
@@ -502,7 +503,7 @@ class _CashBreakdownCard extends StatelessWidget {
           _CashBreakdownSection(
             title: 'Rubros',
             rows: rubricRows.take(6).toList(growable: false),
-            color: const Color(0xFF7CCEFF),
+            color: kDirectionOliveGlow,
           ),
           const SizedBox(height: 16),
           _CashBreakdownSection(
@@ -514,7 +515,7 @@ class _CashBreakdownCard extends StatelessWidget {
           _CashBreakdownSection(
             title: 'Subconceptos',
             rows: subconceptRows.take(6).toList(growable: false),
-            color: const Color(0xFF9AA9FF),
+            color: kDirectionOliveMist,
           ),
           const SizedBox(height: 16),
           _CashBreakdownSection(
@@ -680,7 +681,7 @@ class _CashFocusedBreakdownsCard extends StatelessWidget {
               ),
               _FocusedExpenseSummaryChip(
                 breakdown: travel,
-                color: const Color(0xFF7CCEFF),
+                color: kDirectionOliveGlow,
               ),
               _FocusedExpenseSummaryChip(
                 breakdown: fuel,
@@ -725,9 +726,7 @@ class _FocusedExpenseStackedUnitChart extends StatelessWidget {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(20),
         color: Colors.white.withValues(alpha: 0.04),
-        border: Border.all(
-          color: const Color(0xFF7CCEFF).withValues(alpha: 0.20),
-        ),
+        border: Border.all(color: kDirectionOliveGlow.withValues(alpha: 0.20)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -744,7 +743,7 @@ class _FocusedExpenseStackedUnitChart extends StatelessWidget {
           Text(
             formatMoney(breakdown.total),
             style: const TextStyle(
-              color: Color(0xFF7CCEFF),
+              color: kDirectionOliveGlow,
               fontWeight: FontWeight.w900,
               fontSize: 20,
             ),
@@ -762,7 +761,7 @@ class _FocusedExpenseStackedUnitChart extends StatelessWidget {
                 label: 'Mantenimiento',
                 color: Color(0xFFFFC86B),
               ),
-              _ExpenseLegendChip(label: 'Viajes', color: Color(0xFF7CCEFF)),
+              _ExpenseLegendChip(label: 'Viajes', color: kDirectionOliveGlow),
             ],
           ),
           const SizedBox(height: 10),
@@ -775,7 +774,7 @@ class _FocusedExpenseStackedUnitChart extends StatelessWidget {
                 borderRadius: BorderRadius.circular(18),
                 color: Colors.white.withValues(alpha: 0.05),
                 border: Border.all(
-                  color: const Color(0xFF7CCEFF).withValues(alpha: 0.22),
+                  color: kDirectionOliveGlow.withValues(alpha: 0.22),
                 ),
               ),
               child: Column(
@@ -814,7 +813,7 @@ class _FocusedExpenseStackedUnitChart extends StatelessWidget {
                       _ExpenseCompositionChip(
                         label: 'Viajes',
                         value: selectedRow!.travelTotal,
-                        color: const Color(0xFF7CCEFF),
+                        color: kDirectionOliveGlow,
                       ),
                     ],
                   ),
@@ -843,13 +842,13 @@ class _FocusedExpenseStackedUnitChart extends StatelessWidget {
                             borderRadius: BorderRadius.circular(16),
                             color: isSelected
                                 ? const Color(
-                                    0xFF7CCEFF,
+                                    0xFFD8E38A,
                                   ).withValues(alpha: 0.10)
                                 : Colors.transparent,
                             border: Border.all(
                               color: isSelected
                                   ? const Color(
-                                      0xFF7CCEFF,
+                                      0xFFD8E38A,
                                     ).withValues(alpha: 0.32)
                                   : Colors.white.withValues(alpha: 0.06),
                             ),
@@ -932,7 +931,7 @@ class _FocusedExpenseStackedUnitChart extends StatelessWidget {
                                                     ),
                                                     child: Container(
                                                       color: const Color(
-                                                        0xFF7CCEFF,
+                                                        0xFFD8E38A,
                                                       ),
                                                     ),
                                                   ),
@@ -976,7 +975,7 @@ class _FocusedExpenseStackedUnitChart extends StatelessWidget {
                                   _ExpenseCompositionChip(
                                     label: 'Viajes',
                                     value: row.travelTotal,
-                                    color: const Color(0xFF7CCEFF),
+                                    color: kDirectionOliveGlow,
                                   ),
                                 ],
                               ),
@@ -1163,7 +1162,7 @@ class _CashTimelineCard extends StatelessWidget {
                     label: 'Neto',
                     value: formatMoney(selectedPoint!.net),
                     color: selectedPoint!.net >= 0
-                        ? const Color(0xFF7CCEFF)
+                        ? kDirectionOliveGlow
                         : const Color(0xFFFF9A8B),
                   ),
                 ],
@@ -1254,7 +1253,7 @@ class _TimelineDayColumn extends StatelessWidget {
                 : Colors.transparent,
             border: Border.all(
               color: selected
-                  ? const Color(0xFF7CCEFF).withValues(alpha: 0.30)
+                  ? kDirectionOliveGlow.withValues(alpha: 0.30)
                   : Colors.transparent,
             ),
           ),
@@ -1287,7 +1286,7 @@ class _TimelineDayColumn extends StatelessWidget {
                         value: point.net.abs(),
                         maxValue: maxValue,
                         color: point.net >= 0
-                            ? const Color(0xFF7CCEFF)
+                            ? kDirectionOliveGlow
                             : const Color(0xFFFF9A8B),
                       ),
                   ],
@@ -1372,7 +1371,7 @@ class _TimelineLegend extends StatelessWidget {
         _TimelineInfoPill(
           label: 'Neto',
           value: 'Balance',
-          color: Color(0xFF7CCEFF),
+          color: kDirectionOliveGlow,
         ),
       ],
     );
@@ -1572,7 +1571,7 @@ class _CashConcentrationCard extends StatelessWidget {
       _CashConcentrationLane(
         title: 'Rubro líder',
         row: rubricRows.isEmpty ? null : rubricRows.first,
-        color: const Color(0xFF7CCEFF),
+        color: kDirectionOliveGlow,
       ),
       _CashConcentrationLane(
         title: 'Concepto líder',
@@ -1582,7 +1581,7 @@ class _CashConcentrationCard extends StatelessWidget {
       _CashConcentrationLane(
         title: 'Subconcepto líder',
         row: subconceptRows.isEmpty ? null : subconceptRows.first,
-        color: const Color(0xFF9AA9FF),
+        color: kDirectionOliveMist,
       ),
       _CashConcentrationLane(
         title: 'Persona líder',
@@ -1891,7 +1890,7 @@ List<_CashInsightItem> _buildCashInsights({
                 : movement == MenudeoCashMovementFilter.expenses
                 ? 'gastos'
                 : 'movimientos'} .',
-        color: const Color(0xFF7CCEFF),
+        color: kDirectionOliveGlow,
       ),
     );
   }
@@ -1911,7 +1910,7 @@ List<_CashInsightItem> _buildCashInsights({
         title: 'Subconcepto a vigilar',
         detail:
             '${subconceptRows.first.label} ya representa ${(subconceptRows.first.share * 100).toStringAsFixed(1)}% del efectivo depurado.',
-        color: const Color(0xFF9AA9FF),
+        color: kDirectionOliveMist,
       ),
     );
   }
@@ -1931,7 +1930,7 @@ List<_CashInsightItem> _buildCashInsights({
         title: 'Sin hallazgos fuertes',
         detail:
             'Con los filtros actuales no hay concentración suficiente para disparar una lectura ejecutiva relevante.',
-        color: Color(0xFF7CCEFF),
+        color: kDirectionOliveGlow,
       ),
     );
   }

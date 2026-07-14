@@ -262,9 +262,9 @@ class _DirectionMenudeoAnalysisPageState
                                 ),
                                 borderRadius: BorderRadius.circular(28),
                                 blurSigma: 30,
-                                fillColor: const Color(
-                                  0xFF173A78,
-                                ).withValues(alpha: 0.22),
+                                fillColor: kDirectionOliveDeep.withValues(
+                                  alpha: 0.24,
+                                ),
                                 borderColor: Colors.white.withValues(
                                   alpha: 0.24,
                                 ),
@@ -277,9 +277,9 @@ class _DirectionMenudeoAnalysisPageState
                                 bevelShadowColor: Colors.black.withValues(
                                   alpha: 0.16,
                                 ),
-                                glowColor: const Color(
-                                  0xFF66D5FF,
-                                ).withValues(alpha: 0.08),
+                                glowColor: kDirectionOliveGlow.withValues(
+                                  alpha: 0.10,
+                                ),
                                 child: DefaultTabController(
                                   length: 3,
                                   child: Column(
