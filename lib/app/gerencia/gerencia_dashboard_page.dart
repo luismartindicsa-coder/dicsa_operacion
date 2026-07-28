@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
@@ -27,10 +28,14 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
   static const Duration _kSilentReloadInterval = Duration(seconds: 60);
 
   bool _loading = true;
+  bool _loadingHistory = true;
   bool _refreshing = false;
+  bool _refreshingHistory = false;
+  bool _pendingHistoryReload = false;
   GerenciaBaleWeeklyTrackingBundle? _bundle;
   List<GerenciaBaleWeeklyHistorySnapshot> _history = const [];
   Timer? _reloadTimer;
+  RealtimeChannel? _dashboardRefreshChannel;
 
   static final EmptyAreaDashboardConfig _config = EmptyAreaDashboardConfig(
     dashboardLabel: 'Gerencia',
@@ -106,34 +111,57 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
   void initState() {
     super.initState();
     unawaited(_load());
+    unawaited(_loadHistory());
     _reloadTimer = Timer.periodic(_kSilentReloadInterval, (_) {
-      unawaited(_load(silent: true));
+      unawaited(_load(silent: true, forceRefresh: true));
+      unawaited(_loadHistory());
     });
+    _dashboardRefreshChannel = Supabase.instance.client
+        .channel('gerencia-dashboard-refresh')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'inventory_movements_v2',
+          callback: (_) {
+            unawaited(_load(silent: true, forceRefresh: true));
+            unawaited(_loadHistory());
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'gerencia_bale_weekly_plan_lines',
+          callback: (_) {
+            unawaited(_load(silent: true, forceRefresh: true));
+            unawaited(_loadHistory());
+          },
+        )
+        .subscribe();
   }
 
   @override
   void dispose() {
     _reloadTimer?.cancel();
+    _dashboardRefreshChannel?.unsubscribe();
     super.dispose();
   }
 
-  Future<void> _load({bool silent = false}) async {
+  Future<void> _load({bool silent = false, bool forceRefresh = false}) async {
     if (_refreshing) return;
     _refreshing = true;
     if (!silent || _bundle == null) {
       setState(() => _loading = true);
     }
     try {
-      final results = await Future.wait([
-        GerenciaBaleWeeklyTrackingStore.loadCurrentWeek(),
-        GerenciaBaleWeeklyTrackingStore.loadRecentHistory(),
-      ]);
+      final bundle = await GerenciaBaleWeeklyTrackingStore.loadCurrentWeek(
+        forceRefresh: forceRefresh,
+      );
       if (!mounted) return;
       setState(() {
-        _bundle = results[0] as GerenciaBaleWeeklyTrackingBundle;
-        _history = results[1] as List<GerenciaBaleWeeklyHistorySnapshot>;
+        _bundle = bundle;
         _loading = false;
       });
+      unawaited(_loadHistory());
     } catch (_) {
       if (!mounted) return;
       if (!silent || _bundle == null) {
@@ -141,6 +169,34 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
       }
     } finally {
       _refreshing = false;
+    }
+  }
+
+  Future<void> _loadHistory() async {
+    if (_refreshingHistory) {
+      _pendingHistoryReload = true;
+      return;
+    }
+    _refreshingHistory = true;
+    if (mounted) {
+      setState(() => _loadingHistory = true);
+    }
+    try {
+      final history = await GerenciaBaleWeeklyTrackingStore.loadRecentHistory();
+      if (!mounted) return;
+      setState(() {
+        _history = history;
+        _loadingHistory = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loadingHistory = false);
+    } finally {
+      _refreshingHistory = false;
+      if (_pendingHistoryReload && mounted) {
+        _pendingHistoryReload = false;
+        unawaited(_loadHistory());
+      }
     }
   }
 
@@ -175,6 +231,7 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
         ],
         workspaceBuilder: (context, config, width) => _GerenciaWorkspace(
           loading: _loading,
+          loadingHistory: _loadingHistory,
           bundle: _bundle,
           history: _history,
           onOpenWeeklyTracking: _openWeeklyTracking,
@@ -201,12 +258,14 @@ Widget _buildGerenciaSidePanel(
 
 class _GerenciaWorkspace extends StatelessWidget {
   final bool loading;
+  final bool loadingHistory;
   final GerenciaBaleWeeklyTrackingBundle? bundle;
   final List<GerenciaBaleWeeklyHistorySnapshot> history;
   final Future<void> Function() onOpenWeeklyTracking;
 
   const _GerenciaWorkspace({
     required this.loading,
+    required this.loadingHistory,
     required this.bundle,
     required this.history,
     required this.onOpenWeeklyTracking,
@@ -293,7 +352,7 @@ class _GerenciaWorkspace extends StatelessWidget {
           ],
           if (!loading && bundle != null) ...[
             const SizedBox(height: 18),
-            _HistoricTrackingCard(history: history),
+            _HistoricTrackingCard(history: history, loading: loadingHistory),
           ],
           const SizedBox(height: 18),
           FilledButton.icon(
@@ -310,11 +369,26 @@ class _GerenciaWorkspace extends StatelessWidget {
 
 class _HistoricTrackingCard extends StatelessWidget {
   final List<GerenciaBaleWeeklyHistorySnapshot> history;
+  final bool loading;
 
-  const _HistoricTrackingCard({required this.history});
+  const _HistoricTrackingCard({required this.history, required this.loading});
 
   @override
   Widget build(BuildContext context) {
+    if (loading) {
+      return Container(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.04),
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: const Color(0x40FF9AA6)),
+        ),
+        child: const SizedBox(
+          height: 120,
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
     if (history.isEmpty) {
       return const _WorkspaceMessage(
         icon: Icons.timeline_rounded,

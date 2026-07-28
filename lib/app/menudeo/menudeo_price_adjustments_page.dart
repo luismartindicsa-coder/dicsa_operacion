@@ -1920,6 +1920,82 @@ class _MenudeoPriceAdjustmentsPageState
     );
   }
 
+  String _csvCell(Object? value) {
+    final text = (value ?? '').toString().replaceAll('"', '""');
+    return '"$text"';
+  }
+
+  Future<void> _downloadHistoryCsv() async {
+    final rows = _workspaceHistoryRows;
+    if (rows.isEmpty) {
+      _toast('No hay historial para exportar con ese filtro.');
+      return;
+    }
+    final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final csv = StringBuffer()
+      ..writeln(
+        [
+          'FECHA',
+          'MOVIMIENTO',
+          'EVENTO',
+          'MODO',
+          'DIRECCION',
+          'GRUPO',
+          'CONTRAPARTE',
+          'MATERIAL',
+          'PRECIO_ANTERIOR',
+          'PRECIO_NUEVO',
+          'DIFERENCIA',
+          'MOTIVO',
+          'APLICADO_POR',
+          'PRICE_ID',
+          'HISTORY_ID',
+        ].join(','),
+      );
+    for (final row in rows) {
+      final previous = (row['previous_price'] as num?)?.toDouble();
+      final current = ((row['new_price'] ?? 0) as num).toDouble();
+      final movement = previous == null
+          ? 'ALTA'
+          : current > previous
+          ? 'SUBE'
+          : current < previous
+          ? 'BAJA'
+          : 'IGUAL';
+      csv.writeln(
+        [
+          _csvCell(_formatHistoryDate((row['created_at'] ?? '').toString())),
+          _csvCell(movement),
+          _csvCell(_historyEventLabel((row['event_type'] ?? '').toString())),
+          _csvCell(_historyModeLabel((row['mode'] ?? '').toString())),
+          _csvCell(_rowDirectionLabel(row)),
+          _csvCell((row['group_code'] ?? '').toString().toUpperCase()),
+          _csvCell((row['counterparty_name'] ?? '').toString().toUpperCase()),
+          _csvCell(
+            (row['material_label_snapshot'] ?? '').toString().toUpperCase(),
+          ),
+          previous?.toStringAsFixed(4) ?? '',
+          current.toStringAsFixed(4),
+          (previous == null ? current : current - previous).toStringAsFixed(4),
+          _csvCell((row['reason'] ?? '').toString()),
+          _csvCell((row['applied_by'] ?? '').toString()),
+          _csvCell((row['price_id'] ?? '').toString()),
+          _csvCell((row['history_id'] ?? row['id'] ?? '').toString()),
+        ].join(','),
+      );
+    }
+    final path = await saveCsvFile(
+      fileName: 'menudeo_historial_ajustes_$stamp.csv',
+      content: csv.toString(),
+      dialogTitle: 'Guardar historial CSV de ajustes de Menudeo',
+    );
+    if (path == null) {
+      _toast('Exportación cancelada');
+      return;
+    }
+    _toast('CSV guardado en: $path');
+  }
+
   Future<void> _downloadProviderPriceReportPdf() async {
     final rowsForReport = _selectedRows.isNotEmpty
         ? _selectedRows
@@ -2402,6 +2478,7 @@ class _MenudeoPriceAdjustmentsPageState
                 modeInputHint: _modeInputHint,
                 computeNewPrice: _computeNewPrice,
                 onShowHistory: _showHistoryDialog,
+                onDownloadHistoryCsv: _downloadHistoryCsv,
                 onDownloadProviderPdf: _downloadProviderPriceReportPdf,
                 onDownloadPreview: _downloadPreview,
                 onOpenAdjustmentDialog: _showAdjustmentDialog,
@@ -2618,6 +2695,7 @@ class _PriceAdjustBody extends StatelessWidget {
   final String Function(String mode) modeInputHint;
   final double Function(double current) computeNewPrice;
   final Future<void> Function() onShowHistory;
+  final Future<void> Function() onDownloadHistoryCsv;
   final Future<void> Function() onDownloadProviderPdf;
   final Future<void> Function() onDownloadPreview;
   final Future<void> Function() onOpenAdjustmentDialog;
@@ -2696,6 +2774,7 @@ class _PriceAdjustBody extends StatelessWidget {
     required this.modeInputHint,
     required this.computeNewPrice,
     required this.onShowHistory,
+    required this.onDownloadHistoryCsv,
     required this.onDownloadProviderPdf,
     required this.onDownloadPreview,
     required this.onOpenAdjustmentDialog,
@@ -2768,6 +2847,12 @@ class _PriceAdjustBody extends StatelessWidget {
                               : onOpenAdjustmentDialog,
                           icon: const Icon(Icons.tune_rounded),
                           label: const Text('Nuevo ajuste'),
+                        ),
+                        OutlinedButton.icon(
+                          style: contractSecondaryButtonStyle(context),
+                          onPressed: rows.isEmpty ? null : onDownloadHistoryCsv,
+                          icon: const Icon(Icons.table_view_rounded),
+                          label: const Text('Descargar CSV'),
                         ),
                         OutlinedButton.icon(
                           style: contractSecondaryButtonStyle(context),

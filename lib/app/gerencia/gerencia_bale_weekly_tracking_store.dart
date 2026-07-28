@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../shared/app_error_reporter.dart';
@@ -83,6 +85,11 @@ class GerenciaBaleWeeklyPlanRecord {
   final String status;
   final String notes;
   final DateTime? closedAt;
+  final int? snapshotProductionActualBales;
+  final int? snapshotProductionTargetBales;
+  final int? snapshotShipmentActualBales;
+  final int? snapshotShipmentTargetBales;
+  final DateTime? snapshotRefreshedAt;
   final List<GerenciaBaleWeeklyPlanLineRecord> lines;
 
   const GerenciaBaleWeeklyPlanRecord({
@@ -92,6 +99,11 @@ class GerenciaBaleWeeklyPlanRecord {
     required this.status,
     required this.notes,
     required this.closedAt,
+    required this.snapshotProductionActualBales,
+    required this.snapshotProductionTargetBales,
+    required this.snapshotShipmentActualBales,
+    required this.snapshotShipmentTargetBales,
+    required this.snapshotRefreshedAt,
     required this.lines,
   });
 
@@ -106,6 +118,21 @@ class GerenciaBaleWeeklyPlanRecord {
       status: (row['status'] ?? 'planeada').toString(),
       notes: ((row['notes'] ?? '') as String).trim(),
       closedAt: _tryParseDateTime(row['closed_at'] as String?),
+      snapshotProductionActualBales: _tryParseInt(
+        row['snapshot_production_actual_bales'],
+      ),
+      snapshotProductionTargetBales: _tryParseInt(
+        row['snapshot_production_target_bales'],
+      ),
+      snapshotShipmentActualBales: _tryParseInt(
+        row['snapshot_shipment_actual_bales'],
+      ),
+      snapshotShipmentTargetBales: _tryParseInt(
+        row['snapshot_shipment_target_bales'],
+      ),
+      snapshotRefreshedAt: _tryParseDateTime(
+        row['snapshot_refreshed_at'] as String?,
+      ),
       lines: lines,
     );
   }
@@ -115,6 +142,12 @@ class GerenciaBaleWeeklyPlanRecord {
 
   int get totalShipmentTarget =>
       lines.fold(0, (sum, line) => sum + line.shipmentTargetBales);
+
+  bool get hasSummarySnapshot =>
+      snapshotProductionActualBales != null &&
+      snapshotProductionTargetBales != null &&
+      snapshotShipmentActualBales != null &&
+      snapshotShipmentTargetBales != null;
 }
 
 class GerenciaBaleDailyActualRecord {
@@ -255,19 +288,26 @@ class GerenciaBaleWeeklyTrackingStore {
   static DateTime? _cachedBaleTypesAt;
   static Future<List<GerenciaBaleTypeRecord>>? _baleTypesLoadInFlight;
 
-  static Future<GerenciaBaleWeeklyTrackingBundle> loadCurrentWeek() async {
+  static Future<GerenciaBaleWeeklyTrackingBundle> loadCurrentWeek({
+    bool forceRefresh = false,
+  }) async {
     final weekStartDate = _weekStartMonday(DateTime.now());
-    return loadWeek(weekStartDate);
+    return loadWeek(weekStartDate, forceRefresh: forceRefresh);
   }
 
   static Future<GerenciaBaleWeeklyTrackingBundle> loadWeek(
-    DateTime weekStartDate,
-  ) async {
+    DateTime weekStartDate, {
+    bool forceRefresh = false,
+  }) async {
     final normalizedWeekStart = _weekStartMonday(weekStartDate);
     final cacheKey = _fmtDate(normalizedWeekStart);
+    if (forceRefresh) {
+      _bundleCache.remove(cacheKey);
+    }
     final cachedBundle = _bundleCache[cacheKey];
     final now = DateTime.now();
-    if (cachedBundle != null &&
+    if (!forceRefresh &&
+        cachedBundle != null &&
         now.difference(cachedBundle.loadedAt) <= _kBundleCacheTtl) {
       return cachedBundle.bundle;
     }
@@ -298,7 +338,12 @@ class GerenciaBaleWeeklyTrackingStore {
 
       final planRow = await _supa
           .from(_kGerenciaBaleWeeklyPlansTable)
-          .select('id,week_start_date,week_end_date,status,notes,closed_at')
+          .select(
+            'id,week_start_date,week_end_date,status,notes,closed_at,'
+            'snapshot_production_actual_bales,snapshot_production_target_bales,'
+            'snapshot_shipment_actual_bales,snapshot_shipment_target_bales,'
+            'snapshot_refreshed_at',
+          )
           .eq('week_start_date', _fmtDate(normalizedWeekStart))
           .maybeSingle();
 
@@ -551,7 +596,7 @@ class GerenciaBaleWeeklyTrackingStore {
           }(),
       ];
 
-      return GerenciaBaleWeeklyTrackingBundle(
+      final bundle = GerenciaBaleWeeklyTrackingBundle(
         weekStartDate: normalizedWeekStart,
         weekEndDate: weekEndDate,
         baleTypes: baleTypes,
@@ -560,6 +605,8 @@ class GerenciaBaleWeeklyTrackingStore {
         unmappedProductionCodes: unmappedProductionCodes.toList()..sort(),
         unmappedShipmentCodes: unmappedShipmentCodes.toList()..sort(),
       );
+      _persistSummarySnapshotIfNeeded(currentPlan, bundle);
+      return bundle;
     } catch (e, st) {
       AppErrorReporter.report(
         e,
@@ -577,22 +624,64 @@ class GerenciaBaleWeeklyTrackingStore {
     try {
       final planRows = await _supa
           .from(_kGerenciaBaleWeeklyPlansTable)
-          .select('week_start_date,week_end_date')
+          .select(
+            'week_start_date,week_end_date,'
+            'snapshot_production_actual_bales,snapshot_production_target_bales,'
+            'snapshot_shipment_actual_bales,snapshot_shipment_target_bales',
+          )
           .order('week_start_date', ascending: false)
           .limit(limit);
+      final planMaps = (planRows as List<dynamic>)
+          .cast<Map<String, dynamic>>()
+          .toList(growable: false);
       final snapshots = <GerenciaBaleWeeklyHistorySnapshot>[];
-      for (final row
-          in (planRows as List<dynamic>).cast<Map<String, dynamic>>()) {
-        final bundle = await loadWeek(_parseDate(row['week_start_date']));
+      final missingWeekStartDates = <DateTime>[];
+      for (final row in planMaps) {
+        final productionActual = _tryParseInt(
+          row['snapshot_production_actual_bales'],
+        );
+        final productionTarget = _tryParseInt(
+          row['snapshot_production_target_bales'],
+        );
+        final shipmentActual = _tryParseInt(
+          row['snapshot_shipment_actual_bales'],
+        );
+        final shipmentTarget = _tryParseInt(
+          row['snapshot_shipment_target_bales'],
+        );
+        if (productionActual == null ||
+            productionTarget == null ||
+            shipmentActual == null ||
+            shipmentTarget == null) {
+          missingWeekStartDates.add(_parseDate(row['week_start_date']));
+          continue;
+        }
         snapshots.add(
           GerenciaBaleWeeklyHistorySnapshot(
-            weekStartDate: bundle.weekStartDate,
-            weekEndDate: bundle.weekEndDate,
-            productionActualBales: bundle.totalProductionActual,
-            productionTargetBales:
-                bundle.currentPlan?.totalProductionTarget ?? 0,
-            shipmentActualBales: bundle.totalShipmentActual,
-            shipmentTargetBales: bundle.currentPlan?.totalShipmentTarget ?? 0,
+            weekStartDate: _parseDate(row['week_start_date']),
+            weekEndDate: _parseDate(row['week_end_date']),
+            productionActualBales: productionActual,
+            productionTargetBales: productionTarget,
+            shipmentActualBales: shipmentActual,
+            shipmentTargetBales: shipmentTarget,
+          ),
+        );
+      }
+      if (missingWeekStartDates.isNotEmpty) {
+        final bundles = await Future.wait(
+          missingWeekStartDates.map((weekStartDate) => loadWeek(weekStartDate)),
+        );
+        snapshots.addAll(
+          bundles.map(
+            (bundle) => GerenciaBaleWeeklyHistorySnapshot(
+              weekStartDate: bundle.weekStartDate,
+              weekEndDate: bundle.weekEndDate,
+              productionActualBales: bundle.totalProductionActual,
+              productionTargetBales:
+                  bundle.currentPlan?.totalProductionTarget ?? 0,
+              shipmentActualBales: bundle.totalShipmentActual,
+              shipmentTargetBales: bundle.currentPlan?.totalShipmentTarget ?? 0,
+            ),
           ),
         );
       }
@@ -720,6 +809,57 @@ class GerenciaBaleWeeklyTrackingStore {
   static void _invalidateAllWeekCaches() {
     _bundleCache.clear();
   }
+
+  static void _persistSummarySnapshotIfNeeded(
+    GerenciaBaleWeeklyPlanRecord? plan,
+    GerenciaBaleWeeklyTrackingBundle bundle,
+  ) {
+    if (plan == null) return;
+    final productionActual = bundle.totalProductionActual;
+    final productionTarget = plan.totalProductionTarget;
+    final shipmentActual = bundle.totalShipmentActual;
+    final shipmentTarget = plan.totalShipmentTarget;
+    final hasChanges =
+        plan.snapshotProductionActualBales != productionActual ||
+        plan.snapshotProductionTargetBales != productionTarget ||
+        plan.snapshotShipmentActualBales != shipmentActual ||
+        plan.snapshotShipmentTargetBales != shipmentTarget;
+    if (!hasChanges && plan.snapshotRefreshedAt != null) {
+      return;
+    }
+    unawaited(
+      _persistSummarySnapshot(
+        planId: plan.id,
+        productionActualBales: productionActual,
+        productionTargetBales: productionTarget,
+        shipmentActualBales: shipmentActual,
+        shipmentTargetBales: shipmentTarget,
+      ),
+    );
+  }
+
+  static Future<void> _persistSummarySnapshot({
+    required String planId,
+    required int productionActualBales,
+    required int productionTargetBales,
+    required int shipmentActualBales,
+    required int shipmentTargetBales,
+  }) async {
+    try {
+      await _supa
+          .from(_kGerenciaBaleWeeklyPlansTable)
+          .update({
+            'snapshot_production_actual_bales': productionActualBales,
+            'snapshot_production_target_bales': productionTargetBales,
+            'snapshot_shipment_actual_bales': shipmentActualBales,
+            'snapshot_shipment_target_bales': shipmentTargetBales,
+            'snapshot_refreshed_at': DateTime.now().toUtc().toIso8601String(),
+          })
+          .eq('id', planId);
+    } catch (_) {
+      // No bloquea la lectura principal si falla la persistencia del snapshot.
+    }
+  }
 }
 
 class _GerenciaBundleCacheEntry {
@@ -761,6 +901,12 @@ DateTime _parseDate(dynamic value) {
 DateTime? _tryParseDateTime(String? raw) {
   if (raw == null || raw.trim().isEmpty) return null;
   return DateTime.tryParse(raw)?.toLocal();
+}
+
+int? _tryParseInt(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toInt();
+  return int.tryParse(value.toString().trim());
 }
 
 String? _mapExecutiveBaleTypeKey(String? rawCode) {

@@ -48,9 +48,11 @@ class ProductionDailySummaryWidget extends StatefulWidget {
 
 class _ProductionDailySummaryWidgetState
     extends State<ProductionDailySummaryWidget> {
-  static const Duration _kReloadInterval = Duration(seconds: 60);
+  static const Duration _kReloadInterval = Duration(seconds: 90);
 
   bool _loading = true;
+  bool _refreshing = false;
+  bool _pendingReload = false;
   ProductionDailySummaryBundle? _bundle;
   late DateTime _selectedWeekStart;
   Timer? _reloadTimer;
@@ -61,11 +63,8 @@ class _ProductionDailySummaryWidgetState
   void initState() {
     super.initState();
     _selectedWeekStart = _weekStartMonday(DateTime.now());
-    unawaited(_load());
-    _reloadTimer = Timer.periodic(
-      _kReloadInterval,
-      (_) => unawaited(_load(silent: true)),
-    );
+    _requestReload(showLoader: true);
+    _reloadTimer = Timer.periodic(_kReloadInterval, (_) => _requestReload());
     final supa = Supabase.instance.client;
     _productionChannel = supa
         .channel('production-daily-summary-production')
@@ -73,7 +72,7 @@ class _ProductionDailySummaryWidgetState
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'production_runs',
-          callback: (_) => unawaited(_load(silent: true)),
+          callback: (_) => _requestReload(),
         )
         .subscribe();
     _transformationChannel = supa
@@ -82,13 +81,13 @@ class _ProductionDailySummaryWidgetState
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'material_transformation_runs_v2',
-          callback: (_) => unawaited(_load(silent: true)),
+          callback: (_) => _requestReload(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'material_transformation_run_outputs_v2',
-          callback: (_) => unawaited(_load(silent: true)),
+          callback: (_) => _requestReload(),
         )
         .subscribe();
   }
@@ -101,7 +100,21 @@ class _ProductionDailySummaryWidgetState
     super.dispose();
   }
 
+  void _requestReload({bool showLoader = false}) {
+    if (!mounted) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    unawaited(_load(silent: !showLoader));
+  }
+
   Future<void> _load({bool silent = false}) async {
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    _refreshing = true;
     if (!silent || _bundle == null) {
       setState(() => _loading = true);
     }
@@ -118,6 +131,12 @@ class _ProductionDailySummaryWidgetState
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+    } finally {
+      _refreshing = false;
+      if (_pendingReload && mounted) {
+        _pendingReload = false;
+        unawaited(_load(silent: true));
+      }
     }
   }
 

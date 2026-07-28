@@ -1,296 +1,294 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 
-import '../auth/auth_navigation.dart';
-import '../dashboard/general_dashboard_page.dart';
-import '../shared/app_shell.dart';
+import 'contabilidad_area_chrome.dart';
+import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
-import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import 'contabilidad_flow_analysis_page.dart';
+import 'contabilidad_income_statement_page.dart';
+import 'contabilidad_trade_analysis_page.dart';
 import 'contabilidad_theme.dart';
 
-class ContabilidadDashboardPage extends StatefulWidget {
+class ContabilidadDashboardPage extends StatelessWidget {
   final bool instantOpen;
 
   const ContabilidadDashboardPage({super.key, this.instantOpen = false});
 
-  @override
-  State<ContabilidadDashboardPage> createState() =>
-      _ContabilidadDashboardPageState();
-}
-
-class _ContabilidadDashboardPageState extends State<ContabilidadDashboardPage> {
-  bool _menuOpen = false;
-
-  Future<void> _logout() => signOutAndRouteToLogin(context);
-
-  Future<void> _openDirectionDashboard() async {
-    await Navigator.of(context).pushReplacement(
-      appPageRoute(page: const GeneralDashboardPage(instantOpen: true)),
-    );
-  }
+  static const EmptyAreaDashboardConfig _config = EmptyAreaDashboardConfig(
+    dashboardLabel: 'Contabilidad',
+    sidePanelLabel: 'Contabilidad',
+    headerTitleColor: Colors.white,
+    heroEyebrow: 'AREA CONTABLE DICSA',
+    heroTitle: 'Base homologada para flujo, gastos, utilidad y resultado.',
+    heroSubtitle:
+        'Contabilidad no captura datos nuevos. Lee lo ya registrado en otras areas de la app, lo cruza y lo expone con criterio contable.',
+    emptyTitle: 'Lectura consolidada del negocio',
+    emptySubtitle:
+        'Esta area debe ordenar ingresos, costo, gastos y flujo para responder con claridad si el negocio gano o perdio en un periodo.',
+    contractTitle: 'Contrato inicial del area',
+    contractSubtitle:
+        'Contabilidad vive como capa de lectura y calculo, nunca como origen manual alterno de informacion.',
+    contractFootnote:
+        'Fuentes base aprobadas: Menudeo, Ventas Mayoreo, Compras Mayoreo, Boveda y Cuentas Bancarias.',
+    heroCardBorderColor: Color(0x4067D2D8),
+    heroCardGradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0xF3133B42), Color(0xF30B2025)],
+    ),
+    heroEyebrowColor: Color(0xFFB5F4F6),
+    heroTitleColor: Color(0xFFFFFFFF),
+    heroSubtitleColor: Color(0xCFF2FCFC),
+    workspaceBodyColor: Color(0xCCF2FCFC),
+    emptyStateSurfaceColor: Color(0xCC0D1F23),
+    emptyStateBorderColor: Color(0x4067D2D8),
+    emptyStateIconColor: Color(0xFF67D2D8),
+    emptyStateBodyColor: Color(0xCCF2FCFC),
+    contractPanelColor: Color(0xF3112A2F),
+    contractActionColor: Color(0x99224248),
+    contractActionHoverColor: Color(0xCC2C5B61),
+    contractActionIconColor: Color(0xFFB5F4F6),
+    contractFootnoteColor: Color(0xB8F2FCFC),
+    placeholderCardColor: Color(0xE0143137),
+    placeholderCardIconColor: Color(0xFF87E6BF),
+    placeholderCardDescriptionColor: Color(0xB8F2FCFC),
+    placeholderCardArrowColor: Color(0xFF67D2D8),
+    tokens: contabilidadAreaTokens,
+    ink: Color(0xFFFFFFFF),
+    mutedInk: Color(0xCCF2FCFC),
+    heroGradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0xFF67D2D8), Color(0xFF87E6BF)],
+    ),
+    panelGradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0xE6122D33), Color(0xE60D2025)],
+    ),
+    accentGradient: LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0xFF1A5259), Color(0xFF10353A)],
+    ),
+    backgroundGradientColors: [
+      Color(0xFF07161A),
+      Color(0xFF0B2328),
+      Color(0xFF10343A),
+    ],
+    topLeftBlobColors: [Color(0xFF12343A), Color(0xFF061215)],
+    topRightBlobColors: [Color(0x6667D2D8), Color(0x11143539)],
+    bottomLeftBlobColors: [Color(0x3387E6BF), Color(0x11E8FFFF)],
+    pillarGradientColors: [Color(0x6687E6BF), Color(0xFF0B1D21)],
+    areaItems: <DashboardNavAction>[],
+    showContractPanel: false,
+    showPlaceholderCards: false,
+    sidePanelBuilder: _buildContabilidadSidePanel,
+  );
 
   @override
   Widget build(BuildContext context) {
-    final sidePanelItems = <ContabilidadSidePanelItem>[
-      const ContabilidadSidePanelItem(
-        icon: Icons.account_balance_rounded,
-        title: 'Dashboard Contabilidad',
-        subtitle: 'Consolidado general del area',
-        current: true,
+    Future<void> openTradeBalance() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const ContabilidadTradeAnalysisPage(instantOpen: true),
+        ),
+      );
+    }
+
+    Future<void> openFlow() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const ContabilidadFlowAnalysisPage(instantOpen: true),
+        ),
+      );
+    }
+
+    Future<void> openIncomeStatement() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const ContabilidadIncomeStatementPage(instantOpen: true),
+        ),
+      );
+    }
+
+    return EmptyAreaDashboardPage(
+      instantOpen: instantOpen,
+      config: _config.copyWith(
+        areaItems: buildContabilidadAreaItems(
+          current: ContabilidadAreaScreen.dashboard,
+          onOpenTradeBalance: openTradeBalance,
+          onOpenFlujoGeneral: openFlow,
+          onOpenEstadoResultados: openIncomeStatement,
+        ),
+        accessItems: buildContabilidadAccessItems(
+          current: ContabilidadAreaScreen.dashboard,
+          onOpenDashboard: _noop,
+        ),
+        workspaceBuilder: (context, config, width) =>
+            _ContabilidadDashboardWorkspace(width: width),
       ),
-      ContabilidadSidePanelItem(
-        icon: Icons.swap_horiz_rounded,
-        title: 'Balance Compra-Venta',
-        subtitle: 'Lectura comercial comparativa',
-        onTap: _openDirectionDashboard,
-      ),
-      const ContabilidadSidePanelItem(
-        icon: Icons.waterfall_chart_rounded,
+    );
+  }
+}
+
+Widget _buildContabilidadSidePanel(
+  BuildContext context,
+  EmptyAreaDashboardConfig config,
+  bool canReturnToDirection,
+  List<DashboardNavAction> accessItems,
+  List<DashboardNavAction> areaItems,
+) {
+  return ContabilidadAreaSidePanel(
+    label: config.sidePanelLabel,
+    canReturnToDirection: canReturnToDirection,
+    areaItems: areaItems,
+    accessItems: accessItems,
+  );
+}
+
+class _ContabilidadDashboardWorkspace extends StatelessWidget {
+  final double width;
+
+  const _ContabilidadDashboardWorkspace({required this.width});
+
+  @override
+  Widget build(BuildContext context) {
+    final isCompact = width < 1180;
+    final modules = const [
+      _ContabilidadModuleSpec(
         title: 'Flujo General',
-        subtitle: 'Entradas y salidas reales consolidadas',
+        badge: 'Flujo real',
+        icon: Icons.waterfall_chart_rounded,
+        summary:
+            'Consolida efectivo y bancos para entender cuanto dinero entro y salio realmente de la empresa en el periodo.',
+        sourceLines: [
+          'Boveda',
+          'Cuentas bancarias',
+          'Movimientos entre caja, deposito y retiro',
+        ],
+        outcome:
+            'Sirve para lectura de liquidez, no para utilidad por si solo.',
       ),
-      const ContabilidadSidePanelItem(
-        icon: Icons.receipt_long_rounded,
+      _ContabilidadModuleSpec(
         title: 'Analisis de Gastos',
-        subtitle: 'Clasificacion y trazabilidad por origen',
+        badge: 'Clasificacion',
+        icon: Icons.receipt_long_rounded,
+        summary:
+            'Ordena gastos por naturaleza, area, salida de efectivo y egreso bancario para separar gasto real de movimientos internos.',
+        sourceLines: [
+          'Boveda',
+          'Menudeo gastos-depositos',
+          'Pagos bancarios y reglas financieras',
+        ],
+        outcome:
+            'Permite distinguir gasto operativo, financiero y transferencias internas.',
       ),
-      const ContabilidadSidePanelItem(
-        icon: Icons.assessment_rounded,
+      _ContabilidadModuleSpec(
         title: 'Estado de Resultados',
-        subtitle: 'Ingresos, costo, gasto y utilidad',
+        badge: 'Resultado',
+        icon: Icons.assessment_rounded,
+        summary:
+            'Cruza ingresos del periodo con costo y gastos para responder si el negocio gano o perdio en ese corte.',
+        sourceLines: [
+          'Ventas menudeo',
+          'Ventas mayoreo',
+          'Compras mayoreo',
+          'Analisis de gastos',
+        ],
+        outcome:
+            'Es la pantalla base para derivar utilidad bruta, operativa y neta.',
       ),
-      const ContabilidadSidePanelItem(
-        icon: Icons.rule_folder_rounded,
+      _ContabilidadModuleSpec(
+        title: 'Resultado Comercial',
+        badge: 'Comercial',
+        icon: Icons.swap_horiz_rounded,
+        summary:
+            'Ordena compra, venta y margen comercial del periodo sin confundirlo con utilidad neta.',
+        sourceLines: ['Menudeo', 'Compras mayoreo', 'Ventas mayoreo'],
+        outcome:
+            'Sirve como lectura comercial base para costo y margen, no como cierre contable final.',
+      ),
+      _ContabilidadModuleSpec(
         title: 'Confiabilidad',
-        subtitle: 'Cruces y validaciones de consistencia',
+        badge: 'Control',
+        icon: Icons.rule_folder_rounded,
+        summary:
+            'Expone reglas de validacion para detectar inflacion, faltantes, reconstrucciones y diferencias aceptadas por criterio.',
+        sourceLines: [
+          'Cruces entre ventas, compras, efectivo y bancos',
+          'Revisiones por fecha de corte',
+          'Material general y faltantes aprobados',
+        ],
+        outcome:
+            'Ayuda a decidir si una utilidad es suficientemente confiable para decisiones contables.',
       ),
     ];
 
-    return AreaThemeScope(
-      tokens: contabilidadAreaTokens,
-      child: Focus(
-        autofocus: true,
-        onKeyEvent: (_, event) {
-          if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          if (event.logicalKey == LogicalKeyboardKey.escape && _menuOpen) {
-            setState(() => _menuOpen = false);
-            return KeyEventResult.handled;
-          }
-          return KeyEventResult.ignored;
-        },
-        child: AppShell(
-          background: const ContabilidadAreaBackground(),
-          wrapBodyInGlass: false,
-          animateHeaderSlots: false,
-          animateBody: !widget.instantOpen,
-          headerBodySpacing: 8,
-          padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
-          leadingBuilder: (_, _) => ContabilidadPageHeaderButton(
-            label: _menuOpen ? 'Cerrar panel' : 'Navegacion',
-            icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
-            onTapSync: () => setState(() => _menuOpen = !_menuOpen),
-          ),
-          centerBuilder: (_, _) =>
-              const ContabilidadPageHeaderBrand(title: 'Area de Contabilidad'),
-          trailingBuilder: (_, _) => Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ContabilidadPageHeaderButton(
-                label: 'Direccion',
-                icon: Icons.north_west_rounded,
-                onTap: _openDirectionDashboard,
-              ),
-              const SizedBox(width: 10),
-              ContabilidadPageHeaderButton(
-                label: 'Cerrar sesion',
-                icon: Icons.logout_rounded,
-                onTap: _logout,
-              ),
-            ],
-          ),
-          child: Stack(
-            children: [
-              const _ContabilidadDashboardBody(),
-              Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: _menuOpen ? 1 : 0,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: kContabilidadBg.withValues(alpha: 0.12),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              AnimatedPositioned(
-                duration: const Duration(milliseconds: 220),
-                curve: Curves.easeOutCubic,
-                left: _menuOpen ? 0 : -332,
-                top: 0,
-                bottom: 0,
-                width: 320,
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: ContabilidadAreaSidePanel(items: sidePanelItems),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _ContabilidadDashboardBody extends StatelessWidget {
-  const _ContabilidadDashboardBody();
-
-  @override
-  Widget build(BuildContext context) {
-    return Align(
-      alignment: Alignment.topCenter,
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1540),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(56, 2, 8, 12),
-          child: Column(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _ContabilidadHeroPanel(width: width),
+        const SizedBox(height: 16),
+        if (isCompact) ...[
+          const _ContabilidadReadOnlyCard(),
+          const SizedBox(height: 12),
+          const _ContabilidadSourceMapCard(),
+        ] else
+          const Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const _ContabilidadHero(),
-              const SizedBox(height: 18),
-              LayoutBuilder(
-                builder: (context, constraints) {
-                  final isCompact = constraints.maxWidth < 1180;
-                  if (isCompact) {
-                    return const Column(
-                      children: [
-                        _ContabilidadReadOnlyCard(),
-                        SizedBox(height: 14),
-                        _ContabilidadSourceMapCard(),
-                      ],
-                    );
-                  }
-                  return const Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(flex: 5, child: _ContabilidadReadOnlyCard()),
-                      SizedBox(width: 14),
-                      Expanded(flex: 4, child: _ContabilidadSourceMapCard()),
-                    ],
-                  );
-                },
-              ),
-              const SizedBox(height: 18),
-              const Text(
-                'PANTALLAS CONTABLES',
-                style: TextStyle(
-                  color: kContabilidadMutedInk,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 2.1,
-                ),
-              ),
-              const SizedBox(height: 12),
-              Wrap(
-                spacing: 14,
-                runSpacing: 14,
-                children: const [
-                  _ContabilidadModuleCard(
-                    title: 'Flujo General',
-                    badge: 'Flujo real',
-                    icon: Icons.waterfall_chart_rounded,
-                    summary:
-                        'Consolida efectivo y bancos para entender cuanto dinero entro y salio realmente de la empresa en el periodo.',
-                    sourceLines: [
-                      'Boveda',
-                      'Cuentas bancarias',
-                      'Movimientos entre caja, deposito y retiro',
-                    ],
-                    outcome:
-                        'Sirve para lectura de liquidez, no para utilidad por si solo.',
-                  ),
-                  _ContabilidadModuleCard(
-                    title: 'Analisis de Gastos',
-                    badge: 'Clasificacion',
-                    icon: Icons.receipt_long_rounded,
-                    summary:
-                        'Ordena gastos por naturaleza, area, salida de efectivo y egreso bancario para separar gasto real de movimientos internos.',
-                    sourceLines: [
-                      'Boveda',
-                      'Menudeo gastos-depositos',
-                      'Pagos bancarios y reglas financieras',
-                    ],
-                    outcome:
-                        'Permite distinguir gasto operativo, financiero y transferencias internas.',
-                  ),
-                  _ContabilidadModuleCard(
-                    title: 'Estado de Resultados',
-                    badge: 'Resultado',
-                    icon: Icons.assessment_rounded,
-                    summary:
-                        'Cruza ingresos del periodo con costo y gastos para responder si el negocio gano o perdio en ese corte.',
-                    sourceLines: [
-                      'Ventas menudeo',
-                      'Ventas mayoreo',
-                      'Compras mayoreo',
-                      'Analisis de gastos',
-                    ],
-                    outcome:
-                        'Es la pantalla base para derivar utilidad bruta, operativa y neta.',
-                  ),
-                  _ContabilidadModuleCard(
-                    title: 'Balance Compra-Venta',
-                    badge: 'Comercial',
-                    icon: Icons.swap_horiz_rounded,
-                    summary:
-                        'Mantiene el enfoque ejecutivo del diferencial entre lo comprado y lo vendido por periodo, sin forzarlo a ser utilidad.',
-                    sourceLines: [
-                      'Menudeo',
-                      'Compras mayoreo',
-                      'Ventas mayoreo',
-                    ],
-                    outcome:
-                        'Sirve como lectura comercial y de tendencia, no como cierre contable final.',
-                  ),
-                  _ContabilidadModuleCard(
-                    title: 'Confiabilidad',
-                    badge: 'Control',
-                    icon: Icons.rule_folder_rounded,
-                    summary:
-                        'Expone reglas de validacion para detectar inflacion, faltantes, reconstrucciones y diferencias aceptadas por criterio.',
-                    sourceLines: [
-                      'Cruces entre ventas, compras, efectivo y bancos',
-                      'Revisiones por fecha de corte',
-                      'Material general y faltantes aprobados',
-                    ],
-                    outcome:
-                        'Ayuda a decidir si una utilidad es suficientemente confiable para decisiones contables.',
-                  ),
-                ],
-              ),
-              const SizedBox(height: 26),
+              Expanded(flex: 5, child: _ContabilidadReadOnlyCard()),
+              SizedBox(width: 12),
+              Expanded(flex: 4, child: _ContabilidadSourceMapCard()),
             ],
           ),
+        const SizedBox(height: 18),
+        const Text(
+          'PANTALLAS CONTABLES',
+          style: TextStyle(
+            color: Color(0xB8F2FCFC),
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 2.0,
+          ),
         ),
-      ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 14,
+          runSpacing: 14,
+          children: modules
+              .map(
+                (module) => SizedBox(
+                  width: width >= 1450 ? 470 : 420,
+                  child: _ContabilidadModuleCard(spec: module),
+                ),
+              )
+              .toList(growable: false),
+        ),
+      ],
     );
   }
 }
 
-class _ContabilidadHero extends StatelessWidget {
-  const _ContabilidadHero();
+class _ContabilidadHeroPanel extends StatelessWidget {
+  final double width;
+
+  const _ContabilidadHeroPanel({required this.width});
 
   @override
   Widget build(BuildContext context) {
-    return ContabilidadPanel(
+    return Container(
+      width: double.infinity,
       padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xE6133B42), Color(0xE60B2025)],
+        ),
+        border: Border.all(color: const Color(0x4067D2D8)),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -298,13 +296,13 @@ class _ContabilidadHero extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(999),
-              color: kContabilidadGlow.withValues(alpha: 0.14),
+              color: const Color(0xFF67D2D8).withValues(alpha: 0.16),
               border: Border.all(
-                color: kContabilidadGlow.withValues(alpha: 0.24),
+                color: const Color(0xFF67D2D8).withValues(alpha: 0.26),
               ),
             ),
             child: const Text(
-              'Area nueva de lectura contable',
+              'Lectura contable homologada',
               style: TextStyle(
                 color: Colors.white,
                 fontSize: 11,
@@ -313,9 +311,11 @@ class _ContabilidadHero extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 16),
-          const Text(
-            'Contabilidad no captura datos: consolida lo que ya vive en DICSA y lo traduce en lecturas contables confiables.',
-            style: TextStyle(
+          Text(
+            width < 980
+                ? 'Contabilidad consolida y ordena la informacion ya capturada en DICSA.'
+                : 'Contabilidad no captura datos nuevos: consolida, cruza y ordena la informacion ya capturada en DICSA.',
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 28,
               fontWeight: FontWeight.w900,
@@ -324,9 +324,9 @@ class _ContabilidadHero extends StatelessWidget {
           ),
           const SizedBox(height: 12),
           const Text(
-            'Aqui se separan con claridad flujo, gastos, resultado y utilidad para evitar usar un balance comercial como si fuera un estado contable final.',
+            'Aqui se separan con claridad flujo, gastos, balance comercial y estado de resultados para no confundir una lectura ejecutiva con una utilidad contable final.',
             style: TextStyle(
-              color: kContabilidadMutedInk,
+              color: Color(0xCCF2FCFC),
               fontSize: 14,
               fontWeight: FontWeight.w600,
               height: 1.45,
@@ -343,32 +343,32 @@ class _ContabilidadReadOnlyCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ContabilidadPanel(
+    return _ContabilidadSurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: const [
-          _SectionTitle(
+          _ContabilidadSectionTitle(
             title: 'Principio del area',
             subtitle:
                 'Todo se calcula leyendo otras areas; no existe captura contable manual aqui.',
           ),
           SizedBox(height: 18),
-          _BulletLine(
+          _ContabilidadBulletLine(
             icon: Icons.lock_outline_rounded,
             text:
                 'La fuente de verdad permanece en Menudeo, Mayoreo, Direccion y Finanzas.',
           ),
           SizedBox(height: 12),
-          _BulletLine(
+          _ContabilidadBulletLine(
             icon: Icons.account_tree_outlined,
             text:
                 'Contabilidad solo reacomoda, cruza y expone informacion para analisis y cierre.',
           ),
           SizedBox(height: 12),
-          _BulletLine(
+          _ContabilidadBulletLine(
             icon: Icons.tune_rounded,
             text:
-                'Cada pantalla contable debe tener criterio explicito de periodo, fuente y reglas de reconstruccion.',
+                'Cada pantalla contable debe declarar periodo, fuente y reglas de reconstruccion o exclusion.',
           ),
         ],
       ),
@@ -381,35 +381,38 @@ class _ContabilidadSourceMapCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ContabilidadPanel(
+    return _ContabilidadSurfaceCard(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: const [
-          _SectionTitle(
+          _ContabilidadSectionTitle(
             title: 'Mapa de fuentes',
             subtitle:
                 'Primer acomodo propuesto para construir utilidad y estado de resultados.',
           ),
           SizedBox(height: 18),
-          _SourceRow(
+          _ContabilidadSourceRow(
             title: 'Ingresos',
             detail: 'Ventas Menudeo y Ventas Mayoreo',
           ),
           SizedBox(height: 12),
-          _SourceRow(
+          _ContabilidadSourceRow(
             title: 'Costo comercial',
             detail:
-                'Balance Compra-Venta como lectura de costo y margen comercial',
+                'Resultado Comercial como lectura de costo y margen comercial',
           ),
           SizedBox(height: 12),
-          _SourceRow(title: 'Flujo', detail: 'Boveda y Cuentas Bancarias'),
+          _ContabilidadSourceRow(
+            title: 'Flujo',
+            detail: 'Boveda y Cuentas Bancarias',
+          ),
           SizedBox(height: 12),
-          _SourceRow(
+          _ContabilidadSourceRow(
             title: 'Gastos',
-            detail: 'Boveda, Menudeo gastos-depositos, pagos bancarios',
+            detail: 'Boveda, Menudeo gastos-depositos y pagos bancarios',
           ),
           SizedBox(height: 12),
-          _SourceRow(
+          _ContabilidadSourceRow(
             title: 'Resultado final',
             detail: 'Estado de Resultados derivado de ingresos, costo y gasto',
           ),
@@ -420,140 +423,151 @@ class _ContabilidadSourceMapCard extends StatelessWidget {
 }
 
 class _ContabilidadModuleCard extends StatelessWidget {
-  final String title;
-  final String badge;
-  final IconData icon;
-  final String summary;
-  final List<String> sourceLines;
-  final String outcome;
+  final _ContabilidadModuleSpec spec;
 
-  const _ContabilidadModuleCard({
-    required this.title,
-    required this.badge,
-    required this.icon,
-    required this.summary,
-    required this.sourceLines,
-    required this.outcome,
-  });
+  const _ContabilidadModuleCard({required this.spec});
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      width: 480,
-      child: ContabilidadPanel(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    color: Colors.white.withValues(alpha: 0.08),
-                    border: Border.all(
-                      color: Colors.white.withValues(alpha: 0.12),
-                    ),
+    return _ContabilidadSurfaceCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(16),
+                  color: Colors.white.withValues(alpha: 0.08),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
                   ),
-                  child: Icon(icon, color: Colors.white, size: 22),
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 6,
-                        ),
-                        decoration: BoxDecoration(
-                          borderRadius: BorderRadius.circular(999),
-                          color: kContabilidadMint.withValues(alpha: 0.12),
-                        ),
-                        child: Text(
-                          badge,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
+                child: Icon(spec.icon, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 10,
+                        vertical: 6,
                       ),
-                      const SizedBox(height: 10),
-                      Text(
-                        title,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(999),
+                        color: const Color(0xFF87E6BF).withValues(alpha: 0.12),
+                      ),
+                      child: Text(
+                        spec.badge,
                         style: const TextStyle(
                           color: Colors.white,
-                          fontSize: 20,
-                          fontWeight: FontWeight.w900,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(height: 10),
+                    Text(
+                      spec.title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
-            const SizedBox(height: 14),
-            Text(
-              summary,
-              style: const TextStyle(
-                color: kContabilidadMutedInk,
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                height: 1.45,
               ),
-            ),
-            const SizedBox(height: 16),
-            const Text(
-              'Fuentes',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 12,
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 10),
-            for (final line in sourceLines) ...[
-              _BulletLine(
-                icon: Icons.subdirectory_arrow_right_rounded,
-                text: line,
-              ),
-              const SizedBox(height: 8),
             ],
-            const SizedBox(height: 10),
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(18),
-                color: Colors.white.withValues(alpha: 0.04),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-              ),
-              child: Text(
-                outcome,
-                style: const TextStyle(
-                  color: kContabilidadInk,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  height: 1.4,
-                ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            spec.summary,
+            style: const TextStyle(
+              color: Color(0xCCF2FCFC),
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.45,
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'Fuentes',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 1.2,
+            ),
+          ),
+          const SizedBox(height: 10),
+          for (final line in spec.sourceLines) ...[
+            _ContabilidadBulletLine(
+              icon: Icons.subdirectory_arrow_right_rounded,
+              text: line,
+            ),
+            const SizedBox(height: 8),
+          ],
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(18),
+              color: Colors.white.withValues(alpha: 0.04),
+              border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+            ),
+            child: Text(
+              spec.outcome,
+              style: const TextStyle(
+                color: Color(0xFFF2FCFC),
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                height: 1.4,
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 }
 
-class _SectionTitle extends StatelessWidget {
+class _ContabilidadSurfaceCard extends StatelessWidget {
+  final Widget child;
+
+  const _ContabilidadSurfaceCard({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(22),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(28),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [Color(0xE6122D33), Color(0xE60D2025)],
+        ),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _ContabilidadSectionTitle extends StatelessWidget {
   final String title;
   final String subtitle;
 
-  const _SectionTitle({required this.title, required this.subtitle});
+  const _ContabilidadSectionTitle({
+    required this.title,
+    required this.subtitle,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -572,7 +586,7 @@ class _SectionTitle extends StatelessWidget {
         Text(
           subtitle,
           style: const TextStyle(
-            color: kContabilidadMutedInk,
+            color: Color(0xCCF2FCFC),
             fontSize: 13,
             fontWeight: FontWeight.w600,
             height: 1.45,
@@ -583,11 +597,11 @@ class _SectionTitle extends StatelessWidget {
   }
 }
 
-class _BulletLine extends StatelessWidget {
+class _ContabilidadBulletLine extends StatelessWidget {
   final IconData icon;
   final String text;
 
-  const _BulletLine({required this.icon, required this.text});
+  const _ContabilidadBulletLine({required this.icon, required this.text});
 
   @override
   Widget build(BuildContext context) {
@@ -596,14 +610,14 @@ class _BulletLine extends StatelessWidget {
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 1),
-          child: Icon(icon, color: kContabilidadGlow, size: 18),
+          child: Icon(icon, color: const Color(0xFF67D2D8), size: 18),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: Text(
             text,
             style: const TextStyle(
-              color: kContabilidadInk,
+              color: Color(0xFFF2FCFC),
               fontSize: 13,
               fontWeight: FontWeight.w600,
               height: 1.45,
@@ -615,11 +629,11 @@ class _BulletLine extends StatelessWidget {
   }
 }
 
-class _SourceRow extends StatelessWidget {
+class _ContabilidadSourceRow extends StatelessWidget {
   final String title;
   final String detail;
 
-  const _SourceRow({required this.title, required this.detail});
+  const _ContabilidadSourceRow({required this.title, required this.detail});
 
   @override
   Widget build(BuildContext context) {
@@ -649,7 +663,7 @@ class _SourceRow extends StatelessWidget {
             child: Text(
               detail,
               style: const TextStyle(
-                color: kContabilidadMutedInk,
+                color: Color(0xCCF2FCFC),
                 fontSize: 12,
                 fontWeight: FontWeight.w600,
                 height: 1.4,
@@ -661,3 +675,23 @@ class _SourceRow extends StatelessWidget {
     );
   }
 }
+
+class _ContabilidadModuleSpec {
+  final String title;
+  final String badge;
+  final IconData icon;
+  final String summary;
+  final List<String> sourceLines;
+  final String outcome;
+
+  const _ContabilidadModuleSpec({
+    required this.title,
+    required this.badge,
+    required this.icon,
+    required this.summary,
+    required this.sourceLines,
+    required this.outcome,
+  });
+}
+
+Future<void> _noop() async {}

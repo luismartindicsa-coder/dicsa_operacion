@@ -331,6 +331,8 @@ class MenudeoCashDataset {
   final MenudeoCashSnapshot snapshot;
   final List<MenudeoCashTimelinePoint> timeline;
   final List<MenudeoCashBreakdownRow> rubricRows;
+  final List<MenudeoCashBreakdownRow> expenseRubricRows;
+  final List<MenudeoCashBreakdownRow> depositRubricRows;
   final List<MenudeoCashBreakdownRow> conceptRows;
   final List<MenudeoCashBreakdownRow> subconceptRows;
   final List<MenudeoCashBreakdownRow> personRows;
@@ -349,6 +351,8 @@ class MenudeoCashDataset {
     required this.snapshot,
     required this.timeline,
     required this.rubricRows,
+    required this.expenseRubricRows,
+    required this.depositRubricRows,
     required this.conceptRows,
     required this.subconceptRows,
     required this.personRows,

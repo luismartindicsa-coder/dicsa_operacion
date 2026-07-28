@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
@@ -14,6 +13,7 @@ import '../shared/archetypes/auxiliary_surfaces/date_picker_surface.dart';
 import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/direction_vault/direction_vault_repository.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
@@ -27,8 +27,6 @@ import 'direction_cash_taxonomy_page.dart';
 import 'direction_cash_taxonomy_store.dart';
 import 'direction_menudeo_analysis_page.dart';
 import 'direction_theme.dart';
-
-const String _kDirectionCashVouchersArea = 'direccion_boveda_vouchers';
 
 class DirectionCashEntriesExitsPage extends StatefulWidget {
   final bool instantOpen;
@@ -194,22 +192,6 @@ class _LineItemRecord {
       'comment': comment,
     };
   }
-
-  factory _LineItemRecord.fromJson(Map<String, dynamic> json) {
-    return _LineItemRecord(
-      concept: (json['concept'] ?? '').toString(),
-      unit: (json['unit'] ?? '').toString(),
-      quantity: (json['quantity'] ?? '').toString(),
-      price: (json['price'] ?? '').toString(),
-      company: (json['company'] ?? '').toString(),
-      driver: (json['driver'] ?? '').toString(),
-      destination: (json['destination'] ?? '').toString(),
-      subconcept: (json['subconcept'] ?? '').toString(),
-      mode: (json['mode'] ?? '').toString(),
-      amount: (json['amount'] ?? '').toString(),
-      comment: (json['comment'] ?? '').toString(),
-    );
-  }
 }
 
 class _VoucherRecord {
@@ -257,32 +239,6 @@ class _VoucherRecord {
       'comment': comment,
       'lines': lines.map((line) => line.toJson()).toList(growable: false),
     };
-  }
-
-  factory _VoucherRecord.fromJson(Map<String, dynamic> json) {
-    final rawLines = json['lines'];
-    return _VoucherRecord(
-      id: (json['id'] ?? '').toString().trim().isEmpty
-          ? null
-          : (json['id'] ?? '').toString(),
-      folio: (json['folio'] ?? '').toString(),
-      date: (json['date'] ?? '').toString(),
-      type: (json['type'] ?? '').toString() == _VoucherType.deposit.name
-          ? _VoucherType.deposit
-          : _VoucherType.expense,
-      person: (json['person'] ?? '').toString(),
-      rubric: (json['rubric'] ?? '').toString(),
-      comment: (json['comment'] ?? '').toString(),
-      lines: rawLines is List
-          ? rawLines
-                .whereType<Map>()
-                .map(
-                  (item) =>
-                      _LineItemRecord.fromJson(Map<String, dynamic>.from(item)),
-                )
-                .toList(growable: false)
-          : const <_LineItemRecord>[],
-    );
   }
 }
 
@@ -412,134 +368,8 @@ List<String> _seedDirectionCashCompanies() => <String>[
   'Nómina',
 ];
 
-List<_VoucherRecord> _seedDirectionCashVouchers() {
-  return <_VoucherRecord>[
-    _VoucherRecord(
-      id: 'may-cash-1',
-      folio: '18421',
-      date: '22/04/2026',
-      type: _VoucherType.deposit,
-      person: 'APASEO',
-      rubric: 'Venta de material',
-      comment: 'Entrada comercial cerrada del turno matutino.',
-      lines: const <_LineItemRecord>[
-        _LineItemRecord(
-          concept: 'Apaseo',
-          unit: 'KG',
-          quantity: '1240',
-          price: '16.01',
-          company: '',
-          driver: '',
-          destination: '',
-          subconcept: 'Bolsa',
-          mode: '',
-          amount: '19850',
-          comment: 'Factura del día',
-        ),
-      ],
-    ),
-    _VoucherRecord(
-      id: 'may-cash-2',
-      folio: '18422',
-      date: '22/04/2026',
-      type: _VoucherType.deposit,
-      person: 'BÓVEDA',
-      rubric: 'Reposición de fondo',
-      comment: 'Reposición operativa para caja principal.',
-      lines: const <_LineItemRecord>[
-        _LineItemRecord(
-          concept: 'Bóveda',
-          unit: '',
-          quantity: '',
-          price: '',
-          company: '',
-          driver: '',
-          destination: '',
-          subconcept: 'Luis',
-          mode: '',
-          amount: '12000',
-          comment: 'Reposición semanal',
-        ),
-      ],
-    ),
-    _VoucherRecord(
-      id: 'may-cash-3',
-      folio: '18423',
-      date: '21/04/2026',
-      type: _VoucherType.deposit,
-      person: 'EL PALOMAR',
-      rubric: 'Cheque',
-      comment: 'Cheque pendiente por cambiar.',
-      lines: const <_LineItemRecord>[
-        _LineItemRecord(
-          concept: 'El Palomar',
-          unit: '',
-          quantity: '',
-          price: '',
-          company: '',
-          driver: '',
-          destination: '',
-          subconcept: '',
-          mode: '',
-          amount: '8500',
-          comment: 'CHK-88314',
-        ),
-      ],
-    ),
-    _VoucherRecord(
-      id: 'may-cash-4',
-      folio: '18424',
-      date: '21/04/2026',
-      type: _VoucherType.expense,
-      person: 'COMPRA DIRECTA',
-      rubric: 'Compra de material',
-      comment: 'Compra puntual de material recuperado.',
-      lines: const <_LineItemRecord>[
-        _LineItemRecord(
-          concept: 'Compra directa',
-          unit: 'KG',
-          quantity: '480',
-          price: '13.33',
-          company: 'CLIENTE OCASIONAL',
-          driver: '',
-          destination: '',
-          subconcept: 'Tarima',
-          mode: '',
-          amount: '6400',
-          comment: 'Pago en efectivo',
-        ),
-      ],
-    ),
-    _VoucherRecord(
-      id: 'may-cash-5',
-      folio: '18425',
-      date: '20/04/2026',
-      type: _VoucherType.expense,
-      person: 'CAJA',
-      rubric: 'Gastos operativos',
-      comment: 'Salida operativa autorizada.',
-      lines: const <_LineItemRecord>[
-        _LineItemRecord(
-          concept: 'Combustible',
-          unit: 'LTS',
-          quantity: '85',
-          price: '',
-          company: '',
-          driver: '',
-          destination: '',
-          subconcept: '',
-          mode: '',
-          amount: '2450',
-          comment: 'Ruta San Pablo',
-        ),
-      ],
-    ),
-  ];
-}
-
 class _DirectionCashEntriesExitsPageState
     extends State<DirectionCashEntriesExitsPage> {
-  final SupabaseClient _supa = Supabase.instance.client;
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
   final ScrollController _voucherRowsScrollC = ScrollController();
   final GlobalKey _voucherRowsViewportKey = GlobalKey();
@@ -612,27 +442,6 @@ class _DirectionCashEntriesExitsPageState
     });
   }
 
-  Future<Map<String, dynamic>?> _loadVoucherPayload() async {
-    final row = await _supa
-        .from('cash_taxonomy_configs')
-        .select('payload')
-        .eq('area', _kDirectionCashVouchersArea)
-        .maybeSingle();
-    if (row == null) return null;
-    final payload = row['payload'];
-    if (payload is Map) return Map<String, dynamic>.from(payload);
-    return null;
-  }
-
-  Future<void> _saveVoucherRows(List<_VoucherRecord> rows) async {
-    await _supa.from('cash_taxonomy_configs').upsert({
-      'area': _kDirectionCashVouchersArea,
-      'payload': <String, dynamic>{
-        'rows': rows.map((row) => row.toJson()).toList(growable: false),
-      },
-    }, onConflict: 'area');
-  }
-
   int _nextSequenceForRows(List<_VoucherRecord> rows) {
     var nextSequence = _folioSequence;
     for (final row in rows) {
@@ -649,17 +458,10 @@ class _DirectionCashEntriesExitsPageState
   Future<void> _loadVouchers() async {
     if (mounted) setState(() => _loadingRows = true);
     try {
-      final payload = await _loadVoucherPayload();
-      final rawRows = payload?['rows'];
-      final loadedRows = rawRows is List
-          ? rawRows
-                .whereType<Map>()
-                .map(
-                  (item) =>
-                      _VoucherRecord.fromJson(Map<String, dynamic>.from(item)),
-                )
-                .toList(growable: false)
-          : _seedDirectionCashVouchers();
+      final loadedRows =
+          (await DirectionVaultRepository.instance.loadVouchers())
+              .map(_voucherRecordFromRemote)
+              .toList(growable: false);
       final nextSequence = _nextSequenceForRows(loadedRows);
       if (!mounted) return;
       setState(() {
@@ -674,7 +476,7 @@ class _DirectionCashEntriesExitsPageState
       setState(() {
         _rows
           ..clear()
-          ..addAll(_seedDirectionCashVouchers());
+          ..addAll(const <_VoucherRecord>[]);
         _folioSequence = _nextSequenceForRows(_rows);
         _loadingRows = false;
       });
@@ -745,6 +547,75 @@ class _DirectionCashEntriesExitsPageState
       }
     }
     return DateTime.tryParse(value);
+  }
+
+  String _formatVoucherUiDate(DateTime value) {
+    final day = value.day.toString().padLeft(2, '0');
+    final month = value.month.toString().padLeft(2, '0');
+    final year = value.year.toString().padLeft(4, '0');
+    return '$day/$month/$year';
+  }
+
+  _VoucherRecord _voucherRecordFromRemote(DirectionVaultVoucherRecord row) {
+    return _VoucherRecord(
+      id: row.id,
+      folio: row.folio,
+      date: _formatVoucherUiDate(row.date),
+      type: row.type == 'deposit' ? _VoucherType.deposit : _VoucherType.expense,
+      person: row.person,
+      rubric: row.rubric,
+      comment: row.comment,
+      lines: row.lines
+          .map(
+            (line) => _LineItemRecord(
+              concept: line.concept,
+              unit: line.unit,
+              quantity: line.quantity,
+              price: line.price,
+              company: line.company,
+              driver: line.driver,
+              destination: line.destination,
+              subconcept: line.subconcept,
+              mode: line.mode,
+              amount: line.amount,
+              comment: line.comment,
+            ),
+          )
+          .toList(growable: false),
+    );
+  }
+
+  DirectionVaultVoucherRecord _voucherRecordToRemote(_VoucherRecord row) {
+    return DirectionVaultVoucherRecord(
+      id: row.id?.trim().isNotEmpty == true
+          ? row.id!.trim()
+          : 'dir-vault-${DateTime.now().microsecondsSinceEpoch}',
+      date: _tryParseVoucherDate(row.date) ?? DateTime.now(),
+      folio: row.folio,
+      type: row.type == _VoucherType.deposit ? 'deposit' : 'expense',
+      person: row.person,
+      rubric: row.rubric,
+      comment: row.comment,
+      lines: row.lines
+          .map(
+            (line) => DirectionVaultVoucherLineRecord(
+              concept: line.concept,
+              unit: line.unit,
+              quantity: line.quantity,
+              price: line.price,
+              company: line.company,
+              driver: line.driver,
+              destination: line.destination,
+              subconcept: line.subconcept,
+              mode: line.mode,
+              amount: line.amount,
+              comment: line.comment,
+            ),
+          )
+          .toList(growable: false),
+      createdAt: null,
+      updatedAt: null,
+    );
   }
 
   List<_VoucherRecord> get _filteredVoucherRows {
@@ -1148,7 +1019,11 @@ class _DirectionCashEntriesExitsPageState
         .where((row) => !_selectedVoucherKeys.contains(row.selectionKey))
         .toList(growable: false);
     try {
-      await _saveVoucherRows(nextRows);
+      final idsToDelete = selectedRows
+          .map((row) => row.id?.trim() ?? '')
+          .where((value) => value.isNotEmpty)
+          .toList(growable: false);
+      await DirectionVaultRepository.instance.deleteVouchers(idsToDelete);
       if (!mounted) return;
       setState(() {
         _rows
@@ -1277,7 +1152,7 @@ class _DirectionCashEntriesExitsPageState
 
   Future<void> _persistVoucher(_VoucherRecord record) async {
     final normalized = _VoucherRecord(
-      id: record.id ?? 'may-cash-${DateTime.now().microsecondsSinceEpoch}',
+      id: record.id ?? 'dir-vault-${DateTime.now().microsecondsSinceEpoch}',
       folio: record.folio,
       date: record.date,
       type: record.type,
@@ -1295,7 +1170,9 @@ class _DirectionCashEntriesExitsPageState
     } else {
       nextRows.insert(0, normalized);
     }
-    await _saveVoucherRows(nextRows);
+    await DirectionVaultRepository.instance.upsertVoucher(
+      _voucherRecordToRemote(normalized),
+    );
     if (!mounted) return;
     setState(() {
       _rows

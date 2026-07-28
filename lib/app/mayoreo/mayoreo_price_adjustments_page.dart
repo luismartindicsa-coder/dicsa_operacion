@@ -20,6 +20,7 @@ import '../shared/ui_contract_core/dialogs/contract_popup_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/number_formatters.dart';
 import 'mayoreo_accounts_page.dart';
 import 'mayoreo_catalog_page.dart';
@@ -312,6 +313,63 @@ class _MayoreoPriceAdjustmentsPageState
         unawaited(_refreshPricingIfIdle(force: true));
       }
     }
+  }
+
+  String _csvCell(Object? value) {
+    final text = (value ?? '').toString().replaceAll('"', '""');
+    return '"$text"';
+  }
+
+  Future<void> _exportHistoryCsv() async {
+    final rows = _filteredHistoryRows;
+    if (rows.isEmpty) {
+      _toast('No hay historial para exportar con ese filtro.');
+      return;
+    }
+    final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
+    final csv = StringBuffer()
+      ..writeln(
+        [
+          'FECHA',
+          'MOVIMIENTO',
+          'EMPRESA',
+          'MATERIAL',
+          'PRECIO_ANTERIOR',
+          'PRECIO_NUEVO',
+          'DIFERENCIA',
+          'MOTIVO',
+          'COMPANY_ID',
+          'MATERIAL_ID',
+          'HISTORY_ID',
+        ].join(','),
+      );
+    for (final row in rows) {
+      csv.writeln(
+        [
+          _csvCell(_formatDateTime(row.createdAt)),
+          _csvCell(row.movementLabel),
+          _csvCell(row.companyName),
+          _csvCell(row.materialName),
+          row.previousPrice.toStringAsFixed(4),
+          row.newPrice.toStringAsFixed(4),
+          (row.newPrice - row.previousPrice).toStringAsFixed(4),
+          _csvCell(row.reason),
+          _csvCell(row.companyId),
+          _csvCell(row.materialId),
+          _csvCell(row.id),
+        ].join(','),
+      );
+    }
+    final path = await saveCsvFile(
+      fileName: 'mayoreo_historial_ajustes_$stamp.csv',
+      content: csv.toString(),
+      dialogTitle: 'Guardar historial CSV de ajustes de Mayoreo',
+    );
+    if (path == null) {
+      _toast('Exportación cancelada');
+      return;
+    }
+    _toast('CSV guardado en: $path');
   }
 
   Future<void> _exportClientPdfReport() async {
@@ -1175,6 +1233,7 @@ class _MayoreoPriceAdjustmentsPageState
                 }),
                 onOpenAdjustmentDialog: _showAdjustmentDialog,
                 onExportPdf: _exportClientPdfReport,
+                onExportCsv: _exportHistoryCsv,
               ),
               Positioned.fill(
                 child: IgnorePointer(
@@ -1826,6 +1885,7 @@ class _MayoreoPriceAdjustmentsBody extends StatelessWidget {
   final VoidCallback onClearFilters;
   final Future<void> Function() onOpenAdjustmentDialog;
   final Future<void> Function() onExportPdf;
+  final Future<void> Function() onExportCsv;
 
   const _MayoreoPriceAdjustmentsBody({
     required this.historyRows,
@@ -1841,6 +1901,7 @@ class _MayoreoPriceAdjustmentsBody extends StatelessWidget {
     required this.onClearFilters,
     required this.onOpenAdjustmentDialog,
     required this.onExportPdf,
+    required this.onExportCsv,
   });
 
   @override
@@ -1864,6 +1925,12 @@ class _MayoreoPriceAdjustmentsBody extends StatelessWidget {
                       onPressed: onOpenAdjustmentDialog,
                       icon: const Icon(Icons.tune_rounded),
                       label: const Text('Nuevo ajuste'),
+                    ),
+                    OutlinedButton.icon(
+                      style: contractSecondaryButtonStyle(context),
+                      onPressed: onExportCsv,
+                      icon: const Icon(Icons.table_view_rounded),
+                      label: const Text('Descargar CSV'),
                     ),
                     OutlinedButton.icon(
                       style: contractSecondaryButtonStyle(context),

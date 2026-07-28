@@ -51,7 +51,6 @@ class _DicsaSplashAnimateState extends State<DicsaSplashAnimate>
         Future.delayed(const Duration(milliseconds: 120), () {
           if (!mounted) return;
 
-          // ✅ Sin slide. Fade suave + Hero hace el “abrirse”.
           Navigator.of(context).pushReplacement(
             PageRouteBuilder(
               transitionDuration: const Duration(milliseconds: 900),

@@ -19,6 +19,7 @@ class AuthResolvedProfile {
 
 class AuthAccess {
   static final SupabaseClient _supa = Supabase.instance.client;
+  static const Duration _profileCacheTtl = Duration(minutes: 5);
   static const String _directionEmail = 'direccion@dicsamx.com';
   static const String _operationsEmail = 'operacion@dicsamx.com';
   static const String _accountingEmail = 'contabilidad@dicsamx.com';
@@ -28,6 +29,10 @@ class AuthAccess {
   static const String _commercialContactEmail = 'contacto@dicsamx.com';
   static const String _humanResourcesEmail = 'rh@dicsamx.com';
   static const String _managementEmail = 'gerencia@dicsamx.com';
+  static AuthResolvedProfile? _cachedProfile;
+  static String? _cachedProfileUserId;
+  static DateTime? _cachedProfileResolvedAt;
+  static Future<AuthResolvedProfile?>? _pendingProfileFuture;
 
   static String _normalizeRoleValue(String? raw) {
     final value = (raw ?? '').toLowerCase().trim();
@@ -227,10 +232,55 @@ class AuthAccess {
         _isManagementEmailValue(profile.email);
   }
 
-  static Future<AuthResolvedProfile?> resolveCurrentProfile() async {
-    final user = _supa.auth.currentUser;
-    if (user == null) return null;
+  static void invalidateResolvedProfileCache() {
+    _cachedProfile = null;
+    _cachedProfileUserId = null;
+    _cachedProfileResolvedAt = null;
+    _pendingProfileFuture = null;
+  }
 
+  static Future<AuthResolvedProfile?> resolveCurrentProfile({
+    bool forceRefresh = false,
+  }) async {
+    final user = _supa.auth.currentUser;
+    if (user == null) {
+      invalidateResolvedProfileCache();
+      return null;
+    }
+
+    final now = DateTime.now();
+    final cachedProfile = _cachedProfile;
+    final cachedResolvedAt = _cachedProfileResolvedAt;
+    final hasFreshCachedProfile =
+        !forceRefresh &&
+        cachedProfile != null &&
+        _cachedProfileUserId == user.id &&
+        cachedResolvedAt != null &&
+        now.difference(cachedResolvedAt) <= _profileCacheTtl;
+    if (hasFreshCachedProfile) {
+      return cachedProfile;
+    }
+
+    if (!forceRefresh) {
+      final pending = _pendingProfileFuture;
+      if (pending != null && _cachedProfileUserId == user.id) {
+        return pending;
+      }
+    }
+
+    final future = _resolveCurrentProfileFromSource(user);
+    _cachedProfileUserId = user.id;
+    _pendingProfileFuture = future;
+    return future.whenComplete(() {
+      if (identical(_pendingProfileFuture, future)) {
+        _pendingProfileFuture = null;
+      }
+    });
+  }
+
+  static Future<AuthResolvedProfile?> _resolveCurrentProfileFromSource(
+    User user,
+  ) async {
     final email = (user.email ?? '').toLowerCase().trim();
     try {
       final row = await _supa
@@ -239,19 +289,36 @@ class AuthAccess {
           .eq('user_id', user.id)
           .maybeSingle();
       final normalizedRole = _normalizeRoleValue((row?['role'] as String?));
-      return AuthResolvedProfile(
+      final profile = AuthResolvedProfile(
         email: email,
         role: normalizedRole.isEmpty ? 'viewer' : normalizedRole,
         isActive: (row?['is_active'] as bool?) ?? true,
       );
+      _storeResolvedProfile(user.id, profile);
+      return profile;
     } catch (e, st) {
       AppErrorReporter.report(
         e,
         st,
         fallbackMessage: 'No se pudo cargar el perfil actual.',
       );
-      return AuthResolvedProfile(email: email, role: 'viewer', isActive: true);
+      final fallback = AuthResolvedProfile(
+        email: email,
+        role: 'viewer',
+        isActive: true,
+      );
+      _storeResolvedProfile(user.id, fallback);
+      return fallback;
     }
+  }
+
+  static void _storeResolvedProfile(
+    String userId,
+    AuthResolvedProfile profile,
+  ) {
+    _cachedProfileUserId = userId;
+    _cachedProfile = profile;
+    _cachedProfileResolvedAt = DateTime.now();
   }
 
   static bool canAccessDashboard(AuthResolvedProfile? profile) {
@@ -393,6 +460,7 @@ class AuthSessionActions {
     final existing = _pendingSignOut;
     if (existing != null) return existing;
 
+    AuthAccess.invalidateResolvedProfileCache();
     final future = Supabase.instance.client.auth.signOut();
     _pendingSignOut = future.whenComplete(() {
       _pendingSignOut = null;

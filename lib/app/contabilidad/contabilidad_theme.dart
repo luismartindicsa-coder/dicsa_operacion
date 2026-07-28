@@ -2,8 +2,6 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import '../shared/dicsa_logo_mark.dart';
-import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
 
 const Color kContabilidadBg = Color(0xFF07161A);
@@ -11,12 +9,14 @@ const Color kContabilidadBgDeep = Color(0xFF031014);
 const Color kContabilidadBgTeal = Color(0xFF0B2328);
 const Color kContabilidadInk = Color(0xFFF2FCFC);
 const Color kContabilidadMutedInk = Color(0xFFB7D3D6);
+const Color kContabilidadSubtleInk = Color(0xFF7FA6AB);
 const Color kContabilidadLine = Color(0x3E82D5DB);
 const Color kContabilidadGlow = Color(0xFF67D2D8);
 const Color kContabilidadMint = Color(0xFF87E6BF);
 const Color kContabilidadSurface = Color(0xB2162D31);
 const Color kContabilidadSurfaceStrong = Color(0xCC11363C);
 const Color kContabilidadSurfaceSoft = Color(0xA6112529);
+const Color kContabilidadSuccess = Color(0xFF8AE0A2);
 
 const ContractAreaTokens contabilidadAreaTokens = ContractAreaTokens(
   primary: kContabilidadGlow,
@@ -35,91 +35,211 @@ const ContractAreaTokens contabilidadAreaTokens = ContractAreaTokens(
   onGlass: kContabilidadInk,
 );
 
+const LinearGradient kContabilidadSelectionGradient = LinearGradient(
+  begin: Alignment.topLeft,
+  end: Alignment.bottomRight,
+  colors: [Color(0x22FFFFFF), Color(0x2867D2D8), Color(0x2687E6BF)],
+  stops: [0.0, 0.46, 1.0],
+);
+
 class ContabilidadAreaBackground extends StatelessWidget {
   const ContabilidadAreaBackground({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [kContabilidadBg, kContabilidadBgDeep, kContabilidadBgTeal],
+    return Stack(
+      children: [
+        const DecoratedBox(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                kContabilidadBg,
+                kContabilidadBgDeep,
+                kContabilidadBgTeal,
+              ],
+            ),
+          ),
+          child: SizedBox.expand(),
         ),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Positioned(
-            left: -140,
-            top: -120,
-            child: _GlowOrb(
-              size: 360,
-              color: kContabilidadGlow.withValues(alpha: 0.18),
-            ),
+        Positioned(
+          left: -220,
+          top: -110,
+          child: _ContabilidadBackgroundCircle(
+            diameter: 660,
+            colors: [Color(0xFF18474F), Color(0xFF07161A)],
           ),
-          Positioned(
-            right: -80,
-            top: 140,
-            child: _GlowOrb(
-              size: 280,
-              color: kContabilidadMint.withValues(alpha: 0.14),
-            ),
+        ),
+        Positioned(
+          right: -190,
+          top: -70,
+          child: _ContabilidadBackgroundCircle(
+            diameter: 580,
+            colors: [Color(0x9967D2D8), Color(0x11143639)],
           ),
-          Positioned(
-            left: 180,
-            bottom: -120,
-            child: _GlowOrb(
-              size: 340,
-              color: Colors.white.withValues(alpha: 0.06),
-            ),
+        ),
+        Positioned(
+          left: 40,
+          bottom: -220,
+          child: _ContabilidadBackgroundCircle(
+            diameter: 560,
+            colors: [Color(0x3387E6BF), Color(0x11F2FCFC)],
           ),
-        ],
+        ),
+      ],
+    );
+  }
+}
+
+class ContabilidadGlassPanel extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final BorderRadius borderRadius;
+  final double blurSigma;
+  final Color fillColor;
+  final Color borderColor;
+  final Color shadowColor;
+  final Color edgeHighlightColor;
+  final Color bevelShadowColor;
+  final Color glowColor;
+  final double? width;
+  final double? height;
+
+  const ContabilidadGlassPanel({
+    super.key,
+    required this.child,
+    this.padding = const EdgeInsets.all(16),
+    required this.borderRadius,
+    this.blurSigma = 24,
+    required this.fillColor,
+    required this.borderColor,
+    required this.shadowColor,
+    required this.edgeHighlightColor,
+    required this.bevelShadowColor,
+    required this.glowColor,
+    this.width,
+    this.height,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: borderRadius,
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+        child: Container(
+          width: width,
+          height: height,
+          padding: padding,
+          decoration: BoxDecoration(
+            color: fillColor,
+            borderRadius: borderRadius,
+            border: Border.all(color: borderColor),
+            boxShadow: [
+              BoxShadow(
+                color: shadowColor,
+                blurRadius: 28,
+                offset: const Offset(0, 14),
+              ),
+              BoxShadow(color: glowColor, blurRadius: 24, spreadRadius: 0.5),
+            ],
+          ),
+          foregroundDecoration: BoxDecoration(
+            borderRadius: borderRadius,
+            border: Border.all(color: edgeHighlightColor, width: 0.7),
+            boxShadow: [
+              BoxShadow(
+                color: bevelShadowColor,
+                blurRadius: 10,
+                spreadRadius: -6,
+                offset: const Offset(0, 4),
+              ),
+            ],
+          ),
+          child: child,
+        ),
       ),
     );
   }
 }
 
 class ContabilidadPageHeaderBrand extends StatelessWidget {
+  final Animation<double> contentAnim;
   final String title;
 
-  const ContabilidadPageHeaderBrand({super.key, required this.title});
+  const ContabilidadPageHeaderBrand({
+    super.key,
+    required this.contentAnim,
+    required this.title,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: kContabilidadSurfaceStrong,
-            borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: kContabilidadLine),
-            boxShadow: [
-              BoxShadow(
-                color: tokens.glow.withValues(alpha: 0.26),
-                blurRadius: 26,
-                offset: const Offset(0, 10),
+    return AnimatedBuilder(
+      animation: contentAnim,
+      builder: (context, child) => Opacity(
+        opacity: contentAnim.value,
+        child: Transform.translate(
+          offset: Offset(0, (1 - contentAnim.value) * 10),
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 920),
+            child: IntrinsicHeight(
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ContabilidadGlassPanel(
+                    padding: EdgeInsets.zero,
+                    borderRadius: BorderRadius.circular(22),
+                    blurSigma: 24,
+                    fillColor: kContabilidadSurfaceStrong,
+                    borderColor: Colors.white.withValues(alpha: 0.22),
+                    shadowColor: Colors.black.withValues(alpha: 0.16),
+                    edgeHighlightColor: Colors.white.withValues(alpha: 0.62),
+                    bevelShadowColor: Colors.black.withValues(alpha: 0.10),
+                    glowColor: kContabilidadGlow.withValues(alpha: 0.14),
+                    child: const SizedBox(
+                      width: 72,
+                      height: 72,
+                      child: Center(
+                        child: Icon(
+                          Icons.account_balance_rounded,
+                          size: 38,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Container(
+                    width: 1.5,
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.16),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Flexible(
+                    child: Text(
+                      title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.w800,
+                        letterSpacing: 0.25,
+                        height: 1.0,
+                        color: Colors.white,
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
-          ),
-          child: const Center(child: DicsaLogoD(size: 40, progress: 1)),
-        ),
-        const SizedBox(width: 18),
-        Text(
-          title,
-          style: const TextStyle(
-            color: kContabilidadInk,
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.2,
+            ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
@@ -129,7 +249,7 @@ class ContabilidadPageHeaderButton extends StatefulWidget {
   final IconData icon;
   final Future<void> Function()? onTap;
   final VoidCallback? onTapSync;
-  final bool iconOnly;
+  final double width;
 
   const ContabilidadPageHeaderButton({
     super.key,
@@ -137,7 +257,7 @@ class ContabilidadPageHeaderButton extends StatefulWidget {
     required this.icon,
     this.onTap,
     this.onTapSync,
-    this.iconOnly = false,
+    this.width = 178,
   });
 
   @override
@@ -152,74 +272,79 @@ class _ContabilidadPageHeaderButtonState
   @override
   Widget build(BuildContext context) {
     final enabled = widget.onTap != null || widget.onTapSync != null;
+    final highlighted = enabled && _hovered;
     return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: AnimatedContainer(
+      child: AnimatedScale(
         duration: const Duration(milliseconds: 180),
         curve: Curves.easeOutCubic,
-        transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(18),
-          gradient: LinearGradient(
-            colors: [
-              kContabilidadGlow.withValues(alpha: _hovered ? 0.28 : 0.18),
-              kContabilidadMint.withValues(alpha: _hovered ? 0.22 : 0.12),
-            ],
-          ),
-          border: Border.all(
-            color: _hovered
-                ? kContabilidadGlow.withValues(alpha: 0.70)
-                : kContabilidadLine,
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.24),
-              blurRadius: 18,
-              offset: const Offset(0, 8),
-            ),
-          ],
-        ),
-        child: Material(
-          color: Colors.transparent,
+        scale: highlighted ? 1.03 : 1.0,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          transform: Matrix4.translationValues(0, highlighted ? -2 : 0, 0),
           child: InkWell(
-            borderRadius: BorderRadius.circular(18),
-            onTap: !enabled
-                ? null
-                : () async {
+            borderRadius: BorderRadius.circular(16),
+            overlayColor: WidgetStateProperty.all(Colors.transparent),
+            splashColor: Colors.transparent,
+            hoverColor: Colors.transparent,
+            highlightColor: Colors.transparent,
+            splashFactory: NoSplash.splashFactory,
+            onTap: enabled
+                ? () async {
                     if (widget.onTap != null) {
                       await widget.onTap!();
                     } else {
                       widget.onTapSync?.call();
                     }
-                  },
-            child: SizedBox(
-              width: widget.iconOnly ? 56 : 188,
-              height: 56,
-              child: widget.iconOnly
-                  ? Icon(widget.icon, color: Colors.white)
-                  : Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 18),
-                      child: Row(
-                        children: [
-                          Icon(widget.icon, color: Colors.white, size: 20),
-                          const SizedBox(width: 10),
-                          Expanded(
-                            child: Text(
-                              widget.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ],
+                  }
+                : null,
+            child: ContabilidadGlassPanel(
+              width: widget.width,
+              height: 50,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              borderRadius: BorderRadius.circular(16),
+              blurSigma: 26,
+              fillColor: enabled
+                  ? kContabilidadSurfaceStrong.withValues(
+                      alpha: highlighted ? 0.88 : 0.72,
+                    )
+                  : Colors.white.withValues(alpha: 0.05),
+              borderColor: enabled
+                  ? Colors.white.withValues(alpha: highlighted ? 0.42 : 0.24)
+                  : Colors.white.withValues(alpha: 0.16),
+              shadowColor: highlighted
+                  ? Colors.black.withValues(alpha: 0.16)
+                  : Colors.black.withValues(alpha: 0.08),
+              edgeHighlightColor: Colors.white.withValues(alpha: 0.64),
+              bevelShadowColor: Colors.black.withValues(alpha: 0.12),
+              glowColor: highlighted
+                  ? kContabilidadGlow.withValues(alpha: 0.24)
+                  : kContabilidadMint.withValues(alpha: 0.12),
+              child: Row(
+                children: [
+                  Icon(widget.icon, size: 19, color: Colors.white),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(
+                        widget.label,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: const TextStyle(
+                          fontSize: 13.5,
+                          fontWeight: FontWeight.w800,
+                          color: Colors.white,
+                        ),
                       ),
                     ),
+                  ),
+                  const SizedBox(width: 6),
+                ],
+              ),
             ),
           ),
         ),
@@ -228,219 +353,162 @@ class _ContabilidadPageHeaderButtonState
   }
 }
 
-class ContabilidadSidePanelItem {
+class ContabilidadMetricCard extends StatelessWidget {
+  final double width;
+  final double height;
   final IconData icon;
   final String title;
-  final String subtitle;
-  final bool current;
-  final Future<void> Function()? onTap;
+  final String value;
+  final String detail;
+  final Color accent;
+  final EdgeInsetsGeometry margin;
 
-  const ContabilidadSidePanelItem({
+  const ContabilidadMetricCard({
+    super.key,
     required this.icon,
     required this.title,
-    required this.subtitle,
-    this.current = false,
-    this.onTap,
+    required this.value,
+    required this.detail,
+    required this.accent,
+    this.width = 310,
+    this.height = 72,
+    this.margin = const EdgeInsets.only(right: 6),
   });
-}
-
-class ContabilidadAreaSidePanel extends StatelessWidget {
-  final List<ContabilidadSidePanelItem> items;
-
-  const ContabilidadAreaSidePanel({super.key, required this.items});
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
-        child: Container(
-          decoration: BoxDecoration(
-            color: kContabilidadSurfaceSoft,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.24),
-                blurRadius: 26,
-                offset: const Offset(0, 14),
+    return Padding(
+      padding: margin,
+      child: ContabilidadGlassPanel(
+        width: width,
+        height: height,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+        borderRadius: BorderRadius.circular(16),
+        blurSigma: 26,
+        fillColor: kContabilidadSurfaceStrong.withValues(alpha: 0.74),
+        borderColor: Colors.white.withValues(alpha: 0.20),
+        shadowColor: Colors.black.withValues(alpha: 0.08),
+        edgeHighlightColor: Colors.white.withValues(alpha: 0.58),
+        bevelShadowColor: Colors.black.withValues(alpha: 0.16),
+        glowColor: accent.withValues(alpha: 0.12),
+        child: Row(
+          children: [
+            Container(
+              width: 34,
+              height: 34,
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.16),
+                borderRadius: BorderRadius.circular(10),
+                border: Border.all(color: accent.withValues(alpha: 0.26)),
               ),
-            ],
-          ),
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Contabilidad',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w900,
-                ),
+              child: Icon(icon, size: 18, color: Colors.white),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.5,
+                      color: kContabilidadSubtleInk,
+                      height: 1.0,
+                    ),
+                  ),
+                  const SizedBox(height: 3),
+                  Text(
+                    value,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: kContabilidadInk,
+                      height: 1.0,
+                    ),
+                  ),
+                  if (detail.isNotEmpty) ...[
+                    const SizedBox(height: 3),
+                    Text(
+                      detail,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: kContabilidadMutedInk,
+                        height: 1.0,
+                      ),
+                    ),
+                  ],
+                ],
               ),
-              const SizedBox(height: 6),
-              const Text(
-                'Lectura consolidada, sin captura manual.',
-                style: TextStyle(
-                  color: kContabilidadMutedInk,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 16),
-              for (final item in items) ...[
-                _ContabilidadNavTile(item: item),
-                const SizedBox(height: 8),
-              ],
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 }
 
-class ContabilidadPanel extends StatelessWidget {
+class ContabilidadToolbarPanel extends StatelessWidget {
   final Widget child;
   final EdgeInsetsGeometry padding;
 
-  const ContabilidadPanel({
+  const ContabilidadToolbarPanel({
     super.key,
     required this.child,
-    this.padding = const EdgeInsets.all(22),
+    this.padding = const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
   });
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(28),
-      child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-        child: Container(
-          padding: padding,
-          decoration: BoxDecoration(
-            color: kContabilidadSurface,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.24),
-                blurRadius: 30,
-                offset: const Offset(0, 16),
-              ),
-            ],
-          ),
-          child: child,
-        ),
-      ),
+    return ContabilidadGlassPanel(
+      padding: padding,
+      borderRadius: BorderRadius.circular(20),
+      blurSigma: 26,
+      fillColor: kContabilidadSurfaceStrong.withValues(alpha: 0.74),
+      borderColor: Colors.white.withValues(alpha: 0.20),
+      shadowColor: Colors.black.withValues(alpha: 0.08),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.58),
+      bevelShadowColor: Colors.black.withValues(alpha: 0.16),
+      glowColor: kContabilidadGlow.withValues(alpha: 0.10),
+      child: child,
     );
   }
 }
 
-class _ContabilidadNavTile extends StatefulWidget {
-  final ContabilidadSidePanelItem item;
+class _ContabilidadBackgroundCircle extends StatelessWidget {
+  final double diameter;
+  final List<Color> colors;
 
-  const _ContabilidadNavTile({required this.item});
-
-  @override
-  State<_ContabilidadNavTile> createState() => _ContabilidadNavTileState();
-}
-
-class _ContabilidadNavTileState extends State<_ContabilidadNavTile> {
-  bool _hovered = false;
-
-  @override
-  Widget build(BuildContext context) {
-    final item = widget.item;
-    return MouseRegion(
-      cursor: item.onTap != null ? SystemMouseCursors.click : MouseCursor.defer,
-      onEnter: (_) => setState(() => _hovered = true),
-      onExit: (_) => setState(() => _hovered = false),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(20),
-          onTap: item.onTap == null ? null : () async => item.onTap!(),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-              color: item.current
-                  ? kContabilidadGlow.withValues(alpha: 0.16)
-                  : (_hovered
-                        ? Colors.white.withValues(alpha: 0.06)
-                        : Colors.transparent),
-              border: Border.all(
-                color: item.current
-                    ? kContabilidadGlow.withValues(alpha: 0.42)
-                    : Colors.white.withValues(alpha: 0.10),
-              ),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 42,
-                  height: 42,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(14),
-                    color: Colors.white.withValues(alpha: 0.08),
-                  ),
-                  child: Icon(item.icon, color: Colors.white, size: 20),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        item.title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        item.subtitle,
-                        style: const TextStyle(
-                          color: kContabilidadMutedInk,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _GlowOrb extends StatelessWidget {
-  final double size;
-  final Color color;
-
-  const _GlowOrb({required this.size, required this.color});
+  const _ContabilidadBackgroundCircle({
+    required this.diameter,
+    required this.colors,
+  });
 
   @override
   Widget build(BuildContext context) {
     return IgnorePointer(
-      child: Container(
-        width: size,
-        height: size,
+      child: DecoratedBox(
         decoration: BoxDecoration(
           shape: BoxShape.circle,
-          gradient: RadialGradient(colors: [color, color.withValues(alpha: 0)]),
+          gradient: LinearGradient(colors: colors),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: diameter * 0.10,
+              spreadRadius: diameter * 0.015,
+              color: Colors.white.withValues(alpha: 0.06),
+            ),
+          ],
         ),
+        child: SizedBox(width: diameter, height: diameter),
       ),
     );
   }

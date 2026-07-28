@@ -30,6 +30,11 @@ class _AuthGateState extends State<AuthGate>
   static const _preSwapSignOutMs = 60;
   static const _postSwapDissolveMs = 520;
   static const _appUpdatePollInterval = Duration(minutes: 15);
+  static const _startupUpdateCheckDelay = Duration(seconds: 2);
+  static const _directionPurchaseOrderBootstrapDelay = Duration(
+    milliseconds: 900,
+  );
+  static const _directionPurchaseOrderPollInterval = Duration(seconds: 90);
 
   late final StreamSubscription<AuthState> _authSub;
   late final AnimationController _switchFx;
@@ -46,6 +51,8 @@ class _AuthGateState extends State<AuthGate>
   bool _showingDirectionPurchaseDialog = false;
   bool? _queuedSessionState;
   bool _checkingAppUpdate = false;
+  bool _checkingDirectionPurchaseOrders = false;
+  bool _pendingDirectionPurchaseReload = false;
   String? _lastPromptedUpdateVersion;
   String? _lastDirectionPurchaseSignature;
 
@@ -63,18 +70,32 @@ class _AuthGateState extends State<AuthGate>
       state,
     ) async {
       if (state.event == AuthChangeEvent.signedIn) {
+        AuthAccess.invalidateResolvedProfileCache();
         await SessionExpiryService.instance.markSessionStarted();
         await _scheduleSessionExpiry();
-        unawaited(_refreshDirectionPurchaseOrderAlerts());
+        unawaited(
+          _refreshDirectionPurchaseOrderAlerts(
+            forceRefresh: true,
+            delay: _directionPurchaseOrderBootstrapDelay,
+          ),
+        );
       }
       if (state.event == AuthChangeEvent.signedOut) {
+        AuthAccess.invalidateResolvedProfileCache();
         await SessionExpiryService.instance.clearSessionStart();
         _expiring = false;
         _stopDirectionPurchaseOrderAlerts();
       }
       if (state.event == AuthChangeEvent.tokenRefreshed ||
           state.event == AuthChangeEvent.userUpdated) {
-        unawaited(_refreshDirectionPurchaseOrderAlerts());
+        if (state.event == AuthChangeEvent.userUpdated) {
+          AuthAccess.invalidateResolvedProfileCache();
+        }
+        unawaited(
+          _refreshDirectionPurchaseOrderAlerts(
+            forceRefresh: state.event == AuthChangeEvent.userUpdated,
+          ),
+        );
       }
 
       final nextHasSession =
@@ -87,11 +108,18 @@ class _AuthGateState extends State<AuthGate>
     final session = Supabase.instance.client.auth.currentSession;
     if (session != null) {
       unawaited(_handleSessionResumed());
-      unawaited(_refreshDirectionPurchaseOrderAlerts());
+      unawaited(
+        _refreshDirectionPurchaseOrderAlerts(
+          delay: _directionPurchaseOrderBootstrapDelay,
+        ),
+      );
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_checkForAppUpdate());
+      Future<void>.delayed(_startupUpdateCheckDelay, () {
+        if (!mounted) return;
+        unawaited(_checkForAppUpdate());
+      });
     });
     _appUpdateTimer = Timer.periodic(_appUpdatePollInterval, (_) {
       unawaited(_checkForAppUpdate());
@@ -137,8 +165,22 @@ class _AuthGateState extends State<AuthGate>
     await SessionExpiryService.instance.schedule(onExpired: _expireSession);
   }
 
-  Future<void> _refreshDirectionPurchaseOrderAlerts() async {
-    final profile = await AuthAccess.resolveCurrentProfile();
+  Future<void> _refreshDirectionPurchaseOrderAlerts({
+    bool forceRefresh = false,
+    Duration delay = Duration.zero,
+  }) async {
+    if (delay > Duration.zero) {
+      await Future<void>.delayed(delay);
+    }
+    if (!mounted) return;
+    if (Supabase.instance.client.auth.currentSession == null) {
+      _stopDirectionPurchaseOrderAlerts();
+      return;
+    }
+
+    final profile = await AuthAccess.resolveCurrentProfile(
+      forceRefresh: forceRefresh,
+    );
     if (!mounted) return;
     if (!AuthAccess.isDirectionRole(profile)) {
       _stopDirectionPurchaseOrderAlerts();
@@ -152,7 +194,7 @@ class _AuthGateState extends State<AuthGate>
     _watchingDirectionPurchaseOrders = true;
     unawaited(_checkDirectionPurchaseOrders());
     _directionPurchaseOrderTimer = Timer.periodic(
-      const Duration(seconds: 30),
+      _directionPurchaseOrderPollInterval,
       (_) => unawaited(_checkDirectionPurchaseOrders()),
     );
     _directionPurchaseOrderChannel = Supabase.instance.client
@@ -174,6 +216,8 @@ class _AuthGateState extends State<AuthGate>
 
   void _stopDirectionPurchaseOrderAlerts() {
     _watchingDirectionPurchaseOrders = false;
+    _checkingDirectionPurchaseOrders = false;
+    _pendingDirectionPurchaseReload = false;
     _directionPurchaseOrderTimer?.cancel();
     _directionPurchaseOrderTimer = null;
     final channel = _directionPurchaseOrderChannel;
@@ -186,6 +230,11 @@ class _AuthGateState extends State<AuthGate>
 
   Future<void> _checkDirectionPurchaseOrders() async {
     if (!_watchingDirectionPurchaseOrders) return;
+    if (_checkingDirectionPurchaseOrders) {
+      _pendingDirectionPurchaseReload = true;
+      return;
+    }
+    _checkingDirectionPurchaseOrders = true;
     try {
       final summary = await _directionOperationsRepository
           .loadPurchaseOrdersSummary();
@@ -193,6 +242,12 @@ class _AuthGateState extends State<AuthGate>
       _handleDirectionPurchaseOrdersSummary(summary);
     } catch (_) {
       // Ignora errores temporales para no bloquear la sesión.
+    } finally {
+      _checkingDirectionPurchaseOrders = false;
+      if (_pendingDirectionPurchaseReload && mounted) {
+        _pendingDirectionPurchaseReload = false;
+        unawaited(_checkDirectionPurchaseOrders());
+      }
     }
   }
 

@@ -7,10 +7,12 @@ import 'package:flutter/services.dart';
 import '../auth/auth_navigation.dart';
 import '../commercial/commercial_dashboard_page.dart';
 import '../commercial/commercial_store.dart';
+import '../contabilidad/contabilidad_theme.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/archetypes/auxiliary_surfaces/date_picker_surface.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/theme/contract_tokens.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/utils/file_download_save.dart';
 import '../shared/utils/number_formatters.dart';
@@ -20,8 +22,39 @@ import 'direction_theme.dart';
 
 class DirectionTradeAnalysisPage extends StatefulWidget {
   final bool instantOpen;
+  final String pageTitle;
+  final String areaLabel;
+  final String areaDetail;
+  final String dashboardTitle;
+  final String dashboardSubtitle;
+  final String currentMenuSubtitle;
+  final String exportDialogTitle;
+  final String errorTitle;
+  final Future<void> Function(BuildContext context)? onOpenDashboard;
+  final ContractAreaTokens tokens;
+  final bool useContabilidadVisuals;
+  final Widget Function(
+    BuildContext context,
+    Future<void> Function() onOpenDashboard,
+  )?
+  sidePanelBuilder;
 
-  const DirectionTradeAnalysisPage({super.key, this.instantOpen = false});
+  const DirectionTradeAnalysisPage({
+    super.key,
+    this.instantOpen = false,
+    this.pageTitle = 'Compra-Venta',
+    this.areaLabel = 'COMPRA-VENTA',
+    this.areaDetail = 'Lectura comparativa del periodo',
+    this.dashboardTitle = 'Dashboard Dirección',
+    this.dashboardSubtitle = 'Vista general del área',
+    this.currentMenuSubtitle = 'Balance comparativo del periodo',
+    this.exportDialogTitle = 'Guardar Excel compra-venta...',
+    this.errorTitle = 'No se pudo cargar la propuesta de compra-venta.',
+    this.onOpenDashboard,
+    this.tokens = directionAreaTokens,
+    this.useContabilidadVisuals = false,
+    this.sidePanelBuilder,
+  });
 
   @override
   State<DirectionTradeAnalysisPage> createState() =>
@@ -67,6 +100,10 @@ class _DirectionTradeAnalysisPageState
 
   Future<void> _openDashboard() async {
     if (!mounted) return;
+    if (widget.onOpenDashboard != null) {
+      await widget.onOpenDashboard!(context);
+      return;
+    }
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const GeneralDashboardPage(instantOpen: true)),
     );
@@ -114,7 +151,7 @@ class _DirectionTradeAnalysisPageState
       lastDate: bounds.end,
       initialDateRange: _effectiveDateRange(bundle.marketEvents),
       title: 'Selecciona el rango de fechas',
-      tokens: directionAreaTokens,
+      tokens: widget.tokens,
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -198,7 +235,7 @@ class _DirectionTradeAnalysisPageState
       final path = await saveBytesAs(
         bytes: bytes,
         suggestedFileName: _tradeExportFileName(),
-        dialogTitle: 'Guardar Excel compra-venta...',
+        dialogTitle: widget.exportDialogTitle,
       );
       if (path == null) return;
       _showMessage('Excel guardado en $path');
@@ -227,7 +264,7 @@ class _DirectionTradeAnalysisPageState
   Widget build(BuildContext context) {
     final proposal = _buildProposal();
     return AreaThemeScope(
-      tokens: directionAreaTokens,
+      tokens: widget.tokens,
       child: Focus(
         autofocus: true,
         onKeyEvent: (_, event) {
@@ -239,34 +276,40 @@ class _DirectionTradeAnalysisPageState
           return KeyEventResult.ignored;
         },
         child: AppShell(
-          background: const DirectionExecutiveBackground(),
+          background: widget.useContabilidadVisuals
+              ? const ContabilidadAreaBackground()
+              : const DirectionExecutiveBackground(),
           wrapBodyInGlass: false,
           animateHeaderSlots: false,
           animateBody: !widget.instantOpen,
           headerBodySpacing: 8,
           padding: const EdgeInsets.fromLTRB(28, 14, 18, 18),
-          leadingBuilder: (_, _) => DirectionHeaderButton(
+          leadingBuilder: (_, _) => _TradeHeaderButton(
             label: _menuOpen ? 'Cerrar panel' : 'Navegación',
             icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
+            useContabilidadVisuals: widget.useContabilidadVisuals,
             onTapSync: () => setState(() => _menuOpen = !_menuOpen),
           ),
-          centerBuilder: (_, contentAnim) => DirectionHeaderBrand(
+          centerBuilder: (_, contentAnim) => _TradeHeaderBrand(
             contentAnim: contentAnim,
-            title: 'Compra-Venta',
+            title: widget.pageTitle,
+            useContabilidadVisuals: widget.useContabilidadVisuals,
           ),
           trailingBuilder: (_, _) => Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              DirectionHeaderButton(
+              _TradeHeaderButton(
                 label: 'Recargar',
                 icon: Icons.refresh_rounded,
                 width: 132,
+                useContabilidadVisuals: widget.useContabilidadVisuals,
                 onTap: _load,
               ),
               const SizedBox(width: 10),
-              DirectionHeaderButton(
+              _TradeHeaderButton(
                 label: 'Cerrar sesión',
                 icon: Icons.logout_rounded,
+                useContabilidadVisuals: widget.useContabilidadVisuals,
                 onTap: _logout,
               ),
             ],
@@ -286,45 +329,57 @@ class _DirectionTradeAnalysisPageState
                           spacing: 10,
                           runSpacing: 10,
                           children: [
-                            DirectionMetricCard(
+                            _TradeMetricCard(
                               icon: Icons.swap_horiz_rounded,
                               title: 'ÁREA',
-                              value: 'COMPRA-VENTA',
-                              detail: 'Propuesta ejecutiva para Dirección',
-                              accent: directionAreaTokens.primary,
+                              value: widget.areaLabel,
+                              detail: widget.areaDetail,
+                              accent: widget.tokens.primary,
+                              useContabilidadVisuals:
+                                  widget.useContabilidadVisuals,
                             ),
-                            DirectionMetricCard(
+                            _TradeMetricCard(
                               icon: Icons.calendar_month_rounded,
                               title: 'VENTANA',
                               value: proposal.rangeLabel.toUpperCase(),
                               detail: 'Filtro activo para compra y venta',
-                              accent: directionAreaTokens.accent,
+                              accent: widget.tokens.accent,
+                              useContabilidadVisuals:
+                                  widget.useContabilidadVisuals,
                             ),
-                            DirectionMetricCard(
+                            _TradeMetricCard(
                               icon: Icons.category_rounded,
                               title: 'MATERIALES',
                               value: '${proposal.activeMaterials}',
                               detail: 'Con movimiento reciente comparable',
-                              accent: directionAreaTokens.primarySoft,
+                              accent: widget.tokens.primarySoft,
+                              useContabilidadVisuals:
+                                  widget.useContabilidadVisuals,
                             ),
-                            DirectionMetricCard(
+                            _TradeMetricCard(
                               icon: Icons.radar_rounded,
                               title: 'SPREADS',
                               value: '${proposal.opportunities.length}',
                               detail: 'Oportunidades detectadas',
-                              accent: kDirectionSuccess,
+                              accent: widget.useContabilidadVisuals
+                                  ? kContabilidadSuccess
+                                  : kDirectionSuccess,
+                              useContabilidadVisuals:
+                                  widget.useContabilidadVisuals,
                             ),
                           ],
                         ),
                         const SizedBox(height: 14),
                         Expanded(
-                          child: DirectionGlassPanel(
+                          child: _TradeGlassPanel(
                             padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
                             borderRadius: BorderRadius.circular(28),
                             blurSigma: 30,
-                            fillColor: kDirectionOliveDeep.withValues(
-                              alpha: 0.30,
-                            ),
+                            fillColor: widget.useContabilidadVisuals
+                                ? kContabilidadSurfaceStrong.withValues(
+                                    alpha: 0.74,
+                                  )
+                                : kDirectionOliveDeep.withValues(alpha: 0.30),
                             borderColor: Colors.white.withValues(alpha: 0.24),
                             shadowColor: Colors.black.withValues(alpha: 0.10),
                             edgeHighlightColor: Colors.white.withValues(
@@ -333,15 +388,20 @@ class _DirectionTradeAnalysisPageState
                             bevelShadowColor: Colors.black.withValues(
                               alpha: 0.16,
                             ),
-                            glowColor: kDirectionOliveGlow.withValues(
-                              alpha: 0.04,
-                            ),
+                            glowColor:
+                                (widget.useContabilidadVisuals
+                                        ? kContabilidadGlow
+                                        : kDirectionOliveGlow)
+                                    .withValues(alpha: 0.04),
+                            useContabilidadVisuals:
+                                widget.useContabilidadVisuals,
                             child: _loading
                                 ? const Center(
                                     child: CircularProgressIndicator(),
                                   )
                                 : _error != null
                                 ? _TradeErrorState(
+                                    title: widget.errorTitle,
                                     message: _error!,
                                     onRetry: _load,
                                   )
@@ -371,6 +431,8 @@ class _DirectionTradeAnalysisPageState
                                         _customRange = null;
                                       });
                                     },
+                                    useContabilidadVisuals:
+                                        widget.useContabilidadVisuals,
                                     onExportXlsx: _exportChartDataXlsx,
                                     onOpenCommercialRadar: _openCommercialRadar,
                                   ),
@@ -405,11 +467,21 @@ class _DirectionTradeAnalysisPageState
                 child: IgnorePointer(
                   ignoring: !_menuOpen,
                   child: SingleChildScrollView(
-                    child: _DirectionTradeAnalysisMenu(
-                      onOpenDashboard: _openDashboard,
-                      onOpenMenudeoAnalysis: _openMenudeoAnalysis,
-                      onOpenCommercialRadar: _openCommercialRadar,
-                    ),
+                    child:
+                        widget.sidePanelBuilder?.call(
+                          context,
+                          _openDashboard,
+                        ) ??
+                        _TradeAnalysisMenu(
+                          onOpenDashboard: _openDashboard,
+                          onOpenMenudeoAnalysis: _openMenudeoAnalysis,
+                          onOpenCommercialRadar: _openCommercialRadar,
+                          dashboardTitle: widget.dashboardTitle,
+                          dashboardSubtitle: widget.dashboardSubtitle,
+                          currentTitle: widget.pageTitle,
+                          currentSubtitle: widget.currentMenuSubtitle,
+                          useContabilidadVisuals: widget.useContabilidadVisuals,
+                        ),
                   ),
                 ),
               ),
@@ -595,6 +667,7 @@ class _TradeAnalysisBody extends StatelessWidget {
   final VoidCallback onSetLast7Days;
   final VoidCallback onSetLast30Days;
   final VoidCallback onSetLast90Days;
+  final bool useContabilidadVisuals;
   final Future<void> Function() onExportXlsx;
   final Future<void> Function() onOpenCommercialRadar;
 
@@ -607,6 +680,7 @@ class _TradeAnalysisBody extends StatelessWidget {
     required this.onSetLast7Days,
     required this.onSetLast30Days,
     required this.onSetLast90Days,
+    required this.useContabilidadVisuals,
     required this.onExportXlsx,
     required this.onOpenCommercialRadar,
   });
@@ -626,6 +700,7 @@ class _TradeAnalysisBody extends StatelessWidget {
             onSetLast7Days: onSetLast7Days,
             onSetLast30Days: onSetLast30Days,
             onSetLast90Days: onSetLast90Days,
+            useContabilidadVisuals: useContabilidadVisuals,
             onExportXlsx: onExportXlsx,
             onOpenCommercialRadar: onOpenCommercialRadar,
           ),
@@ -704,6 +779,7 @@ class _TradeToolbar extends StatelessWidget {
   final VoidCallback onSetLast7Days;
   final VoidCallback onSetLast30Days;
   final VoidCallback onSetLast90Days;
+  final bool useContabilidadVisuals;
   final Future<void> Function() onExportXlsx;
   final Future<void> Function() onOpenCommercialRadar;
 
@@ -716,13 +792,15 @@ class _TradeToolbar extends StatelessWidget {
     required this.onSetLast7Days,
     required this.onSetLast30Days,
     required this.onSetLast90Days,
+    required this.useContabilidadVisuals,
     required this.onExportXlsx,
     required this.onOpenCommercialRadar,
   });
 
   @override
   Widget build(BuildContext context) {
-    return DirectionToolbarPanel(
+    return _TradeToolbarPanel(
+      useContabilidadVisuals: useContabilidadVisuals,
       child: Wrap(
         alignment: WrapAlignment.spaceBetween,
         runSpacing: 12,
@@ -734,10 +812,10 @@ class _TradeToolbar extends StatelessWidget {
             runSpacing: 10,
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
-              const Text(
+              Text(
                 'Propuesta de lectura ejecutiva',
                 style: TextStyle(
-                  color: kDirectionSurfaceText,
+                  color: _tradeSurfaceText(context),
                   fontSize: 18,
                   fontWeight: FontWeight.w800,
                 ),
@@ -773,10 +851,11 @@ class _TradeToolbar extends StatelessWidget {
                 selected: selectedRangeDays == 90,
                 onTap: onSetLast90Days,
               ),
-              DirectionHeaderButton(
+              _TradeHeaderButton(
                 label: rangeLabel,
                 icon: Icons.date_range_rounded,
                 width: 186,
+                useContabilidadVisuals: useContabilidadVisuals,
                 onTap: onPickDateRange,
               ),
             ],
@@ -785,16 +864,18 @@ class _TradeToolbar extends StatelessWidget {
             spacing: 10,
             runSpacing: 10,
             children: [
-              DirectionHeaderButton(
+              _TradeHeaderButton(
                 label: 'Exportar XLSX',
                 icon: Icons.download_rounded,
                 width: 180,
+                useContabilidadVisuals: useContabilidadVisuals,
                 onTap: onExportXlsx,
               ),
-              DirectionHeaderButton(
+              _TradeHeaderButton(
                 label: 'Abrir Radar Comercial',
                 icon: Icons.open_in_new_rounded,
                 width: 220,
+                useContabilidadVisuals: useContabilidadVisuals,
                 onTap: onOpenCommercialRadar,
               ),
             ],
@@ -805,6 +886,325 @@ class _TradeToolbar extends StatelessWidget {
   }
 }
 
+class _TradeHeaderBrand extends StatelessWidget {
+  final Animation<double> contentAnim;
+  final String title;
+  final bool useContabilidadVisuals;
+
+  const _TradeHeaderBrand({
+    required this.contentAnim,
+    required this.title,
+    required this.useContabilidadVisuals,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return useContabilidadVisuals
+        ? ContabilidadPageHeaderBrand(contentAnim: contentAnim, title: title)
+        : DirectionHeaderBrand(contentAnim: contentAnim, title: title);
+  }
+}
+
+class _TradeHeaderButton extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Future<void> Function()? onTap;
+  final VoidCallback? onTapSync;
+  final double width;
+  final bool useContabilidadVisuals;
+
+  const _TradeHeaderButton({
+    required this.label,
+    required this.icon,
+    required this.useContabilidadVisuals,
+    this.onTap,
+    this.onTapSync,
+    this.width = 178,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return useContabilidadVisuals
+        ? ContabilidadPageHeaderButton(
+            label: label,
+            icon: icon,
+            width: width,
+            onTap: onTap,
+            onTapSync: onTapSync,
+          )
+        : DirectionHeaderButton(
+            label: label,
+            icon: icon,
+            width: width,
+            onTap: onTap,
+            onTapSync: onTapSync,
+          );
+  }
+}
+
+class _TradeMetricCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String value;
+  final String detail;
+  final Color accent;
+  final bool useContabilidadVisuals;
+
+  const _TradeMetricCard({
+    required this.icon,
+    required this.title,
+    required this.value,
+    required this.detail,
+    required this.accent,
+    required this.useContabilidadVisuals,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return useContabilidadVisuals
+        ? ContabilidadMetricCard(
+            icon: icon,
+            title: title,
+            value: value,
+            detail: detail,
+            accent: accent,
+          )
+        : DirectionMetricCard(
+            icon: icon,
+            title: title,
+            value: value,
+            detail: detail,
+            accent: accent,
+          );
+  }
+}
+
+class _TradeToolbarPanel extends StatelessWidget {
+  final Widget child;
+  final bool useContabilidadVisuals;
+
+  const _TradeToolbarPanel({
+    required this.child,
+    required this.useContabilidadVisuals,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return useContabilidadVisuals
+        ? ContabilidadToolbarPanel(child: child)
+        : DirectionToolbarPanel(child: child);
+  }
+}
+
+class _TradeGlassPanel extends StatelessWidget {
+  final Widget child;
+  final EdgeInsetsGeometry padding;
+  final BorderRadius borderRadius;
+  final double blurSigma;
+  final Color fillColor;
+  final Color borderColor;
+  final Color shadowColor;
+  final Color edgeHighlightColor;
+  final Color bevelShadowColor;
+  final Color glowColor;
+  final bool useContabilidadVisuals;
+
+  const _TradeGlassPanel({
+    required this.child,
+    required this.padding,
+    required this.borderRadius,
+    this.blurSigma = 24,
+    required this.fillColor,
+    required this.borderColor,
+    this.shadowColor = const Color(0x14000000),
+    required this.edgeHighlightColor,
+    this.bevelShadowColor = const Color(0x1F000000),
+    required this.glowColor,
+    required this.useContabilidadVisuals,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return useContabilidadVisuals
+        ? ContabilidadGlassPanel(
+            padding: padding,
+            borderRadius: borderRadius,
+            blurSigma: blurSigma,
+            fillColor: fillColor,
+            borderColor: borderColor,
+            shadowColor: shadowColor,
+            edgeHighlightColor: edgeHighlightColor,
+            bevelShadowColor: bevelShadowColor,
+            glowColor: glowColor,
+            child: child,
+          )
+        : DirectionGlassPanel(
+            padding: padding,
+            borderRadius: borderRadius,
+            blurSigma: blurSigma,
+            fillColor: fillColor,
+            borderColor: borderColor,
+            shadowColor: shadowColor,
+            edgeHighlightColor: edgeHighlightColor,
+            bevelShadowColor: bevelShadowColor,
+            glowColor: glowColor,
+            child: child,
+          );
+  }
+}
+
+class _TradeMenuPanel extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final List<DirectionModuleMenuEntry> entries;
+  final bool useContabilidadVisuals;
+
+  const _TradeMenuPanel({
+    required this.title,
+    required this.subtitle,
+    required this.entries,
+    required this.useContabilidadVisuals,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    if (!useContabilidadVisuals) {
+      return DirectionModuleMenuPanel(
+        title: title,
+        subtitle: subtitle,
+        entries: entries,
+      );
+    }
+    return ContabilidadGlassPanel(
+      borderRadius: BorderRadius.circular(24),
+      blurSigma: 30,
+      fillColor: kContabilidadSurfaceSoft,
+      borderColor: Colors.white.withValues(alpha: 0.20),
+      shadowColor: Colors.black.withValues(alpha: 0.16),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.58),
+      bevelShadowColor: Colors.black.withValues(alpha: 0.16),
+      glowColor: kContabilidadGlow.withValues(alpha: 0.12),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Páginas y accesos analíticos del área',
+            style: TextStyle(
+              color: kContabilidadMutedInk,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 14),
+          for (var i = 0; i < entries.length; i++) ...[
+            _ContabilidadMenuAction(entry: entries[i]),
+            if (i != entries.length - 1) const SizedBox(height: 8),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _ContabilidadMenuAction extends StatelessWidget {
+  final DirectionModuleMenuEntry entry;
+
+  const _ContabilidadMenuAction({required this.entry});
+
+  @override
+  Widget build(BuildContext context) {
+    final highlighted = entry.current;
+    return InkWell(
+      borderRadius: BorderRadius.circular(18),
+      onTap: entry.current ? null : entry.onTap,
+      child: ContabilidadGlassPanel(
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        borderRadius: BorderRadius.circular(18),
+        blurSigma: 24,
+        fillColor: highlighted
+            ? kContabilidadGlow.withValues(alpha: 0.18)
+            : kContabilidadSurfaceStrong.withValues(alpha: 0.72),
+        borderColor: Colors.white.withValues(alpha: highlighted ? 0.28 : 0.18),
+        shadowColor: Colors.black.withValues(alpha: 0.10),
+        edgeHighlightColor: Colors.white.withValues(alpha: 0.54),
+        bevelShadowColor: Colors.black.withValues(alpha: 0.14),
+        glowColor: highlighted
+            ? kContabilidadGlow.withValues(alpha: 0.18)
+            : kContabilidadMint.withValues(alpha: 0.08),
+        child: Row(
+          children: [
+            Icon(entry.icon, size: 18, color: Colors.white),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    entry.title,
+                    style: const TextStyle(
+                      color: kContabilidadInk,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    entry.subtitle,
+                    style: const TextStyle(
+                      color: kContabilidadMutedInk,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              entry.current
+                  ? Icons.check_circle_rounded
+                  : Icons.chevron_right_rounded,
+              color: entry.current ? kContabilidadGlow : kContabilidadMutedInk,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+bool _useContabilidadPalette(BuildContext context) {
+  final tokens = AreaThemeScope.of(context);
+  return tokens.primary == contabilidadAreaTokens.primary &&
+      tokens.accent == contabilidadAreaTokens.accent;
+}
+
+Color _tradeSurfaceText(BuildContext context) =>
+    _useContabilidadPalette(context) ? kContabilidadInk : kDirectionSurfaceText;
+
+Color _tradeMutedText(BuildContext context) => _useContabilidadPalette(context)
+    ? kContabilidadMutedInk
+    : kDirectionMutedText;
+
+Color _tradeSubtleText(BuildContext context) => _useContabilidadPalette(context)
+    ? kContabilidadSubtleInk
+    : kDirectionSubtleText;
+
+Gradient _tradeSelectionGradient(BuildContext context) =>
+    _useContabilidadPalette(context)
+    ? kContabilidadSelectionGradient
+    : kDirectionSelectionGradient;
+
 class _ExecutiveSummaryCard extends StatelessWidget {
   final _TradeProposal proposal;
 
@@ -812,9 +1212,12 @@ class _ExecutiveSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isContabilidad = _useContabilidadPalette(context);
     return _SectionCard(
-      title: 'Resumen ejecutivo',
-      subtitle: 'Qué entra, qué sale y dónde se ve espacio de decisión.',
+      title: isContabilidad ? 'Resultado comercial' : 'Resumen ejecutivo',
+      subtitle: isContabilidad
+          ? 'Costo, venta y diferencial comercial del periodo.'
+          : 'Qué entra, qué sale y dónde se ve espacio de decisión.',
       icon: Icons.assessment_rounded,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -824,34 +1227,42 @@ class _ExecutiveSummaryCard extends StatelessWidget {
             runSpacing: 12,
             children: [
               _MiniMetric(
-                label: 'Compra',
+                label: isContabilidad ? 'Costo kg' : 'Compra',
                 value: '${formatDecimal(proposal.buyVolume, decimals: 0)} kg',
-                detail: formatMoney(proposal.buyAmount),
+                detail: isContabilidad
+                    ? 'Costo ${formatMoney(proposal.buyAmount)}'
+                    : formatMoney(proposal.buyAmount),
                 accent: const Color(0xFF91D6FF),
               ),
               _MiniMetric(
-                label: 'Venta',
+                label: isContabilidad ? 'Venta kg' : 'Venta',
                 value: '${formatDecimal(proposal.sellVolume, decimals: 0)} kg',
-                detail: formatMoney(proposal.sellAmount),
+                detail: isContabilidad
+                    ? 'Ingreso ${formatMoney(proposal.sellAmount)}'
+                    : formatMoney(proposal.sellAmount),
                 accent: const Color(0xFF86FFE5),
               ),
               _MiniMetric(
-                label: 'Balance kg',
+                label: isContabilidad ? 'Diferencial kg' : 'Balance kg',
                 value:
                     '${formatDecimal(proposal.sellVolume - proposal.buyVolume, decimals: 0)} kg',
-                detail: 'Salida menos entrada',
+                detail: isContabilidad
+                    ? 'Venta menos costo en volumen'
+                    : 'Salida menos entrada',
                 accent: const Color(0xFFFFD58A),
               ),
             ],
           ),
           const SizedBox(height: 16),
           _InsightCallout(
-            title: 'Lectura principal',
+            title: isContabilidad ? 'Lectura comercial' : 'Lectura principal',
             message: proposal.mainInsight,
           ),
           const SizedBox(height: 10),
           _InsightCallout(
-            title: 'Lectura de volumen e importe',
+            title: isContabilidad
+                ? 'Lectura de costo y venta'
+                : 'Lectura de volumen e importe',
             message:
                 '${proposal.secondaryInsight} Rango: ${proposal.rangeLabel}.',
           ),
@@ -869,10 +1280,14 @@ class _SimpleBarChartCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isContabilidad = _useContabilidadPalette(context);
     return _SectionCard(
-      title: 'Compra, venta y diferencial',
-      subtitle:
-          'Barras por material dentro del rango $rangeLabel. Hover sobre cada barra para ver kg.',
+      title: isContabilidad
+          ? 'Costo, venta y diferencial'
+          : 'Compra, venta y diferencial',
+      subtitle: isContabilidad
+          ? 'Barras por material para comparar costo comercial, venta y diferencial dentro de $rangeLabel.'
+          : 'Barras por material dentro del rango $rangeLabel. Hover sobre cada barra para ver kg.',
       icon: Icons.bar_chart_rounded,
       child: rows.isEmpty
           ? const _EmptyLine(
@@ -899,10 +1314,14 @@ class _SimplePriceCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isContabilidad = _useContabilidadPalette(context);
     return _SectionCard(
-      title: 'Estudio rapido de precios',
-      subtitle:
-          'Lectura simple para decidir si conviene subir, corregir o sostener precio.',
+      title: isContabilidad
+          ? 'Margen y precios observados'
+          : 'Estudio rapido de precios',
+      subtitle: isContabilidad
+          ? 'Lectura de costo promedio, venta promedio y margen comercial observado.'
+          : 'Lectura simple para decidir si conviene subir, corregir o sostener precio.',
       icon: Icons.sell_rounded,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -912,7 +1331,7 @@ class _SimplePriceCard extends StatelessWidget {
             runSpacing: 12,
             children: [
               _MiniMetric(
-                label: 'Compra prom.',
+                label: isContabilidad ? 'Costo prom.' : 'Compra prom.',
                 value: proposal.avgBuyPrice == null
                     ? 'N/D'
                     : formatMoney(proposal.avgBuyPrice!),
@@ -928,11 +1347,13 @@ class _SimplePriceCard extends StatelessWidget {
                 accent: const Color(0xFF86FFE5),
               ),
               _MiniMetric(
-                label: 'Spread prom.',
+                label: isContabilidad ? 'Margen prom.' : 'Spread prom.',
                 value: proposal.avgSpread == null
                     ? 'N/D'
                     : formatMoney(proposal.avgSpread!),
-                detail: 'Venta menos compra',
+                detail: isContabilidad
+                    ? 'Venta menos costo'
+                    : 'Venta menos compra',
                 accent: proposal.avgSpread == null
                     ? const Color(0xFFB7C3FF)
                     : proposal.avgSpread! >= 0
@@ -966,6 +1387,7 @@ class _SimplePriceLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isContabilidad = _useContabilidadPalette(context);
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
@@ -1012,9 +1434,11 @@ class _SimplePriceLine extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Compra ${formatMoney(row.buyPrice)} · Venta ${formatMoney(row.sellPrice)} · Spread ${formatMoney(row.spread)}',
-            style: const TextStyle(
-              color: kDirectionMutedText,
+            isContabilidad
+                ? 'Costo ${formatMoney(row.buyPrice)} · Venta ${formatMoney(row.sellPrice)} · Margen ${formatMoney(row.spread)}'
+                : 'Compra ${formatMoney(row.buyPrice)} · Venta ${formatMoney(row.sellPrice)} · Spread ${formatMoney(row.spread)}',
+            style: TextStyle(
+              color: _tradeMutedText(context),
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
             ),
@@ -1022,8 +1446,8 @@ class _SimplePriceLine extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             row.message,
-            style: const TextStyle(
-              color: kDirectionSurfaceText,
+            style: TextStyle(
+              color: _tradeSurfaceText(context),
               fontSize: 12.5,
               fontWeight: FontWeight.w600,
             ),
@@ -1041,11 +1465,13 @@ class _SimpleMaterialsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isContabilidad = _useContabilidadPalette(context);
     final totals = _TradeMaterialTotals.fromRows(rows);
     return _SectionCard(
-      title: 'Materiales',
-      subtitle:
-          'Lectura simple por material: compra, venta y balance en kg y en \$.',
+      title: isContabilidad ? 'Resultado por material' : 'Materiales',
+      subtitle: isContabilidad
+          ? 'Lectura por material para comparar costo, venta y diferencial en kg y en importe.'
+          : 'Lectura simple por material: compra, venta y balance en kg y en \$.',
       icon: Icons.category_outlined,
       child: rows.isEmpty
           ? const _EmptyLine(message: 'No hay materiales con movimiento.')
@@ -1157,8 +1583,8 @@ class _BarMetricLine extends StatelessWidget {
           width: 54,
           child: Text(
             label,
-            style: const TextStyle(
-              color: kDirectionMutedText,
+            style: TextStyle(
+              color: _tradeMutedText(context),
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -1558,8 +1984,8 @@ class _StoplightTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   description,
-                  style: const TextStyle(
-                    color: kDirectionMutedText,
+                  style: TextStyle(
+                    color: _tradeMutedText(context),
                     fontSize: 12.5,
                     height: 1.35,
                   ),
@@ -1578,12 +2004,12 @@ class _WeeklyTrendHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const style = TextStyle(
-      color: kDirectionSubtleText,
+    final style = TextStyle(
+      color: _tradeSubtleText(context),
       fontSize: 11,
       fontWeight: FontWeight.w800,
     );
-    return const Row(
+    return Row(
       children: [
         Expanded(flex: 22, child: Text('Material', style: style)),
         Expanded(flex: 18, child: Text('Spread', style: style)),
@@ -1878,19 +2304,29 @@ class _SectionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return DirectionGlassPanel(
+    final useContabilidadVisuals = _useContabilidadPalette(context);
+    return _TradeGlassPanel(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       borderRadius: BorderRadius.circular(24),
-      fillColor: kDirectionOliveDeep.withValues(alpha: 0.22),
+      fillColor: useContabilidadVisuals
+          ? kContabilidadSurfaceStrong.withValues(alpha: 0.68)
+          : kDirectionOliveDeep.withValues(alpha: 0.22),
       borderColor: Colors.white.withValues(alpha: 0.10),
       edgeHighlightColor: Colors.white.withValues(alpha: 0.26),
-      glowColor: kDirectionOliveGlow.withValues(alpha: 0.03),
+      glowColor:
+          (useContabilidadVisuals ? kContabilidadGlow : kDirectionOliveGlow)
+              .withValues(alpha: 0.03),
+      useContabilidadVisuals: useContabilidadVisuals,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
             children: [
-              Icon(icon, size: 20, color: directionAreaTokens.primaryStrong),
+              Icon(
+                icon,
+                size: 20,
+                color: AreaThemeScope.of(context).primaryStrong,
+              ),
               const SizedBox(width: 10),
               Expanded(
                 child: Column(
@@ -1898,8 +2334,8 @@ class _SectionCard extends StatelessWidget {
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
-                        color: kDirectionSurfaceText,
+                      style: TextStyle(
+                        color: _tradeSurfaceText(context),
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
                       ),
@@ -1907,8 +2343,8 @@ class _SectionCard extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       subtitle,
-                      style: const TextStyle(
-                        color: kDirectionMutedText,
+                      style: TextStyle(
+                        color: _tradeMutedText(context),
                         fontSize: 12.5,
                         fontWeight: FontWeight.w500,
                       ),
@@ -1956,8 +2392,8 @@ class _SignalTile extends StatelessWidget {
               children: [
                 Text(
                   title,
-                  style: const TextStyle(
-                    color: kDirectionSurfaceText,
+                  style: TextStyle(
+                    color: _tradeSurfaceText(context),
                     fontSize: 14,
                     fontWeight: FontWeight.w800,
                   ),
@@ -1965,8 +2401,8 @@ class _SignalTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   subtitle,
-                  style: const TextStyle(
-                    color: kDirectionMutedText,
+                  style: TextStyle(
+                    color: _tradeMutedText(context),
                     fontSize: 12.5,
                     height: 1.35,
                   ),
@@ -2044,8 +2480,8 @@ class _MiniMetric extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             detail,
-            style: const TextStyle(
-              color: kDirectionMutedText,
+            style: TextStyle(
+              color: _tradeMutedText(context),
               fontSize: 12,
               fontWeight: FontWeight.w600,
             ),
@@ -2068,7 +2504,9 @@ class _InsightCallout extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 13, 14, 13),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(18),
-        color: kDirectionOliveDeep.withValues(alpha: 0.14),
+        color: _useContabilidadPalette(context)
+            ? kContabilidadSurface.withValues(alpha: 0.40)
+            : kDirectionOliveDeep.withValues(alpha: 0.14),
         border: Border.all(color: Colors.white.withValues(alpha: 0.09)),
       ),
       child: Column(
@@ -2085,8 +2523,8 @@ class _InsightCallout extends StatelessWidget {
           const SizedBox(height: 5),
           Text(
             message,
-            style: const TextStyle(
-              color: kDirectionMutedText,
+            style: TextStyle(
+              color: _tradeMutedText(context),
               fontSize: 13,
               height: 1.4,
             ),
@@ -2118,7 +2556,7 @@ class _FilterChipButton extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(999),
-          gradient: selected ? kDirectionSelectionGradient : null,
+          gradient: selected ? _tradeSelectionGradient(context) : null,
           color: selected ? null : Colors.white.withValues(alpha: 0.04),
           border: Border.all(
             color: Colors.white.withValues(alpha: selected ? 0.24 : 0.10),
@@ -2127,7 +2565,7 @@ class _FilterChipButton extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: selected ? Colors.white : kDirectionMutedText,
+            color: selected ? Colors.white : _tradeMutedText(context),
             fontSize: 12,
             fontWeight: FontWeight.w800,
           ),
@@ -2142,12 +2580,12 @@ class _SimpleMaterialsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const style = TextStyle(
-      color: kDirectionSubtleText,
+    final style = TextStyle(
+      color: _tradeSubtleText(context),
       fontSize: 11,
       fontWeight: FontWeight.w800,
     );
-    return const Row(
+    return Row(
       children: [
         Expanded(flex: 24, child: Text('Material', style: style)),
         Expanded(flex: 12, child: Text('Compra kg', style: style)),
@@ -2170,8 +2608,8 @@ class _SimpleMaterialLine extends StatelessWidget {
   Widget build(BuildContext context) {
     final balance = row.sellVolume - row.buyVolume;
     final amountBalance = row.sellAmount - row.buyAmount;
-    const muted = TextStyle(
-      color: kDirectionMutedText,
+    final muted = TextStyle(
+      color: _tradeMutedText(context),
       fontSize: 12.5,
       fontWeight: FontWeight.w600,
     );
@@ -2201,8 +2639,8 @@ class _SimpleMaterialLine extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   row.channelMixLabel,
-                  style: const TextStyle(
-                    color: kDirectionSubtleText,
+                  style: TextStyle(
+                    color: _tradeSubtleText(context),
                     fontSize: 11,
                     fontWeight: FontWeight.w700,
                   ),
@@ -2347,12 +2785,12 @@ class _TableHeaderRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const textStyle = TextStyle(
-      color: kDirectionSubtleText,
+    final textStyle = TextStyle(
+      color: _tradeSubtleText(context),
       fontSize: 11,
       fontWeight: FontWeight.w800,
     );
-    return const Row(
+    return Row(
       children: [
         Expanded(flex: 22, child: Text('Material', style: textStyle)),
         Expanded(flex: 15, child: Text('Compra kg', style: textStyle)),
@@ -2373,8 +2811,8 @@ class _MaterialLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const cellStyle = TextStyle(
-      color: kDirectionMutedText,
+    final cellStyle = TextStyle(
+      color: _tradeMutedText(context),
       fontSize: 12.5,
       fontWeight: FontWeight.w600,
     );
@@ -2434,7 +2872,7 @@ class _MaterialLine extends StatelessWidget {
               spread == null ? 'N/D' : formatMoney(spread),
               style: TextStyle(
                 color: spread == null
-                    ? kDirectionMutedText
+                    ? _tradeMutedText(context)
                     : spread >= 0
                     ? const Color(0xFF8FFFE1)
                     : const Color(0xFFFFC690),
@@ -2466,8 +2904,8 @@ class _EmptyLine extends StatelessWidget {
       ),
       child: Text(
         message,
-        style: const TextStyle(
-          color: kDirectionMutedText,
+        style: TextStyle(
+          color: _tradeMutedText(context),
           fontSize: 13,
           fontWeight: FontWeight.w600,
         ),
@@ -2477,10 +2915,15 @@ class _EmptyLine extends StatelessWidget {
 }
 
 class _TradeErrorState extends StatelessWidget {
+  final String title;
   final String message;
   final Future<void> Function() onRetry;
 
-  const _TradeErrorState({required this.message, required this.onRetry});
+  const _TradeErrorState({
+    required this.title,
+    required this.message,
+    required this.onRetry,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -2496,10 +2939,10 @@ class _TradeErrorState extends StatelessWidget {
               color: Color(0xFFFFC690),
             ),
             const SizedBox(height: 12),
-            const Text(
-              'No se pudo cargar la propuesta de compra-venta.',
+            Text(
+              title,
               textAlign: TextAlign.center,
-              style: TextStyle(
+              style: const TextStyle(
                 color: Colors.white,
                 fontSize: 20,
                 fontWeight: FontWeight.w800,
@@ -2509,16 +2952,17 @@ class _TradeErrorState extends StatelessWidget {
             Text(
               message,
               textAlign: TextAlign.center,
-              style: const TextStyle(
-                color: kDirectionMutedText,
+              style: TextStyle(
+                color: _tradeMutedText(context),
                 fontSize: 13,
                 height: 1.4,
               ),
             ),
             const SizedBox(height: 18),
-            DirectionHeaderButton(
+            _TradeHeaderButton(
               label: 'Reintentar',
               icon: Icons.refresh_rounded,
+              useContabilidadVisuals: _useContabilidadPalette(context),
               onTap: onRetry,
             ),
           ],
@@ -2528,31 +2972,48 @@ class _TradeErrorState extends StatelessWidget {
   }
 }
 
-class _DirectionTradeAnalysisMenu extends StatelessWidget {
+class _TradeAnalysisMenu extends StatelessWidget {
   final Future<void> Function() onOpenDashboard;
   final Future<void> Function() onOpenMenudeoAnalysis;
   final Future<void> Function() onOpenCommercialRadar;
+  final String dashboardTitle;
+  final String dashboardSubtitle;
+  final String currentTitle;
+  final String currentSubtitle;
+  final bool useContabilidadVisuals;
 
-  const _DirectionTradeAnalysisMenu({
+  const _TradeAnalysisMenu({
     required this.onOpenDashboard,
     required this.onOpenMenudeoAnalysis,
     required this.onOpenCommercialRadar,
+    required this.dashboardTitle,
+    required this.dashboardSubtitle,
+    required this.currentTitle,
+    required this.currentSubtitle,
+    required this.useContabilidadVisuals,
   });
 
   @override
   Widget build(BuildContext context) {
-    return DirectionModuleMenuPanel(
+    return _TradeMenuPanel(
+      useContabilidadVisuals: useContabilidadVisuals,
+      title: useContabilidadVisuals
+          ? 'Navegación Contabilidad'
+          : 'Navegación Dirección',
+      subtitle: useContabilidadVisuals
+          ? 'Páginas y accesos analíticos del área'
+          : 'Páginas y accesos ejecutivos del área',
       entries: [
         DirectionModuleMenuEntry(
           icon: Icons.home_work_rounded,
-          title: 'Dashboard Dirección',
-          subtitle: 'Vista general del área',
+          title: dashboardTitle,
+          subtitle: dashboardSubtitle,
           onTap: () => unawaited(onOpenDashboard()),
         ),
-        const DirectionModuleMenuEntry(
+        DirectionModuleMenuEntry(
           icon: Icons.swap_horiz_rounded,
-          title: 'Compra-Venta',
-          subtitle: 'Propuesta ejecutiva consolidada',
+          title: currentTitle,
+          subtitle: currentSubtitle,
           current: true,
         ),
         DirectionModuleMenuEntry(

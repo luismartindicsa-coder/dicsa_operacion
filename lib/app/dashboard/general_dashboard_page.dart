@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../auth/auth_navigation.dart';
 import '../commercial/commercial_dashboard_page.dart';
 import '../commercial/commercial_store.dart';
 import '../contabilidad/contabilidad_dashboard_page.dart';
+import '../contabilidad/contabilidad_trade_analysis_page.dart';
 import '../compras/compras_dashboard_page.dart';
 import '../direction/direction_cash_entries_exits_page.dart';
 import '../direction/direction_cash_taxonomy_page.dart';
@@ -17,8 +19,8 @@ import '../direction/direction_menudeo_analysis_page.dart';
 import '../direction/direction_operations_repository.dart';
 import '../direction/direction_purchase_orders_page.dart';
 import '../direction/direction_theme.dart';
-import '../direction/direction_trade_analysis_page.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
+import '../finanzas/finanzas_due_alerts_store.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
 import '../gerencia/gerencia_bale_weekly_tracking_store.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
@@ -29,6 +31,7 @@ import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
 import '../shared/archetypes/auxiliary_surfaces/confirmation_dialog.dart';
+import '../shared/direction_vault/direction_vault_repository.dart';
 import '../shared/production_daily_summary_widget.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/utils/number_formatters.dart';
@@ -39,7 +42,6 @@ const double _kDirectionExecutiveWidgetWidth = 394;
 const double _kDirectionExecutiveWidgetHeight = 428;
 const double _kDirectionVaultDeposits = 40350;
 const double _kDirectionVaultExpenses = 8850;
-const String _kDirectionVaultArea = 'direccion_boveda_vouchers';
 
 class GeneralDashboardPage extends StatefulWidget {
   final bool instantOpen;
@@ -51,9 +53,48 @@ class GeneralDashboardPage extends StatefulWidget {
 }
 
 class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
+  static const Duration _kFinanzasDueAlertDelay = Duration(seconds: 2);
   bool _directionExpanded = true;
   bool _areasExpanded = true;
   bool _menuOverlayOpen = false;
+  bool _finanzasDueAlertQueued = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      Future<void>.delayed(_kFinanzasDueAlertDelay, () {
+        if (!mounted) return;
+        unawaited(_presentFinanzasDueAlertIfNeeded());
+      });
+    });
+  }
+
+  Future<void> _presentFinanzasDueAlertIfNeeded() async {
+    if (!mounted || _finanzasDueAlertQueued) return;
+    _finanzasDueAlertQueued = true;
+    try {
+      final summary = await FinanzasDueAlertsStore.loadSummary();
+      if (!mounted || summary.totalCount <= 0 || summary.items.isEmpty) return;
+      final primary = summary.items.first;
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) {
+          return _DirectionFinanzasDueNotificationDialog(
+            summary: summary,
+            primaryItem: primary,
+            onOpenFinanzas: () async {
+              Navigator.of(dialogContext).pop();
+              await _openFinanzasDashboard();
+            },
+          );
+        },
+      );
+    } catch (_) {
+      // Keep the dashboard usable even if the notification cannot be loaded.
+    }
+  }
 
   Future<void> _logout() async {
     final ok = await showContractConfirmationDialog(
@@ -199,7 +240,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     if (!mounted) return;
     await Navigator.of(context).push(
       appPageRoute(
-        page: const DirectionTradeAnalysisPage(instantOpen: true),
+        page: const ContabilidadTradeAnalysisPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -450,20 +491,59 @@ class _DirectionDashboardCanvas extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 20),
-          ProductionDailySummaryWidget(
-            title: 'Producción diaria consolidada',
-            subtitle:
-                'Semana actual por turno para lectura ejecutiva. Revuelta C1 y C2 se separan desde el comentario de Producción.',
-            palette: const ProductionDailySummaryPalette(
-              surface: Color(0x33191F08),
-              border: Color(0x40D8E38A),
-              accent: kDirectionOliveGlow,
-              accentSoft: kDirectionIvory,
-              text: kDirectionSurfaceText,
-              mutedText: kDirectionMutedText,
-              gridLine: Color(0x33D8E38A),
-              highlightSurface: Color(0x3D313812),
-            ),
+          LayoutBuilder(
+            builder: (context, constraints) {
+              const servicesWidth = 420.0;
+              const sectionGap = 14.0;
+              final canSplit =
+                  constraints.maxWidth >= servicesWidth + 760 + sectionGap;
+              final productionWidget = const ProductionDailySummaryWidget(
+                title: 'Producción diaria consolidada',
+                subtitle:
+                    'Semana actual por turno para lectura ejecutiva. Revuelta C1 y C2 se separan desde el comentario de Producción.',
+                palette: ProductionDailySummaryPalette(
+                  surface: Color(0x33191F08),
+                  border: Color(0x40D8E38A),
+                  accent: kDirectionOliveGlow,
+                  accentSoft: kDirectionIvory,
+                  text: kDirectionSurfaceText,
+                  mutedText: kDirectionMutedText,
+                  gridLine: Color(0x33D8E38A),
+                  highlightSurface: Color(0x3D313812),
+                ),
+              );
+              final servicesWidget = _DeferredDashboardSection(
+                delay: const Duration(milliseconds: 700),
+                minHeight: 320,
+                child: _DirectionOperationalServicesSummary(
+                  onOpenOperationalDashboard: onOpenOperationalDashboard,
+                ),
+              );
+              if (!canSplit) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    productionWidget,
+                    const SizedBox(height: 14),
+                    SizedBox(width: servicesWidth, child: servicesWidget),
+                  ],
+                );
+              }
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: productionWidget),
+                  const SizedBox(width: sectionGap),
+                  SizedBox(width: servicesWidth, child: servicesWidget),
+                ],
+              );
+            },
+          ),
+          const SizedBox(height: 20),
+          const _DeferredDashboardSection(
+            delay: Duration(milliseconds: 1200),
+            minHeight: 360,
+            child: _DirectionMaterialFlowChartsSection(),
           ),
           const SizedBox(height: 20),
           const Text(
@@ -481,15 +561,13 @@ class _DirectionDashboardCanvas extends StatelessWidget {
             runSpacing: 14,
             children: [
               SizedBox(
-                width: 420,
-                child: _DirectionOperationalServicesSummary(
-                  onOpenOperationalDashboard: onOpenOperationalDashboard,
-                ),
-              ),
-              SizedBox(
-                width: 854,
-                child: _DirectionGerenciaDashboardSummary(
-                  onOpenGerencia: onOpenGerencia,
+                width: 1288,
+                child: _DeferredDashboardSection(
+                  delay: const Duration(milliseconds: 950),
+                  minHeight: 260,
+                  child: _DirectionGerenciaDashboardSummary(
+                    onOpenGerencia: onOpenGerencia,
+                  ),
                 ),
               ),
               SizedBox(
@@ -529,6 +607,62 @@ class _DirectionDashboardCanvas extends StatelessWidget {
   }
 }
 
+class _DeferredDashboardSection extends StatefulWidget {
+  final Duration delay;
+  final double minHeight;
+  final Widget child;
+
+  const _DeferredDashboardSection({
+    required this.delay,
+    required this.minHeight,
+    required this.child,
+  });
+
+  @override
+  State<_DeferredDashboardSection> createState() =>
+      _DeferredDashboardSectionState();
+}
+
+class _DeferredDashboardSectionState extends State<_DeferredDashboardSection> {
+  bool _visible = false;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    _timer = Timer(widget.delay, () {
+      if (!mounted) return;
+      setState(() => _visible = true);
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_visible) return widget.child;
+    return SizedBox(
+      height: widget.minHeight,
+      child: _DirectionGlassPanel(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+        borderRadius: BorderRadius.circular(28),
+        blurSigma: 26,
+        fillColor: kDirectionOliveDeep.withValues(alpha: 0.18),
+        borderColor: Colors.white.withValues(alpha: 0.16),
+        shadowColor: Colors.black.withValues(alpha: 0.10),
+        edgeHighlightColor: Colors.white.withValues(alpha: 0.42),
+        bevelShadowColor: Colors.black.withValues(alpha: 0.08),
+        glowColor: kDirectionOliveGlow.withValues(alpha: 0.06),
+        child: const Center(child: CircularProgressIndicator(strokeWidth: 2.2)),
+      ),
+    );
+  }
+}
+
 class _DirectionPurchaseOrdersDashboardSummary extends StatefulWidget {
   final Future<void> Function() onOpenPurchaseOrders;
 
@@ -547,16 +681,18 @@ class _DirectionPurchaseOrdersDashboardSummaryState
   DirectionPurchaseOrdersSummary? _summary;
   bool _loading = true;
   bool _hovering = false;
+  bool _refreshing = false;
+  bool _pendingReload = false;
   Timer? _refreshTimer;
   RealtimeChannel? _channel;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    _requestReload(showLoader: true);
     _refreshTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => unawaited(_load(silent: true)),
+      const Duration(seconds: 90),
+      (_) => _requestReload(),
     );
     _channel = Supabase.instance.client
         .channel('direction-dashboard-purchase-orders-alerts')
@@ -564,13 +700,13 @@ class _DirectionPurchaseOrdersDashboardSummaryState
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'maintenance_purchase_orders',
-          callback: (_) => unawaited(_load(silent: true)),
+          callback: (_) => _requestReload(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'maintenance_purchase_order_lines',
-          callback: (_) => unawaited(_load(silent: true)),
+          callback: (_) => _requestReload(),
         )
         .subscribe();
   }
@@ -582,7 +718,21 @@ class _DirectionPurchaseOrdersDashboardSummaryState
     super.dispose();
   }
 
+  void _requestReload({bool showLoader = false}) {
+    if (!mounted) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    unawaited(_load(silent: !showLoader));
+  }
+
   Future<void> _load({bool silent = false}) async {
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    _refreshing = true;
     if (!silent && mounted) {
       setState(() => _loading = true);
     }
@@ -596,6 +746,12 @@ class _DirectionPurchaseOrdersDashboardSummaryState
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+    } finally {
+      _refreshing = false;
+      if (_pendingReload && mounted) {
+        _pendingReload = false;
+        unawaited(_load(silent: true));
+      }
     }
   }
 
@@ -954,16 +1110,18 @@ class _DirectionMaintenanceDashboardSummaryState
   DirectionMaintenanceSummary? _summary;
   bool _loading = true;
   bool _hovering = false;
+  bool _refreshing = false;
+  bool _pendingReload = false;
   Timer? _refreshTimer;
   RealtimeChannel? _channel;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    _requestReload(showLoader: true);
     _refreshTimer = Timer.periodic(
-      const Duration(seconds: 30),
-      (_) => unawaited(_load(silent: true)),
+      const Duration(seconds: 90),
+      (_) => _requestReload(),
     );
     _channel = Supabase.instance.client
         .channel('direction-dashboard-maintenance-summary')
@@ -971,13 +1129,13 @@ class _DirectionMaintenanceDashboardSummaryState
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'maintenance_orders',
-          callback: (_) => unawaited(_load(silent: true)),
+          callback: (_) => _requestReload(),
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'maintenance_materials',
-          callback: (_) => unawaited(_load(silent: true)),
+          callback: (_) => _requestReload(),
         )
         .subscribe();
   }
@@ -989,7 +1147,21 @@ class _DirectionMaintenanceDashboardSummaryState
     super.dispose();
   }
 
+  void _requestReload({bool showLoader = false}) {
+    if (!mounted) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    unawaited(_load(silent: !showLoader));
+  }
+
   Future<void> _load({bool silent = false}) async {
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    _refreshing = true;
     if (!silent && mounted) {
       setState(() => _loading = true);
     }
@@ -1003,6 +1175,12 @@ class _DirectionMaintenanceDashboardSummaryState
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+    } finally {
+      _refreshing = false;
+      if (_pendingReload && mounted) {
+        _pendingReload = false;
+        unawaited(_load(silent: true));
+      }
     }
   }
 
@@ -1516,15 +1694,17 @@ class _DirectionTradeDashboardSummaryState
   List<_DirectionTradeMonthPoint> _points = const <_DirectionTradeMonthPoint>[];
   bool _loading = true;
   bool _hovering = false;
+  bool _refreshing = false;
+  bool _pendingReload = false;
   Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    _requestReload(showLoader: true);
     _refreshTimer = Timer.periodic(
-      const Duration(seconds: 45),
-      (_) => unawaited(_load(silent: true)),
+      const Duration(seconds: 90),
+      (_) => _requestReload(),
     );
   }
 
@@ -1534,7 +1714,21 @@ class _DirectionTradeDashboardSummaryState
     super.dispose();
   }
 
+  void _requestReload({bool showLoader = false}) {
+    if (!mounted) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    unawaited(_load(silent: !showLoader));
+  }
+
   Future<void> _load({bool silent = false}) async {
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    _refreshing = true;
     if (!silent && mounted) {
       setState(() => _loading = true);
     }
@@ -1549,6 +1743,12 @@ class _DirectionTradeDashboardSummaryState
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+    } finally {
+      _refreshing = false;
+      if (_pendingReload && mounted) {
+        _pendingReload = false;
+        unawaited(_load(silent: true));
+      }
     }
   }
 
@@ -1772,6 +1972,250 @@ class _DirectionTradeDashboardSummaryState
   }
 }
 
+class _DirectionFinanzasDueNotificationDialog extends StatelessWidget {
+  final FinanzasDueAlertsSummary summary;
+  final FinanzasDueAlertItem primaryItem;
+  final Future<void> Function() onOpenFinanzas;
+
+  const _DirectionFinanzasDueNotificationDialog({
+    required this.summary,
+    required this.primaryItem,
+    required this.onOpenFinanzas,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = switch (primaryItem.severity) {
+      FinanzasDueAlertSeverity.critical => const Color(0xFFFFB35C),
+      FinanzasDueAlertSeverity.warning => const Color(0xFFFFD36E),
+      FinanzasDueAlertSeverity.info => const Color(0xFF89F0C7),
+    };
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: _DirectionGlassPanel(
+          padding: const EdgeInsets.fromLTRB(28, 26, 28, 22),
+          borderRadius: BorderRadius.circular(34),
+          fillColor: const Color(0xFF0D1E3C).withValues(alpha: 0.96),
+          borderColor: accent.withValues(alpha: 0.45),
+          edgeHighlightColor: Colors.white.withValues(alpha: 0.18),
+          glowColor: accent.withValues(alpha: 0.18),
+          shadowColor: Colors.black.withValues(alpha: 0.32),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 58,
+                    height: 58,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: accent.withValues(alpha: 0.14),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.28),
+                      ),
+                    ),
+                    child: Icon(
+                      Icons.notifications_active_rounded,
+                      color: accent,
+                      size: 28,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Finanzas requiere atención',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 19,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _directionFinanzasDialogHeadline(summary),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.88),
+                            fontSize: 15,
+                            fontWeight: FontWeight.w700,
+                            height: 1.35,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _DirectionNotificationPill(
+                    label: 'Hoy: ${summary.dueTodayCount}',
+                  ),
+                  _DirectionNotificationPill(
+                    label: '2 días: ${summary.dueIn2DaysCount}',
+                  ),
+                  _DirectionNotificationPill(
+                    label: '1 semana: ${summary.dueIn7DaysCount}',
+                  ),
+                  _DirectionNotificationPill(
+                    label: 'Monto: ${formatMoney(summary.totalAmount)}',
+                  ),
+                ],
+              ),
+              const SizedBox(height: 18),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(22),
+                  color: Colors.white.withValues(alpha: 0.06),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.12),
+                  ),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      _directionFinanzasPrimaryTitle(primaryItem),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      primaryItem.title,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.90),
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      primaryItem.subtitle,
+                      style: const TextStyle(
+                        color: Color(0xFFD5E2FF),
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '${primaryItem.reminderLabel} · ${formatMoney(primaryItem.amount)}',
+                      style: TextStyle(
+                        color: accent,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  OutlinedButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF37E1A3),
+                      side: BorderSide(
+                        color: Colors.white.withValues(alpha: 0.24),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 16,
+                      ),
+                    ),
+                    child: const Text('Después'),
+                  ),
+                  const SizedBox(width: 12),
+                  FilledButton.icon(
+                    onPressed: onOpenFinanzas,
+                    icon: const Icon(Icons.open_in_new_rounded),
+                    label: const Text('Abrir Finanzas'),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: const Color(0xFF1FDE9A),
+                      foregroundColor: Colors.white,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 22,
+                        vertical: 16,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DirectionNotificationPill extends StatelessWidget {
+  final String label;
+
+  const _DirectionNotificationPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: Colors.white.withValues(alpha: 0.08),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12.5,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+String _directionFinanzasDialogHeadline(FinanzasDueAlertsSummary summary) {
+  if (summary.dueTodayCount > 0) {
+    return 'Hay ${summary.dueTodayCount} pagos que vencen hoy y conviene resolver en esta jornada.';
+  }
+  if (summary.dueIn2DaysCount > 0) {
+    return 'Hay ${summary.dueIn2DaysCount} compromisos que vencen en 48 horas y ya están entrando a foco ejecutivo.';
+  }
+  return 'Hay ${summary.dueIn7DaysCount} compromisos entrando a la ventana semanal de preparación.';
+}
+
+String _directionFinanzasPrimaryTitle(FinanzasDueAlertItem item) {
+  switch (item.sourceType) {
+    case 'FACTURA':
+      return 'Factura más urgente';
+    case 'PAGO_FIJO':
+      return 'Pago fijo más urgente';
+    case 'CONVENIO':
+      return 'Convenio más urgente';
+    default:
+      return 'Compromiso más urgente';
+  }
+}
+
 class _DirectionTradeMiniChart extends StatelessWidget {
   final List<_DirectionTradeMonthPoint> points;
   final bool loading;
@@ -1956,6 +2400,1219 @@ String _monthShortLabel(DateTime month) {
   return labels[month.month - 1];
 }
 
+class _DirectionMaterialFlowChartsSection extends StatefulWidget {
+  const _DirectionMaterialFlowChartsSection();
+
+  @override
+  State<_DirectionMaterialFlowChartsSection> createState() =>
+      _DirectionMaterialFlowChartsSectionState();
+}
+
+class _DirectionMaterialFlowChartsSectionState
+    extends State<_DirectionMaterialFlowChartsSection> {
+  final SupabaseClient _supa = Supabase.instance.client;
+  _DirectionMaterialFlowBundle? _bundle;
+  bool _loading = true;
+  bool _refreshing = false;
+  bool _pendingReload = false;
+  Timer? _refreshTimer;
+  RealtimeChannel? _channel;
+
+  @override
+  void initState() {
+    super.initState();
+    _requestReload(showLoader: true);
+    _refreshTimer = Timer.periodic(
+      const Duration(seconds: 90),
+      (_) => _requestReload(),
+    );
+    _channel = _supa
+        .channel('direction-dashboard-material-flow-charts')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'inventory_movements_v2',
+          callback: (_) => _requestReload(),
+        )
+        .subscribe();
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    _channel?.unsubscribe();
+    super.dispose();
+  }
+
+  void _requestReload({bool showLoader = false}) {
+    if (!mounted) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    unawaited(_load(silent: !showLoader));
+  }
+
+  Future<void> _load({bool silent = false}) async {
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    _refreshing = true;
+    if (!silent && mounted) {
+      setState(() => _loading = true);
+    }
+    try {
+      final startDate = DateUtils.dateOnly(
+        DateTime.now().subtract(const Duration(days: 119)),
+      );
+      final endDate = DateUtils.dateOnly(DateTime.now());
+      final inRowsRaw = await _fetchDirectionMovementRows(
+        flow: 'IN',
+        inventoryLevel: 'GENERAL',
+        startDate: startDate,
+        endDate: endDate,
+        select:
+            '*,general_material:general_material_id(id,code,name),'
+            'commercial_material:commercial_material_id(id,code,name,general_material_id),'
+            'source_commercial:source_commercial_material_id(id,code,name,general_material_id,general_material:general_material_id(code,name))',
+      );
+      final outRowsRaw = await _fetchDirectionMovementRows(
+        flow: 'OUT',
+        inventoryLevel: 'COMMERCIAL',
+        startDate: startDate,
+        endDate: endDate,
+        select:
+            '*,general_material:general_material_id(id,code,name),'
+            'commercial_material:commercial_material_id(id,code,name,general_material_id,general_material:general_material_id(code,name)),'
+            'source_commercial:source_commercial_material_id(id,code,name)',
+      );
+      final inRows = _normalizeDirectionMovementRows(
+        rows: inRowsRaw,
+        isIn: true,
+      );
+      final outRows = _normalizeDirectionMovementRows(
+        rows: outRowsRaw,
+        isIn: false,
+      );
+      final bundle = _buildDirectionMaterialFlowBundle(
+        inRows: inRows,
+        outRows: outRows,
+        startDate: startDate,
+        endDate: endDate,
+      );
+      if (!mounted) return;
+      setState(() {
+        _bundle = bundle;
+        _loading = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+    } finally {
+      _refreshing = false;
+      if (_pendingReload && mounted) {
+        _pendingReload = false;
+        unawaited(_load(silent: true));
+      }
+    }
+  }
+
+  Future<List<Map<String, dynamic>>> _fetchDirectionMovementRows({
+    required String flow,
+    required String inventoryLevel,
+    required DateTime startDate,
+    required DateTime endDate,
+    required String select,
+  }) async {
+    const batchSize = 1000;
+    final rows = <Map<String, dynamic>>[];
+    var from = 0;
+    while (true) {
+      final data = await _supa
+          .from('inventory_movements_v2')
+          .select(select)
+          .eq('flow', flow)
+          .eq('inventory_level', inventoryLevel)
+          .gte('op_date', _directionDbDate(startDate))
+          .lte('op_date', _directionDbDate(endDate))
+          .order('op_date', ascending: true)
+          .order('created_at', ascending: true)
+          .range(from, from + batchSize - 1);
+      final batch = (data as List).cast<Map<String, dynamic>>();
+      rows.addAll(batch);
+      if (batch.length < batchSize) break;
+      from += batchSize;
+    }
+    return rows;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bundle = _bundle;
+    return _DirectionGlassPanel(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
+      borderRadius: BorderRadius.circular(30),
+      blurSigma: 28,
+      fillColor: kDirectionOliveDeep.withValues(alpha: 0.28),
+      borderColor: Colors.white.withValues(alpha: 0.30),
+      shadowColor: Colors.black.withValues(alpha: 0.14),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.74),
+      bevelShadowColor: Colors.black.withValues(alpha: 0.16),
+      glowColor: kDirectionOliveGlow.withValues(alpha: 0.12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Flujo de material operativo',
+            style: TextStyle(
+              color: Colors.white,
+              fontSize: 24,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 6),
+          const Text(
+            'Entradas y salidas consolidadas por material general. Hover sobre cada punto para ver los kg del día.',
+            style: TextStyle(
+              color: kDirectionSurfaceText,
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (_loading && bundle == null)
+            const SizedBox(
+              height: 420,
+              child: Center(child: CircularProgressIndicator()),
+            )
+          else if (bundle == null)
+            const SizedBox(
+              height: 420,
+              child: Center(
+                child: Text(
+                  'No fue posible cargar entradas y salidas de material.',
+                  style: TextStyle(
+                    color: kDirectionMutedText,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            )
+          else
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final split = constraints.maxWidth >= 1020;
+                final entriesCard = _DirectionMaterialLineChartCard(
+                  title: 'Entradas de material',
+                  subtitle:
+                      'Promedio semanal recibido por material en lo que va de la semana.',
+                  accent: const Color(0xFF87E08A),
+                  averageRows: bundle.entryWeeklyAverages,
+                  series: bundle.entrySeries,
+                  loading: _loading,
+                  diagnostics:
+                      'Debug: ${bundle.entryRowCount} filas · ${formatDecimal(bundle.entryTotalKg, decimals: 0)} kg',
+                );
+                final exitsCard = _DirectionMaterialLineChartCard(
+                  title: 'Salidas de material',
+                  subtitle:
+                      'Promedio semanal despachado por material en lo que va de la semana.',
+                  accent: const Color(0xFFFFC16D),
+                  averageRows: bundle.exitWeeklyAverages,
+                  series: bundle.exitSeries,
+                  loading: _loading,
+                  diagnostics:
+                      'Debug: ${bundle.exitRowCount} filas · ${formatDecimal(bundle.exitTotalKg, decimals: 0)} kg',
+                );
+                if (!split) {
+                  return Column(
+                    children: [
+                      SizedBox(height: 430, child: entriesCard),
+                      const SizedBox(height: 14),
+                      SizedBox(height: 430, child: exitsCard),
+                    ],
+                  );
+                }
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(child: SizedBox(height: 430, child: entriesCard)),
+                    const SizedBox(width: 14),
+                    Expanded(child: SizedBox(height: 430, child: exitsCard)),
+                  ],
+                );
+              },
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DirectionMaterialLineChartCard extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final Color accent;
+  final List<_DirectionMaterialAverageRow> averageRows;
+  final List<_DirectionMaterialLineSeries> series;
+  final bool loading;
+  final String? diagnostics;
+
+  const _DirectionMaterialLineChartCard({
+    required this.title,
+    required this.subtitle,
+    required this.accent,
+    required this.averageRows,
+    required this.series,
+    required this.loading,
+    this.diagnostics,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _DirectionGlassPanel(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      borderRadius: BorderRadius.circular(26),
+      blurSigma: 26,
+      fillColor: Colors.white.withValues(alpha: 0.05),
+      borderColor: Colors.white.withValues(alpha: 0.18),
+      shadowColor: Colors.black.withValues(alpha: 0.10),
+      edgeHighlightColor: Colors.white.withValues(alpha: 0.62),
+      bevelShadowColor: Colors.black.withValues(alpha: 0.12),
+      glowColor: accent.withValues(alpha: 0.10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  color: accent,
+                  shape: BoxShape.circle,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 20,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            subtitle,
+            style: const TextStyle(
+              color: kDirectionSurfaceText,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          if (diagnostics != null) ...[
+            const SizedBox(height: 6),
+            Text(
+              diagnostics!,
+              style: const TextStyle(
+                color: Color(0xFFB7CFCC),
+                fontSize: 10.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          const Text(
+            'Promedio semana',
+            style: TextStyle(
+              color: kDirectionOliveMist,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.8,
+            ),
+          ),
+          const SizedBox(height: 8),
+          if (averageRows.isEmpty)
+            const Text(
+              'Sin promedio semanal disponible todavía.',
+              style: TextStyle(
+                color: kDirectionMutedText,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            )
+          else
+            SizedBox(
+              height: 64,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                itemCount: averageRows.length,
+                separatorBuilder: (_, _) => const SizedBox(width: 10),
+                itemBuilder: (context, index) {
+                  final row = averageRows[index];
+                  return _DirectionMaterialAverageChip(
+                    label: row.label,
+                    value:
+                        '${formatDecimal(row.averageKgPerDay, decimals: 0)} kg/día',
+                    color: row.color,
+                  );
+                },
+              ),
+            ),
+          const SizedBox(height: 14),
+          Expanded(
+            child: _DirectionMaterialLineChart(
+              series: series,
+              unitLabel: 'kg',
+              loading: loading,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DirectionMaterialAverageChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _DirectionMaterialAverageChip({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 136,
+      padding: const EdgeInsets.fromLTRB(12, 9, 12, 9),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        color: color.withValues(alpha: 0.10),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: color,
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 2),
+          Text(
+            value,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DirectionMaterialLineChart extends StatefulWidget {
+  final List<_DirectionMaterialLineSeries> series;
+  final String unitLabel;
+  final bool loading;
+
+  const _DirectionMaterialLineChart({
+    required this.series,
+    required this.unitLabel,
+    required this.loading,
+  });
+
+  @override
+  State<_DirectionMaterialLineChart> createState() =>
+      _DirectionMaterialLineChartState();
+}
+
+class _DirectionMaterialLineChartState
+    extends State<_DirectionMaterialLineChart> {
+  static const int _visibleDays = 7;
+  static const double _axisWidth = 58;
+  static const double _leftPad = 12;
+  static const double _rightPad = 18;
+  static const double _topPad = 10;
+  static const double _bottomPad = 28;
+
+  final ScrollController _scrollController = ScrollController();
+  _DirectionHoveredPointInfo? _hovered;
+  bool _stickToLatest = true;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToLatest());
+  }
+
+  @override
+  void didUpdateWidget(covariant _DirectionMaterialLineChart oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_stickToLatest) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _jumpToLatest());
+    }
+  }
+
+  void _jumpToLatest() {
+    if (!_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    if (max > 0) {
+      _scrollController.jumpTo(max);
+    }
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.loading && widget.series.isEmpty) {
+      return const Center(child: CircularProgressIndicator());
+    }
+    if (widget.series.isEmpty ||
+        widget.series.every((series) => series.points.isEmpty)) {
+      return const Center(
+        child: Text(
+          'Sin datos suficientes.',
+          style: TextStyle(
+            fontWeight: FontWeight.w700,
+            color: kDirectionMutedText,
+          ),
+        ),
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final count = widget.series.first.points.length;
+        final plotHeight = math.max(120.0, constraints.maxHeight - 28);
+        final viewportWidth = math.max(
+          120.0,
+          constraints.maxWidth - _axisWidth,
+        );
+        final dayStep = viewportWidth / _visibleDays;
+        final contentWidth = math.max(
+          constraints.maxWidth - _axisWidth,
+          _leftPad + _rightPad + ((count - 1) * dayStep) + 24,
+        );
+        final maxY = _directionLineChartMaxY(widget.series);
+        return Column(
+          children: [
+            Expanded(
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: _axisWidth,
+                    height: plotHeight,
+                    child: CustomPaint(
+                      painter: _DirectionLineChartYAxisPainter(
+                        maxY: maxY,
+                        topPad: _topPad,
+                        bottomPad: _bottomPad,
+                      ),
+                      child: const SizedBox.expand(),
+                    ),
+                  ),
+                  Expanded(
+                    child: MouseRegion(
+                      onExit: (_) => setState(() => _hovered = null),
+                      onHover: (event) {
+                        final hit = _directionHitTestPoint(
+                          event.localPosition,
+                          viewportSize: Size(
+                            constraints.maxWidth - _axisWidth,
+                            plotHeight,
+                          ),
+                          contentWidth: contentWidth,
+                          dayStep: dayStep,
+                          maxY: maxY,
+                        );
+                        if (hit?.key == _hovered?.key) return;
+                        setState(() => _hovered = hit);
+                      },
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onHorizontalDragUpdate: (details) {
+                          if (!_scrollController.hasClients) return;
+                          _stickToLatest = false;
+                          final max =
+                              _scrollController.position.maxScrollExtent;
+                          if (max <= 0) return;
+                          final next =
+                              (_scrollController.offset - details.delta.dx)
+                                  .clamp(0.0, max);
+                          _scrollController.jumpTo(next);
+                        },
+                        onHorizontalDragStart: (_) =>
+                            setState(() => _hovered = null),
+                        child: Stack(
+                          children: [
+                            SingleChildScrollView(
+                              controller: _scrollController,
+                              scrollDirection: Axis.horizontal,
+                              physics: const ClampingScrollPhysics(),
+                              primary: false,
+                              child: SizedBox(
+                                width: contentWidth,
+                                height: plotHeight,
+                                child: CustomPaint(
+                                  painter: _DirectionMaterialLineChartPainter(
+                                    series: widget.series,
+                                    maxY: maxY,
+                                    leftPad: _leftPad,
+                                    rightPad: _rightPad,
+                                    topPad: _topPad,
+                                    bottomPad: _bottomPad,
+                                    dayStep: dayStep,
+                                  ),
+                                  child: const SizedBox.expand(),
+                                ),
+                              ),
+                            ),
+                            if (_hovered != null)
+                              Positioned(
+                                left: 8,
+                                top: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 10,
+                                    vertical: 6,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.white.withValues(alpha: 0.95),
+                                    borderRadius: BorderRadius.circular(8),
+                                    border: Border.all(
+                                      color: _hovered!.color.withValues(
+                                        alpha: 0.55,
+                                      ),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    '${_hovered!.label} · ${_hovered!.dayLabel} · ${formatDecimal(_hovered!.value, decimals: 0)} ${widget.unitLabel}',
+                                    style: const TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w800,
+                                      color: Color(0xFF223A39),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 6),
+            SizedBox(
+              height: 24,
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  children: widget.series
+                      .map(
+                        (series) => Padding(
+                          padding: const EdgeInsets.only(right: 12),
+                          child: Row(
+                            children: [
+                              Container(
+                                width: 10,
+                                height: 10,
+                                decoration: BoxDecoration(
+                                  color: series.color,
+                                  borderRadius: BorderRadius.circular(3),
+                                ),
+                              ),
+                              const SizedBox(width: 6),
+                              Text(
+                                series.label,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFF365653),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      )
+                      .toList(growable: false),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  _DirectionHoveredPointInfo? _directionHitTestPoint(
+    Offset p, {
+    required Size viewportSize,
+    required double contentWidth,
+    required double dayStep,
+    required double maxY,
+  }) {
+    if (widget.series.isEmpty) return null;
+    final count = widget.series.first.points.length;
+    if (count == 0) return null;
+    final left = _leftPad;
+    final top = _topPad;
+    final right = contentWidth - _rightPad;
+    final bottom = viewportSize.height - _bottomPad;
+    final xInContent =
+        p.dx + (_scrollController.hasClients ? _scrollController.offset : 0);
+    final yInContent = p.dy;
+    if (xInContent < left ||
+        xInContent > right ||
+        yInContent < top ||
+        yInContent > bottom) {
+      return null;
+    }
+    final h = math.max(1.0, bottom - top);
+    final dayIndex = ((xInContent - left) / dayStep).round().clamp(
+      0,
+      count - 1,
+    );
+    final x = left + (dayIndex * dayStep);
+    for (var i = 0; i < widget.series.length; i++) {
+      final value = widget.series[i].points[dayIndex].value;
+      final y = bottom - ((value / maxY) * h);
+      final distance = (Offset(x, y) - Offset(xInContent, yInContent)).distance;
+      if (distance <= 10) {
+        final day = widget.series[i].points[dayIndex].day;
+        return _DirectionHoveredPointInfo(
+          dayIndex: dayIndex,
+          seriesIndex: i,
+          label: widget.series[i].label,
+          color: widget.series[i].color,
+          value: value,
+          dayLabel:
+              '${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}',
+        );
+      }
+    }
+    return null;
+  }
+}
+
+class _DirectionMaterialLineChartPainter extends CustomPainter {
+  final List<_DirectionMaterialLineSeries> series;
+  final double maxY;
+  final double leftPad;
+  final double rightPad;
+  final double topPad;
+  final double bottomPad;
+  final double dayStep;
+
+  const _DirectionMaterialLineChartPainter({
+    required this.series,
+    required this.maxY,
+    required this.leftPad,
+    required this.rightPad,
+    required this.topPad,
+    required this.bottomPad,
+    required this.dayStep,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final left = leftPad;
+    final top = topPad;
+    final right = size.width - rightPad;
+    final bottom = size.height - bottomPad;
+    final h = math.max(1.0, bottom - top);
+    final count = series.first.points.length;
+    final gridPaint = Paint()
+      ..color = const Color(0xFFB7CFCC).withValues(alpha: 0.20)
+      ..strokeWidth = 1;
+    const yTicks = 5;
+    for (var i = 0; i < yTicks; i++) {
+      final ratio = i / (yTicks - 1);
+      final y = bottom - (h * ratio);
+      canvas.drawLine(Offset(left, y), Offset(right, y), gridPaint);
+    }
+    for (var i = 0; i < count; i++) {
+      final x = left + (i * dayStep);
+      canvas.drawLine(
+        Offset(x, top + 2),
+        Offset(x, bottom),
+        Paint()
+          ..color = const Color(0xFFB7CFCC).withValues(alpha: 0.12)
+          ..strokeWidth = 1,
+      );
+      final day = series.first.points[i].day;
+      final label =
+          '${day.day.toString().padLeft(2, '0')}/${day.month.toString().padLeft(2, '0')}';
+      final tp = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: const TextStyle(
+            fontSize: 8,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF5A7573),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout();
+      final dx = (x - (tp.width / 2)).clamp(left, right - tp.width);
+      tp.paint(canvas, Offset(dx, bottom + 4));
+    }
+    for (final line in series) {
+      final stroke = Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2.2
+        ..color = line.color
+        ..strokeCap = StrokeCap.round
+        ..strokeJoin = StrokeJoin.round;
+      final path = Path();
+      for (var i = 0; i < line.points.length; i++) {
+        final x = left + (i * dayStep);
+        final y = bottom - ((line.points[i].value / maxY) * h);
+        if (i == 0) {
+          path.moveTo(x, y);
+        } else {
+          path.lineTo(x, y);
+        }
+      }
+      canvas.drawPath(path, stroke);
+      for (var i = 0; i < line.points.length; i++) {
+        final x = left + (i * dayStep);
+        final y = bottom - ((line.points[i].value / maxY) * h);
+        canvas.drawCircle(Offset(x, y), 3.4, Paint()..color = line.color);
+        canvas.drawCircle(
+          Offset(x, y),
+          1.2,
+          Paint()..color = Colors.white.withValues(alpha: 0.92),
+        );
+      }
+    }
+    canvas.drawLine(
+      Offset(left, bottom),
+      Offset(right, bottom),
+      Paint()
+        ..color = const Color(0xFFB7CFCC).withValues(alpha: 0.70)
+        ..strokeWidth = 1.2,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DirectionMaterialLineChartPainter oldDelegate) {
+    return oldDelegate.series != series || oldDelegate.maxY != maxY;
+  }
+}
+
+class _DirectionLineChartYAxisPainter extends CustomPainter {
+  final double maxY;
+  final double topPad;
+  final double bottomPad;
+
+  const _DirectionLineChartYAxisPainter({
+    required this.maxY,
+    required this.topPad,
+    required this.bottomPad,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    const yTicks = 5;
+    final axisColor = const Color(0xFFB7CFCC);
+    final left = size.width - 1.0;
+    final top = topPad;
+    final bottom = size.height - bottomPad;
+    final h = math.max(1.0, bottom - top);
+    for (var i = 0; i < yTicks; i++) {
+      final ratio = i / (yTicks - 1);
+      final y = bottom - (h * ratio);
+      canvas.drawLine(
+        Offset(left - 6, y),
+        Offset(left, y),
+        Paint()
+          ..color = axisColor.withValues(alpha: 0.70)
+          ..strokeWidth = 1,
+      );
+      final value = maxY * ratio;
+      final label = value >= 1000
+          ? '${(value / 1000).toStringAsFixed(value >= 10000 ? 0 : 1)}t'
+          : formatDecimal(value, decimals: 0);
+      final tp = TextPainter(
+        text: TextSpan(
+          text: label,
+          style: const TextStyle(
+            fontSize: 9,
+            fontWeight: FontWeight.w700,
+            color: Color(0xFF9EB8B5),
+          ),
+        ),
+        textDirection: TextDirection.ltr,
+      )..layout(maxWidth: size.width - 10);
+      tp.paint(canvas, Offset(size.width - tp.width - 8, y - (tp.height / 2)));
+    }
+    canvas.drawLine(
+      Offset(left, top),
+      Offset(left, bottom),
+      Paint()
+        ..color = axisColor.withValues(alpha: 0.74)
+        ..strokeWidth = 1.1,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _DirectionLineChartYAxisPainter oldDelegate) {
+    return oldDelegate.maxY != maxY;
+  }
+}
+
+class _DirectionMaterialFlowBundle {
+  final List<_DirectionMaterialLineSeries> entrySeries;
+  final List<_DirectionMaterialLineSeries> exitSeries;
+  final List<_DirectionMaterialAverageRow> entryWeeklyAverages;
+  final List<_DirectionMaterialAverageRow> exitWeeklyAverages;
+  final int entryRowCount;
+  final int exitRowCount;
+  final double entryTotalKg;
+  final double exitTotalKg;
+
+  const _DirectionMaterialFlowBundle({
+    required this.entrySeries,
+    required this.exitSeries,
+    required this.entryWeeklyAverages,
+    required this.exitWeeklyAverages,
+    required this.entryRowCount,
+    required this.exitRowCount,
+    required this.entryTotalKg,
+    required this.exitTotalKg,
+  });
+}
+
+class _DirectionMaterialLineSeries {
+  final String label;
+  final Color color;
+  final List<_DirectionMaterialLinePoint> points;
+
+  const _DirectionMaterialLineSeries({
+    required this.label,
+    required this.color,
+    required this.points,
+  });
+}
+
+class _DirectionMaterialLinePoint {
+  final DateTime day;
+  final double value;
+
+  const _DirectionMaterialLinePoint({required this.day, required this.value});
+}
+
+class _DirectionMaterialAverageRow {
+  final String label;
+  final double averageKgPerDay;
+  final Color color;
+
+  const _DirectionMaterialAverageRow({
+    required this.label,
+    required this.averageKgPerDay,
+    required this.color,
+  });
+}
+
+class _DirectionHoveredPointInfo {
+  final int dayIndex;
+  final int seriesIndex;
+  final String label;
+  final Color color;
+  final double value;
+  final String dayLabel;
+
+  const _DirectionHoveredPointInfo({
+    required this.dayIndex,
+    required this.seriesIndex,
+    required this.label,
+    required this.color,
+    required this.value,
+    required this.dayLabel,
+  });
+
+  String get key => '$dayIndex|$seriesIndex|$value';
+}
+
+_DirectionMaterialFlowBundle _buildDirectionMaterialFlowBundle({
+  required List<Map<String, dynamic>> inRows,
+  required List<Map<String, dynamic>> outRows,
+  required DateTime startDate,
+  required DateTime endDate,
+}) {
+  final labels = <String, String>{};
+  final palette = <String, Color>{};
+  final entryByMaterial = <String, Map<String, double>>{};
+  final exitByMaterial = <String, Map<String, double>>{};
+  for (final row in inRows) {
+    final day = _directionDbDate(
+      DateUtils.dateOnly(DateTime.parse(row['op_date'].toString())),
+    );
+    final code = (row['material'] ?? '').toString().trim();
+    final label = (row['material_label'] ?? code).toString().trim();
+    if (code.isEmpty) continue;
+    labels[code] = label.isEmpty ? code : label;
+    palette.putIfAbsent(code, () => _directionMaterialColor(code));
+    final kg = _directionEffectiveKgFromRow(row);
+    entryByMaterial.putIfAbsent(code, () => <String, double>{});
+    entryByMaterial[code]![day] = (entryByMaterial[code]![day] ?? 0) + kg;
+  }
+  for (final row in outRows) {
+    final day = _directionDbDate(
+      DateUtils.dateOnly(DateTime.parse(row['op_date'].toString())),
+    );
+    final code = (row['material'] ?? '').toString().trim();
+    final label = (row['material_label'] ?? code).toString().trim();
+    if (code.isEmpty) continue;
+    labels[code] = label.isEmpty ? code : label;
+    palette.putIfAbsent(code, () => _directionMaterialColor(code));
+    final kg = _directionEffectiveKgFromRow(row);
+    exitByMaterial.putIfAbsent(code, () => <String, double>{});
+    exitByMaterial[code]![day] = (exitByMaterial[code]![day] ?? 0) + kg;
+  }
+  final days = <DateTime>[];
+  for (
+    DateTime cursor = startDate;
+    !cursor.isAfter(endDate);
+    cursor = cursor.add(const Duration(days: 1))
+  ) {
+    days.add(cursor);
+  }
+  final entrySeries =
+      entryByMaterial.entries
+          .map(
+            (entry) => _DirectionMaterialLineSeries(
+              label: labels[entry.key] ?? entry.key,
+              color: palette[entry.key] ?? _directionMaterialColor(entry.key),
+              points: days
+                  .map((day) {
+                    final key = _directionDbDate(day);
+                    return _DirectionMaterialLinePoint(
+                      day: day,
+                      value: entry.value[key] ?? 0,
+                    );
+                  })
+                  .toList(growable: false),
+            ),
+          )
+          .toList(growable: false)
+        ..sort(_directionSeriesSorter);
+  final exitSeries =
+      exitByMaterial.entries
+          .map(
+            (entry) => _DirectionMaterialLineSeries(
+              label: labels[entry.key] ?? entry.key,
+              color: palette[entry.key] ?? _directionMaterialColor(entry.key),
+              points: days
+                  .map((day) {
+                    final key = _directionDbDate(day);
+                    return _DirectionMaterialLinePoint(
+                      day: day,
+                      value: entry.value[key] ?? 0,
+                    );
+                  })
+                  .toList(growable: false),
+            ),
+          )
+          .toList(growable: false)
+        ..sort(_directionSeriesSorter);
+  final weekStart = _directionWeekStart(DateUtils.dateOnly(DateTime.now()));
+  final elapsedDays =
+      DateUtils.dateOnly(DateTime.now()).difference(weekStart).inDays + 1;
+  final entryWeeklyAverages =
+      entrySeries
+          .map(
+            (series) => _DirectionMaterialAverageRow(
+              label: series.label,
+              averageKgPerDay:
+                  series.points
+                      .where((point) => !point.day.isBefore(weekStart))
+                      .fold<double>(0, (sum, point) => sum + point.value) /
+                  elapsedDays,
+              color: series.color,
+            ),
+          )
+          .where((row) => row.averageKgPerDay > 0.009)
+          .toList(growable: false)
+        ..sort((a, b) => b.averageKgPerDay.compareTo(a.averageKgPerDay));
+  final exitWeeklyAverages =
+      exitSeries
+          .map(
+            (series) => _DirectionMaterialAverageRow(
+              label: series.label,
+              averageKgPerDay:
+                  series.points
+                      .where((point) => !point.day.isBefore(weekStart))
+                      .fold<double>(0, (sum, point) => sum + point.value) /
+                  elapsedDays,
+              color: series.color,
+            ),
+          )
+          .where((row) => row.averageKgPerDay > 0.009)
+          .toList(growable: false)
+        ..sort((a, b) => b.averageKgPerDay.compareTo(a.averageKgPerDay));
+  return _DirectionMaterialFlowBundle(
+    entrySeries: entrySeries,
+    exitSeries: exitSeries,
+    entryWeeklyAverages: entryWeeklyAverages.take(8).toList(growable: false),
+    exitWeeklyAverages: exitWeeklyAverages.take(8).toList(growable: false),
+    entryRowCount: inRows.length,
+    exitRowCount: outRows.length,
+    entryTotalKg: inRows.fold<double>(
+      0,
+      (sum, row) => sum + _directionEffectiveKgFromRow(row),
+    ),
+    exitTotalKg: outRows.fold<double>(
+      0,
+      (sum, row) => sum + _directionEffectiveKgFromRow(row),
+    ),
+  );
+}
+
+List<Map<String, dynamic>> _normalizeDirectionMovementRows({
+  required List<Map<String, dynamic>> rows,
+  required bool isIn,
+}) {
+  return rows
+      .map((row) {
+        final general = (row['general_material'] as Map?)
+            ?.cast<String, dynamic>();
+        final commercial = (row['commercial_material'] as Map?)
+            ?.cast<String, dynamic>();
+        final sourceCommercial = (row['source_commercial'] as Map?)
+            ?.cast<String, dynamic>();
+        final commercialGeneral = (commercial?['general_material'] as Map?)
+            ?.cast<String, dynamic>();
+        final sourceCommercialGeneral =
+            (sourceCommercial?['general_material'] as Map?)
+                ?.cast<String, dynamic>();
+        final materialCode = isIn
+            ? (general?['code'] ??
+                  sourceCommercialGeneral?['code'] ??
+                  sourceCommercial?['code'])
+            : (commercialGeneral?['code'] ??
+                  commercial?['code'] ??
+                  general?['code']);
+        final materialLabel = isIn
+            ? (general?['name'] ??
+                  sourceCommercialGeneral?['name'] ??
+                  sourceCommercial?['name'])
+            : (commercialGeneral?['name'] ??
+                  commercial?['name'] ??
+                  general?['name']);
+        return <String, dynamic>{
+          ...row,
+          'material_id': isIn
+              ? row['general_material_id']
+              : (commercial == null ? null : commercial['general_material_id']),
+          'material': materialCode,
+          'material_label': materialLabel ?? materialCode,
+          'commercial_material_code': isIn
+              ? (sourceCommercial == null ? null : sourceCommercial['code'])
+              : (commercial == null ? null : commercial['code']),
+          'net_kg': row['net_kg'] ?? row['weight_kg'],
+          'movement_origin': 'MANUAL',
+        };
+      })
+      .toList(growable: false);
+}
+
+int _directionSeriesSorter(
+  _DirectionMaterialLineSeries a,
+  _DirectionMaterialLineSeries b,
+) {
+  final aTotal = a.points.fold<double>(0, (sum, point) => sum + point.value);
+  final bTotal = b.points.fold<double>(0, (sum, point) => sum + point.value);
+  return bTotal.compareTo(aTotal);
+}
+
+double _directionLineChartMaxY(List<_DirectionMaterialLineSeries> series) {
+  final values = <double>[
+    for (final line in series) ...line.points.map((point) => point.value),
+  ];
+  if (values.isEmpty) return 1;
+  return math.max(1.0, values.reduce(math.max) * 1.10);
+}
+
+double _directionEffectiveKgFromRow(Map<String, dynamic> row) {
+  final direct =
+      _directionToDouble(row['net_kg']) ?? _directionToDouble(row['weight_kg']);
+  if (direct != null && direct > 0) return direct;
+  final gross = _directionToDouble(row['gross_kg']);
+  final tare = _directionToDouble(row['tare_kg']) ?? 0;
+  if (gross != null && gross > 0) {
+    return math.max(0, gross - (tare < 0 ? 0 : tare)).toDouble();
+  }
+  final adjusted = _directionToDouble(row['total_amount_kg']);
+  if (adjusted != null && adjusted > 0) return adjusted;
+  return 0;
+}
+
+double? _directionToDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  final text = value.toString().trim();
+  if (text.isEmpty) return null;
+  final compact = text.replaceAll(RegExp(r'[^0-9,.\-]'), '');
+  if (compact.isEmpty) return null;
+  final normalized = compact.contains(',') && compact.contains('.')
+      ? compact.replaceAll(',', '')
+      : compact.replaceAll(',', '.');
+  return double.tryParse(normalized);
+}
+
+DateTime _directionWeekStart(DateTime date) =>
+    date.subtract(Duration(days: date.weekday - 1));
+
+String _directionDbDate(DateTime date) {
+  final y = date.year.toString().padLeft(4, '0');
+  final m = date.month.toString().padLeft(2, '0');
+  final d = date.day.toString().padLeft(2, '0');
+  return '$y-$m-$d';
+}
+
+Color _directionMaterialColor(String key) {
+  const palette = <Color>[
+    Color(0xFF8BE28B),
+    Color(0xFFFFC16D),
+    Color(0xFF6FD0FF),
+    Color(0xFFFF8EA1),
+    Color(0xFF9E8CFF),
+    Color(0xFF5FE0C5),
+    Color(0xFFFFD36B),
+    Color(0xFFC7F07A),
+  ];
+  final hash = key.codeUnits.fold<int>(0, (sum, code) => sum + code);
+  return palette[hash % palette.length];
+}
+
 class _DirectionGerenciaDashboardSummary extends StatefulWidget {
   final Future<void> Function() onOpenGerencia;
 
@@ -1971,15 +3628,17 @@ class _DirectionGerenciaDashboardSummaryState
   GerenciaBaleWeeklyTrackingBundle? _bundle;
   bool _loading = true;
   bool _hovering = false;
+  bool _refreshing = false;
+  bool _pendingReload = false;
   Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    _requestReload(showLoader: true);
     _refreshTimer = Timer.periodic(
-      const Duration(seconds: 45),
-      (_) => unawaited(_load(silent: true)),
+      const Duration(seconds: 90),
+      (_) => _requestReload(),
     );
   }
 
@@ -1989,7 +3648,21 @@ class _DirectionGerenciaDashboardSummaryState
     super.dispose();
   }
 
+  void _requestReload({bool showLoader = false}) {
+    if (!mounted) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    unawaited(_load(silent: !showLoader));
+  }
+
   Future<void> _load({bool silent = false}) async {
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    _refreshing = true;
     if (!silent && mounted) {
       setState(() => _loading = true);
     }
@@ -2003,6 +3676,12 @@ class _DirectionGerenciaDashboardSummaryState
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+    } finally {
+      _refreshing = false;
+      if (_pendingReload && mounted) {
+        _pendingReload = false;
+        unawaited(_load(silent: true));
+      }
     }
   }
 
@@ -2283,7 +3962,7 @@ class _DirectionOperationalServicesSummaryState
 
   void _setupAutoRefresh() {
     _autoRefreshTimer?.cancel();
-    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 12), (_) {
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 30), (_) {
       _requestReload();
     });
 
@@ -2812,15 +4491,17 @@ class _DirectionCommercialFollowUpsSummaryState
   CommercialDirectoryBundle? _bundle;
   bool _loading = true;
   bool _hovering = false;
+  bool _refreshing = false;
+  bool _pendingReload = false;
   Timer? _refreshTimer;
 
   @override
   void initState() {
     super.initState();
-    unawaited(_load());
+    _requestReload(showLoader: true);
     _refreshTimer = Timer.periodic(
-      const Duration(seconds: 45),
-      (_) => unawaited(_load(silent: true)),
+      const Duration(seconds: 90),
+      (_) => _requestReload(),
     );
   }
 
@@ -2830,7 +4511,21 @@ class _DirectionCommercialFollowUpsSummaryState
     super.dispose();
   }
 
+  void _requestReload({bool showLoader = false}) {
+    if (!mounted) return;
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    unawaited(_load(silent: !showLoader));
+  }
+
   Future<void> _load({bool silent = false}) async {
+    if (_refreshing) {
+      _pendingReload = true;
+      return;
+    }
+    _refreshing = true;
     if (!silent && mounted) {
       setState(() => _loading = true);
     }
@@ -2844,6 +4539,12 @@ class _DirectionCommercialFollowUpsSummaryState
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+    } finally {
+      _refreshing = false;
+      if (_pendingReload && mounted) {
+        _pendingReload = false;
+        unawaited(_load(silent: true));
+      }
     }
   }
 
@@ -3718,38 +5419,17 @@ class _DirectionVaultHeroCard extends StatefulWidget {
 
 Future<({double deposits, double expenses})> _loadDirectionVaultTotals() async {
   try {
-    final row = await Supabase.instance.client
-        .from('cash_taxonomy_configs')
-        .select('payload')
-        .eq('area', _kDirectionVaultArea)
-        .maybeSingle();
-    final payload = row?['payload'];
-    if (payload is Map && payload['rows'] is List) {
-      var deposits = 0.0;
-      var expenses = 0.0;
-      for (final item in (payload['rows'] as List).whereType<Map>()) {
-        final mapped = Map<String, dynamic>.from(item);
-        final type = (mapped['type'] ?? '').toString();
-        final lines = mapped['lines'];
-        var total = 0.0;
-        if (lines is List) {
-          for (final rawLine in lines.whereType<Map>()) {
-            total +=
-                double.tryParse(
-                  (Map<String, dynamic>.from(rawLine)['amount'] ?? '0')
-                      .toString(),
-                ) ??
-                0;
-          }
-        }
-        if (type == 'deposit') {
-          deposits += total;
-        } else {
-          expenses += total;
-        }
+    final vouchers = await DirectionVaultRepository.instance.loadVouchers();
+    var deposits = 0.0;
+    var expenses = 0.0;
+    for (final voucher in vouchers) {
+      if (voucher.type == 'deposit') {
+        deposits += voucher.total;
+      } else {
+        expenses += voucher.total;
       }
-      return (deposits: deposits, expenses: expenses);
     }
+    return (deposits: deposits, expenses: expenses);
   } catch (_) {}
   return (
     deposits: _kDirectionVaultDeposits,

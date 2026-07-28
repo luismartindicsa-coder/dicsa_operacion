@@ -186,6 +186,8 @@ class MenudeoAnalysisRepository {
     final timelineTotals = <DateTime, ({double deposits, double expenses})>{};
 
     final rubricTotals = <String, ({double total, int count})>{};
+    final expenseRubricTotals = <String, ({double total, int count})>{};
+    final depositRubricTotals = <String, ({double total, int count})>{};
     final conceptTotals = <String, ({double total, int count})>{};
     final subconceptTotals = <String, ({double total, int count})>{};
     final personTotals = <String, ({double total, int count})>{};
@@ -255,6 +257,21 @@ class MenudeoAnalysisRepository {
           total: current.total + total,
           count: current.count + 1,
         );
+        if (type == 'expense') {
+          final expenseCurrent =
+              expenseRubricTotals[rubric] ?? (total: 0.0, count: 0);
+          expenseRubricTotals[rubric] = (
+            total: expenseCurrent.total + total,
+            count: expenseCurrent.count + 1,
+          );
+        } else if (type == 'deposit') {
+          final depositCurrent =
+              depositRubricTotals[rubric] ?? (total: 0.0, count: 0);
+          depositRubricTotals[rubric] = (
+            total: depositCurrent.total + total,
+            count: depositCurrent.count + 1,
+          );
+        }
         rubrics.add(rubric);
       }
       if (person.isNotEmpty) {
@@ -400,6 +417,31 @@ class MenudeoAnalysisRepository {
             )
             .toList(growable: false)
           ..sort((a, b) => b.total.compareTo(a.total));
+    final expenseRubricRows =
+        expenseRubricTotals.entries
+            .map(
+              (entry) => MenudeoCashBreakdownRow(
+                label: entry.key,
+                total: entry.value.total,
+                count: entry.value.count,
+                share: entry.value.total / expenseBase,
+              ),
+            )
+            .toList(growable: false)
+          ..sort((a, b) => b.total.compareTo(a.total));
+    final depositBase = deposits <= 0 ? 1.0 : deposits;
+    final depositRubricRows =
+        depositRubricTotals.entries
+            .map(
+              (entry) => MenudeoCashBreakdownRow(
+                label: entry.key,
+                total: entry.value.total,
+                count: entry.value.count,
+                share: entry.value.total / depositBase,
+              ),
+            )
+            .toList(growable: false)
+          ..sort((a, b) => b.total.compareTo(a.total));
     final conceptRows =
         conceptTotals.entries
             .map(
@@ -535,6 +577,8 @@ class MenudeoAnalysisRepository {
       ),
       timeline: timeline,
       rubricRows: rubricRows,
+      expenseRubricRows: expenseRubricRows,
+      depositRubricRows: depositRubricRows,
       conceptRows: conceptRows,
       subconceptRows: subconceptRows,
       personRows: personRows,

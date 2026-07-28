@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
@@ -40,6 +41,7 @@ class _GerenciaBaleWeeklyTrackingPageState
   bool _refreshing = false;
   GerenciaBaleWeeklyTrackingBundle? _bundle;
   Timer? _reloadTimer;
+  RealtimeChannel? _weeklyTrackingChannel;
 
   @override
   void initState() {
@@ -47,13 +49,29 @@ class _GerenciaBaleWeeklyTrackingPageState
     unawaited(_resolveNavigationAccess());
     unawaited(_load());
     _reloadTimer = Timer.periodic(_kSilentReloadInterval, (_) {
-      unawaited(_load(silent: true));
+      unawaited(_load(silent: true, forceRefresh: true));
     });
+    _weeklyTrackingChannel = Supabase.instance.client
+        .channel('gerencia-weekly-tracking-refresh')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'inventory_movements_v2',
+          callback: (_) => unawaited(_load(silent: true, forceRefresh: true)),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'gerencia_bale_weekly_plan_lines',
+          callback: (_) => unawaited(_load(silent: true, forceRefresh: true)),
+        )
+        .subscribe();
   }
 
   @override
   void dispose() {
     _reloadTimer?.cancel();
+    _weeklyTrackingChannel?.unsubscribe();
     super.dispose();
   }
 
@@ -65,14 +83,16 @@ class _GerenciaBaleWeeklyTrackingPageState
     });
   }
 
-  Future<void> _load({bool silent = false}) async {
+  Future<void> _load({bool silent = false, bool forceRefresh = false}) async {
     if (_refreshing) return;
     _refreshing = true;
     if (!silent || _bundle == null) {
       setState(() => _loading = true);
     }
     try {
-      final bundle = await GerenciaBaleWeeklyTrackingStore.loadCurrentWeek();
+      final bundle = await GerenciaBaleWeeklyTrackingStore.loadCurrentWeek(
+        forceRefresh: forceRefresh,
+      );
       if (!mounted) return;
       setState(() {
         _bundle = bundle;
@@ -1451,7 +1471,16 @@ class _ProgressLane extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final safeRatio = ratio == null ? 0.0 : ratio!.clamp(0.0, 1.4);
+    final hasTarget = target > 0;
+    final safeRatio = hasTarget
+        ? (ratio == null ? 0.0 : ratio!.clamp(0.0, 1.4))
+        : (actual > 0 ? 1.0 : 0.0);
+    final headline = hasTarget
+        ? '$label · ${formatDecimal(actual, decimals: 0)} / ${formatDecimal(target, decimals: 0)}'
+        : '$label · ${formatDecimal(actual, decimals: 0)} real${actual == 1 ? '' : 'es'}';
+    final ratioLabel = hasTarget
+        ? (ratio == null ? '—' : '${(ratio! * 100).toStringAsFixed(0)}%')
+        : 'Sin meta';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1459,7 +1488,7 @@ class _ProgressLane extends StatelessWidget {
           children: [
             Expanded(
               child: Text(
-                '$label · ${formatDecimal(actual, decimals: 0)} / ${formatDecimal(target, decimals: 0)}',
+                headline,
                 style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -1468,7 +1497,7 @@ class _ProgressLane extends StatelessWidget {
               ),
             ),
             Text(
-              ratio == null ? '—' : '${(ratio! * 100).toStringAsFixed(0)}%',
+              ratioLabel,
               style: const TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w900,

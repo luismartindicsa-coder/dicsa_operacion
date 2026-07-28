@@ -36,6 +36,20 @@ const List<String> kFinBankMovementSourceTypes = <String>[
   'PAGO_FIJO',
 ];
 
+String? finBankMovementDirectionValidationMessage({
+  required String category,
+  required double creditAmount,
+  required double debitAmount,
+}) {
+  final normalizedCategory = category.trim().toUpperCase();
+  if (normalizedCategory == 'VENTAS') {
+    if (creditAmount <= 0.009 || debitAmount > 0.009) {
+      return 'La categoría VENTAS debe registrarse como abono, no como cargo.';
+    }
+  }
+  return null;
+}
+
 class FinanzasBankMovementRecord {
   final String id;
   final DateTime date;
@@ -288,24 +302,36 @@ class FinanzasClientPaymentAccountRecord {
 class FinanzasBankAccountsStore {
   static Future<List<FinanzasBankMovementRecord>> loadMovements() async {
     try {
-      final rows = await Supabase.instance.client
-          .from(_kFinBankMovementsTable)
-          .select()
-          .order('movement_date', ascending: false)
-          .order('created_at', ascending: false);
-      return (rows as List)
-          .map(
-            (row) => FinanzasBankMovementRecord.fromRemoteRow(
-              Map<String, dynamic>.from(row as Map),
-            ),
-          )
-          .toList(growable: false);
+      return await loadMovementsStrict();
     } catch (_) {
       return const <FinanzasBankMovementRecord>[];
     }
   }
 
+  static Future<List<FinanzasBankMovementRecord>> loadMovementsStrict() async {
+    final rows = await Supabase.instance.client
+        .from(_kFinBankMovementsTable)
+        .select()
+        .order('movement_date', ascending: false)
+        .order('created_at', ascending: false);
+    return (rows as List)
+        .map(
+          (row) => FinanzasBankMovementRecord.fromRemoteRow(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
+        .toList(growable: false);
+  }
+
   static Future<void> saveMovement(FinanzasBankMovementRecord row) async {
+    final directionError = finBankMovementDirectionValidationMessage(
+      category: row.category,
+      creditAmount: row.creditAmount,
+      debitAmount: row.debitAmount,
+    );
+    if (directionError != null) {
+      throw ArgumentError(directionError);
+    }
     final resolvedCounterpartyId = await _ensureCounterpartyExistsInFinanzas(
       counterpartyCompanyId: row.counterpartyCompanyId,
       counterpartyNameSnapshot: row.counterpartyNameSnapshot,

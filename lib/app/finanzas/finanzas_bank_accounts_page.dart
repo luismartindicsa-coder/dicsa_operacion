@@ -2241,6 +2241,14 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
     return double.tryParse(cleaned) ?? 0;
   }
 
+  String? get _directionValidationMessage {
+    return finBankMovementDirectionValidationMessage(
+      category: _category,
+      creditAmount: _parseAmount(_creditC.text),
+      debitAmount: _parseAmount(_debitC.text),
+    );
+  }
+
   bool get _canSave {
     if (_counterpartyName.trim().isEmpty) return false;
     final credit = _parseAmount(_creditC.text);
@@ -2274,6 +2282,7 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
         return false;
       }
     }
+    if (_directionValidationMessage != null) return false;
     return true;
   }
 
@@ -3120,6 +3129,38 @@ class _NewBankMovementDialogState extends State<_NewBankMovementDialog> {
                                   ),
                                 ],
                               ),
+                              if (_directionValidationMessage != null) ...[
+                                const SizedBox(height: 10),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.fromLTRB(
+                                    14,
+                                    12,
+                                    14,
+                                    12,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: const Color(
+                                      0xFFFF5A00,
+                                    ).withValues(alpha: 0.10),
+                                    borderRadius: BorderRadius.circular(18),
+                                    border: Border.all(
+                                      color: const Color(
+                                        0xFFFF5A00,
+                                      ).withValues(alpha: 0.24),
+                                    ),
+                                  ),
+                                  child: Text(
+                                    _directionValidationMessage!,
+                                    style: const TextStyle(
+                                      fontSize: 12.5,
+                                      fontWeight: FontWeight.w700,
+                                      color: kFinanzasInk,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                ),
+                              ],
                               if (_sourceType == 'COMPRA_FACTURA' &&
                                   _supplierAppliedAmount != null) ...[
                                 const SizedBox(height: 10),

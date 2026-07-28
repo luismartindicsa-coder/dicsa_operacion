@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -20,6 +21,7 @@ import 'finanzas_bank_accounts_store.dart';
 import 'finanzas_catalog_page.dart';
 import 'finanzas_company_identity.dart';
 import 'finanzas_company_directory_page.dart';
+import 'finanzas_due_alerts_store.dart';
 import 'finanzas_fixed_payments_page.dart';
 import 'finanzas_fixed_payments_store.dart';
 import 'finanzas_financial_rules.dart';
@@ -43,6 +45,7 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
   bool _canReturnToDirection = false;
   bool _canAccessComprasArea = false;
   _FinanzasDashboardSummary _summary = const _FinanzasDashboardSummary.empty();
+  bool _dueNotificationPresented = false;
 
   @override
   void initState() {
@@ -70,6 +73,7 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
       FinanzasProviderAccountsStore.loadInvoices(),
       FinanzasFixedPaymentsStore.loadPayments(),
       FinanzasProviderAccountsStore.loadAgreements(),
+      FinanzasDueAlertsStore.loadSummary(),
       ComprasTicketsStore.loadTickets(),
     ]);
     if (!mounted) return;
@@ -79,7 +83,8 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
     final invoices = results[2] as List<FinanzasSupplierInvoiceRecord>;
     final fixedPayments = results[3] as List<FinanzasFixedPaymentRecord>;
     final agreements = results[4] as List<FinanzasSupplierAgreementRecord>;
-    final tickets = results[5] as List<ComprasTicketRecord>;
+    final dueAlerts = results[5] as FinanzasDueAlertsSummary;
+    final tickets = results[6] as List<ComprasTicketRecord>;
     setState(() {
       _summary = _buildFinanzasDashboardSummary(
         movements: movements,
@@ -87,10 +92,35 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
         invoices: invoices,
         fixedPayments: fixedPayments,
         agreements: agreements,
+        dueAlerts: dueAlerts,
         tickets: tickets,
       );
       _loading = false;
     });
+    unawaited(_presentDueNotificationIfNeeded(dueAlerts));
+  }
+
+  Future<void> _presentDueNotificationIfNeeded(
+    FinanzasDueAlertsSummary dueAlerts,
+  ) async {
+    if (!mounted || _dueNotificationPresented) return;
+    if (dueAlerts.totalCount <= 0 || dueAlerts.items.isEmpty) return;
+    _dueNotificationPresented = true;
+    final primaryItem = dueAlerts.items.first;
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return _FinanzasDueNotificationDialog(
+          summary: dueAlerts,
+          primaryItem: primaryItem,
+          onOpenPaymentCenter: () async {
+            Navigator.of(dialogContext).pop();
+            await _openPaymentCenter();
+          },
+        );
+      },
+    );
   }
 
   Future<void> _logout() => signOutAndRouteToLogin(context);
@@ -119,15 +149,15 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
     );
   }
 
-  Future<void> _openBankAccounts() async {
-    await Navigator.of(context).push(
-      appPageRoute(page: const FinanzasBankAccountsPage(instantOpen: true)),
-    );
-  }
-
   Future<void> _openPaymentCenter() async {
     await Navigator.of(context).push(
       appPageRoute(page: const FinanzasPaymentCenterPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openBankAccounts() async {
+    await Navigator.of(context).push(
+      appPageRoute(page: const FinanzasBankAccountsPage(instantOpen: true)),
     );
   }
 
@@ -414,6 +444,15 @@ class _DashboardTopStrip extends StatelessWidget {
                     : '${summary.openInvoiceCount} facturas abiertas',
                 accent: kFinanzasCopper,
               ),
+              if (!loading && summary.dueAlerts.totalCount > 0)
+                _MiniPeriodBadge(
+                  label: '${summary.dueAlerts.totalCount} vencimientos foco',
+                  accent:
+                      summary.dueAlerts.overdueCount > 0 ||
+                          summary.dueAlerts.dueTodayCount > 0
+                      ? kFinanzasCoral
+                      : kFinanzasAmber,
+                ),
               _RefreshBadge(onTap: onRefresh),
             ],
           ),
@@ -1781,6 +1820,262 @@ class _RefreshBadge extends StatelessWidget {
   }
 }
 
+class _FinanzasDueNotificationDialog extends StatelessWidget {
+  final FinanzasDueAlertsSummary summary;
+  final FinanzasDueAlertItem primaryItem;
+  final Future<void> Function() onOpenPaymentCenter;
+
+  const _FinanzasDueNotificationDialog({
+    required this.summary,
+    required this.primaryItem,
+    required this.onOpenPaymentCenter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = switch (primaryItem.severity) {
+      FinanzasDueAlertSeverity.critical => kFinanzasCoral,
+      FinanzasDueAlertSeverity.warning => kFinanzasAmber,
+      FinanzasDueAlertSeverity.info => kFinanzasCopper,
+    };
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 720),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(34),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+            child: Container(
+              padding: const EdgeInsets.fromLTRB(28, 26, 28, 22),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(34),
+                color: const Color(0xFF10264A).withValues(alpha: 0.96),
+                border: Border.all(color: accent.withValues(alpha: 0.42)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.28),
+                    blurRadius: 34,
+                    offset: const Offset(0, 18),
+                  ),
+                ],
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Container(
+                        width: 58,
+                        height: 58,
+                        decoration: BoxDecoration(
+                          shape: BoxShape.circle,
+                          color: accent.withValues(alpha: 0.16),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.24),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.notifications_active_rounded,
+                          color: accent,
+                          size: 28,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Finanzas requiere atención',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 19,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _finanzasDueDialogHeadline(summary),
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.88),
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                height: 1.35,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Wrap(
+                    spacing: 10,
+                    runSpacing: 10,
+                    children: [
+                      _FinanzasNotificationPill(
+                        label: 'Hoy: ${summary.dueTodayCount}',
+                      ),
+                      _FinanzasNotificationPill(
+                        label: '2 días: ${summary.dueIn2DaysCount}',
+                      ),
+                      _FinanzasNotificationPill(
+                        label: '1 semana: ${summary.dueIn7DaysCount}',
+                      ),
+                      _FinanzasNotificationPill(
+                        label: 'Monto: ${formatMoney(summary.totalAmount)}',
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 18),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(22),
+                      color: Colors.white.withValues(alpha: 0.06),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.12),
+                      ),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _finanzasPrimaryTitle(primaryItem),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          primaryItem.title,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.90),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          primaryItem.subtitle,
+                          style: const TextStyle(
+                            color: Color(0xFFF8EBDD),
+                            fontSize: 12.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '${primaryItem.reminderLabel} · ${formatMoney(primaryItem.amount)}',
+                          style: TextStyle(
+                            color: accent,
+                            fontSize: 13,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      OutlinedButton(
+                        onPressed: () => Navigator.of(context).pop(),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.white,
+                          side: BorderSide(
+                            color: Colors.white.withValues(alpha: 0.24),
+                          ),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 22,
+                            vertical: 16,
+                          ),
+                        ),
+                        child: const Text('Después'),
+                      ),
+                      const SizedBox(width: 12),
+                      FilledButton.icon(
+                        onPressed: onOpenPaymentCenter,
+                        icon: const Icon(Icons.open_in_new_rounded),
+                        label: const Text('Abrir pagos'),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: const Color(0xFFEA8F4B),
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 22,
+                            vertical: 16,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FinanzasNotificationPill extends StatelessWidget {
+  final String label;
+
+  const _FinanzasNotificationPill({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(999),
+        color: Colors.white.withValues(alpha: 0.08),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 12.5,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
+}
+
+String _finanzasDueDialogHeadline(FinanzasDueAlertsSummary summary) {
+  if (summary.dueTodayCount > 0) {
+    return 'Hay ${summary.dueTodayCount} pagos que vencen hoy y conviene resolver durante esta jornada.';
+  }
+  if (summary.dueIn2DaysCount > 0) {
+    return 'Hay ${summary.dueIn2DaysCount} compromisos que vencen en 48 horas y ya entraron a foco.';
+  }
+  return 'Hay ${summary.dueIn7DaysCount} compromisos entrando a la ventana semanal de preparación.';
+}
+
+String _finanzasPrimaryTitle(FinanzasDueAlertItem item) {
+  switch (item.sourceType) {
+    case 'FACTURA':
+      return 'Factura más urgente';
+    case 'PAGO_FIJO':
+      return 'Pago fijo más urgente';
+    case 'CONVENIO':
+      return 'Convenio más urgente';
+    default:
+      return 'Compromiso más urgente';
+  }
+}
+
 class _InlineMetricChip extends StatelessWidget {
   final String label;
   final String value;
@@ -2556,6 +2851,7 @@ class _FinanzasDashboardSummary {
   final int pendingPaymentTicketCount;
   final List<_CrossPurchaseRow> purchaseProviderRows;
   final List<_CrossPurchaseRow> purchaseMaterialRows;
+  final FinanzasDueAlertsSummary dueAlerts;
   final List<_ExecutiveAlertRow> executiveAlerts;
 
   const _FinanzasDashboardSummary({
@@ -2598,6 +2894,7 @@ class _FinanzasDashboardSummary {
     required this.pendingPaymentTicketCount,
     required this.purchaseProviderRows,
     required this.purchaseMaterialRows,
+    required this.dueAlerts,
     required this.executiveAlerts,
   });
 
@@ -2641,6 +2938,7 @@ class _FinanzasDashboardSummary {
       pendingPaymentTicketCount = 0,
       purchaseProviderRows = const <_CrossPurchaseRow>[],
       purchaseMaterialRows = const <_CrossPurchaseRow>[],
+      dueAlerts = const FinanzasDueAlertsSummary.empty(),
       executiveAlerts = const <_ExecutiveAlertRow>[];
 }
 
@@ -2650,6 +2948,7 @@ _FinanzasDashboardSummary _buildFinanzasDashboardSummary({
   required List<FinanzasSupplierInvoiceRecord> invoices,
   required List<FinanzasFixedPaymentRecord> fixedPayments,
   required List<FinanzasSupplierAgreementRecord> agreements,
+  required FinanzasDueAlertsSummary dueAlerts,
   required List<ComprasTicketRecord> tickets,
 }) {
   final now = DateTime.now();
@@ -2916,6 +3215,7 @@ _FinanzasDashboardSummary _buildFinanzasDashboardSummary({
     availableBalance: availableBalance,
     shortTermCommitments: shortTermCommitments,
     overdueBalance: overdueBalance,
+    dueAlerts: dueAlerts,
     delayedAgreementCount: delayedAgreementCount,
     noInvoiceTicketCount: noInvoiceTicketCount,
     pendingPaymentTicketCount: pendingPaymentTicketCount,
@@ -2976,6 +3276,7 @@ _FinanzasDashboardSummary _buildFinanzasDashboardSummary({
     pendingPaymentTicketCount: pendingPaymentTicketCount,
     purchaseProviderRows: purchaseProviderRows,
     purchaseMaterialRows: purchaseMaterialRows,
+    dueAlerts: dueAlerts,
     executiveAlerts: executiveAlerts,
   );
 }
@@ -3239,6 +3540,7 @@ List<_ExecutiveAlertRow> _buildExecutiveAlerts({
   required double availableBalance,
   required double shortTermCommitments,
   required double overdueBalance,
+  required FinanzasDueAlertsSummary dueAlerts,
   required int delayedAgreementCount,
   required int noInvoiceTicketCount,
   required int pendingPaymentTicketCount,
@@ -3246,6 +3548,54 @@ List<_ExecutiveAlertRow> _buildExecutiveAlerts({
   required List<_ProviderBalanceBreakdown> providerBalances,
 }) {
   final alerts = <_ExecutiveAlertRow>[];
+  if (dueAlerts.overdueCount > 0) {
+    alerts.add(
+      _ExecutiveAlertRow(
+        title: 'Vencimientos ya fuera de tiempo',
+        subtitle:
+            '${dueAlerts.overdueCount} compromisos por ${formatMoney(dueAlerts.overdueAmount)} ya están vencidos en finanzas.',
+        icon: Icons.notifications_active_rounded,
+        tone: kFinanzasCoral,
+        severity: 98,
+      ),
+    );
+  }
+  if (dueAlerts.dueTodayCount > 0) {
+    alerts.add(
+      _ExecutiveAlertRow(
+        title: 'Pagos que vencen hoy',
+        subtitle:
+            '${dueAlerts.dueTodayCount} compromisos por ${formatMoney(dueAlerts.dueTodayAmount)} vencen hoy y requieren salida inmediata.',
+        icon: Icons.today_rounded,
+        tone: kFinanzasCoral,
+        severity: 94,
+      ),
+    );
+  }
+  if (dueAlerts.dueIn2DaysCount > 0) {
+    alerts.add(
+      _ExecutiveAlertRow(
+        title: 'Recordatorio a 2 días',
+        subtitle:
+            '${dueAlerts.dueIn2DaysCount} compromisos por ${formatMoney(dueAlerts.dueIn2DaysAmount)} vencerán en 48 horas.',
+        icon: Icons.event_repeat_rounded,
+        tone: kFinanzasAmber,
+        severity: 86,
+      ),
+    );
+  }
+  if (dueAlerts.dueIn7DaysCount > 0) {
+    alerts.add(
+      _ExecutiveAlertRow(
+        title: 'Ventana de preparación semanal',
+        subtitle:
+            '${dueAlerts.dueIn7DaysCount} compromisos por ${formatMoney(dueAlerts.dueIn7DaysAmount)} vencen en una semana.',
+        icon: Icons.date_range_rounded,
+        tone: kFinanzasCopper,
+        severity: 76,
+      ),
+    );
+  }
   if (shortTermCommitments > 0.009 && availableBalance < shortTermCommitments) {
     alerts.add(
       _ExecutiveAlertRow(
