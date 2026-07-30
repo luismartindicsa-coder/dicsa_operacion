@@ -164,6 +164,12 @@ class AuthAccess {
     return _roleIn(profile, {'services', 'logistics', 'logistica'});
   }
 
+  static bool canAccessLogisticsControlDaily(AuthResolvedProfile? profile) {
+    if (profile == null || !profile.isActive) return false;
+    if (isDirectionRole(profile)) return true;
+    return hasLogisticsAccess(profile);
+  }
+
   static bool hasAccountingOperationsAccess(AuthResolvedProfile? profile) {
     if (profile == null || !profile.isActive) return false;
     if (isDirectionRole(profile)) return true;
@@ -346,7 +352,9 @@ class AuthAccess {
     ServicesOverlayNavModule module,
   ) {
     if (profile == null || !profile.isActive) return false;
-    if (hasFullOperationsAccess(profile)) return true;
+    if (hasFullOperationsAccess(profile)) {
+      return module != ServicesOverlayNavModule.servicios;
+    }
 
     if (hasLogisticsAccess(profile)) {
       return module == ServicesOverlayNavModule.entradasSalidas ||
@@ -386,7 +394,7 @@ class AuthAccess {
       case 'services':
       case 'logistics':
       case 'logistica':
-        return 'services';
+        return 'logistics_dashboard';
       case 'accounting':
       case 'contabilidad':
         return 'purchase_orders';

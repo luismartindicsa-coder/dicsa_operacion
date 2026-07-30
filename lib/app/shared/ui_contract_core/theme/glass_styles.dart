@@ -23,10 +23,11 @@ class ContractGlassCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final effectiveBlur = tokens.darkGlass ? blurSigma : blurSigma * 0.48;
     return ClipRRect(
       borderRadius: borderRadius,
       child: BackdropFilter(
-        filter: ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+        filter: ImageFilter.blur(sigmaX: effectiveBlur, sigmaY: effectiveBlur),
         child: DecoratedBox(
           decoration: BoxDecoration(
             color: tokens.glassSurface,
@@ -36,18 +37,16 @@ class ContractGlassCard extends StatelessWidget {
                   ? tokens.accentDarkGlass
                         ? tokens.border.withValues(alpha: 0.42)
                         : Colors.white.withValues(alpha: 0.18)
-                  : tokens.border.withValues(alpha: 0.7),
+                  : tokens.border.withValues(alpha: 0.78),
             ),
             boxShadow: [
               BoxShadow(
-                color: tokens.glow.withValues(
-                  alpha: tokens.darkGlass
-                      ? tokens.accentDarkGlass
-                            ? 0.22
-                            : 0.12
-                      : 0.14,
-                ),
-                blurRadius: tokens.darkGlass ? elevation + 8 : elevation,
+                color: tokens.darkGlass
+                    ? tokens.glow.withValues(
+                        alpha: tokens.accentDarkGlass ? 0.22 : 0.12,
+                      )
+                    : Colors.black.withValues(alpha: 0.08),
+                blurRadius: tokens.darkGlass ? elevation + 8 : elevation + 8,
                 offset: Offset(0, tokens.darkGlass ? 14 : 10),
               ),
               if (tokens.darkGlass)
@@ -55,6 +54,12 @@ class ContractGlassCard extends StatelessWidget {
                   color: Colors.black.withValues(alpha: 0.28),
                   blurRadius: elevation + 10,
                   offset: const Offset(0, 18),
+                )
+              else
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.58),
+                  blurRadius: elevation,
+                  offset: const Offset(0, -2),
                 ),
             ],
           ),
@@ -81,7 +86,16 @@ class ContractGlassCard extends StatelessWidget {
                               Colors.transparent,
                             ],
                           ))
-                  : null,
+                  : LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.56),
+                        tokens.surfaceTint.withValues(alpha: 0.10),
+                        Colors.white.withValues(alpha: 0.20),
+                      ],
+                      stops: const [0.0, 0.62, 1.0],
+                    ),
             ),
             child: Padding(padding: padding, child: child),
           ),

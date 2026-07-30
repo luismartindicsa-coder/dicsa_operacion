@@ -14,6 +14,7 @@ import '../maintenance/maintenance_page.dart';
 import '../maintenance/purchase_orders_page.dart';
 import 'inventory_page.dart';
 import 'operation_directory_page.dart';
+import 'services_visual_mode.dart';
 import 'warehouse_page.dart';
 import 'weighings_page.dart';
 import 'services_shell.dart'; // ajusta el path si lo guardaste en /ui/ o /app/
@@ -33,6 +34,7 @@ const double _kServiceTypeColW = 130;
 const double _kServiceDriverColW = 190;
 const double _kServiceUnitColW = 140;
 const double _kServiceDueDateColW = 130;
+const double _kServiceScheduleTimeColW = 108;
 const double _kServiceCommentColW = 230;
 const double _kServiceActionsGapW = 10;
 const double _kServiceActionsW = 168;
@@ -42,8 +44,6 @@ const double _kServiceInsertActionButtonW = 34;
 const double _kServiceActionInnerGapW = 6;
 
 const Color _kGlassMenuBg = Color(0xE6EAF2F9);
-const Color _kFilterAccent = Color(0xFF4F8E8C);
-const Color _kFilterAccentSoft = Color(0xFFE2EEEC);
 const double _kServicesTableBaseContentW =
     _kServiceDateColW +
     _kServiceCompanyColW +
@@ -52,6 +52,7 @@ const double _kServicesTableBaseContentW =
     _kServiceDriverColW +
     _kServiceUnitColW +
     _kServiceDueDateColW +
+    _kServiceScheduleTimeColW +
     _kServiceCommentColW +
     _kServiceActionsGapW +
     _kServiceActionsW;
@@ -65,6 +66,7 @@ class _ServicesTableLayout {
     required this.driver,
     required this.unit,
     required this.dueDate,
+    required this.scheduledTime,
     required this.comment,
     required this.actionsGap,
     required this.actions,
@@ -78,6 +80,7 @@ class _ServicesTableLayout {
   final double driver;
   final double unit;
   final double dueDate;
+  final double scheduledTime;
   final double comment;
   final double actionsGap;
   final double actions;
@@ -91,6 +94,7 @@ class _ServicesTableLayout {
       driver +
       unit +
       dueDate +
+      scheduledTime +
       comment +
       actionsGap +
       actions;
@@ -126,6 +130,7 @@ _ServicesTableLayout _resolveServicesTableLayout(double availableWidth) {
       driver: _kServiceDriverColW,
       unit: _kServiceUnitColW,
       dueDate: _kServiceDueDateColW,
+      scheduledTime: _kServiceScheduleTimeColW,
       comment: _kServiceCommentColW,
       actionsGap: _kServiceActionsGapW,
       actions: _kServiceActionsW,
@@ -141,6 +146,7 @@ _ServicesTableLayout _resolveServicesTableLayout(double availableWidth) {
     driver: _kServiceDriverColW * scale,
     unit: _kServiceUnitColW * scale,
     dueDate: _kServiceDueDateColW * scale,
+    scheduledTime: _kServiceScheduleTimeColW * scale,
     comment: _kServiceCommentColW * scale,
     actionsGap: _kServiceActionsGapW * scale,
     actions: _kServiceActionsW * scale,
@@ -171,6 +177,82 @@ String _fmtDateLabel(DateTime d) {
   return '$dd/$mm/${d.year}';
 }
 
+TimeOfDay? _parseServicesTimeOfDay(String? raw) {
+  final value = raw?.trim() ?? '';
+  if (value.isEmpty) return null;
+  final match = RegExp(r'^(\d{1,2}):(\d{2})(?::\d{2})?$').firstMatch(value);
+  if (match == null) return null;
+  final hour = int.tryParse(match.group(1)!);
+  final minute = int.tryParse(match.group(2)!);
+  if (hour == null || minute == null) return null;
+  if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
+  return TimeOfDay(hour: hour, minute: minute);
+}
+
+String _fmtServicesUiTimeOfDay(TimeOfDay value) {
+  final hh = value.hour.toString().padLeft(2, '0');
+  final mm = value.minute.toString().padLeft(2, '0');
+  return '$hh:$mm';
+}
+
+String _fmtServicesDbTimeOfDay(TimeOfDay value) {
+  return '${_fmtServicesUiTimeOfDay(value)}:00';
+}
+
+Future<TimeOfDay?> _showServicesTimePicker(
+  BuildContext context, {
+  required TimeOfDay initialTime,
+}) {
+  final palette = ServicesVisualPalette.of(context);
+  return showTimePicker(
+    context: context,
+    initialTime: initialTime,
+    builder: (context, child) {
+      return MediaQuery(
+        data: MediaQuery.of(context).copyWith(alwaysUse24HourFormat: true),
+        child: Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: Theme.of(context).colorScheme.copyWith(
+              primary: palette.filterAccent,
+              onPrimary: palette.buttonFillForeground,
+              surface: palette.surfaceElevated,
+              onSurface: palette.textPrimary,
+            ),
+            dialogTheme: DialogThemeData(
+              backgroundColor: palette.surfaceBase,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(22),
+                side: BorderSide(color: palette.borderStrong),
+              ),
+            ),
+            timePickerTheme: TimePickerThemeData(
+              backgroundColor: palette.surfaceBase,
+              hourMinuteShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(16),
+                side: BorderSide(color: palette.border),
+              ),
+              dayPeriodShape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(color: palette.border),
+              ),
+              entryModeIconColor: palette.icon,
+              dialHandColor: palette.filterAccent,
+              dialBackgroundColor: palette.surfaceInteractive,
+              hourMinuteTextColor: palette.textPrimary,
+              dayPeriodTextColor: palette.textPrimary,
+              helpTextStyle: TextStyle(
+                color: palette.textSecondary,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+          child: child!,
+        ),
+      );
+    },
+  );
+}
+
 String _monthNameEs(int month) {
   const months = <String>[
     'enero',
@@ -195,6 +277,7 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
   required DateTimeRange bounds,
   DateTimeRange? initialRange,
 }) {
+  final palette = ServicesVisualPalette.of(context);
   return showDialog<_DateFilterDialogResult>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
@@ -275,17 +358,17 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                     filter: ImageFilter.blur(sigmaX: 14, sigmaY: 14),
                     child: Container(
                       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                      decoration: _filterDialogDecoration(),
+                      decoration: _filterDialogDecoration(context),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
                             'Filtro: $label',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.w800,
-                              color: Color(0xFF0B2B2B),
+                              color: palette.textPrimary,
                             ),
                           ),
                           const SizedBox(height: 8),
@@ -301,14 +384,18 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                                     );
                                   });
                                 },
-                                icon: const Icon(Icons.chevron_left),
+                                icon: Icon(
+                                  Icons.chevron_left,
+                                  color: palette.icon,
+                                ),
                               ),
                               Expanded(
                                 child: Center(
                                   child: Text(
                                     '${_monthNameEs(monthFirst.month)[0].toUpperCase()}${_monthNameEs(monthFirst.month).substring(1)} ${monthFirst.year}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontWeight: FontWeight.w700,
+                                      color: palette.textPrimary,
                                     ),
                                   ),
                                 ),
@@ -323,20 +410,36 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                                     );
                                   });
                                 },
-                                icon: const Icon(Icons.chevron_right),
+                                icon: Icon(
+                                  Icons.chevron_right,
+                                  color: palette.icon,
+                                ),
                               ),
                             ],
                           ),
                           const SizedBox(height: 4),
                           Row(
-                            children: const [
-                              Expanded(child: Center(child: Text('L'))),
-                              Expanded(child: Center(child: Text('M'))),
-                              Expanded(child: Center(child: Text('M'))),
-                              Expanded(child: Center(child: Text('J'))),
-                              Expanded(child: Center(child: Text('V'))),
-                              Expanded(child: Center(child: Text('S'))),
-                              Expanded(child: Center(child: Text('D'))),
+                            children: [
+                              for (final day in const [
+                                'L',
+                                'M',
+                                'M',
+                                'J',
+                                'V',
+                                'S',
+                                'D',
+                              ])
+                                Expanded(
+                                  child: Center(
+                                    child: Text(
+                                      day,
+                                      style: TextStyle(
+                                        color: palette.textSecondary,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                           const SizedBox(height: 2),
@@ -363,19 +466,19 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                                           selectedStart || selectedEnd;
 
                                       final bgColor = active
-                                          ? _kFilterAccent
+                                          ? palette.filterAccent
                                           : inRange
-                                          ? _kFilterAccentSoft.withValues(
+                                          ? palette.filterAccentSoft.withValues(
                                               alpha: 0.8,
                                             )
                                           : Colors.transparent;
 
                                       final txtColor = active
-                                          ? Colors.white
+                                          ? palette.buttonFillForeground
                                           : !allowed
                                           ? Colors.black38
                                           : inMonth
-                                          ? const Color(0xFF0B2B2B)
+                                          ? palette.textPrimary
                                           : Colors.black54;
 
                                       return Expanded(
@@ -424,7 +527,8 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                                                     BorderRadius.circular(9),
                                                 border: inRange && !active
                                                     ? Border.all(
-                                                        color: _kFilterAccent
+                                                        color: palette
+                                                            .filterAccent
                                                             .withValues(
                                                               alpha: 0.35,
                                                             ),
@@ -460,10 +564,10 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                                 : end == null
                                 ? 'Mueve el mouse y selecciona fecha final'
                                 : '${_fmtDateLabel(start!)} - ${_fmtDateLabel(end!)}',
-                            style: const TextStyle(
+                            style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w700,
-                              color: Color(0xFF2A4B49),
+                              color: palette.textSecondary,
                             ),
                           ),
                           const SizedBox(height: 10),
@@ -471,13 +575,13 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                             mainAxisAlignment: MainAxisAlignment.end,
                             children: [
                               OutlinedButton(
-                                style: _filterOutlinedButtonStyle(),
+                                style: _filterOutlinedButtonStyle(context),
                                 onPressed: () => Navigator.pop(dialogContext),
                                 child: const Text('Cancelar'),
                               ),
                               const SizedBox(width: 6),
                               OutlinedButton(
-                                style: _filterOutlinedButtonStyle(),
+                                style: _filterOutlinedButtonStyle(context),
                                 onPressed: () => Navigator.pop(
                                   dialogContext,
                                   const _DateFilterDialogResult(clear: true),
@@ -486,7 +590,7 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
                               ),
                               const SizedBox(width: 6),
                               FilledButton(
-                                style: _filterFilledButtonStyle(),
+                                style: _filterFilledButtonStyle(context),
                                 onPressed: start == null
                                     ? null
                                     : () => Navigator.pop(
@@ -538,6 +642,7 @@ Future<DateTime?> _showGlassDatePickerDialog(
   required DateTime firstDate,
   required DateTime lastDate,
 }) {
+  final palette = ServicesVisualPalette.of(context);
   DateTime tempDate = DateUtils.dateOnly(initialDate);
 
   DateTime clampDate(DateTime value) {
@@ -608,9 +713,9 @@ Future<DateTime?> _showGlassDatePickerDialog(
               child: Theme(
                 data: Theme.of(innerContext).copyWith(
                   colorScheme: Theme.of(innerContext).colorScheme.copyWith(
-                    primary: const Color(0xFF6A99C7),
-                    onPrimary: Colors.white,
-                    surface: const Color(0xFFEAF2F9),
+                    primary: palette.buttonFill,
+                    onPrimary: palette.buttonFillForeground,
+                    surface: palette.surfaceInteractive,
                   ),
                 ),
                 child: Dialog(
@@ -628,24 +733,23 @@ Future<DateTime?> _showGlassDatePickerDialog(
                         child: Container(
                           padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
                           decoration: BoxDecoration(
-                            color: const Color(
-                              0xFFEAF2F9,
-                            ).withValues(alpha: 0.96),
+                            color: palette.surfaceBase,
+                            gradient: palette.logisticsSilver
+                                ? palette.glassCardGradient
+                                : null,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.70),
-                            ),
+                            border: Border.all(color: palette.borderStrong),
                           ),
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              const Text(
+                              Text(
                                 'Selecciona fecha',
                                 style: TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.w800,
-                                  color: Color(0xFF0B2B2B),
+                                  color: palette.textPrimary,
                                 ),
                               ),
                               const SizedBox(height: 10),
@@ -675,16 +779,14 @@ Future<DateTime?> _showGlassDatePickerDialog(
                                 mainAxisAlignment: MainAxisAlignment.end,
                                 children: [
                                   OutlinedButton(
+                                    style: _filterOutlinedButtonStyle(context),
                                     onPressed: () =>
                                         Navigator.of(dialogContext).pop(),
                                     child: const Text('Cancelar'),
                                   ),
                                   const SizedBox(width: 8),
                                   FilledButton(
-                                    style: FilledButton.styleFrom(
-                                      backgroundColor: const Color(0xFF6A99C7),
-                                      foregroundColor: Colors.white,
-                                    ),
+                                    style: _filterFilledButtonStyle(context),
                                     onPressed: () => Navigator.of(
                                       dialogContext,
                                     ).pop(DateUtils.dateOnly(tempDate)),
@@ -778,62 +880,68 @@ class _FitText extends StatelessWidget {
   }
 }
 
-InputDecoration _glassFieldDecoration({String? hintText}) {
+InputDecoration _glassFieldDecoration(
+  BuildContext context, {
+  String? hintText,
+}) {
+  final palette = ServicesVisualPalette.of(context);
   final border = OutlineInputBorder(
     borderRadius: BorderRadius.circular(12),
-    borderSide: BorderSide(
-      color: Colors.white.withValues(alpha: 0.58),
-      width: 1,
-    ),
+    borderSide: BorderSide(color: palette.borderStrong, width: 1),
   );
 
   return InputDecoration(
     hintText: hintText,
     isDense: true,
     filled: true,
-    fillColor: Colors.white.withValues(alpha: 0.45),
+    fillColor: palette.fieldFill,
     contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
     border: border,
     enabledBorder: border,
     focusedBorder: border.copyWith(
       borderSide: BorderSide(
-        color: const Color(0xFF00A3FF).withValues(alpha: 0.8),
+        color: palette.filterAccent.withValues(alpha: 0.82),
         width: 1.2,
       ),
     ),
   );
 }
 
-BoxDecoration _filterDialogDecoration() {
+BoxDecoration _filterDialogDecoration(BuildContext context) {
+  final palette = ServicesVisualPalette.of(context);
   return BoxDecoration(
-    color: Colors.white.withValues(alpha: 0.62),
+    color: palette.surfaceBase,
+    gradient: palette.logisticsSilver ? palette.glassCardGradient : null,
     borderRadius: BorderRadius.circular(20),
-    border: Border.all(color: Colors.white.withValues(alpha: 0.68)),
+    border: Border.all(color: palette.borderStrong),
   );
 }
 
-ButtonStyle _filterOutlinedButtonStyle() {
+ButtonStyle _filterOutlinedButtonStyle(BuildContext context) {
+  final palette = ServicesVisualPalette.of(context);
   return OutlinedButton.styleFrom(
-    foregroundColor: const Color(0xFF2A4B49),
-    side: BorderSide(color: const Color(0xFF2A4B49).withValues(alpha: 0.25)),
-    backgroundColor: Colors.white.withValues(alpha: 0.40),
+    foregroundColor: palette.textSecondary,
+    side: BorderSide(color: palette.border),
+    backgroundColor: palette.surfaceElevated,
   );
 }
 
-ButtonStyle _filterFilledButtonStyle() {
+ButtonStyle _filterFilledButtonStyle(BuildContext context) {
+  final palette = ServicesVisualPalette.of(context);
   return FilledButton.styleFrom(
-    backgroundColor: _kFilterAccent,
-    foregroundColor: Colors.white,
+    backgroundColor: palette.buttonFill,
+    foregroundColor: palette.buttonFillForeground,
   );
 }
 
-ButtonStyle _actionOutlinedButtonStyle() {
+ButtonStyle _actionOutlinedButtonStyle(BuildContext context) {
+  final palette = ServicesVisualPalette.of(context);
   return OutlinedButton.styleFrom(
-    foregroundColor: const Color(0xFF0B2B2B),
-    backgroundColor: Colors.white.withValues(alpha: 0.34),
-    side: BorderSide(color: Colors.white.withValues(alpha: 0.72)),
+    foregroundColor: palette.textPrimary,
+    backgroundColor: palette.surfaceElevated,
+    side: BorderSide(color: palette.borderStrong),
     surfaceTintColor: Colors.transparent,
-    shadowColor: Colors.black.withValues(alpha: 0.28),
+    shadowColor: palette.deepShadow,
   ).copyWith(
     overlayColor: WidgetStateProperty.all(Colors.transparent),
     elevation: WidgetStateProperty.resolveWith((states) {
@@ -845,10 +953,13 @@ ButtonStyle _actionOutlinedButtonStyle() {
   );
 }
 
-ButtonStyle _actionFilledButtonStyle() {
+ButtonStyle _actionFilledButtonStyle(BuildContext context) {
+  final palette = ServicesVisualPalette.of(context);
   return FilledButton.styleFrom(
+    backgroundColor: palette.buttonFill,
+    foregroundColor: palette.buttonFillForeground,
     surfaceTintColor: Colors.transparent,
-    shadowColor: Colors.black.withValues(alpha: 0.30),
+    shadowColor: palette.deepShadow,
   ).copyWith(
     overlayColor: WidgetStateProperty.all(Colors.transparent),
     elevation: WidgetStateProperty.resolveWith((states) {
@@ -866,6 +977,7 @@ Future<bool?> _showGlassConfirmDialog(
   required String content,
   required String confirmText,
 }) {
+  final palette = ServicesVisualPalette.of(context);
   return showDialog<bool>(
     context: context,
     barrierColor: Colors.black.withValues(alpha: 0.28),
@@ -884,14 +996,15 @@ Future<bool?> _showGlassConfirmDialog(
               child: Container(
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 14),
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.62),
+                  color: palette.surfaceBase,
+                  gradient: palette.logisticsSilver
+                      ? palette.glassCardGradient
+                      : null,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.68),
-                  ),
+                  border: Border.all(color: palette.borderStrong),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.09),
+                      color: palette.shadow.withValues(alpha: 0.16),
                       blurRadius: 20,
                       offset: const Offset(0, 10),
                     ),
@@ -903,18 +1016,18 @@ Future<bool?> _showGlassConfirmDialog(
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
-                        color: Color(0xFF0B2B2B),
+                        color: palette.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 8),
                     Text(
                       content,
-                      style: const TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
-                        color: Color(0xFF0B2B2B),
+                        color: palette.textPrimary,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -922,11 +1035,15 @@ Future<bool?> _showGlassConfirmDialog(
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         TextButton(
+                          style: TextButton.styleFrom(
+                            foregroundColor: palette.textSecondary,
+                          ),
                           onPressed: () => Navigator.pop(dialogContext, false),
                           child: const Text('Cancelar'),
                         ),
                         const SizedBox(width: 8),
                         FilledButton(
+                          style: _filterFilledButtonStyle(context),
                           autofocus: true,
                           onPressed: () => Navigator.pop(dialogContext, true),
                           child: Text(confirmText),
@@ -944,8 +1061,26 @@ Future<bool?> _showGlassConfirmDialog(
   );
 }
 
+enum _LogisticsPlanningView { all, planned, dispatchToday, contingencies }
+
 class ServicesPage extends StatefulWidget {
-  const ServicesPage({super.key});
+  final String headerTitle;
+  final String servicesNavLabel;
+  final bool logisticsSilverMode;
+  final bool showLogisticsPlanningTopContent;
+  final Widget Function(BuildContext context, VoidCallback closeMenu)?
+  customSideMenuBuilder;
+  final double sideMenuWidth;
+
+  const ServicesPage({
+    super.key,
+    this.headerTitle = 'Programación de Viajes y Servicios',
+    this.servicesNavLabel = 'Servicios',
+    this.logisticsSilverMode = false,
+    this.showLogisticsPlanningTopContent = true,
+    this.customSideMenuBuilder,
+    this.sideMenuWidth = 300,
+  });
 
   @override
   State<ServicesPage> createState() => _ServicesPageState();
@@ -988,8 +1123,8 @@ class _ServicesPageState extends State<ServicesPage>
   List<Map<String, dynamic>> _rows = [];
   String? _selectedRowId;
   final Set<String> _bulkSelectedRowIds = <String>{};
-  static const int _insertColumnCount = 10;
-  static const int _gridColumnCount = 9;
+  static const int _insertColumnCount = 11;
+  static const int _gridColumnCount = 10;
   static const List<String> _gridColumnLabels = <String>[
     'FECHA',
     'EMPRESA',
@@ -998,6 +1133,7 @@ class _ServicesPageState extends State<ServicesPage>
     'CHOFER',
     'UNIDAD',
     'PARA EL DÍA',
+    'HORARIO',
     'COMENTARIO',
     'ESTADO',
   ];
@@ -1008,7 +1144,9 @@ class _ServicesPageState extends State<ServicesPage>
   int _currentPage = 0;
   int _pageSize = 40;
   bool _exportingCsv = false;
+  _LogisticsPlanningView _logisticsPlanningView = _LogisticsPlanningView.all;
   bool _marqueeActive = false;
+  bool _servicesScheduledTimeColumnAvailable = true;
   Offset? _marqueeStartLocal;
   Offset? _marqueePointerLocal;
   Offset? _marqueeStartContent;
@@ -1055,9 +1193,11 @@ class _ServicesPageState extends State<ServicesPage>
     WidgetsBinding.instance.addObserver(this);
     _insertFocusNode.addListener(_syncInsertRowFocusState);
     _draftNotesFocusNode.addListener(_syncInsertRowFocusState);
+    if (widget.logisticsSilverMode) {
+      _logisticsPlanningView = _LogisticsPlanningView.planned;
+    }
     _draft = _ServiceDraft.empty();
     _bootstrap();
-    _setupAutoRefresh();
   }
 
   void _syncInsertRowFocusState() {
@@ -1068,8 +1208,8 @@ class _ServicesPageState extends State<ServicesPage>
       _insertRowActive = next;
       shouldSetState = true;
     }
-    if (_draftNotesFocusNode.hasFocus && _activeInsertColumn != 7) {
-      _activeInsertColumn = 7;
+    if (_draftNotesFocusNode.hasFocus && _activeInsertColumn != 8) {
+      _activeInsertColumn = 8;
       shouldSetState = true;
     }
     if (shouldSetState) {
@@ -1085,9 +1225,10 @@ class _ServicesPageState extends State<ServicesPage>
   }
 
   Future<void> _bootstrap() async {
-    await _loadCatalogs();
+    await Future.wait<void>([_loadCatalogs(), _loadRows()]);
+    if (!mounted) return;
     _initDraftDefaults();
-    await _loadRows();
+    _setupAutoRefresh();
   }
 
   void _setupAutoRefresh() {
@@ -1110,9 +1251,148 @@ class _ServicesPageState extends State<ServicesPage>
         .subscribe();
   }
 
+  void _setLogisticsPlanningView(_LogisticsPlanningView value) {
+    if (_logisticsPlanningView == value) return;
+    setState(() {
+      _logisticsPlanningView = value;
+      _currentPage = 0;
+      _selectedRowId = null;
+      _bulkSelectedRowIds.clear();
+      _clampCurrentPage();
+    });
+  }
+
+  DateTime? _planningDateForRow(Map<String, dynamic> row) {
+    final dueDate = row['due_date'];
+    if (dueDate != null) {
+      return DateUtils.dateOnly(_parseDate(dueDate));
+    }
+    final serviceDate = row['service_date'];
+    if (serviceDate != null) {
+      return DateUtils.dateOnly(_parseDate(serviceDate));
+    }
+    return null;
+  }
+
+  String _statusForRow(Map<String, dynamic> row) {
+    return ((row['status'] as String?) ?? '').trim().toLowerCase();
+  }
+
+  bool _isClosedStatus(String status) {
+    return status == 'completado' || status == 'cancelado';
+  }
+
+  bool _rowHasAssignedDriver(Map<String, dynamic> row) {
+    if ((row['driver_employee_id'] as String?)?.trim().isNotEmpty ?? false) {
+      return true;
+    }
+    for (final key in const [
+      'driver_name',
+      'driver_full_name',
+      'driver_employee_name',
+    ]) {
+      final value = (row[key] as String?)?.trim();
+      if (value != null && value.isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  bool _rowHasAssignedVehicle(Map<String, dynamic> row) {
+    if ((row['vehicle_id'] as String?)?.trim().isNotEmpty ?? false) {
+      return true;
+    }
+    for (final key in const ['vehicle_code', 'vehicle_name']) {
+      final value = (row[key] as String?)?.trim();
+      if (value != null && value.isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  bool _matchesPlanningScope(
+    Map<String, dynamic> row,
+    _LogisticsPlanningView view,
+  ) {
+    if (!widget.logisticsSilverMode || view == _LogisticsPlanningView.all) {
+      return true;
+    }
+
+    final today = DateUtils.dateOnly(DateTime.now());
+    final tomorrow = today.add(const Duration(days: 1));
+    final planningHorizonEnd = today.add(const Duration(days: 4));
+    final planningDate = _planningDateForRow(row);
+    final status = _statusForRow(row);
+    final isClosed = _isClosedStatus(status);
+    final hasDriver = _rowHasAssignedDriver(row);
+    final hasVehicle = _rowHasAssignedVehicle(row);
+
+    switch (view) {
+      case _LogisticsPlanningView.all:
+        return true;
+      case _LogisticsPlanningView.planned:
+        if (isClosed || planningDate == null) return false;
+        return !planningDate.isBefore(tomorrow) &&
+            planningDate.isBefore(planningHorizonEnd);
+      case _LogisticsPlanningView.dispatchToday:
+        if (isClosed || planningDate == null) return false;
+        return DateUtils.isSameDay(planningDate, today);
+      case _LogisticsPlanningView.contingencies:
+        if (isClosed) return false;
+        if (!hasDriver || !hasVehicle) return true;
+        if (planningDate == null) return true;
+        return planningDate.isBefore(today);
+    }
+  }
+
+  int _countRowsForPlanningView(
+    List<Map<String, dynamic>> rows,
+    _LogisticsPlanningView view,
+  ) {
+    return rows.where((row) => _matchesPlanningScope(row, view)).length;
+  }
+
+  String _planningViewTitle(_LogisticsPlanningView view) {
+    switch (view) {
+      case _LogisticsPlanningView.all:
+        return 'Vista integral';
+      case _LogisticsPlanningView.planned:
+        return 'Planeación anticipada';
+      case _LogisticsPlanningView.dispatchToday:
+        return 'Despacho de hoy';
+      case _LogisticsPlanningView.contingencies:
+        return 'Contingencias';
+    }
+  }
+
+  String _planningViewDescription(_LogisticsPlanningView view) {
+    switch (view) {
+      case _LogisticsPlanningView.all:
+        return 'Lectura completa del tablero para revisar toda la carga operativa.';
+      case _LogisticsPlanningView.planned:
+        return 'Servicios de mañana y próximos días para asignar antes de que arranque Báscula.';
+      case _LogisticsPlanningView.dispatchToday:
+        return 'Lo confirmado para salir hoy, con foco en despacho y seguimiento del turno.';
+      case _LogisticsPlanningView.contingencies:
+        return 'Huecos de chofer, unidad o servicios vencidos que rompen el plan.';
+    }
+  }
+
+  IconData _planningViewIcon(_LogisticsPlanningView view) {
+    switch (view) {
+      case _LogisticsPlanningView.all:
+        return Icons.dashboard_customize_rounded;
+      case _LogisticsPlanningView.planned:
+        return Icons.event_note_rounded;
+      case _LogisticsPlanningView.dispatchToday:
+        return Icons.route_rounded;
+      case _LogisticsPlanningView.contingencies:
+        return Icons.warning_amber_rounded;
+    }
+  }
+
   bool get _hasDraftChanges =>
       _draft.serviceDate != null ||
       _draft.dueDate != null ||
+      _draft.scheduledTime != null ||
       _draft.direction != null ||
       _draft.status != null ||
       _draft.clientId != null ||
@@ -1287,74 +1567,70 @@ class _ServicesPageState extends State<ServicesPage>
   }
 
   Future<void> _loadCatalogs() async {
-    setState(() => _loadingCats = true);
+    if (mounted) {
+      setState(() => _loadingCats = true);
+    }
 
-    // CLIENTES (sites)
-    final clients = await supa
-        .from('sites')
-        .select('id,name,type')
-        .eq('type', 'cliente')
-        .eq('is_active', true)
-        .order('name');
+    final results = await Future.wait<dynamic>([
+      supa
+          .from('sites')
+          .select('id,name,type')
+          .eq('type', 'cliente')
+          .eq('is_active', true)
+          .order('name'),
+      supa
+          .from('material_commercial_catalog_v2')
+          .select('id,name,code')
+          .eq('is_active', true)
+          .neq('classification_kind', 'legacy_alias')
+          .order('sort_order')
+          .order('name'),
+      supa
+          .from('employees')
+          .select('id,full_name')
+          .eq('is_driver', true)
+          .eq('is_active', true)
+          .order('full_name'),
+      supa
+          .from('vehicles')
+          .select('id,code,status')
+          .eq('status', 'activo')
+          .order('code'),
+    ]);
+    if (!mounted) return;
 
-    // MATERIALES -> catálogo comercial vivo desde backend (v2)
-    final mats = await supa
-        .from('material_commercial_catalog_v2')
-        .select('id,name,code')
-        .eq('is_active', true)
-        .neq('classification_kind', 'legacy_alias')
-        .order('sort_order')
-        .order('name');
-
-    // CHOFERES
-    final drivers = await supa
-        .from('employees')
-        .select('id,full_name')
-        .eq('is_driver', true)
-        .eq('is_active', true)
-        .order('full_name');
-
-    // UNIDADES activas
-    final vehicles = await supa
-        .from('vehicles')
-        .select('id,code,status')
-        .eq('status', 'activo')
-        .order('code');
+    final clients = (results[0] as List)
+        .map(
+          (e) =>
+              _Opt(id: e['id'] as String, label: (e['name'] as String).trim()),
+        )
+        .toList();
+    final materials = (results[1] as List)
+        .map(
+          (e) =>
+              _Opt(id: e['id'] as String, label: (e['name'] as String).trim()),
+        )
+        .toList();
+    final drivers = (results[2] as List)
+        .map(
+          (e) => _Opt(
+            id: e['id'] as String,
+            label: (e['full_name'] as String).trim(),
+          ),
+        )
+        .toList();
+    final vehicles = (results[3] as List)
+        .map(
+          (e) =>
+              _Opt(id: e['id'] as String, label: (e['code'] as String).trim()),
+        )
+        .toList();
 
     setState(() {
-      _clients = (clients as List)
-          .map(
-            (e) => _Opt(
-              id: e['id'] as String,
-              label: (e['name'] as String).trim(),
-            ),
-          )
-          .toList();
-      _materials = (mats as List)
-          .map(
-            (e) => _Opt(
-              id: e['id'] as String,
-              label: (e['name'] as String).trim(),
-            ),
-          )
-          .toList();
-      _drivers = (drivers as List)
-          .map(
-            (e) => _Opt(
-              id: e['id'] as String,
-              label: (e['full_name'] as String).trim(),
-            ),
-          )
-          .toList();
-      _vehicles = (vehicles as List)
-          .map(
-            (e) => _Opt(
-              id: e['id'] as String,
-              label: (e['code'] as String).trim(),
-            ),
-          )
-          .toList();
-
+      _clients = clients;
+      _materials = materials;
+      _drivers = drivers;
+      _vehicles = vehicles;
       _loadingCats = false;
     });
   }
@@ -1363,6 +1639,7 @@ class _ServicesPageState extends State<ServicesPage>
     _draft = const _ServiceDraft(
       serviceDate: null,
       dueDate: null,
+      scheduledTime: null,
       direction: null,
       status: null,
       clientId: null,
@@ -1381,19 +1658,44 @@ class _ServicesPageState extends State<ServicesPage>
     bool showLoader = true,
     bool onlyApplyIfChanged = false,
   }) async {
-    if (showLoader) {
+    if (showLoader && mounted) {
       setState(() => _loadingRows = true);
     }
 
-    final data = await supa
-        .from('services')
-        .select(
-          'id,service_date,due_date,direction,status,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at',
-        )
-        .order('service_date', ascending: false)
-        .order('created_at', ascending: false);
+    late final List data;
+    try {
+      data = await supa
+          .from('services')
+          .select(
+            _servicesScheduledTimeColumnAvailable
+                ? 'id,service_date,due_date,scheduled_time,direction,status,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at'
+                : 'id,service_date,due_date,direction,status,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at',
+          )
+          .order('service_date', ascending: false)
+          .order('created_at', ascending: false);
+    } on PostgrestException catch (e) {
+      final details = '${e.message} ${e.details ?? ''} ${e.hint ?? ''}'
+          .toLowerCase();
+      if (_servicesScheduledTimeColumnAvailable &&
+          details.contains('scheduled_time')) {
+        _servicesScheduledTimeColumnAvailable = false;
+        return _loadRows(
+          showLoader: showLoader,
+          onlyApplyIfChanged: onlyApplyIfChanged,
+        );
+      }
+      rethrow;
+    }
+    if (!mounted) return false;
 
-    final nextRows = (data as List).cast<Map<String, dynamic>>();
+    final nextRows = data
+        .cast<Map<String, dynamic>>()
+        .map(
+          (row) => row.containsKey('scheduled_time')
+              ? row
+              : <String, dynamic>{...row, 'scheduled_time': null},
+        )
+        .toList(growable: false);
     final nextSignature = _rowsSignature(nextRows);
     if (onlyApplyIfChanged && nextSignature == _rowsSnapshotSignature) {
       if (showLoader && mounted) {
@@ -1411,6 +1713,7 @@ class _ServicesPageState extends State<ServicesPage>
         ? _selectedRowId
         : null;
     _rowKeys.removeWhere((id, _) => !ids.contains(id));
+    if (!mounted) return false;
 
     setState(() {
       _rows = nextRows;
@@ -1474,6 +1777,11 @@ class _ServicesPageState extends State<ServicesPage>
         return row['due_date'] == null
             ? ''
             : _fmtUiDate(_parseDate(row['due_date']));
+      case 'horario':
+        final time = _parseServicesTimeOfDay(
+          (row['scheduled_time'] ?? '').toString(),
+        );
+        return time == null ? '' : _fmtServicesUiTimeOfDay(time);
       case 'comentario':
         return ((row['notes'] ?? '') as String).trim();
       case 'estado':
@@ -1483,7 +1791,10 @@ class _ServicesPageState extends State<ServicesPage>
     }
   }
 
-  bool _matchesFilters(Map<String, dynamic> row, {String? excludeColumn}) {
+  bool _matchesColumnFilters(
+    Map<String, dynamic> row, {
+    String? excludeColumn,
+  }) {
     for (final entry in _columnDateRangeFilters.entries) {
       if (entry.key == excludeColumn) continue;
       final value = _dateValueForColumn(row, entry.key);
@@ -1502,6 +1813,17 @@ class _ServicesPageState extends State<ServicesPage>
     }
 
     return true;
+  }
+
+  bool _matchesFilters(Map<String, dynamic> row, {String? excludeColumn}) {
+    if (!_matchesColumnFilters(row, excludeColumn: excludeColumn)) {
+      return false;
+    }
+    return _matchesPlanningScope(row, _logisticsPlanningView);
+  }
+
+  List<Map<String, dynamic>> get _planningBaseRows {
+    return _rows.where((row) => _matchesColumnFilters(row)).toList();
   }
 
   List<Map<String, dynamic>> get _filteredRows {
@@ -1586,6 +1908,7 @@ class _ServicesPageState extends State<ServicesPage>
         'id',
         'service_date',
         'due_date',
+        'scheduled_time',
         'direction',
         'status',
         'client_id',
@@ -1774,7 +2097,7 @@ class _ServicesPageState extends State<ServicesPage>
                       width: 420,
                       constraints: const BoxConstraints(maxHeight: 560),
                       padding: const EdgeInsets.fromLTRB(16, 14, 16, 12),
-                      decoration: _filterDialogDecoration(),
+                      decoration: _filterDialogDecoration(context),
                       child: FocusScope(
                         autofocus: true,
                         child: Column(
@@ -1794,6 +2117,7 @@ class _ServicesPageState extends State<ServicesPage>
                                   setLocalState(() => localSearch = v),
                               onSubmitted: (_) => applyAndClose(),
                               decoration: _glassFieldDecoration(
+                                context,
                                 hintText: 'Buscar',
                               ),
                             ),
@@ -1861,13 +2185,13 @@ class _ServicesPageState extends State<ServicesPage>
                               mainAxisAlignment: MainAxisAlignment.end,
                               children: [
                                 OutlinedButton(
-                                  style: _filterOutlinedButtonStyle(),
+                                  style: _filterOutlinedButtonStyle(context),
                                   onPressed: () => Navigator.pop(dialogContext),
                                   child: const Text('Cancelar'),
                                 ),
                                 const SizedBox(width: 8),
                                 OutlinedButton(
-                                  style: _filterOutlinedButtonStyle(),
+                                  style: _filterOutlinedButtonStyle(context),
                                   onPressed: () {
                                     Navigator.pop(
                                       dialogContext,
@@ -1880,7 +2204,7 @@ class _ServicesPageState extends State<ServicesPage>
                                 ),
                                 const SizedBox(width: 8),
                                 FilledButton(
-                                  style: _filterFilledButtonStyle(),
+                                  style: _filterFilledButtonStyle(context),
                                   onPressed: applyAndClose,
                                   child: const Text('Aplicar'),
                                 ),
@@ -2359,7 +2683,7 @@ class _ServicesPageState extends State<ServicesPage>
   }
 
   void _focusCommentIfActiveCell() {
-    if (_activeGridColumn != 7) return;
+    if (_activeGridColumn != 8) return;
     final rowState = _selectedRowState();
     if (rowState == null || !rowState.isEditing) return;
     rowState.focusCommentField();
@@ -2578,6 +2902,10 @@ class _ServicesPageState extends State<ServicesPage>
     await supa.from('services').insert({
       'service_date': _fmtDbDate(_draft.serviceDate!),
       'due_date': _draft.dueDate == null ? null : _fmtDbDate(_draft.dueDate!),
+      if (_servicesScheduledTimeColumnAvailable)
+        'scheduled_time': _draft.scheduledTime == null
+            ? null
+            : _fmtServicesDbTimeOfDay(_draft.scheduledTime!),
       'direction': _draft.direction,
       'status': _draft.status,
       'client_id': _draft.clientId,
@@ -2689,6 +3017,35 @@ class _ServicesPageState extends State<ServicesPage>
 
   void _toast(String msg) {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  void _toastScheduledTimeRequiresMigration() {
+    _toast(
+      'Horario requiere aplicar la migración de servicios antes de guardarse en base.',
+    );
+  }
+
+  Future<bool> _ensureScheduledTimeColumnAvailable() async {
+    if (_servicesScheduledTimeColumnAvailable) return true;
+    try {
+      await supa.from('services').select('id,scheduled_time').limit(1);
+      if (!mounted) return true;
+      setState(() => _servicesScheduledTimeColumnAvailable = true);
+      unawaited(_loadRows(showLoader: false, onlyApplyIfChanged: false));
+      return true;
+    } on PostgrestException catch (e) {
+      final details = '${e.message} ${e.details ?? ''} ${e.hint ?? ''}'
+          .toLowerCase();
+      if (details.contains('scheduled_time')) {
+        _toastScheduledTimeRequiresMigration();
+        return false;
+      }
+      _toast('No se pudo validar Horario en servicios: ${e.message}');
+      return false;
+    } catch (e) {
+      _toast('No se pudo validar Horario en servicios: $e');
+      return false;
+    }
   }
 
   String _fmtDbDate(DateTime d) {
@@ -2820,7 +3177,7 @@ class _ServicesPageState extends State<ServicesPage>
     if (!requestFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_activeInsertColumn == 7) {
+      if (_activeInsertColumn == 8) {
         FocusScope.of(context).requestFocus(_draftNotesFocusNode);
       } else {
         FocusManager.instance.primaryFocus?.unfocus();
@@ -2835,13 +3192,13 @@ class _ServicesPageState extends State<ServicesPage>
 
   int _gridToInsertColumn(int gridColumn) {
     if (gridColumn < 0) return 0;
-    if (gridColumn > 8) return 8;
+    if (gridColumn > 9) return 9;
     return gridColumn;
   }
 
   int _insertToGridColumn(int insertColumn) {
     if (insertColumn < 0) return 0;
-    if (insertColumn > 8) return 8;
+    if (insertColumn > 9) return 9;
     return insertColumn;
   }
 
@@ -2853,7 +3210,7 @@ class _ServicesPageState extends State<ServicesPage>
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_activeInsertColumn == 7) {
+      if (_activeInsertColumn == 8) {
         FocusScope.of(context).requestFocus(_draftNotesFocusNode);
       } else {
         FocusManager.instance.primaryFocus?.unfocus();
@@ -2925,6 +3282,18 @@ class _ServicesPageState extends State<ServicesPage>
     );
   }
 
+  Future<TimeOfDay?> _pickInlineTime(TimeOfDay? current) async {
+    if (!_servicesScheduledTimeColumnAvailable) {
+      final available = await _ensureScheduledTimeColumnAvailable();
+      if (!available) return null;
+    }
+    if (!mounted) return null;
+    return _showServicesTimePicker(
+      context,
+      initialTime: current ?? const TimeOfDay(hour: 8, minute: 0),
+    );
+  }
+
   Future<void> _activateInsertCellFromKeyboard() async {
     switch (_activeInsertColumn) {
       case 0:
@@ -2984,9 +3353,14 @@ class _ServicesPageState extends State<ServicesPage>
         setState(() => _draft = _draft.copyWith(dueDate: d));
         return;
       case 7:
-        _setActiveInsertColumn(7);
+        final t = await _pickInlineTime(_draft.scheduledTime);
+        if (!mounted || t == null) return;
+        setState(() => _draft = _draft.copyWith(scheduledTime: t));
         return;
       case 8:
+        _setActiveInsertColumn(8);
+        return;
+      case 9:
         final v = await _pickInlineString(
           title: 'Estado',
           options: _statuses,
@@ -2996,7 +3370,7 @@ class _ServicesPageState extends State<ServicesPage>
         if (!mounted || v == null) return;
         setState(() => _draft = _draft.copyWith(status: v));
         return;
-      case 9:
+      case 10:
         await _insertDraft();
         return;
       default:
@@ -3028,10 +3402,13 @@ class _ServicesPageState extends State<ServicesPage>
         setState(() => _draft = _draft.copyWith(dueDate: null));
         return;
       case 7:
+        setState(() => _draft = _draft.copyWith(scheduledTime: null));
+        return;
+      case 8:
         _draftNotesC.clear();
         setState(() => _draft = _draft.copyWith(notes: ''));
         return;
-      case 8:
+      case 9:
         setState(() => _draft = _draft.copyWith(status: null));
         return;
       default:
@@ -3169,7 +3546,7 @@ class _ServicesPageState extends State<ServicesPage>
                               () => _draft = _draft.copyWith(serviceDate: null),
                             ),
                             child: InputDecorator(
-                              decoration: _glassFieldDecoration(),
+                              decoration: _glassFieldDecoration(context),
                               child: Row(
                                 children: [
                                   Expanded(
@@ -3277,7 +3654,7 @@ class _ServicesPageState extends State<ServicesPage>
                               () => _draft = _draft.copyWith(dueDate: null),
                             ),
                             child: InputDecorator(
-                              decoration: _glassFieldDecoration(),
+                              decoration: _glassFieldDecoration(context),
                               child: Row(
                                 children: [
                                   Expanded(
@@ -3296,6 +3673,47 @@ class _ServicesPageState extends State<ServicesPage>
                       ),
                       insertCellFrame(
                         7,
+                        SizedBox(
+                          width: tableLayout.scheduledTime,
+                          child: InkWell(
+                            borderRadius: BorderRadius.circular(12),
+                            onTap: () async {
+                              _setActiveInsertColumn(7);
+                              final t = await _pickInlineTime(
+                                _draft.scheduledTime,
+                              );
+                              if (!mounted || t == null) return;
+                              setState(
+                                () =>
+                                    _draft = _draft.copyWith(scheduledTime: t),
+                              );
+                            },
+                            onLongPress: () => setState(
+                              () =>
+                                  _draft = _draft.copyWith(scheduledTime: null),
+                            ),
+                            child: InputDecorator(
+                              decoration: _glassFieldDecoration(context),
+                              child: Row(
+                                children: [
+                                  Expanded(
+                                    child: _FitText(
+                                      _draft.scheduledTime == null
+                                          ? '—'
+                                          : _fmtServicesUiTimeOfDay(
+                                              _draft.scheduledTime!,
+                                            ),
+                                    ),
+                                  ),
+                                  const Icon(Icons.schedule_rounded, size: 16),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                      insertCellFrame(
+                        8,
                         SizedBox(
                           width: tableLayout.comment,
                           child: Focus(
@@ -3324,9 +3742,9 @@ class _ServicesPageState extends State<ServicesPage>
                             child: TextField(
                               controller: _draftNotesC,
                               focusNode: _draftNotesFocusNode,
-                              decoration: _glassFieldDecoration(),
+                              decoration: _glassFieldDecoration(context),
                               onTap: () => _setActiveInsertColumn(
-                                7,
+                                8,
                                 requestFocus: false,
                               ),
                               onChanged: (t) => setState(
@@ -3341,7 +3759,7 @@ class _ServicesPageState extends State<ServicesPage>
                       ),
                       SizedBox(width: tableLayout.actionsGap),
                       insertCellFrame(
-                        8,
+                        9,
                         AnchoredActionSlot(
                           width: tableLayout.actions,
                           trailingWidth: tableLayout.insertActionButtonWidth,
@@ -3351,13 +3769,13 @@ class _ServicesPageState extends State<ServicesPage>
                             items: _statuses,
                             format: _uiLabel,
                             compact: true,
-                            onTapStart: () => _setActiveInsertColumn(8),
+                            onTapStart: () => _setActiveInsertColumn(9),
                             onChanged: (v) => setState(
                               () => _draft = _draft.copyWith(status: v),
                             ),
                           ),
                           trailing: insertCellFrame(
-                            9,
+                            10,
                             Tooltip(
                               message: 'AGREGAR',
                               child: InkWell(
@@ -3404,290 +3822,872 @@ class _ServicesPageState extends State<ServicesPage>
 
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
-      child: Card(
-        elevation: 0,
-        color: Colors.white.withValues(alpha: 0.34),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final actions = FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  children: [
-                    OutlinedButton.icon(
-                      style: _actionOutlinedButtonStyle(),
-                      onPressed: _exportingCsv ? null : _exportServicesCsv,
-                      icon: Icon(
-                        _exportingCsv
-                            ? Icons.hourglass_top
-                            : Icons.download_rounded,
-                      ),
-                      label: const Text('Descargar CSV'),
-                    ),
-                    if (_selectedCount > 0) ...[
-                      const SizedBox(width: 8),
-                      FilledButton.icon(
-                        style: _actionFilledButtonStyle(),
-                        onPressed: _bulkDeleting ? null : _deleteSelectedRows,
-                        icon: const Icon(Icons.delete_outline),
-                        label: Text(
-                          'Eliminar (${_fmtCountInt(_selectedCount)})',
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              );
-
-              final info = Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
-                    '${_fmtCountInt(_selectedCount)} seleccionadas',
-                    textAlign: TextAlign.right,
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w700,
-                    ),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final palette = ServicesVisualPalette.of(context);
+          final actions = FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Row(
+              children: [
+                OutlinedButton.icon(
+                  style: _actionOutlinedButtonStyle(context),
+                  onPressed: _exportingCsv ? null : _exportServicesCsv,
+                  icon: Icon(
+                    _exportingCsv
+                        ? Icons.hourglass_top
+                        : Icons.download_rounded,
                   ),
-                  if (_selectedCount > 0)
-                    Text(
-                      'Suma: ${_fmtKg(_selectedWeightSum)} kg · Promedio: ${_fmtKg(_selectedWeightAvg)} kg',
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF2A4B49),
-                      ),
-                    ),
-                  if (cellMode)
-                    Text(
-                      'Celda: $_activeGridColumnLabel · Space',
-                      textAlign: TextAlign.right,
-                      style: const TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: Color(0xFF2A4B49),
-                      ),
-                    ),
+                  label: const Text('Descargar CSV'),
+                ),
+                if (_selectedCount > 0) ...[
+                  const SizedBox(width: 8),
+                  FilledButton.icon(
+                    style: _actionFilledButtonStyle(context),
+                    onPressed: _bulkDeleting ? null : _deleteSelectedRows,
+                    icon: const Icon(Icons.delete_outline),
+                    label: Text('Eliminar (${_fmtCountInt(_selectedCount)})'),
+                  ),
                 ],
-              );
+                if (widget.logisticsSilverMode &&
+                    !widget.showLogisticsPlanningTopContent) ...[
+                  const SizedBox(width: 8),
+                  _buildLogisticsPlanningCompactPicker(),
+                ],
+              ],
+            ),
+          );
 
-              if (constraints.maxWidth < 980) {
-                return Column(
+          final info = Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${_fmtCountInt(_selectedCount)} seleccionadas',
+                textAlign: TextAlign.right,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: palette.textPrimary,
+                ),
+              ),
+              if (_selectedCount > 0)
+                Text(
+                  'Suma: ${_fmtKg(_selectedWeightSum)} kg · Promedio: ${_fmtKg(_selectedWeightAvg)} kg',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: palette.textSecondary,
+                  ),
+                ),
+              if (cellMode)
+                Text(
+                  'Celda: $_activeGridColumnLabel · Space',
+                  textAlign: TextAlign.right,
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: palette.textSecondary,
+                  ),
+                ),
+            ],
+          );
+
+          final content = constraints.maxWidth < 980
+              ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Align(alignment: Alignment.centerLeft, child: actions),
                     const SizedBox(height: 6),
                     Align(alignment: Alignment.centerRight, child: info),
                   ],
+                )
+              : Row(
+                  children: [
+                    Expanded(
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: actions,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    info,
+                  ],
                 );
-              }
 
-              return Row(
+          return Container(
+            decoration: BoxDecoration(
+              color: palette.surfaceElevated,
+              gradient: palette.logisticsSilver
+                  ? palette.glassCardGradient
+                  : null,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: palette.border),
+              boxShadow: [
+                BoxShadow(
+                  blurRadius: 16,
+                  color: palette.shadow.withValues(alpha: 0.12),
+                  offset: const Offset(0, 8),
+                ),
+              ],
+            ),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: content,
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildServicesTopContent() {
+    if (!widget.logisticsSilverMode) {
+      return _buildServicesTopActionsBar();
+    }
+
+    if (!widget.showLogisticsPlanningTopContent) {
+      return _buildServicesTopActionsBar();
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildLogisticsPlanningDeck(),
+        const SizedBox(height: 12),
+        _buildServicesTopActionsBar(),
+        const SizedBox(height: 12),
+        _buildLogisticsPlanningScopeStrip(),
+      ],
+    );
+  }
+
+  Widget _buildLogisticsPlanningCompactPicker() {
+    final palette = ServicesVisualPalette.of(context);
+    final views = <_LogisticsPlanningView>[
+      _LogisticsPlanningView.all,
+      _LogisticsPlanningView.planned,
+      _LogisticsPlanningView.dispatchToday,
+      _LogisticsPlanningView.contingencies,
+    ];
+    final visibleCount = _countRowsForPlanningView(
+      _planningBaseRows,
+      _logisticsPlanningView,
+    );
+
+    return PopupMenuButton<_LogisticsPlanningView>(
+      tooltip: 'Cambiar vista de planeación',
+      offset: const Offset(0, 10),
+      onSelected: _setLogisticsPlanningView,
+      itemBuilder: (context) {
+        return views
+            .map((view) {
+              final count = _countRowsForPlanningView(_planningBaseRows, view);
+              final selected = view == _logisticsPlanningView;
+              return PopupMenuItem<_LogisticsPlanningView>(
+                value: view,
+                child: Row(
+                  children: [
+                    Icon(
+                      _planningViewIcon(view),
+                      size: 18,
+                      color: selected ? palette.textPrimary : palette.icon,
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _planningViewTitle(view),
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w800,
+                              color: palette.textPrimary,
+                            ),
+                          ),
+                          Text(
+                            '${_fmtCountInt(count)} servicios',
+                            style: TextStyle(
+                              fontSize: 11.5,
+                              fontWeight: FontWeight.w600,
+                              color: palette.textSecondary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    if (selected)
+                      Icon(
+                        Icons.check_rounded,
+                        size: 18,
+                        color: palette.textPrimary,
+                      ),
+                  ],
+                ),
+              );
+            })
+            .toList(growable: false);
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        decoration: BoxDecoration(
+          gradient: palette.logisticsSilver ? palette.buttonGradient : null,
+          color: palette.logisticsSilver ? null : palette.surfaceElevated,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: palette.border),
+          boxShadow: [
+            BoxShadow(
+              blurRadius: 12,
+              color: palette.shadow.withValues(alpha: 0.10),
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              _planningViewIcon(_logisticsPlanningView),
+              size: 18,
+              color: palette.icon,
+            ),
+            const SizedBox(width: 8),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  _planningViewTitle(_logisticsPlanningView),
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w800,
+                    color: palette.textPrimary,
+                  ),
+                ),
+                Text(
+                  '${_fmtCountInt(visibleCount)} visibles',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: palette.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(width: 10),
+            Icon(Icons.expand_more_rounded, size: 18, color: palette.icon),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLogisticsPlanningDeck() {
+    final palette = ServicesVisualPalette.of(context);
+    final planningRows = _planningBaseRows;
+    final openRows = planningRows
+        .where((row) => !_isClosedStatus(_statusForRow(row)))
+        .toList();
+    final todayCount = _countRowsForPlanningView(
+      planningRows,
+      _LogisticsPlanningView.dispatchToday,
+    );
+    final plannedCount = _countRowsForPlanningView(
+      planningRows,
+      _LogisticsPlanningView.planned,
+    );
+    final contingenciesCount = _countRowsForPlanningView(
+      planningRows,
+      _LogisticsPlanningView.contingencies,
+    );
+    final fullyAssignedCount = openRows
+        .where(
+          (row) => _rowHasAssignedDriver(row) && _rowHasAssignedVehicle(row),
+        )
+        .length;
+    final missingDriverCount = openRows
+        .where((row) => !_rowHasAssignedDriver(row))
+        .length;
+    final missingVehicleCount = openRows
+        .where((row) => !_rowHasAssignedVehicle(row))
+        .length;
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final stacked = constraints.maxWidth < 1220;
+        final mainPanel = _LogisticsPlanningSurface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: actions,
+                  Container(
+                    width: 50,
+                    height: 50,
+                    decoration: BoxDecoration(
+                      gradient: palette.buttonGradient,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: palette.borderStrong),
+                      boxShadow: [
+                        BoxShadow(
+                          blurRadius: 18,
+                          color: palette.glow.withValues(alpha: 0.18),
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
+                    ),
+                    child: Icon(
+                      Icons.alt_route_rounded,
+                      color: palette.icon,
+                      size: 26,
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  info,
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Control adelantado de Logística',
+                          style: TextStyle(
+                            fontSize: 24,
+                            fontWeight: FontWeight.w900,
+                            color: palette.textPrimary,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          'Esta vista ya no debe capturar lo que alcanzó a pasar hoy. Debe planear desde un día antes quién sale, en qué unidad y con qué prioridad.',
+                          style: TextStyle(
+                            fontSize: 13.4,
+                            height: 1.45,
+                            fontWeight: FontWeight.w600,
+                            color: palette.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
-              );
-            },
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _LogisticsPlanningViewCard(
+                    title: 'Todos',
+                    subtitle:
+                        'Tablero completo para revisar planeación y ejecución.',
+                    countLabel:
+                        '${_fmtCountInt(planningRows.length)} servicios',
+                    icon: _planningViewIcon(_LogisticsPlanningView.all),
+                    active:
+                        _logisticsPlanningView == _LogisticsPlanningView.all,
+                    onTap: () =>
+                        _setLogisticsPlanningView(_LogisticsPlanningView.all),
+                  ),
+                  _LogisticsPlanningViewCard(
+                    title: 'Planificados',
+                    subtitle:
+                        'Mañana y próximos días, antes de que empiece el turno.',
+                    countLabel: '${_fmtCountInt(plannedCount)} servicios',
+                    icon: _planningViewIcon(_LogisticsPlanningView.planned),
+                    active:
+                        _logisticsPlanningView ==
+                        _LogisticsPlanningView.planned,
+                    onTap: () => _setLogisticsPlanningView(
+                      _LogisticsPlanningView.planned,
+                    ),
+                  ),
+                  _LogisticsPlanningViewCard(
+                    title: 'Hoy',
+                    subtitle:
+                        'Despacho confirmado para la fecha operativa actual.',
+                    countLabel: '${_fmtCountInt(todayCount)} servicios',
+                    icon: _planningViewIcon(
+                      _LogisticsPlanningView.dispatchToday,
+                    ),
+                    active:
+                        _logisticsPlanningView ==
+                        _LogisticsPlanningView.dispatchToday,
+                    onTap: () => _setLogisticsPlanningView(
+                      _LogisticsPlanningView.dispatchToday,
+                    ),
+                  ),
+                  _LogisticsPlanningViewCard(
+                    title: 'Contingencias',
+                    subtitle: 'Servicios sin chofer, sin unidad o vencidos.',
+                    countLabel: '${_fmtCountInt(contingenciesCount)} servicios',
+                    icon: _planningViewIcon(
+                      _LogisticsPlanningView.contingencies,
+                    ),
+                    active:
+                        _logisticsPlanningView ==
+                        _LogisticsPlanningView.contingencies,
+                    onTap: () => _setLogisticsPlanningView(
+                      _LogisticsPlanningView.contingencies,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                children: [
+                  _LogisticsMetricChip(
+                    label: 'Cobertura actual',
+                    value:
+                        '${_fmtCountInt(fullyAssignedCount)} / ${_fmtCountInt(openRows.length)}',
+                    helper: 'Abiertos con chofer y unidad',
+                  ),
+                  _LogisticsMetricChip(
+                    label: 'Sin chofer',
+                    value: _fmtCountInt(missingDriverCount),
+                    helper: 'Pendientes por asignar',
+                  ),
+                  _LogisticsMetricChip(
+                    label: 'Sin unidad',
+                    value: _fmtCountInt(missingVehicleCount),
+                    helper: 'Pendientes por asignar',
+                  ),
+                ],
+              ),
+            ],
           ),
-        ),
+        );
+        final zonePanel = _LogisticsPlanningSurface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 42,
+                    height: 42,
+                    decoration: BoxDecoration(
+                      gradient: palette.buttonGradient,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: palette.borderStrong),
+                    ),
+                    child: Icon(
+                      Icons.map_outlined,
+                      color: palette.icon,
+                      size: 22,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      'Zonificación de Celaya',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: palette.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                'La optimización real nacerá del catálogo de zonas por dirección de empresa. Sin esa capa, la pantalla mejora el control, pero todavía no consolida rutas por sector.',
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
+                  color: palette.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 14),
+              _LogisticsMetricChip(
+                label: 'Siguiente acuerdo',
+                value: 'Mapa + catálogo',
+                helper: 'Empresa -> dirección -> zona',
+              ),
+              const SizedBox(height: 10),
+              _LogisticsMetricChip(
+                label: 'Uso futuro',
+                value: 'Rutas por sector',
+                helper: 'Agrupar servicios y reducir combustible',
+              ),
+              const SizedBox(height: 16),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  style: TextButton.styleFrom(
+                    foregroundColor: palette.textPrimary,
+                  ),
+                  onPressed: () {
+                    _toast(
+                      'Siguiente fase: catálogo de zonas de Celaya ligado a direcciones de empresa y rutas por sector.',
+                    );
+                  },
+                  icon: const Icon(Icons.info_outline_rounded, size: 18),
+                  label: const Text('Mantener como criterio rector'),
+                ),
+              ),
+            ],
+          ),
+        );
+
+        if (stacked) {
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [mainPanel, const SizedBox(height: 12), zonePanel],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(flex: 7, child: mainPanel),
+            const SizedBox(width: 12),
+            Expanded(flex: 4, child: zonePanel),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildLogisticsPlanningScopeStrip() {
+    final palette = ServicesVisualPalette.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surfaceElevated,
+        gradient: palette.glassCardGradient,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: palette.border),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 18,
+            color: palette.shadow.withValues(alpha: 0.14),
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 940;
+          final info = Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      gradient: palette.buttonGradient,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: palette.borderStrong),
+                    ),
+                    child: Icon(
+                      _planningViewIcon(_logisticsPlanningView),
+                      size: 18,
+                      color: palette.icon,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      _planningViewTitle(_logisticsPlanningView),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: palette.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                _planningViewDescription(_logisticsPlanningView),
+                style: TextStyle(
+                  fontSize: 12.6,
+                  height: 1.45,
+                  fontWeight: FontWeight.w600,
+                  color: palette.textSecondary,
+                ),
+              ),
+            ],
+          );
+
+          final zoneBadge = Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+            decoration: BoxDecoration(
+              color: palette.surfaceInteractive,
+              borderRadius: BorderRadius.circular(999),
+              border: Border.all(color: palette.borderStrong),
+            ),
+            child: Text(
+              'Pendiente siguiente fase: catálogo de zonas de Celaya',
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: palette.textPrimary,
+              ),
+            ),
+          );
+
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [info, const SizedBox(height: 12), zoneBadge],
+            );
+          }
+
+          return Row(
+            children: [
+              Expanded(child: info),
+              const SizedBox(width: 12),
+              zoneBadge,
+            ],
+          );
+        },
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    return ServicesShell(
-      headerTitle: 'Programación de Viajes y Servicios',
-      activeOverlayModule: ServicesOverlayNavModule.servicios,
-      onGoToGeneralDashboard: _goToGeneralDashboard,
-      onLogout: () async {
-        final ok = await _showGlassConfirmDialog(
-          context,
-          title: 'Cerrar sesión',
-          content: '¿Seguro que deseas cerrar tu sesión?',
-          confirmText: 'Cerrar sesión',
-        );
-        if (ok != true) return;
-        if (!mounted) return;
-        await signOutAndRouteToLogin(this.context);
-      },
-      onGoToOperacion: () async {
-        final profile = await AuthAccess.resolveCurrentProfile();
-        if (!AuthAccess.canAccessDashboard(profile)) {
-          _toast('Acceso no autorizado');
-          return;
-        }
-
-        if (!mounted) return;
-        final nav = Navigator.of(this.context);
-        if (nav.canPop()) {
-          nav.pop();
-        } else {
-          nav.pushReplacement(
-            appPageRoute(
-              page: const DashboardPage(instantOpen: true),
-              duration: const Duration(milliseconds: 420),
-              reverseDuration: const Duration(milliseconds: 360),
-            ),
+    return ServicesVisualModeScope(
+      logisticsSilverMode: widget.logisticsSilverMode,
+      child: ServicesShell(
+        headerTitle: widget.headerTitle,
+        servicesNavLabel: widget.servicesNavLabel,
+        customSideMenuBuilder: widget.customSideMenuBuilder,
+        sideMenuWidth: widget.sideMenuWidth,
+        scrollTopContentWhenNeeded:
+            widget.logisticsSilverMode &&
+            widget.showLogisticsPlanningTopContent,
+        minMainContentHeight:
+            widget.logisticsSilverMode && widget.showLogisticsPlanningTopContent
+            ? 300
+            : 0,
+        activeOverlayModule: ServicesOverlayNavModule.servicios,
+        onGoToGeneralDashboard: _goToGeneralDashboard,
+        onLogout: () async {
+          final ok = await _showGlassConfirmDialog(
+            context,
+            title: 'Cerrar sesión',
+            content: '¿Seguro que deseas cerrar tu sesión?',
+            confirmText: 'Cerrar sesión',
           );
-        }
-      },
-      onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
-      onGoToProduction: _goToProduction,
-      onGoToInventory: _goToInventory,
-      onGoToServices: () async {},
-      onGoToWeighings: _goToWeighings,
-      onGoToMaintenance: _goToMaintenance,
-      onGoToPurchaseOrders: _goToPurchaseOrders,
-      onGoToOperationDirectory: _goToOperationDirectory,
-      onGoToWarehouse: _goToWarehouse,
-      onGoToCatalogs: null,
-      topContent: _loadingCats || _loadingRows
-          ? null
-          : _buildServicesTopActionsBar(),
-      child: _loadingCats || _loadingRows
-          ? const Center(child: CircularProgressIndicator())
-          : Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // ===== rows =====
-                Expanded(
-                  child: LayoutBuilder(
-                    builder: (context, constraints) {
-                      return SizedBox(
-                        height: constraints.maxHeight,
-                        child: Column(
-                          children: [
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
+          if (ok != true) return;
+          if (!mounted) return;
+          await signOutAndRouteToLogin(this.context);
+        },
+        onGoToOperacion: () async {
+          final profile = await AuthAccess.resolveCurrentProfile();
+          if (!AuthAccess.canAccessDashboard(profile)) {
+            _toast('Acceso no autorizado');
+            return;
+          }
+
+          if (!mounted) return;
+          final nav = Navigator.of(this.context);
+          if (nav.canPop()) {
+            nav.pop();
+          } else {
+            nav.pushReplacement(
+              appPageRoute(
+                page: const DashboardPage(instantOpen: true),
+                duration: const Duration(milliseconds: 420),
+                reverseDuration: const Duration(milliseconds: 360),
+              ),
+            );
+          }
+        },
+        onGoToEntriesAndOutputs: _goToEntriesAndOutputs,
+        onGoToProduction: _goToProduction,
+        onGoToInventory: _goToInventory,
+        onGoToServices: () async {},
+        onGoToWeighings: _goToWeighings,
+        onGoToMaintenance: _goToMaintenance,
+        onGoToPurchaseOrders: _goToPurchaseOrders,
+        onGoToOperationDirectory: _goToOperationDirectory,
+        onGoToWarehouse: _goToWarehouse,
+        onGoToCatalogs: null,
+        topContent: _loadingCats || _loadingRows
+            ? null
+            : _buildServicesTopContent(),
+        child: _loadingCats || _loadingRows
+            ? const Center(child: CircularProgressIndicator())
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // ===== rows =====
+                  Expanded(
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SizedBox(
+                          height: constraints.maxHeight,
+                          child: Column(
+                            children: [
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                child: _HeaderRow(
+                                  logisticsSilverMode:
+                                      widget.logisticsSilverMode,
+                                  hasActiveFilter: _hasActiveFilter,
+                                  onOpenFilter: _openColumnFilter,
+                                ),
                               ),
-                              child: _HeaderRow(
-                                hasActiveFilter: _hasActiveFilter,
-                                onOpenFilter: _openColumnFilter,
+                              Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                ),
+                                child: _buildInlineInsertRow(),
                               ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                              ),
-                              child: _buildInlineInsertRow(),
-                            ),
-                            Expanded(
-                              child: Focus(
-                                focusNode: _rowsFocusNode,
-                                autofocus: false,
-                                onKeyEvent: (_, event) {
-                                  if (event is! KeyDownEvent) {
-                                    return KeyEventResult.ignored;
-                                  }
-                                  final key = event.logicalKey;
-                                  final editingAnyRow =
-                                      _selectedRowState()?.isEditing ?? false;
-                                  final keyboardCellMode = editingAnyRow;
-                                  final allowVerticalCellNavigation =
-                                      _hasExplicitMultiSelection;
-                                  final selectedState = _selectedRowState();
-                                  final firstVisibleRowId = _visibleRows.isEmpty
-                                      ? null
-                                      : _visibleRows.first['id'] as String;
-                                  final isAtFirstVisibleRow =
-                                      firstVisibleRowId != null &&
-                                      _selectedRowId == firstVisibleRowId;
-                                  final inCommentTextEditing =
-                                      _activeGridColumn == 7 &&
-                                      (selectedState?.isCommentFocused ??
-                                          false);
-                                  final commentCaretAtStart =
-                                      inCommentTextEditing &&
-                                      (selectedState?.isCommentCaretAtStart ??
-                                          false);
-                                  final commentCaretAtEnd =
-                                      inCommentTextEditing &&
-                                      (selectedState?.isCommentCaretAtEnd ??
-                                          false);
-                                  final anyTextEditingFocused =
-                                      _isEditableTextFocused();
-                                  if (anyTextEditingFocused) {
-                                    if (key == LogicalKeyboardKey.space) {
+                              Expanded(
+                                child: Focus(
+                                  focusNode: _rowsFocusNode,
+                                  autofocus: false,
+                                  onKeyEvent: (_, event) {
+                                    if (event is! KeyDownEvent) {
                                       return KeyEventResult.ignored;
                                     }
-                                    if (key == LogicalKeyboardKey.arrowLeft) {
-                                      if (commentCaretAtStart) {
-                                        FocusManager.instance.primaryFocus
-                                            ?.unfocus();
-                                        _moveGridColumn(-1);
-                                        _rowsFocusNode.requestFocus();
-                                        return KeyEventResult.handled;
+                                    final key = event.logicalKey;
+                                    final editingAnyRow =
+                                        _selectedRowState()?.isEditing ?? false;
+                                    final keyboardCellMode = editingAnyRow;
+                                    final allowVerticalCellNavigation =
+                                        _hasExplicitMultiSelection;
+                                    final selectedState = _selectedRowState();
+                                    final firstVisibleRowId =
+                                        _visibleRows.isEmpty
+                                        ? null
+                                        : _visibleRows.first['id'] as String;
+                                    final isAtFirstVisibleRow =
+                                        firstVisibleRowId != null &&
+                                        _selectedRowId == firstVisibleRowId;
+                                    final inCommentTextEditing =
+                                        _activeGridColumn == 8 &&
+                                        (selectedState?.isCommentFocused ??
+                                            false);
+                                    final commentCaretAtStart =
+                                        inCommentTextEditing &&
+                                        (selectedState?.isCommentCaretAtStart ??
+                                            false);
+                                    final commentCaretAtEnd =
+                                        inCommentTextEditing &&
+                                        (selectedState?.isCommentCaretAtEnd ??
+                                            false);
+                                    final anyTextEditingFocused =
+                                        _isEditableTextFocused();
+                                    if (anyTextEditingFocused) {
+                                      if (key == LogicalKeyboardKey.space) {
+                                        return KeyEventResult.ignored;
+                                      }
+                                      if (key == LogicalKeyboardKey.arrowLeft) {
+                                        if (commentCaretAtStart) {
+                                          FocusManager.instance.primaryFocus
+                                              ?.unfocus();
+                                          _moveGridColumn(-1);
+                                          _rowsFocusNode.requestFocus();
+                                          return KeyEventResult.handled;
+                                        }
+                                        return KeyEventResult.ignored;
+                                      }
+                                      if (key ==
+                                          LogicalKeyboardKey.arrowRight) {
+                                        if (commentCaretAtEnd) {
+                                          FocusManager.instance.primaryFocus
+                                              ?.unfocus();
+                                          _moveGridColumn(1);
+                                          _rowsFocusNode.requestFocus();
+                                          return KeyEventResult.handled;
+                                        }
+                                        return KeyEventResult.ignored;
                                       }
                                       return KeyEventResult.ignored;
                                     }
-                                    if (key == LogicalKeyboardKey.arrowRight) {
-                                      if (commentCaretAtEnd) {
-                                        FocusManager.instance.primaryFocus
-                                            ?.unfocus();
+                                    if (keyboardCellMode) {
+                                      if (key ==
+                                          LogicalKeyboardKey.arrowRight) {
+                                        if (inCommentTextEditing) {
+                                          return KeyEventResult.ignored;
+                                        }
                                         _moveGridColumn(1);
-                                        _rowsFocusNode.requestFocus();
                                         return KeyEventResult.handled;
                                       }
-                                      return KeyEventResult.ignored;
-                                    }
-                                    return KeyEventResult.ignored;
-                                  }
-                                  if (keyboardCellMode) {
-                                    if (key == LogicalKeyboardKey.arrowRight) {
-                                      if (inCommentTextEditing) {
+                                      if (key == LogicalKeyboardKey.arrowLeft) {
+                                        if (inCommentTextEditing) {
+                                          return KeyEventResult.ignored;
+                                        }
+                                        _moveGridColumn(-1);
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (key == LogicalKeyboardKey.arrowDown) {
+                                        if (allowVerticalCellNavigation) {
+                                          _moveGridRow(1);
+                                        } else {
+                                          _moveSelectedRow(1);
+                                        }
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (key == LogicalKeyboardKey.arrowUp) {
+                                        if (!_hasExplicitMultiSelection &&
+                                            isAtFirstVisibleRow) {
+                                          _focusInsertRowFromGrid();
+                                          return KeyEventResult.handled;
+                                        }
+                                        if (allowVerticalCellNavigation) {
+                                          _moveGridRow(-1);
+                                        } else {
+                                          _moveSelectedRow(-1);
+                                        }
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (key == LogicalKeyboardKey.space) {
+                                        if (inCommentTextEditing) {
+                                          return KeyEventResult.ignored;
+                                        }
+                                        _activateGridCellFromKeyboard();
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (key == LogicalKeyboardKey.enter ||
+                                          key ==
+                                              LogicalKeyboardKey.numpadEnter) {
+                                        _handleEnterOnSelectedRow();
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (key == LogicalKeyboardKey.escape) {
+                                        _handleEscapeOnSelectedRow();
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (key == LogicalKeyboardKey.delete ||
+                                          key == LogicalKeyboardKey.backspace) {
                                         return KeyEventResult.ignored;
                                       }
-                                      _moveGridColumn(1);
-                                      return KeyEventResult.handled;
-                                    }
-                                    if (key == LogicalKeyboardKey.arrowLeft) {
-                                      if (inCommentTextEditing) {
-                                        return KeyEventResult.ignored;
-                                      }
-                                      _moveGridColumn(-1);
-                                      return KeyEventResult.handled;
                                     }
                                     if (key == LogicalKeyboardKey.arrowDown) {
-                                      if (allowVerticalCellNavigation) {
-                                        _moveGridRow(1);
+                                      if (_isSelectionExtendPressed()) {
+                                        _extendSelectionWithArrow(1);
                                       } else {
                                         _moveSelectedRow(1);
                                       }
                                       return KeyEventResult.handled;
                                     }
                                     if (key == LogicalKeyboardKey.arrowUp) {
-                                      if (!_hasExplicitMultiSelection &&
+                                      if (_isSelectionExtendPressed()) {
+                                        _extendSelectionWithArrow(-1);
+                                      } else if (firstVisibleRowId == null ||
+                                          _selectedRowId == null ||
                                           isAtFirstVisibleRow) {
                                         _focusInsertRowFromGrid();
-                                        return KeyEventResult.handled;
-                                      }
-                                      if (allowVerticalCellNavigation) {
-                                        _moveGridRow(-1);
                                       } else {
                                         _moveSelectedRow(-1);
                                       }
-                                      return KeyEventResult.handled;
-                                    }
-                                    if (key == LogicalKeyboardKey.space) {
-                                      if (inCommentTextEditing) {
-                                        return KeyEventResult.ignored;
-                                      }
-                                      _activateGridCellFromKeyboard();
                                       return KeyEventResult.handled;
                                     }
                                     if (key == LogicalKeyboardKey.enter ||
@@ -3701,369 +4701,383 @@ class _ServicesPageState extends State<ServicesPage>
                                     }
                                     if (key == LogicalKeyboardKey.delete ||
                                         key == LogicalKeyboardKey.backspace) {
-                                      return KeyEventResult.ignored;
+                                      _handleDeleteOnSelectedRow();
+                                      return KeyEventResult.handled;
                                     }
-                                  }
-                                  if (key == LogicalKeyboardKey.arrowDown) {
-                                    if (_isSelectionExtendPressed()) {
-                                      _extendSelectionWithArrow(1);
-                                    } else {
-                                      _moveSelectedRow(1);
-                                    }
-                                    return KeyEventResult.handled;
-                                  }
-                                  if (key == LogicalKeyboardKey.arrowUp) {
-                                    if (_isSelectionExtendPressed()) {
-                                      _extendSelectionWithArrow(-1);
-                                    } else if (firstVisibleRowId == null ||
-                                        _selectedRowId == null ||
-                                        isAtFirstVisibleRow) {
-                                      _focusInsertRowFromGrid();
-                                    } else {
-                                      _moveSelectedRow(-1);
-                                    }
-                                    return KeyEventResult.handled;
-                                  }
-                                  if (key == LogicalKeyboardKey.enter ||
-                                      key == LogicalKeyboardKey.numpadEnter) {
-                                    _handleEnterOnSelectedRow();
-                                    return KeyEventResult.handled;
-                                  }
-                                  if (key == LogicalKeyboardKey.escape) {
-                                    _handleEscapeOnSelectedRow();
-                                    return KeyEventResult.handled;
-                                  }
-                                  if (key == LogicalKeyboardKey.delete ||
-                                      key == LogicalKeyboardKey.backspace) {
-                                    _handleDeleteOnSelectedRow();
-                                    return KeyEventResult.handled;
-                                  }
-                                  return KeyEventResult.ignored;
-                                },
-                                child: _visibleRows.isEmpty
-                                    ? Center(
-                                        child: Text(
-                                          _uiUpper('No hay servicios todavía'),
-                                        ),
-                                      )
-                                    : Listener(
-                                        behavior: HitTestBehavior.translucent,
-                                        onPointerDown: (event) =>
-                                            _startMarqueeSelection(
-                                              event.localPosition,
+                                    return KeyEventResult.ignored;
+                                  },
+                                  child: _visibleRows.isEmpty
+                                      ? Center(
+                                          child: Text(
+                                            _uiUpper(
+                                              'No hay servicios todavía',
                                             ),
-                                        onPointerMove: (event) =>
-                                            _updateMarqueeSelection(
-                                              event.localPosition,
-                                            ),
-                                        onPointerUp: (_) =>
-                                            _endMarqueeSelection(),
-                                        onPointerCancel: (_) =>
-                                            _endMarqueeSelection(),
-                                        child: GestureDetector(
+                                          ),
+                                        )
+                                      : Listener(
                                           behavior: HitTestBehavior.translucent,
-                                          onSecondaryTapDown: (details) {
-                                            if (_selectedCount <= 0) return;
-                                            unawaited(
-                                              _openRowsContextMenuAt(
-                                                details.globalPosition,
+                                          onPointerDown: (event) =>
+                                              _startMarqueeSelection(
+                                                event.localPosition,
                                               ),
-                                            );
-                                          },
-                                          child: Stack(
-                                            key: _rowsViewportKey,
-                                            children: [
-                                              Positioned.fill(
-                                                child: AbsorbPointer(
-                                                  absorbing: _marqueeActive,
-                                                  child: ListView.builder(
-                                                    controller:
-                                                        _rowsScrollController,
-                                                    padding:
-                                                        const EdgeInsets.fromLTRB(
-                                                          12,
-                                                          0,
-                                                          12,
-                                                          20,
-                                                        ),
-                                                    itemCount:
-                                                        _visibleRows.length,
-                                                    itemBuilder: (_, i) {
-                                                      final row =
-                                                          _visibleRows[i];
-                                                      final rowId =
-                                                          row['id'] as String;
-                                                      return _ServiceDataRow(
-                                                        key: _rowKeyFor(rowId),
-                                                        row: row,
-                                                        clients: _clients,
-                                                        materials: _materials,
-                                                        drivers: _drivers,
-                                                        vehicles: _vehicles,
-                                                        directions: _directions,
-                                                        statuses: _statuses,
-                                                        uiLabel: _uiLabel,
-                                                        parseDate: _parseDate,
-                                                        fmtDateDb: _fmtDbDate,
-                                                        fmtDateUi: _fmtUiDate,
-                                                        onDelete: _deleteRow,
-                                                        onUpdate: _updateRow,
-                                                        isSelected:
-                                                            _selectedRowId ==
+                                          onPointerMove: (event) =>
+                                              _updateMarqueeSelection(
+                                                event.localPosition,
+                                              ),
+                                          onPointerUp: (_) =>
+                                              _endMarqueeSelection(),
+                                          onPointerCancel: (_) =>
+                                              _endMarqueeSelection(),
+                                          child: GestureDetector(
+                                            behavior:
+                                                HitTestBehavior.translucent,
+                                            onSecondaryTapDown: (details) {
+                                              if (_selectedCount <= 0) return;
+                                              unawaited(
+                                                _openRowsContextMenuAt(
+                                                  details.globalPosition,
+                                                ),
+                                              );
+                                            },
+                                            child: Stack(
+                                              key: _rowsViewportKey,
+                                              children: [
+                                                Positioned.fill(
+                                                  child: AbsorbPointer(
+                                                    absorbing: _marqueeActive,
+                                                    child: ListView.builder(
+                                                      controller:
+                                                          _rowsScrollController,
+                                                      padding:
+                                                          const EdgeInsets.fromLTRB(
+                                                            12,
+                                                            0,
+                                                            12,
+                                                            20,
+                                                          ),
+                                                      itemCount:
+                                                          _visibleRows.length,
+                                                      itemBuilder: (_, i) {
+                                                        final row =
+                                                            _visibleRows[i];
+                                                        final rowId =
+                                                            row['id'] as String;
+                                                        return _ServiceDataRow(
+                                                          key: _rowKeyFor(
                                                             rowId,
-                                                        isChecked:
-                                                            _bulkSelectedRowIds
-                                                                .contains(
-                                                                  rowId,
-                                                                ),
-                                                        activeGridColumn:
-                                                            _activeGridColumn,
-                                                        showRowActions: true,
-                                                        onOpenContextMenu:
-                                                            (position) =>
-                                                                _openRowsContextMenuAt(
-                                                                  position,
-                                                                  rowId: rowId,
-                                                                ),
-                                                        onSelect: (additive) =>
-                                                            _selectRow(
+                                                          ),
+                                                          row: row,
+                                                          clients: _clients,
+                                                          materials: _materials,
+                                                          drivers: _drivers,
+                                                          vehicles: _vehicles,
+                                                          directions:
+                                                              _directions,
+                                                          statuses: _statuses,
+                                                          logisticsSilverMode:
+                                                              widget
+                                                                  .logisticsSilverMode,
+                                                          scheduledTimeColumnAvailable:
+                                                              _servicesScheduledTimeColumnAvailable,
+                                                          onEnsureScheduledTimeColumnAvailable:
+                                                              _ensureScheduledTimeColumnAvailable,
+                                                          uiLabel: _uiLabel,
+                                                          parseDate: _parseDate,
+                                                          fmtDateDb: _fmtDbDate,
+                                                          fmtDateUi: _fmtUiDate,
+                                                          onDelete: _deleteRow,
+                                                          onUpdate: _updateRow,
+                                                          isSelected:
+                                                              _selectedRowId ==
                                                               rowId,
-                                                              allowToggle:
-                                                                  false,
-                                                              additive:
-                                                                  additive,
-                                                              ensureVisible:
-                                                                  false,
-                                                            ),
-                                                        onActivateColumn:
-                                                            (columnIndex) {
-                                                              _selectRow(
+                                                          isChecked:
+                                                              _bulkSelectedRowIds
+                                                                  .contains(
+                                                                    rowId,
+                                                                  ),
+                                                          activeGridColumn:
+                                                              _activeGridColumn,
+                                                          showRowActions: true,
+                                                          onOpenContextMenu:
+                                                              (position) =>
+                                                                  _openRowsContextMenuAt(
+                                                                    position,
+                                                                    rowId:
+                                                                        rowId,
+                                                                  ),
+                                                          onSelect:
+                                                              (
+                                                                additive,
+                                                              ) => _selectRow(
                                                                 rowId,
                                                                 allowToggle:
                                                                     false,
-                                                                additive: false,
+                                                                additive:
+                                                                    additive,
                                                                 ensureVisible:
                                                                     false,
-                                                              );
-                                                              setState(() {
-                                                                _activeGridColumn =
-                                                                    columnIndex;
-                                                              });
-                                                            },
-                                                      );
-                                                    },
+                                                              ),
+                                                          onActivateColumn:
+                                                              (columnIndex) {
+                                                                _selectRow(
+                                                                  rowId,
+                                                                  allowToggle:
+                                                                      false,
+                                                                  additive:
+                                                                      false,
+                                                                  ensureVisible:
+                                                                      false,
+                                                                );
+                                                                setState(() {
+                                                                  _activeGridColumn =
+                                                                      columnIndex;
+                                                                });
+                                                              },
+                                                        );
+                                                      },
+                                                    ),
                                                   ),
                                                 ),
-                                              ),
-                                              if (_marqueeActive)
-                                                Positioned.fill(
-                                                  child: IgnorePointer(
-                                                    child: CustomPaint(
-                                                      painter: _MarqueeSelectionPainter(
-                                                        rect: _clampRectToViewport(
-                                                          _marqueeRectForPaint(),
+                                                if (_marqueeActive)
+                                                  Positioned.fill(
+                                                    child: IgnorePointer(
+                                                      child: CustomPaint(
+                                                        painter: _MarqueeSelectionPainter(
+                                                          rect: _clampRectToViewport(
+                                                            _marqueeRectForPaint(),
+                                                          ),
                                                         ),
                                                       ),
                                                     ),
                                                   ),
-                                                ),
-                                            ],
+                                              ],
+                                            ),
                                           ),
                                         ),
-                                      ),
-                              ),
-                            ),
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(12, 6, 12, 10),
-                              child: Card(
-                                elevation: 0,
-                                color: Colors.white.withValues(alpha: 0.30),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
                                 ),
-                                child: Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 10,
-                                    vertical: 8,
+                              ),
+                              Padding(
+                                padding: const EdgeInsets.fromLTRB(
+                                  12,
+                                  6,
+                                  12,
+                                  10,
+                                ),
+                                child: Card(
+                                  elevation: 0,
+                                  color: Colors.white.withValues(alpha: 0.30),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
                                   ),
-                                  child: Wrap(
-                                    spacing: 8,
-                                    runSpacing: 8,
-                                    crossAxisAlignment:
-                                        WrapCrossAlignment.center,
-                                    children: [
-                                      OutlinedButton.icon(
-                                        style: _actionOutlinedButtonStyle(),
-                                        onPressed: _currentPage > 0
-                                            ? () =>
-                                                  setState(() => _currentPage--)
-                                            : null,
-                                        icon: const Icon(Icons.chevron_left),
-                                        label: const Text('Anterior'),
-                                      ),
-                                      Text(
-                                        'Página ${_fmtCountInt(_currentPage + 1)} de ${_fmtCountInt(_totalPages)}',
-                                      ),
-                                      OutlinedButton.icon(
-                                        style: _actionOutlinedButtonStyle(),
-                                        onPressed:
-                                            _currentPage < _totalPages - 1
-                                            ? () =>
-                                                  setState(() => _currentPage++)
-                                            : null,
-                                        icon: const Icon(Icons.chevron_right),
-                                        label: const Text('Siguiente'),
-                                      ),
-                                      const Text('Filas/pág:'),
-                                      SizedBox(
-                                        width: 90,
-                                        child: DropdownButtonFormField<int>(
-                                          initialValue: _pageSize,
-                                          isDense: true,
-                                          decoration: _glassFieldDecoration(),
-                                          items: const [40, 80, 120]
-                                              .map(
-                                                (s) => DropdownMenuItem<int>(
-                                                  value: s,
-                                                  child: Text('$s'),
-                                                ),
-                                              )
-                                              .toList(),
-                                          onChanged: (v) {
-                                            if (v == null) return;
-                                            setState(() {
-                                              _pageSize = v;
-                                              _currentPage = 0;
-                                              _clampCurrentPage();
-                                            });
-                                          },
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 8,
+                                    ),
+                                    child: Wrap(
+                                      spacing: 8,
+                                      runSpacing: 8,
+                                      crossAxisAlignment:
+                                          WrapCrossAlignment.center,
+                                      children: [
+                                        OutlinedButton.icon(
+                                          style: _actionOutlinedButtonStyle(
+                                            context,
+                                          ),
+                                          onPressed: _currentPage > 0
+                                              ? () => setState(
+                                                  () => _currentPage--,
+                                                )
+                                              : null,
+                                          icon: const Icon(Icons.chevron_left),
+                                          label: const Text('Anterior'),
                                         ),
-                                      ),
-                                      Text(
-                                        'Total: ${_fmtCountInt(_filteredRows.length)}',
-                                      ),
-                                    ],
+                                        Text(
+                                          'Página ${_fmtCountInt(_currentPage + 1)} de ${_fmtCountInt(_totalPages)}',
+                                        ),
+                                        OutlinedButton.icon(
+                                          style: _actionOutlinedButtonStyle(
+                                            context,
+                                          ),
+                                          onPressed:
+                                              _currentPage < _totalPages - 1
+                                              ? () => setState(
+                                                  () => _currentPage++,
+                                                )
+                                              : null,
+                                          icon: const Icon(Icons.chevron_right),
+                                          label: const Text('Siguiente'),
+                                        ),
+                                        const Text('Filas/pág:'),
+                                        SizedBox(
+                                          width: 90,
+                                          child: DropdownButtonFormField<int>(
+                                            initialValue: _pageSize,
+                                            isDense: true,
+                                            decoration: _glassFieldDecoration(
+                                              context,
+                                            ),
+                                            items: const [40, 80, 120]
+                                                .map(
+                                                  (s) => DropdownMenuItem<int>(
+                                                    value: s,
+                                                    child: Text('$s'),
+                                                  ),
+                                                )
+                                                .toList(),
+                                            onChanged: (v) {
+                                              if (v == null) return;
+                                              setState(() {
+                                                _pageSize = v;
+                                                _currentPage = 0;
+                                                _clampCurrentPage();
+                                              });
+                                            },
+                                          ),
+                                        ),
+                                        Text(
+                                          'Total: ${_fmtCountInt(_filteredRows.length)}',
+                                        ),
+                                      ],
+                                    ),
                                   ),
                                 ),
                               ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
+      ),
     );
   }
 }
 
 // ====== header visual ======
 class _HeaderRow extends StatelessWidget {
+  final bool logisticsSilverMode;
   final bool Function(String columnId) hasActiveFilter;
   final void Function(String columnId, String label) onOpenFilter;
 
-  const _HeaderRow({required this.hasActiveFilter, required this.onOpenFilter});
+  const _HeaderRow({
+    required this.logisticsSilverMode,
+    required this.hasActiveFilter,
+    required this.onOpenFilter,
+  });
 
   @override
   Widget build(BuildContext context) {
-    TextStyle s = const TextStyle(fontSize: 12, fontWeight: FontWeight.w800);
-    return Card(
-      elevation: 0,
-      color: Colors.black.withValues(alpha: 0.03),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        child: LayoutBuilder(
-          builder: (context, constraints) {
-            final resolvedLayout = _resolveServicesTableLayout(
-              constraints.maxWidth,
-            );
-            return SizedBox(
-              width: constraints.maxWidth,
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _HCell(
-                      'FECHA',
-                      resolvedLayout.serviceDate,
+    final palette = ServicesVisualPalette.of(context);
+    final s = TextStyle(
+      fontSize: 12,
+      fontWeight: FontWeight.w800,
+      color: palette.textPrimary,
+    );
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surfaceElevated,
+        gradient: palette.logisticsSilver ? palette.glassCardGradient : null,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: palette.border),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final resolvedLayout = _resolveServicesTableLayout(
+            constraints.maxWidth,
+          );
+          return SizedBox(
+            width: constraints.maxWidth,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: Alignment.centerLeft,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _HCell(
+                    'FECHA',
+                    resolvedLayout.serviceDate,
+                    s,
+                    active: hasActiveFilter('fecha'),
+                    onFilter: () => onOpenFilter('fecha', 'FECHA'),
+                  ),
+                  _HCell(
+                    'EMPRESA',
+                    resolvedLayout.company,
+                    s,
+                    active: hasActiveFilter('empresa'),
+                    onFilter: () => onOpenFilter('empresa', 'EMPRESA'),
+                  ),
+                  _HCell(
+                    'MATERIAL',
+                    resolvedLayout.material,
+                    s,
+                    active: hasActiveFilter('material'),
+                    onFilter: () => onOpenFilter('material', 'MATERIAL'),
+                  ),
+                  _HCell(
+                    'TIPO',
+                    resolvedLayout.type,
+                    s,
+                    active: hasActiveFilter('tipo'),
+                    onFilter: () => onOpenFilter('tipo', 'TIPO'),
+                  ),
+                  _HCell(
+                    'CHOFER',
+                    resolvedLayout.driver,
+                    s,
+                    active: hasActiveFilter('chofer'),
+                    onFilter: () => onOpenFilter('chofer', 'CHOFER'),
+                  ),
+                  _HCell(
+                    'UNIDAD',
+                    resolvedLayout.unit,
+                    s,
+                    active: hasActiveFilter('unidad'),
+                    onFilter: () => onOpenFilter('unidad', 'UNIDAD'),
+                  ),
+                  _HCell(
+                    'PARA EL DÍA',
+                    resolvedLayout.dueDate,
+                    s,
+                    active: hasActiveFilter('para_dia'),
+                    onFilter: () => onOpenFilter('para_dia', 'PARA EL DÍA'),
+                  ),
+                  _HCell(
+                    'HORARIO',
+                    resolvedLayout.scheduledTime,
+                    s,
+                    active: hasActiveFilter('horario'),
+                    onFilter: () => onOpenFilter('horario', 'HORARIO'),
+                  ),
+                  SizedBox(
+                    width: resolvedLayout.comment,
+                    child: _HCellExpand(
+                      'COMENTARIO',
                       s,
-                      active: hasActiveFilter('fecha'),
-                      onFilter: () => onOpenFilter('fecha', 'FECHA'),
+                      active: hasActiveFilter('comentario'),
+                      onFilter: () => onOpenFilter('comentario', 'COMENTARIO'),
                     ),
-                    _HCell(
-                      'EMPRESA',
-                      resolvedLayout.company,
+                  ),
+                  SizedBox(width: resolvedLayout.actionsGap),
+                  AnchoredActionSlot(
+                    width: resolvedLayout.actions,
+                    trailingWidth: resolvedLayout.headerActionSlotWidth,
+                    leading: _HCellExpand(
+                      logisticsSilverMode ? 'ESTADO / PENDIENTE' : 'ESTADO',
                       s,
-                      active: hasActiveFilter('empresa'),
-                      onFilter: () => onOpenFilter('empresa', 'EMPRESA'),
+                      active: hasActiveFilter('estado'),
+                      onFilter: () => onOpenFilter('estado', 'ESTADO'),
                     ),
-                    _HCell(
-                      'MATERIAL',
-                      resolvedLayout.material,
-                      s,
-                      active: hasActiveFilter('material'),
-                      onFilter: () => onOpenFilter('material', 'MATERIAL'),
-                    ),
-                    _HCell(
-                      'TIPO',
-                      resolvedLayout.type,
-                      s,
-                      active: hasActiveFilter('tipo'),
-                      onFilter: () => onOpenFilter('tipo', 'TIPO'),
-                    ),
-                    _HCell(
-                      'CHOFER',
-                      resolvedLayout.driver,
-                      s,
-                      active: hasActiveFilter('chofer'),
-                      onFilter: () => onOpenFilter('chofer', 'CHOFER'),
-                    ),
-                    _HCell(
-                      'UNIDAD',
-                      resolvedLayout.unit,
-                      s,
-                      active: hasActiveFilter('unidad'),
-                      onFilter: () => onOpenFilter('unidad', 'UNIDAD'),
-                    ),
-                    _HCell(
-                      'PARA EL DÍA',
-                      resolvedLayout.dueDate,
-                      s,
-                      active: hasActiveFilter('para_dia'),
-                      onFilter: () => onOpenFilter('para_dia', 'PARA EL DÍA'),
-                    ),
-                    SizedBox(
-                      width: resolvedLayout.comment,
-                      child: _HCellExpand(
-                        'COMENTARIO',
-                        s,
-                        active: hasActiveFilter('comentario'),
-                        onFilter: () =>
-                            onOpenFilter('comentario', 'COMENTARIO'),
-                      ),
-                    ),
-                    SizedBox(width: resolvedLayout.actionsGap),
-                    AnchoredActionSlot(
-                      width: resolvedLayout.actions,
-                      trailingWidth: resolvedLayout.headerActionSlotWidth,
-                      leading: _HCellExpand(
-                        'ESTADO',
-                        s,
-                        active: hasActiveFilter('estado'),
-                        onFilter: () => onOpenFilter('estado', 'ESTADO'),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
-            );
-          },
-        ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -4105,6 +5119,7 @@ class _HCellExpand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
     return Row(
       children: [
         InkWell(
@@ -4116,19 +5131,21 @@ class _HCellExpand extends StatelessWidget {
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
               color: active
-                  ? _kFilterAccent
-                  : _kFilterAccentSoft.withValues(alpha: 0.35),
+                  ? palette.filterAccent
+                  : palette.filterAccentSoft.withValues(alpha: 0.52),
               borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: active
-                    ? _kFilterAccent.withValues(alpha: 0.55)
-                    : const Color(0xFF0B2B2B).withValues(alpha: 0.15),
+                    ? palette.filterAccent.withValues(alpha: 0.55)
+                    : palette.border.withValues(alpha: 0.85),
               ),
             ),
             child: Icon(
               active ? Icons.filter_alt : Icons.filter_alt_outlined,
               size: 15,
-              color: active ? Colors.white : const Color(0xFF2A4B49),
+              color: active
+                  ? palette.buttonFillForeground
+                  : palette.textSecondary,
             ),
           ),
         ),
@@ -4137,6 +5154,215 @@ class _HCellExpand extends StatelessWidget {
           child: Text(t, style: s, overflow: TextOverflow.ellipsis),
         ),
       ],
+    );
+  }
+}
+
+class _LogisticsPlanningSurface extends StatelessWidget {
+  final Widget child;
+
+  const _LogisticsPlanningSurface({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
+    return Container(
+      decoration: BoxDecoration(
+        color: palette.surfaceElevated,
+        gradient: palette.glassCardGradient,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: palette.border),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 24,
+            color: palette.shadow.withValues(alpha: 0.14),
+            offset: const Offset(0, 12),
+          ),
+          BoxShadow(
+            blurRadius: 36,
+            color: palette.glow.withValues(alpha: 0.12),
+            offset: const Offset(0, 10),
+          ),
+        ],
+      ),
+      padding: const EdgeInsets.all(18),
+      child: child,
+    );
+  }
+}
+
+class _LogisticsPlanningViewCard extends StatefulWidget {
+  final String title;
+  final String subtitle;
+  final String countLabel;
+  final IconData icon;
+  final bool active;
+  final VoidCallback onTap;
+
+  const _LogisticsPlanningViewCard({
+    required this.title,
+    required this.subtitle,
+    required this.countLabel,
+    required this.icon,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  State<_LogisticsPlanningViewCard> createState() =>
+      _LogisticsPlanningViewCardState();
+}
+
+class _LogisticsPlanningViewCardState
+    extends State<_LogisticsPlanningViewCard> {
+  bool _hovering = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
+    final active = widget.active;
+    final hovering = _hovering;
+    return MouseRegion(
+      onEnter: (_) => setState(() => _hovering = true),
+      onExit: (_) => setState(() => _hovering = false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOutCubic,
+          width: 228,
+          padding: const EdgeInsets.all(14),
+          transform: Matrix4.translationValues(0, hovering ? -2.0 : 0.0, 0),
+          decoration: BoxDecoration(
+            gradient: active
+                ? palette.menuEmphasisGradient
+                : palette.buttonGradient,
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: active
+                  ? palette.borderStrong
+                  : palette.border.withValues(alpha: hovering ? 1 : 0.82),
+            ),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: active ? 22 : 16,
+                color: (active ? palette.glow : palette.shadow).withValues(
+                  alpha: active ? 0.16 : 0.1,
+                ),
+                offset: Offset(0, active ? 10 : 8),
+              ),
+            ],
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(
+                        alpha: active ? 0.72 : 0.6,
+                      ),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: palette.borderStrong),
+                    ),
+                    child: Icon(widget.icon, size: 18, color: palette.icon),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(
+                      widget.title,
+                      style: TextStyle(
+                        fontSize: 14.5,
+                        fontWeight: FontWeight.w900,
+                        color: palette.textPrimary,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Text(
+                widget.subtitle,
+                style: TextStyle(
+                  fontSize: 11.8,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                  color: palette.textSecondary,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Text(
+                widget.countLabel,
+                style: TextStyle(
+                  fontSize: 12.5,
+                  fontWeight: FontWeight.w900,
+                  color: palette.textPrimary,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _LogisticsMetricChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final String helper;
+
+  const _LogisticsMetricChip({
+    required this.label,
+    required this.value,
+    required this.helper,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: palette.surfaceBase.withValues(alpha: 0.84),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: palette.borderStrong),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11.4,
+              fontWeight: FontWeight.w800,
+              color: palette.textMuted,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w900,
+              color: palette.textPrimary,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            helper,
+            style: TextStyle(
+              fontSize: 11.3,
+              fontWeight: FontWeight.w600,
+              color: palette.textSecondary,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -4150,6 +5376,9 @@ class _ServiceDataRow extends StatefulWidget {
   final List<_Opt> vehicles;
   final List<String> directions;
   final List<String> statuses;
+  final bool logisticsSilverMode;
+  final bool scheduledTimeColumnAvailable;
+  final Future<bool> Function() onEnsureScheduledTimeColumnAvailable;
 
   final String Function(String) uiLabel;
   final DateTime Function(dynamic) parseDate;
@@ -4175,6 +5404,9 @@ class _ServiceDataRow extends StatefulWidget {
     required this.vehicles,
     required this.directions,
     required this.statuses,
+    required this.logisticsSilverMode,
+    required this.scheduledTimeColumnAvailable,
+    required this.onEnsureScheduledTimeColumnAvailable,
     required this.uiLabel,
     required this.parseDate,
     required this.fmtDateDb,
@@ -4202,6 +5434,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
 
   late DateTime _serviceDate;
   DateTime? _dueDate;
+  TimeOfDay? _scheduledTime;
 
   String? _clientId;
   String? _materialId;
@@ -4236,6 +5469,154 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
         sel.extentOffset == end;
   }
 
+  bool _isClosedStatus(String status) {
+    final normalized = status.trim().toLowerCase();
+    return normalized == 'completado' || normalized == 'cancelado';
+  }
+
+  bool _hasAssignedDriverForPending() {
+    if ((_driverId?.trim().isNotEmpty ?? false)) return true;
+    for (final key in const [
+      'driver_name',
+      'driver_full_name',
+      'driver_employee_name',
+    ]) {
+      final value = (widget.row[key] as String?)?.trim();
+      if (value != null && value.isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  bool _hasAssignedVehicleForPending() {
+    if ((_vehicleId?.trim().isNotEmpty ?? false)) return true;
+    for (final key in const ['vehicle_code', 'vehicle_name']) {
+      final value = (widget.row[key] as String?)?.trim();
+      if (value != null && value.isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  _LogisticsPendingDescriptor _resolveLogisticsPendingDescriptor() {
+    final status = _status.trim().toLowerCase();
+    final hasDriver = _hasAssignedDriverForPending();
+    final hasVehicle = _hasAssignedVehicleForPending();
+    final hasScheduledTime = _scheduledTime != null;
+    final planningDate = _dueDate == null
+        ? null
+        : DateUtils.dateOnly(_dueDate!);
+    final today = DateUtils.dateOnly(DateTime.now());
+
+    if (_isClosedStatus(status)) {
+      return const _LogisticsPendingDescriptor(
+        label: 'Cerrado',
+        helper: 'Sin acción pendiente',
+        icon: Icons.check_circle_outline_rounded,
+        tone: _LogisticsPendingTone.muted,
+      );
+    }
+    if (planningDate == null) {
+      return const _LogisticsPendingDescriptor(
+        label: 'Definir día',
+        helper: 'Falta fecha de despacho',
+        icon: Icons.event_busy_rounded,
+        tone: _LogisticsPendingTone.warning,
+      );
+    }
+    if (planningDate.isBefore(today)) {
+      return const _LogisticsPendingDescriptor(
+        label: 'Reprogramar',
+        helper: 'La fecha ya venció',
+        icon: Icons.warning_amber_rounded,
+        tone: _LogisticsPendingTone.critical,
+      );
+    }
+    if (!hasDriver && !hasVehicle) {
+      return const _LogisticsPendingDescriptor(
+        label: 'Asignar chofer y unidad',
+        helper: 'Sin recursos capturados',
+        icon: Icons.person_search_rounded,
+        tone: _LogisticsPendingTone.critical,
+      );
+    }
+    if (!hasDriver) {
+      return const _LogisticsPendingDescriptor(
+        label: 'Asignar chofer',
+        helper: 'La unidad ya puede trabajarse',
+        icon: Icons.badge_outlined,
+        tone: _LogisticsPendingTone.warning,
+      );
+    }
+    if (!hasVehicle) {
+      return const _LogisticsPendingDescriptor(
+        label: 'Asignar unidad',
+        helper: 'El chofer ya está definido',
+        icon: Icons.local_shipping_outlined,
+        tone: _LogisticsPendingTone.warning,
+      );
+    }
+    if (status == 'en ruta' ||
+        status == 'en_ruta' ||
+        status == 'enruta' ||
+        status == 'en sitio' ||
+        status == 'en_sitio' ||
+        status == 'ensitio') {
+      return const _LogisticsPendingDescriptor(
+        label: 'Seguimiento activo',
+        helper: 'Servicio en ejecución',
+        icon: Icons.alt_route_rounded,
+        tone: _LogisticsPendingTone.ready,
+      );
+    }
+    if (!hasScheduledTime) {
+      return const _LogisticsPendingDescriptor(
+        label: 'Definir horario',
+        helper: 'Falta hora de atención',
+        icon: Icons.schedule_rounded,
+        tone: _LogisticsPendingTone.warning,
+      );
+    }
+    if (DateUtils.isSameDay(planningDate, today)) {
+      return const _LogisticsPendingDescriptor(
+        label: 'Listo para salida',
+        helper: 'Programación resuelta hoy',
+        icon: Icons.playlist_add_check_circle_rounded,
+        tone: _LogisticsPendingTone.ready,
+      );
+    }
+    return const _LogisticsPendingDescriptor(
+      label: 'Ruta prearmada',
+      helper: 'Puede consolidarse por zona',
+      icon: Icons.route_rounded,
+      tone: _LogisticsPendingTone.future,
+    );
+  }
+
+  Widget _buildLogisticsStatusPanel({required bool editing}) {
+    final pending = _resolveLogisticsPendingDescriptor();
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (editing)
+          _DropStrInline(
+            value: _status,
+            items: widget.statuses,
+            format: widget.uiLabel,
+            compact: true,
+            onTapStart: () => widget.onActivateColumn(9),
+            onChanged: (v) {
+              if (v == null) return;
+              setState(() => _status = v);
+            },
+          )
+        else
+          _StatusPill(text: widget.uiLabel(_status)),
+        const SizedBox(height: 6),
+        _LogisticsPendingChip(descriptor: pending),
+      ],
+    );
+  }
+
   @override
   void initState() {
     super.initState();
@@ -4246,6 +5627,9 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
     final r = widget.row;
     _serviceDate = widget.parseDate(r['service_date']);
     _dueDate = (r['due_date'] == null) ? null : widget.parseDate(r['due_date']);
+    _scheduledTime = _parseServicesTimeOfDay(
+      (r['scheduled_time'] ?? '').toString(),
+    );
 
     _clientId = r['client_id'] as String?;
     final rawMaterialId = r['material_id'] as String?;
@@ -4373,7 +5757,10 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
       case 6:
         await _pickDueDate();
         return;
-      case 8:
+      case 7:
+        await _pickScheduledTime();
+        return;
+      case 9:
         final next = await _pickStringOption(
           title: 'Estado',
           options: widget.statuses,
@@ -4383,7 +5770,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
         if (!mounted || next == null) return;
         setState(() => _status = next);
         return;
-      case 7:
+      case 8:
         focusCommentField();
         return;
       default:
@@ -4437,6 +5824,10 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
     final patch = <String, dynamic>{
       'service_date': widget.fmtDateDb(_serviceDate),
       'due_date': _dueDate == null ? null : widget.fmtDateDb(_dueDate!),
+      if (widget.scheduledTimeColumnAvailable)
+        'scheduled_time': _scheduledTime == null
+            ? null
+            : _fmtServicesDbTimeOfDay(_scheduledTime!),
       'direction': _direction,
       'status': _status,
       'client_id': _clientId,
@@ -4474,6 +5865,32 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
     if (picked != null) setState(() => _dueDate = DateUtils.dateOnly(picked));
   }
 
+  Future<void> _pickScheduledTime() async {
+    var available = widget.scheduledTimeColumnAvailable;
+    if (!available) {
+      available = await widget.onEnsureScheduledTimeColumnAvailable();
+    }
+    if (!mounted) return;
+    if (!available) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Horario requiere aplicar la migración de servicios antes de guardarse en base.',
+          ),
+        ),
+      );
+      return;
+    }
+    if (!mounted) return;
+    final picked = await _showServicesTimePicker(
+      context,
+      initialTime: _scheduledTime ?? const TimeOfDay(hour: 8, minute: 0),
+    );
+    if (picked != null) {
+      setState(() => _scheduledTime = picked);
+    }
+  }
+
   Future<DateTime?> _pickDateWithKeyboard(DateTime initialDate) async {
     return _showGlassDatePickerDialog(
       context,
@@ -4493,19 +5910,20 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
     final isPrimarySelected = widget.isSelected;
     final isMultiSelected = widget.isChecked;
     final hasSelection = isPrimarySelected || isMultiSelected;
     final hoverOnly = _hovering && !hasSelection;
     final highlighted = hasSelection || _hovering;
     final rowBg = _editing
-        ? const Color(0xFFDCEBFF)
+        ? palette.editingRowFill
         : hasSelection
-        ? const Color(
-            0xFF00A3FF,
-          ).withValues(alpha: isPrimarySelected ? 0.16 : 0.13)
+        ? (isPrimarySelected
+              ? palette.selectedRowFill
+              : palette.selectedRowSecondaryFill)
         : hoverOnly
-        ? const Color(0xFFEEF5FF)
+        ? palette.hoverRowFill
         : Colors.white;
     Widget gridCellFrame(int columnIndex, Widget child) {
       final active =
@@ -4869,9 +6287,44 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                               ),
                             ),
 
-                            // COMENTARIO
+                            // HORARIO
                             gridCellFrame(
                               7,
+                              SizedBox(
+                                width: tableLayout.scheduledTime,
+                                child: _editing
+                                    ? InkWell(
+                                        onTap: () {
+                                          widget.onActivateColumn(7);
+                                          _pickScheduledTime();
+                                        },
+                                        child: _CellBox(
+                                          text: _scheduledTime == null
+                                              ? '—'
+                                              : _fmtServicesUiTimeOfDay(
+                                                  _scheduledTime!,
+                                                ),
+                                          icon: Icons.schedule_rounded,
+                                        ),
+                                      )
+                                    : previewEditableCell(
+                                        col: 7,
+                                        child: readonlyCell(
+                                          child: _FitText(
+                                            _scheduledTime == null
+                                                ? '—'
+                                                : _fmtServicesUiTimeOfDay(
+                                                    _scheduledTime!,
+                                                  ),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+
+                            // COMENTARIO
+                            gridCellFrame(
+                              8,
                               SizedBox(
                                 width: tableLayout.comment,
                                 child: _editing
@@ -4889,19 +6342,19 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                                   LogicalKeyboardKey
                                                       .arrowLeft &&
                                               isCommentCaretAtStart) {
-                                            widget.onActivateColumn(6);
+                                            widget.onActivateColumn(7);
                                             return KeyEventResult.handled;
                                           }
                                           if (event.logicalKey ==
                                                   LogicalKeyboardKey
                                                       .arrowRight &&
                                               isCommentCaretAtEnd) {
-                                            widget.onActivateColumn(8);
+                                            widget.onActivateColumn(9);
                                             WidgetsBinding.instance
                                                 .addPostFrameCallback((_) {
                                                   if (!mounted) return;
                                                   unawaited(
-                                                    activateGridCell(8),
+                                                    activateGridCell(9),
                                                   );
                                                 });
                                             return KeyEventResult.handled;
@@ -4912,8 +6365,10 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                           controller: _notes,
                                           focusNode: _notesFocusNode,
                                           textInputAction: TextInputAction.done,
-                                          decoration: _glassFieldDecoration()
-                                              .copyWith(
+                                          decoration:
+                                              _glassFieldDecoration(
+                                                context,
+                                              ).copyWith(
                                                 fillColor: Colors.white
                                                     .withValues(alpha: 0.88),
                                                 contentPadding:
@@ -4923,7 +6378,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                                     ),
                                               ),
                                           onTap: () {
-                                            widget.onActivateColumn(7);
+                                            widget.onActivateColumn(8);
                                             if (!_notesFocusNode.hasFocus) {
                                               _notesFocusNode.requestFocus();
                                             }
@@ -4933,7 +6388,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                         ),
                                       )
                                     : previewEditableCell(
-                                        col: 7,
+                                        col: 8,
                                         child: readonlyCell(
                                           showDivider: false,
                                           child: _FitText(
@@ -4950,19 +6405,23 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                             // ACCIONES
                             // ACCIONES
                             gridCellFrame(
-                              8,
+                              9,
                               AnchoredActionSlot(
                                 width: tableLayout.actions,
                                 trailingWidth: tableLayout.rowActionButtonWidth,
                                 gap: tableLayout.actionInnerGap,
-                                leading: _editing
+                                leading: widget.logisticsSilverMode
+                                    ? _buildLogisticsStatusPanel(
+                                        editing: _editing,
+                                      )
+                                    : _editing
                                     ? _DropStrInline(
                                         value: _status,
                                         items: widget.statuses,
                                         format: widget.uiLabel,
                                         compact: true,
                                         onTapStart: () =>
-                                            widget.onActivateColumn(8),
+                                            widget.onActivateColumn(9),
                                         onChanged: (v) {
                                           if (v == null) return;
                                           setState(() => _status = v);
@@ -5082,7 +6541,7 @@ class _CellBox extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return InputDecorator(
-      decoration: _glassFieldDecoration().copyWith(
+      decoration: _glassFieldDecoration(context).copyWith(
         fillColor: Colors.white.withValues(alpha: 0.88),
         contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       ),
@@ -5151,12 +6610,19 @@ class _ServiceMaterialBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = _colors(text);
+    final palette = ServicesVisualPalette.of(context);
+    final bg = palette.logisticsSilver
+        ? Color.lerp(c.bg, palette.surfaceInteractive, 0.58) ?? c.bg
+        : c.bg;
+    final fg = palette.logisticsSilver
+        ? Color.lerp(c.fg, palette.textPrimary, 0.22) ?? c.fg
+        : c.fg;
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
         decoration: BoxDecoration(
-          color: c.bg,
+          color: bg,
           borderRadius: BorderRadius.circular(999),
           boxShadow: [
             BoxShadow(
@@ -5173,7 +6639,7 @@ class _ServiceMaterialBadge extends StatelessWidget {
           style: TextStyle(
             fontSize: 10.8,
             fontWeight: FontWeight.w800,
-            color: c.fg,
+            color: fg,
             letterSpacing: 0.15,
           ),
         ),
@@ -5189,22 +6655,27 @@ class _ServiceUnitBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
     return Align(
       alignment: Alignment.centerLeft,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
         decoration: BoxDecoration(
-          color: const Color(0xFFDEE3EE),
+          color: palette.logisticsSilver
+              ? palette.surfaceInteractive
+              : const Color(0xFFDEE3EE),
           borderRadius: BorderRadius.circular(999),
         ),
         child: Text(
           text,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
+          style: TextStyle(
             fontSize: 11.5,
             fontWeight: FontWeight.w700,
-            color: Color(0xFF36485C),
+            color: palette.logisticsSilver
+                ? palette.textPrimary
+                : const Color(0xFF36485C),
           ),
         ),
       ),
@@ -5285,8 +6756,28 @@ class _StatusPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
     final key = text.toUpperCase().trim();
-    final gradient = _gradientFor(key);
+    final gradient = palette.logisticsSilver
+        ? LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Color.lerp(
+                    _gradientFor(key).colors.first,
+                    palette.surfaceInteractive,
+                    0.70,
+                  ) ??
+                  palette.surfaceInteractive,
+              Color.lerp(
+                    _gradientFor(key).colors.last,
+                    palette.surfaceHover,
+                    0.56,
+                  ) ??
+                  palette.surfaceHover,
+            ],
+          )
+        : _gradientFor(key);
     final textColor = _textColorForGradient(gradient);
 
     // subtle glow color derived from last gradient stop
@@ -5297,6 +6788,9 @@ class _StatusPill extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: gradient,
         borderRadius: BorderRadius.circular(999),
+        border: palette.logisticsSilver
+            ? Border.all(color: palette.border.withValues(alpha: 0.82))
+            : null,
         boxShadow: [
           BoxShadow(
             color: glow,
@@ -5319,6 +6813,139 @@ class _StatusPill extends StatelessWidget {
           color: textColor,
           shadows: [Shadow(color: glow.withValues(alpha: 0.6), blurRadius: 6)],
         ),
+      ),
+    );
+  }
+}
+
+enum _LogisticsPendingTone { critical, warning, ready, future, muted }
+
+class _LogisticsPendingDescriptor {
+  final String label;
+  final String helper;
+  final IconData icon;
+  final _LogisticsPendingTone tone;
+
+  const _LogisticsPendingDescriptor({
+    required this.label,
+    required this.helper,
+    required this.icon,
+    required this.tone,
+  });
+}
+
+class _LogisticsPendingChip extends StatelessWidget {
+  final _LogisticsPendingDescriptor descriptor;
+
+  const _LogisticsPendingChip({required this.descriptor});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
+    final spec = switch (descriptor.tone) {
+      _LogisticsPendingTone.critical => (
+        top: const Color(0xFFF3E7E5),
+        bottom: const Color(0xFFE5D2CF),
+        border: const Color(0xFFCDB0AA),
+        iconBg: const Color(0xFFD7BBB5),
+        fg: const Color(0xFF5B312C),
+      ),
+      _LogisticsPendingTone.warning => (
+        top: const Color(0xFFF0F1F3),
+        bottom: const Color(0xFFE0E3E7),
+        border: const Color(0xFFBDC4CB),
+        iconBg: const Color(0xFFD2D7DD),
+        fg: const Color(0xFF38424C),
+      ),
+      _LogisticsPendingTone.ready => (
+        top: const Color(0xFFE8EEEB),
+        bottom: const Color(0xFFD8E1DC),
+        border: const Color(0xFFB7C6BC),
+        iconBg: const Color(0xFFC9D6CE),
+        fg: const Color(0xFF2E4739),
+      ),
+      _LogisticsPendingTone.future => (
+        top: const Color(0xFFEAECEF),
+        bottom: const Color(0xFFDDE2E7),
+        border: const Color(0xFFBDC5CE),
+        iconBg: const Color(0xFFD1D7DE),
+        fg: const Color(0xFF35404B),
+      ),
+      _LogisticsPendingTone.muted => (
+        top: const Color(0xFFF3F4F6),
+        bottom: const Color(0xFFE6E8EB),
+        border: const Color(0xFFC8CDD3),
+        iconBg: const Color(0xFFD9DDE2),
+        fg: const Color(0xFF4C5560),
+      ),
+    };
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Color.lerp(spec.top, palette.surfaceBase, 0.30) ?? spec.top,
+            Color.lerp(spec.bottom, palette.surfaceElevated, 0.10) ??
+                spec.bottom,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: spec.border),
+        boxShadow: [
+          BoxShadow(
+            blurRadius: 10,
+            color: palette.shadow.withValues(alpha: 0.08),
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 22,
+            height: 22,
+            decoration: BoxDecoration(
+              color: spec.iconBg,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(descriptor.icon, size: 13, color: spec.fg),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  descriptor.label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    color: spec.fg,
+                  ),
+                ),
+                const SizedBox(height: 1),
+                Text(
+                  descriptor.helper,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10.2,
+                    fontWeight: FontWeight.w600,
+                    color: spec.fg.withValues(alpha: 0.78),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -5382,9 +7009,9 @@ class _DropOptInline extends StatelessWidget {
         borderRadius: BorderRadius.circular(12),
         onTap: openPicker,
         child: InputDecorator(
-          decoration: _glassFieldDecoration().copyWith(
-            fillColor: Colors.white.withValues(alpha: 0.88),
-          ),
+          decoration: _glassFieldDecoration(
+            context,
+          ).copyWith(fillColor: Colors.white.withValues(alpha: 0.88)),
           child: Row(
             children: [
               Expanded(
@@ -5455,7 +7082,7 @@ class _DropStrInline extends StatelessWidget {
           menuMaxHeight: 320,
           borderRadius: BorderRadius.circular(16),
           dropdownColor: _kGlassMenuBg,
-          decoration: _glassFieldDecoration().copyWith(
+          decoration: _glassFieldDecoration(context).copyWith(
             fillColor: Colors.white.withValues(alpha: 0.88),
             contentPadding: EdgeInsets.symmetric(
               horizontal: compact ? 6 : 10,
@@ -5519,6 +7146,7 @@ class _Opt {
 class _ServiceDraft {
   final DateTime? serviceDate;
   final DateTime? dueDate;
+  final TimeOfDay? scheduledTime;
 
   // Que siempre existan:
   final String? direction;
@@ -5533,6 +7161,7 @@ class _ServiceDraft {
   const _ServiceDraft({
     required this.serviceDate,
     required this.dueDate,
+    required this.scheduledTime,
     required this.direction,
     required this.status,
     required this.clientId,
@@ -5545,6 +7174,7 @@ class _ServiceDraft {
   factory _ServiceDraft.empty() => const _ServiceDraft(
     serviceDate: null,
     dueDate: null,
+    scheduledTime: null,
     direction: null,
     status: null,
     clientId: null,
@@ -5559,6 +7189,7 @@ class _ServiceDraft {
   _ServiceDraft copyWith({
     Object? serviceDate = _unset,
     Object? dueDate = _unset,
+    Object? scheduledTime = _unset,
     Object? direction = _unset,
     Object? status = _unset,
     Object? clientId = _unset,
@@ -5572,6 +7203,9 @@ class _ServiceDraft {
           ? this.serviceDate
           : serviceDate as DateTime?,
       dueDate: dueDate == _unset ? this.dueDate : dueDate as DateTime?,
+      scheduledTime: scheduledTime == _unset
+          ? this.scheduledTime
+          : scheduledTime as TimeOfDay?,
       direction: direction == _unset ? this.direction : direction as String?,
       status: status == _unset ? this.status : status as String?,
       clientId: clientId == _unset ? this.clientId : clientId as String?,

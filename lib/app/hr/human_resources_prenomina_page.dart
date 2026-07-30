@@ -23,6 +23,7 @@ import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/dialogs/contract_menu_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
@@ -178,47 +179,66 @@ class _HumanResourcesPrenominaPageState
     setState(() => _loading = true);
     try {
       final client = Supabase.instance.client;
-      final employeesResult = await client
-          .from(_kHrPrenominaProfilesTable)
-          .select(
-            'id,nombre,empresa,fecha_ingreso,fecha_alta,salario,salario_real_percibido',
-          );
-      final importLotsResult = await client
-          .from(_kHrPrenominaImportLotsTable)
-          .select('id,source,file_name,imported_at,period_label')
-          .order('imported_at', ascending: false);
+      final employeesResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrPrenominaProfilesTable)
+            .select(
+              'id,nombre,empresa,fecha_ingreso,fecha_alta,salario,salario_real_percibido',
+            )
+            .order('id')
+            .range(from, to),
+      );
+      final importLotsResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrPrenominaImportLotsTable)
+            .select('id,source,file_name,imported_at,period_label')
+            .order('imported_at', ascending: false)
+            .range(from, to),
+      );
       List<dynamic> attendanceResult = const <dynamic>[];
       List<dynamic> vacationEventsResult = const <dynamic>[];
       List<dynamic> permissionEventsResult = const <dynamic>[];
       List<dynamic> draftRowsResult = const <dynamic>[];
       try {
-        attendanceResult = await client
-            .from(_kHrPrenominaAttendanceDailyRecordsTable)
-            .select()
-            .order('source_date');
+        attendanceResult = await fetchAllSupabaseRows(
+          (from, to) => client
+              .from(_kHrPrenominaAttendanceDailyRecordsTable)
+              .select()
+              .order('source_date')
+              .range(from, to),
+        );
       } catch (_) {}
       try {
-        vacationEventsResult = await client
-            .from(_kHrPrenominaVacationEventsTable)
-            .select()
-            .order('start_date');
+        vacationEventsResult = await fetchAllSupabaseRows(
+          (from, to) => client
+              .from(_kHrPrenominaVacationEventsTable)
+              .select()
+              .order('start_date')
+              .range(from, to),
+        );
       } catch (_) {}
       try {
-        permissionEventsResult = await client
-            .from(_kHrPrenominaPermissionEventsTable)
-            .select()
-            .order('start_date');
+        permissionEventsResult = await fetchAllSupabaseRows(
+          (from, to) => client
+              .from(_kHrPrenominaPermissionEventsTable)
+              .select()
+              .order('start_date')
+              .range(from, to),
+        );
       } catch (_) {}
       try {
-        draftRowsResult = await client
-            .from(_kHrPrenominaDraftRowsTable)
-            .select()
-            .order('employee_name');
+        draftRowsResult = await fetchAllSupabaseRows(
+          (from, to) => client
+              .from(_kHrPrenominaDraftRowsTable)
+              .select()
+              .order('employee_name')
+              .range(from, to),
+        );
       } catch (_) {}
 
       final employees =
-          (employeesResult as List)
-              .map((raw) => Map<String, dynamic>.from(raw as Map))
+          employeesResult
+              .map((raw) => Map<String, dynamic>.from(raw))
               .map(_HrPrenominaEmployeeMaster.fromRow)
               .where((row) => row.employeeId.trim().isNotEmpty)
               .toList(growable: false)
@@ -229,8 +249,8 @@ class _HumanResourcesPrenominaPageState
               return a.employeeId.compareTo(b.employeeId);
             });
 
-      final importLots = (importLotsResult as List)
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
+      final importLots = importLotsResult
+          .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrPrenominaImportLotLite.fromRow)
           .toList(growable: false);
 

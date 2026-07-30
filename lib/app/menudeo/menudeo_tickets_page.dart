@@ -23,6 +23,7 @@ import '../shared/ui_contract_core/theme/contract_tokens.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/date_picker_defaults.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/number_formatters.dart';
 import 'menudeo_catalog_page.dart';
 import 'menudeo_dashboard_page.dart';
@@ -1112,12 +1113,15 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
 
   Future<void> _loadTickets() async {
     try {
-      final response = await _supa
-          .from('vw_men_tickets_grid')
-          .select()
-          .eq('direction', _flowDirection)
-          .order('ticket_date', ascending: false)
-          .order('ticket_number', ascending: true);
+      final response = await fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from('vw_men_tickets_grid')
+            .select()
+            .eq('direction', _flowDirection)
+            .order('ticket_date', ascending: false)
+            .order('ticket_number', ascending: true)
+            .range(from, to),
+      );
       if (!mounted) return;
       setState(() {
         final loadedRows = response

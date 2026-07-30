@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../../../shared/utils/fetch_all_supabase_rows.dart';
 import 'menudeo_analysis_models.dart';
 
 Iterable<List<T>> _chunkList<T>(List<T> items, int chunkSize) sync* {
@@ -26,31 +27,45 @@ class MenudeoAnalysisRepository {
     DateTimeRange? dateRange,
   }) async {
     final results = await Future.wait<dynamic>([
-      _client
-          .from('vw_men_price_audit_catalog')
-          .select(
-            'counterparty_name,group_code,material_label_snapshot,final_price,last_changed_at,direction,price_id',
-          )
-          .order('counterparty_name')
-          .order('material_label_snapshot'),
-      _client
-          .from('vw_men_tickets_grid')
-          .select(
-            'ticket_date,direction,status,payable_weight,amount_total,counterparty_name_snapshot,material_label_snapshot',
-          )
-          .order('ticket_date', ascending: false),
-      _client
-          .from('vw_men_effective_prices')
-          .select('material_label_snapshot,final_price,direction')
-          .order('material_label_snapshot')
-          .order('final_price'),
-      _client
-          .from('vw_men_price_adjustment_history')
-          .select(
-            'id,price_id,created_at,counterparty_name,group_code,material_label_snapshot,direction,previous_price,new_price,reason,event_kind,adjustment_mode,applied_by',
-          )
-          .order('created_at', ascending: false)
-          .limit(300),
+      fetchAllSupabaseRows(
+        (from, to) => _client
+            .from('vw_men_price_audit_catalog')
+            .select(
+              'counterparty_name,group_code,material_label_snapshot,final_price,last_changed_at,direction,price_id',
+            )
+            .order('counterparty_name')
+            .order('material_label_snapshot')
+            .order('price_id')
+            .range(from, to),
+      ),
+      fetchAllSupabaseRows(
+        (from, to) => _client
+            .from('vw_men_tickets_grid')
+            .select(
+              'id,ticket_date,direction,status,payable_weight,amount_total,counterparty_name_snapshot,material_label_snapshot',
+            )
+            .order('ticket_date', ascending: false)
+            .order('id', ascending: false)
+            .range(from, to),
+      ),
+      fetchAllSupabaseRows(
+        (from, to) => _client
+            .from('vw_men_effective_prices')
+            .select('material_label_snapshot,final_price,direction')
+            .order('material_label_snapshot')
+            .order('final_price')
+            .range(from, to),
+      ),
+      fetchAllSupabaseRows(
+        (from, to) => _client
+            .from('vw_men_price_adjustment_history')
+            .select(
+              'id,price_id,created_at,counterparty_name,group_code,material_label_snapshot,direction,previous_price,new_price,reason,event_kind,adjustment_mode,applied_by',
+            )
+            .order('created_at', ascending: false)
+            .order('id', ascending: false)
+            .range(from, to),
+      ),
     ]);
 
     final priceRows = (results[0] as List)
@@ -119,16 +134,26 @@ class MenudeoAnalysisRepository {
   }) async {
     final cutoff = DateTime.now().subtract(Duration(days: windowDays));
     final results = await Future.wait<dynamic>([
-      _client
-          .from('vw_men_cash_vouchers_grid')
-          .select(
-            'id,voucher_date,voucher_type,person_label,rubric,total_amount,cash_cut_id',
-          )
-          .order('voucher_date', ascending: false),
-      _client
-          .from('vw_men_cash_cuts_grid')
-          .select('id,opened_at,cut_date,difference_total,pending_checks_count')
-          .order('opened_at', ascending: false),
+      fetchAllSupabaseRows(
+        (from, to) => _client
+            .from('vw_men_cash_vouchers_grid')
+            .select(
+              'id,voucher_date,voucher_type,person_label,rubric,total_amount,cash_cut_id',
+            )
+            .order('voucher_date', ascending: false)
+            .order('id', ascending: false)
+            .range(from, to),
+      ),
+      fetchAllSupabaseRows(
+        (from, to) => _client
+            .from('vw_men_cash_cuts_grid')
+            .select(
+              'id,opened_at,cut_date,difference_total,pending_checks_count',
+            )
+            .order('opened_at', ascending: false)
+            .order('id', ascending: false)
+            .range(from, to),
+      ),
     ]);
 
     final voucherRows = (results[0] as List)
@@ -624,16 +649,24 @@ class MenudeoAnalysisRepository {
   }) async {
     final cutoff = DateTime.now().subtract(Duration(days: windowDays));
     final results = await Future.wait<dynamic>([
-      _client
-          .from('vw_men_tickets_grid')
-          .select(
-            'id,ticket_date,ticket_number,direction,status,payable_weight,amount_total,counterparty_name_snapshot,material_label_snapshot',
-          )
-          .order('ticket_date', ascending: false),
-      _client
-          .from('vw_men_cash_cuts_grid')
-          .select('id,opened_at,cut_date,pending_checks_count')
-          .order('opened_at', ascending: false),
+      fetchAllSupabaseRows(
+        (from, to) => _client
+            .from('vw_men_tickets_grid')
+            .select(
+              'id,ticket_date,ticket_number,direction,status,payable_weight,amount_total,counterparty_name_snapshot,material_label_snapshot',
+            )
+            .order('ticket_date', ascending: false)
+            .order('id', ascending: false)
+            .range(from, to),
+      ),
+      fetchAllSupabaseRows(
+        (from, to) => _client
+            .from('vw_men_cash_cuts_grid')
+            .select('id,opened_at,cut_date,pending_checks_count')
+            .order('opened_at', ascending: false)
+            .order('id', ascending: false)
+            .range(from, to),
+      ),
     ]);
 
     final ticketRows = (results[0] as List)

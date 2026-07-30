@@ -105,15 +105,40 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
   ) async {
     if (!mounted || _dueNotificationPresented) return;
     if (dueAlerts.totalCount <= 0 || dueAlerts.items.isEmpty) return;
+    if (!FinanzasDueAlertsSessionGate.registerPresentation(
+      FinanzasDueAlertsSessionScope.finanzasDashboard,
+    )) {
+      return;
+    }
     _dueNotificationPresented = true;
-    final primaryItem = dueAlerts.items.first;
     await showDialog<void>(
       context: context,
       barrierDismissible: true,
       builder: (dialogContext) {
         return _FinanzasDueNotificationDialog(
           summary: dueAlerts,
-          primaryItem: primaryItem,
+          visibleItems: dueAlerts.items.toList(growable: false),
+          onOpenPaymentCenter: () async {
+            Navigator.of(dialogContext).pop();
+            await _openPaymentCenter();
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> _openDueAlertsDialog() async {
+    final dueAlerts = _summary.dueAlerts;
+    if (!mounted || dueAlerts.totalCount <= 0 || dueAlerts.items.isEmpty) {
+      return;
+    }
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: true,
+      builder: (dialogContext) {
+        return _FinanzasDueNotificationDialog(
+          summary: dueAlerts,
+          visibleItems: dueAlerts.items.toList(growable: false),
           onOpenPaymentCenter: () async {
             Navigator.of(dialogContext).pop();
             await _openPaymentCenter();
@@ -240,6 +265,13 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
                 compact: true,
                 iconOnly: true,
                 onTap: () => openComprasMailHostinger(context),
+              ),
+              const SizedBox(width: 10),
+              _FinanzasHeaderButton(
+                label: 'Pendientes',
+                icon: Icons.notifications_none_rounded,
+                notificationCount: _summary.dueAlerts.totalCount,
+                onTap: _openDueAlertsDialog,
               ),
               const SizedBox(width: 10),
               _FinanzasHeaderButton(
@@ -1820,24 +1852,41 @@ class _RefreshBadge extends StatelessWidget {
   }
 }
 
-class _FinanzasDueNotificationDialog extends StatelessWidget {
+class _FinanzasDueNotificationDialog extends StatefulWidget {
   final FinanzasDueAlertsSummary summary;
-  final FinanzasDueAlertItem primaryItem;
+  final List<FinanzasDueAlertItem> visibleItems;
   final Future<void> Function() onOpenPaymentCenter;
 
   const _FinanzasDueNotificationDialog({
     required this.summary,
-    required this.primaryItem,
+    required this.visibleItems,
     required this.onOpenPaymentCenter,
   });
 
   @override
+  State<_FinanzasDueNotificationDialog> createState() =>
+      _FinanzasDueNotificationDialogState();
+}
+
+class _FinanzasDueNotificationDialogState
+    extends State<_FinanzasDueNotificationDialog> {
+  final ScrollController _commitmentsScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _commitmentsScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final primaryItem = widget.visibleItems.first;
     final accent = switch (primaryItem.severity) {
       FinanzasDueAlertSeverity.critical => kFinanzasCoral,
       FinanzasDueAlertSeverity.warning => kFinanzasAmber,
       FinanzasDueAlertSeverity.info => kFinanzasCopper,
     };
+    final commitmentsListMaxHeight = MediaQuery.of(context).size.height * 0.38;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -1899,7 +1948,7 @@ class _FinanzasDueNotificationDialog extends StatelessWidget {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              _finanzasDueDialogHeadline(summary),
+                              _finanzasDueDialogHeadline(widget.summary),
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.88),
                                 fontSize: 15,
@@ -1918,16 +1967,17 @@ class _FinanzasDueNotificationDialog extends StatelessWidget {
                     runSpacing: 10,
                     children: [
                       _FinanzasNotificationPill(
-                        label: 'Hoy: ${summary.dueTodayCount}',
+                        label: 'Hoy: ${widget.summary.dueTodayCount}',
                       ),
                       _FinanzasNotificationPill(
-                        label: '2 días: ${summary.dueIn2DaysCount}',
+                        label: '2 días: ${widget.summary.dueIn2DaysCount}',
                       ),
                       _FinanzasNotificationPill(
-                        label: '1 semana: ${summary.dueIn7DaysCount}',
+                        label: '1 semana: ${widget.summary.dueIn7DaysCount}',
                       ),
                       _FinanzasNotificationPill(
-                        label: 'Monto: ${formatMoney(summary.totalAmount)}',
+                        label:
+                            'Monto: ${formatMoney(widget.summary.totalAmount)}',
                       ),
                     ],
                   ),
@@ -1945,39 +1995,41 @@ class _FinanzasDueNotificationDialog extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(
-                          _finanzasPrimaryTitle(primaryItem),
-                          style: const TextStyle(
+                        const Text(
+                          'Compromisos prioritarios',
+                          style: TextStyle(
                             color: Colors.white,
                             fontSize: 15,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
-                        const SizedBox(height: 8),
-                        Text(
-                          primaryItem.title,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.90),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w800,
+                        const SizedBox(height: 10),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxHeight: commitmentsListMaxHeight,
                           ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          primaryItem.subtitle,
-                          style: const TextStyle(
-                            color: Color(0xFFF8EBDD),
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '${primaryItem.reminderLabel} · ${formatMoney(primaryItem.amount)}',
-                          style: TextStyle(
-                            color: accent,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w900,
+                          child: Scrollbar(
+                            controller: _commitmentsScrollController,
+                            thumbVisibility: widget.visibleItems.length > 3,
+                            child: SingleChildScrollView(
+                              controller: _commitmentsScrollController,
+                              child: Column(
+                                children: [
+                                  for (
+                                    var index = 0;
+                                    index < widget.visibleItems.length;
+                                    index++
+                                  ) ...[
+                                    _FinanzasDueNotificationItemCard(
+                                      item: widget.visibleItems[index],
+                                      accent: accent,
+                                    ),
+                                    if (index != widget.visibleItems.length - 1)
+                                      const SizedBox(height: 10),
+                                  ],
+                                ],
+                              ),
+                            ),
                           ),
                         ),
                       ],
@@ -2003,7 +2055,7 @@ class _FinanzasDueNotificationDialog extends StatelessWidget {
                       ),
                       const SizedBox(width: 12),
                       FilledButton.icon(
-                        onPressed: onOpenPaymentCenter,
+                        onPressed: widget.onOpenPaymentCenter,
                         icon: const Icon(Icons.open_in_new_rounded),
                         label: const Text('Abrir pagos'),
                         style: FilledButton.styleFrom(
@@ -2022,6 +2074,69 @@ class _FinanzasDueNotificationDialog extends StatelessWidget {
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FinanzasDueNotificationItemCard extends StatelessWidget {
+  final FinanzasDueAlertItem item;
+  final Color accent;
+
+  const _FinanzasDueNotificationItemCard({
+    required this.item,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: Colors.white.withValues(alpha: 0.05),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _finanzasAlertSourceLabel(item),
+            style: TextStyle(
+              color: accent,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            item.title,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.90),
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            item.subtitle,
+            style: const TextStyle(
+              color: Color(0xFFF8EBDD),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            '${item.reminderLabel} · ${formatMoney(item.amount)}',
+            style: TextStyle(
+              color: accent,
+              fontSize: 12.8,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2063,16 +2178,16 @@ String _finanzasDueDialogHeadline(FinanzasDueAlertsSummary summary) {
   return 'Hay ${summary.dueIn7DaysCount} compromisos entrando a la ventana semanal de preparación.';
 }
 
-String _finanzasPrimaryTitle(FinanzasDueAlertItem item) {
+String _finanzasAlertSourceLabel(FinanzasDueAlertItem item) {
   switch (item.sourceType) {
     case 'FACTURA':
-      return 'Factura más urgente';
+      return 'Factura proveedor';
     case 'PAGO_FIJO':
-      return 'Pago fijo más urgente';
+      return 'Pago fijo';
     case 'CONVENIO':
-      return 'Convenio más urgente';
+      return 'Convenio';
     default:
-      return 'Compromiso más urgente';
+      return 'Compromiso';
   }
 }
 
@@ -2583,6 +2698,7 @@ class _FinanzasHeaderButton extends StatefulWidget {
   final VoidCallback? onTapSync;
   final bool compact;
   final bool iconOnly;
+  final int notificationCount;
 
   const _FinanzasHeaderButton({
     required this.label,
@@ -2591,6 +2707,7 @@ class _FinanzasHeaderButton extends StatefulWidget {
     this.onTapSync,
     this.compact = false,
     this.iconOnly = false,
+    this.notificationCount = 0,
   });
 
   @override
@@ -2656,36 +2773,82 @@ class _FinanzasHeaderButtonState extends State<_FinanzasHeaderButton> {
                 ),
               ],
             ),
-            child: widget.iconOnly
-                ? Center(
-                    child: Icon(
-                      widget.icon,
-                      size: 22,
-                      color: tokens.primaryStrong,
-                    ),
-                  )
-                : Row(
-                    children: [
-                      Icon(widget.icon, size: 20, color: Colors.white),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: FittedBox(
-                          fit: BoxFit.scaleDown,
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            widget.label,
-                            maxLines: 1,
-                            softWrap: false,
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w800,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                widget.iconOnly
+                    ? Center(
+                        child: Icon(
+                          widget.icon,
+                          size: 22,
+                          color: tokens.primaryStrong,
+                        ),
+                      )
+                    : Row(
+                        children: [
+                          Icon(widget.icon, size: 20, color: Colors.white),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: FittedBox(
+                              fit: BoxFit.scaleDown,
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                widget.label,
+                                maxLines: 1,
+                                softWrap: false,
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              ),
                             ),
+                          ),
+                        ],
+                      ),
+                if (widget.notificationCount > 0)
+                  Positioned(
+                    right: -6,
+                    top: -8,
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD92D20),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          width: 1.4,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            blurRadius: 12,
+                            color: const Color(
+                              0xFFD92D20,
+                            ).withValues(alpha: 0.26),
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          widget.notificationCount > 9
+                              ? '9+'
+                              : '${widget.notificationCount}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
                           ),
                         ),
                       ),
-                    ],
+                    ),
                   ),
+              ],
+            ),
           ),
         ),
       ),

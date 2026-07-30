@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/number_formatters.dart';
 
 const String _kCommercialAccountsTable = 'commercial_accounts';
@@ -604,15 +605,27 @@ class CommercialStore {
   static Future<CommercialDashboardBundle> loadDashboard() async {
     final results = await Future.wait<dynamic>([
       _selectAllRows(_kCommercialMarketEventsView, orderColumn: 'event_at'),
-      _supa.from(_kCommercialAlertsView).select(),
-      _supa.from(_kCommercialMaterialSnapshotView).select(),
-      _supa.from(_kCommercialCounterpartyActivityView).select(),
-      _supa.from(_kCommercialMaterialGeneralSnapshotView).select(),
-      _supa.from(_kCommercialCounterpartyGeneralActivityView).select(),
-      _supa.from(_kInventoryGeneralBalanceView).select(),
-      _supa.from(_kMenEffectivePricesView).select(),
-      _supa.from(_kComprasPriceAuditCatalogView).select(),
-      _supa.from(_kMayoreoPriceAuditCatalogView).select(),
+      _selectAllRows(_kCommercialAlertsView, orderColumn: 'entity_label'),
+      _selectAllRows(
+        _kCommercialMaterialSnapshotView,
+        orderColumn: 'material_key',
+      ),
+      _selectAllRows(_kCommercialCounterpartyActivityView, orderColumn: 'name'),
+      _selectAllRows(
+        _kCommercialMaterialGeneralSnapshotView,
+        orderColumn: 'general_material_key',
+      ),
+      _selectAllRows(
+        _kCommercialCounterpartyGeneralActivityView,
+        orderColumn: 'name',
+      ),
+      _selectAllRows(_kInventoryGeneralBalanceView, orderColumn: 'code'),
+      _selectAllRows(
+        _kMenEffectivePricesView,
+        orderColumn: 'material_label_snapshot',
+      ),
+      _selectAllRows(_kComprasPriceAuditCatalogView, orderColumn: 'updated_at'),
+      _selectAllRows(_kMayoreoPriceAuditCatalogView, orderColumn: 'updated_at'),
     ]);
 
     final events = _rows(results[0]);
@@ -715,33 +728,34 @@ class CommercialStore {
     bool ascending = false,
     int pageSize = 1000,
   }) async {
-    final rows = <Map<String, dynamic>>[];
-    var from = 0;
-
-    while (true) {
+    return fetchAllSupabaseRows((from, to) {
       dynamic query = _supa.from(tableOrView).select();
       if (orderColumn != null && orderColumn.trim().isNotEmpty) {
         query = query.order(orderColumn, ascending: ascending);
       }
-      final page = _rows(await query.range(from, from + pageSize - 1));
-      rows.addAll(page);
-      if (page.length < pageSize) break;
-      from += pageSize;
-    }
-
-    return rows;
+      return query.range(from, to);
+    }, pageSize: pageSize);
   }
 
   static Future<CommercialDirectoryBundle> loadDirectory() async {
     final results = await Future.wait<dynamic>([
-      _supa.from(_kCommercialUnifiedCounterpartiesView).select(),
-      _supa.from(_kCommercialAccountsTable).select(),
-      _supa.from(_kCommercialContactsTable).select(),
-      _supa
-          .from(_kCommercialFollowUpsTable)
-          .select()
-          .order('interaction_at', ascending: false),
-      _supa.from(_kCommercialAlertsView).select(),
+      _selectAllRows(
+        _kCommercialUnifiedCounterpartiesView,
+        orderColumn: 'name',
+        ascending: true,
+      ),
+      _selectAllRows(
+        _kCommercialAccountsTable,
+        orderColumn: 'display_name',
+        ascending: true,
+      ),
+      _selectAllRows(
+        _kCommercialContactsTable,
+        orderColumn: 'name',
+        ascending: true,
+      ),
+      _selectAllRows(_kCommercialFollowUpsTable, orderColumn: 'interaction_at'),
+      _selectAllRows(_kCommercialAlertsView, orderColumn: 'entity_label'),
     ]);
     final sourceRows = _rows(results[0]);
     final accountRows = _rows(results[1]);

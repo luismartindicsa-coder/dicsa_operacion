@@ -23,6 +23,7 @@ import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/dialogs/contract_menu_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
@@ -166,29 +167,39 @@ class _HumanResourcesPermissionsPageState
     setState(() => _loading = true);
     try {
       final client = Supabase.instance.client;
-      final employeesResult = await client
-          .from(_kHrPermissionProfilesTable)
-          .select(
-            'id,nombre,empresa,horario,dias_labora,labor_schedules,fecha_ingreso,fecha_alta,salario,salario_real_percibido',
-          );
-      final importLotsResult = await client
-          .from(_kHrPermissionImportLotsTable)
-          .select('id,source,file_name,imported_at,period_label')
-          .order('imported_at', ascending: false);
+      final employeesResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrPermissionProfilesTable)
+            .select(
+              'id,nombre,empresa,horario,dias_labora,labor_schedules,fecha_ingreso,fecha_alta,salario,salario_real_percibido',
+            )
+            .order('id')
+            .range(from, to),
+      );
+      final importLotsResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrPermissionImportLotsTable)
+            .select('id,source,file_name,imported_at,period_label')
+            .order('imported_at', ascending: false)
+            .range(from, to),
+      );
       List<dynamic> eventsResult = const <dynamic>[];
       try {
-        eventsResult = await client
-            .from(_kHrPermissionEventsTable)
-            .select()
-            .order('start_date')
-            .order('created_at');
+        eventsResult = await fetchAllSupabaseRows(
+          (from, to) => client
+              .from(_kHrPermissionEventsTable)
+              .select()
+              .order('start_date')
+              .order('created_at')
+              .range(from, to),
+        );
       } catch (_) {
         eventsResult = const <dynamic>[];
       }
 
       final employees =
-          (employeesResult as List)
-              .map((raw) => Map<String, dynamic>.from(raw as Map))
+          employeesResult
+              .map((raw) => Map<String, dynamic>.from(raw))
               .map(_HrPermissionEmployeeMaster.fromRow)
               .where((row) => row.employeeId.trim().isNotEmpty)
               .toList(growable: false)
@@ -199,8 +210,8 @@ class _HumanResourcesPermissionsPageState
               return a.employeeId.compareTo(b.employeeId);
             });
 
-      final importLots = (importLotsResult as List)
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
+      final importLots = importLotsResult
+          .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrPermissionImportLotLite.fromRow)
           .toList(growable: false);
 
@@ -515,10 +526,15 @@ class _HumanResourcesPermissionsPageState
       contpaqLot: contpaqLot,
       activePeriodLabel: activeAttendancePeriodLabel,
     );
-    final rawRows = await client
-        .from(_kHrPermissionAttendanceDailyRecordsTable)
-        .select()
-        .eq('employee_id', row.employeeId);
+    final rawRows = await fetchAllSupabaseRows(
+      (from, to) => client
+          .from(_kHrPermissionAttendanceDailyRecordsTable)
+          .select()
+          .eq('employee_id', row.employeeId)
+          .order('source_date')
+          .order('created_at')
+          .range(from, to),
+    );
     final attendanceRows = ((rawRows as List?) ?? const <dynamic>[])
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList(growable: true);

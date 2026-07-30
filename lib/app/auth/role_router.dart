@@ -8,6 +8,8 @@ import '../dashboard/general_dashboard_page.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
 import '../hr/human_resources_dashboard_page.dart';
+import '../logistica/logistics_control_daily_page.dart';
+import '../logistica/logistics_dashboard_page.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../services/services_page.dart';
@@ -48,6 +50,10 @@ class _RoleRouterState extends State<RoleRouter> {
         return const HumanResourcesDashboardPage();
       case 'commercial_dashboard':
         return const CommercialDashboardPage();
+      case 'logistics_dashboard':
+        return const LogisticsDashboardPage();
+      case 'logistics_control_daily':
+        return const LogisticsControlDailyPage();
       case 'services':
         return const ServicesPage();
       case 'purchase_orders':

@@ -17,6 +17,7 @@ import '../shared/page_routes.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_dashboard_page.dart';
@@ -86,15 +87,19 @@ class _HumanResourcesAttendanceIncidentsPageState
 
   Future<void> _loadSummary() async {
     try {
-      final result = await Supabase.instance.client
-          .from(_kProfilesTable)
-          .select(
-            'id,nombre,empresa,horario,dias_labora,labor_schedules,fecha_ingreso,salario',
-          );
+      final result = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from(_kProfilesTable)
+            .select(
+              'id,nombre,empresa,horario,dias_labora,labor_schedules,fecha_ingreso,salario',
+            )
+            .order('id')
+            .range(from, to),
+      );
       if (!mounted) return;
       final rows =
-          (result as List)
-              .map((raw) => Map<String, dynamic>.from(raw as Map))
+          result
+              .map((raw) => Map<String, dynamic>.from(raw))
               .map(
                 (row) => _HrAttendanceEmployeeMaster(
                   employeeId: (row['id'] ?? '').toString(),
@@ -134,13 +139,16 @@ class _HumanResourcesAttendanceIncidentsPageState
 
   Future<void> _loadSavedImportLots() async {
     try {
-      final result = await Supabase.instance.client
-          .from(_kImportLotsTable)
-          .select()
-          .order('imported_at', ascending: false);
+      final result = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from(_kImportLotsTable)
+            .select()
+            .order('imported_at', ascending: false)
+            .range(from, to),
+      );
       if (!mounted) return;
-      final lots = (result as List)
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
+      final lots = result
+          .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrAttendanceImportLot.fromRow)
           .toList(growable: false);
       setState(() {
@@ -155,14 +163,17 @@ class _HumanResourcesAttendanceIncidentsPageState
 
   Future<void> _loadSavedAdjustments() async {
     try {
-      final result = await Supabase.instance.client
-          .from(_kAdjustmentsTable)
-          .select()
-          .order('source_date')
-          .order('created_at');
+      final result = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from(_kAdjustmentsTable)
+            .select()
+            .order('source_date')
+            .order('created_at')
+            .range(from, to),
+      );
       if (!mounted) return;
-      final rows = (result as List)
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
+      final rows = result
+          .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrAttendanceManualAdjustment.fromRow)
           .toList(growable: false);
       setState(() {

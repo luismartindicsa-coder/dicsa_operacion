@@ -21,6 +21,7 @@ import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/contract_tokens.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/number_formatters.dart';
 import 'menudeo_catalog_page.dart';
 import 'menudeo_dashboard_page.dart';
@@ -181,16 +182,16 @@ class _MenudeoCashCutsPageState extends State<MenudeoCashCutsPage> {
   Future<void> _loadCuts() async {
     setState(() => _loading = true);
     try {
-      final data = await _supa
-          .from('vw_men_cash_cuts_grid')
-          .select('*')
-          .not('closed_at', 'is', null)
-          .order('opened_at', ascending: false);
+      final data = await fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from('vw_men_cash_cuts_grid')
+            .select('*')
+            .not('closed_at', 'is', null)
+            .order('opened_at', ascending: false)
+            .range(from, to),
+      );
       if (!mounted) return;
-      final rows = (data as List)
-          .cast<Map<String, dynamic>>()
-          .map(_CashCutRow.fromMap)
-          .toList(growable: false);
+      final rows = data.map(_CashCutRow.fromMap).toList(growable: false);
       setState(() {
         _rows = rows;
         _loading = false;

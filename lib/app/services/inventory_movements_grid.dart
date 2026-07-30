@@ -14,6 +14,7 @@ import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/date_picker_defaults.dart';
 
 const double _kInvActionsW = 168;
@@ -780,18 +781,23 @@ class _InventoryMovementsGridState extends State<InventoryMovementsGrid>
   }
 
   Future<List<Map<String, dynamic>>> _loadRowsFromV2() async {
-    final data = await supa
-        .from('inventory_movements_v2')
-        .select(
-          '*,general_material:general_material_id(id,code,name),'
-          'commercial_material:commercial_material_id(id,code,name,general_material_id),'
-          'source_commercial:source_commercial_material_id(id,code,name)',
-        )
-        .eq('flow', widget.flow)
-        .eq('inventory_level', _isIn ? 'GENERAL' : 'COMMERCIAL')
-        .order('op_date', ascending: false)
-        .order('created_at', ascending: false);
-    return (data as List).cast<Map<String, dynamic>>().map((row) {
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => supa
+          .from('inventory_movements_v2')
+          .select(
+            '*,general_material:general_material_id(id,code,name),'
+            'commercial_material:commercial_material_id(id,code,name,general_material_id),'
+            'source_commercial:source_commercial_material_id(id,code,name)',
+          )
+          .eq('flow', widget.flow)
+          .eq('inventory_level', _isIn ? 'GENERAL' : 'COMMERCIAL')
+          .order('op_date', ascending: false)
+          .order('created_at', ascending: false)
+          .order('id', ascending: false)
+          .range(from, to),
+    );
+
+    return rows.map((row) {
       final general = (row['general_material'] as Map?)
           ?.cast<String, dynamic>();
       final commercialMaterial = (row['commercial_material'] as Map?)
@@ -7559,12 +7565,14 @@ class _InventoryProductionGridState extends State<InventoryProductionGrid>
   Future<void> _loadRows({bool showLoader = true}) async {
     if (showLoader && mounted) setState(() => _loadingRows = true);
     try {
-      final data = await supa
-          .from('production_runs')
-          .select('*')
-          .order('op_date', ascending: false)
-          .order('created_at', ascending: false);
-      final nextRows = (data as List).cast<Map<String, dynamic>>();
+      final nextRows = await fetchAllSupabaseRows(
+        (from, to) => supa
+            .from('production_runs')
+            .select('*')
+            .order('op_date', ascending: false)
+            .order('created_at', ascending: false)
+            .range(from, to),
+      );
       final ids = nextRows.map((r) => r['id'] as String).toSet();
       final visibleIds = nextRows
           .where((r) => _matchesFilters(r))
@@ -11075,13 +11083,15 @@ class _InventoryMaterialSeparationGridState
   Future<void> _loadRows({bool showLoader = true}) async {
     if (showLoader && mounted) setState(() => _loadingRows = true);
     try {
-      final data = await supa
-          .from('material_separation_runs')
-          .select('*')
-          .eq('source_material', _sourceMaterial)
-          .order('op_date', ascending: false)
-          .order('created_at', ascending: false);
-      final nextRows = (data as List).cast<Map<String, dynamic>>();
+      final nextRows = await fetchAllSupabaseRows(
+        (from, to) => supa
+            .from('material_separation_runs')
+            .select('*')
+            .eq('source_material', _sourceMaterial)
+            .order('op_date', ascending: false)
+            .order('created_at', ascending: false)
+            .range(from, to),
+      );
       final ids = nextRows.map((r) => r['id'] as String).toSet();
       final visibleIds = nextRows
           .where((r) => _matchesFilters(r))

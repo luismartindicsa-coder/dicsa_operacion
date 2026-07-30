@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../mayoreo/mayoreo_sorting.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'compras_data_store.dart';
 
 const String _kComprasProviderDirectoryTable = 'compras_provider_directory';
@@ -182,14 +183,17 @@ class ComprasProviderDirectoryStore {
   static Future<Map<String, ComprasProviderDirectoryRecord>>
   _loadRemoteByProviderId() async {
     try {
-      final rows = await Supabase.instance.client
-          .from(_kComprasProviderDirectoryTable)
-          .select()
-          .order('provider_name');
+      final rows = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from(_kComprasProviderDirectoryTable)
+            .select()
+            .order('provider_name')
+            .range(from, to),
+      );
       final records = <String, ComprasProviderDirectoryRecord>{};
-      for (final raw in rows as List) {
+      for (final raw in rows) {
         final record = ComprasProviderDirectoryRecord.fromRemoteRow(
-          Map<String, dynamic>.from(raw as Map),
+          Map<String, dynamic>.from(raw),
         );
         records[record.providerId] = record;
       }

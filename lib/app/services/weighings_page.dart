@@ -19,6 +19,7 @@ import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/date_picker_defaults.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/number_formatters.dart';
 import 'inventory_page.dart';
 import 'operation_directory_page.dart';
@@ -261,13 +262,14 @@ class _WeighingsPageState extends State<WeighingsPage>
   }) async {
     if (showLoader && mounted) setState(() => _loading = true);
     try {
-      final result = await _supa
-          .from('pesadas')
-          .select('id, fecha, ticket, proveedor, precio, created_at')
-          .order('fecha', ascending: false)
-          .order('created_at', ascending: false);
-
-      final nextRows = (result as List).cast<Map<String, dynamic>>();
+      final nextRows = await fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from('pesadas')
+            .select('id, fecha, ticket, proveedor, precio, created_at')
+            .order('fecha', ascending: false)
+            .order('created_at', ascending: false)
+            .range(from, to),
+      );
       final nextSig = _rowsSignatureOf(nextRows);
       if (onlyApplyIfChanged && nextSig == _rowsSignature) return;
 

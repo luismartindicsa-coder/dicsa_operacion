@@ -429,6 +429,10 @@ class _FinanzasProviderAccountsPageState
                     ),
                   )
                   .toList(growable: false);
+              final payableSummary = _computeProviderPayableSummary(
+                invoices: providerInvoices,
+                movements: providerMovements,
+              );
               final reconciledTicketStatuses = _buildReconciledTicketStatuses(
                 tickets: rows,
                 invoices: providerInvoiceViews,
@@ -544,6 +548,9 @@ class _FinanzasProviderAccountsPageState
                 overdueAmount: vencido,
                 openTicketsCount: abiertos,
                 nextCommitmentDate: nextCommitment,
+                payableAmount: payableSummary.amount,
+                openInvoicesCount: payableSummary.openInvoicesCount,
+                nextPayableDate: payableSummary.nextDueDate,
                 urgencyLabel: urgency.$1,
                 urgencyTone: urgency.$2,
                 recommendation: recommendation,
@@ -551,7 +558,7 @@ class _FinanzasProviderAccountsPageState
             })
             .toList(growable: false)
           ..sort((a, b) {
-            final diff = b.openAmount.compareTo(a.openAmount);
+            final diff = b.payableAmount.compareTo(a.payableAmount);
             if (diff != 0) return diff;
             return a.company.companyName.compareTo(b.company.companyName);
           });
@@ -3426,10 +3433,14 @@ class _FinanzasProviderAccountsPageState
   List<_GlobalPendingInvoiceReportRow> _buildGlobalPendingInvoiceReportRows() {
     final byInvoiceId = <String, _GlobalPendingInvoiceReportRow>{};
     for (final account in _accounts) {
+      final appliedByInvoiceId = _buildAppliedSupplierAmountByInvoiceId(
+        account.movements,
+      );
       for (final row in account.invoices) {
-        final pendingAmount = row.invoice.balanceAmount
-            .clamp(0, double.infinity)
-            .toDouble();
+        final pendingAmount = _effectiveSupplierInvoiceBalance(
+          row.invoice,
+          appliedByInvoiceId,
+        );
         if (pendingAmount <= 0.009) continue;
         byInvoiceId[row.invoice.id] = _GlobalPendingInvoiceReportRow(
           invoiceId: row.invoice.id,
@@ -3452,6 +3463,107 @@ class _FinanzasProviderAccountsPageState
         return a.folio.compareTo(b.folio);
       });
     return rows;
+  }
+
+  _GlobalPendingBreakdownSummary _buildGlobalPendingBreakdownSummary() {
+    final buckets = <String, _MutableGlobalPendingBreakdownBucket>{
+      'facturado': _MutableGlobalPendingBreakdownBucket(),
+      'sin_factura': _MutableGlobalPendingBreakdownBucket(),
+      'pendiente_facturar': _MutableGlobalPendingBreakdownBucket(),
+    };
+
+    for (final account in _accounts) {
+      for (final ticket in account.tickets) {
+        final ticketAmount = ticket.amount.clamp(0.0, double.infinity);
+        if (ticketAmount <= 0.009) continue;
+        final resolved = _resolveProviderTicketStatus(account, ticket);
+        final paidAmount = resolved.appliedAmount
+            .clamp(0.0, ticketAmount)
+            .toDouble();
+        final dueAmount = (ticketAmount - paidAmount)
+            .clamp(0.0, ticketAmount)
+            .toDouble();
+        final bucket = switch (ticket.facturaStatus) {
+          'FACTURADO' => buckets['facturado']!,
+          'SIN_FACTURA' => buckets['sin_factura']!,
+          _ => buckets['pendiente_facturar']!,
+        };
+        bucket.dueAmount += dueAmount;
+        bucket.paidAmount += paidAmount;
+      }
+
+      final appliedByInvoiceId = _buildAppliedSupplierAmountByInvoiceId(
+        account.movements,
+      );
+      for (final invoiceRow in account.invoices) {
+        if (!_isManualSupplierInvoice(invoiceRow) &&
+            !_isOrphanTicketSupplierInvoice(invoiceRow)) {
+          continue;
+        }
+        final totalAmount = invoiceRow.invoice.totalAmount.clamp(
+          0.0,
+          double.infinity,
+        );
+        if (totalAmount <= 0.009) continue;
+        final dueAmount = _effectiveSupplierInvoiceBalance(
+          invoiceRow.invoice,
+          appliedByInvoiceId,
+        );
+        final paidAmount = (totalAmount - dueAmount)
+            .clamp(0.0, totalAmount)
+            .toDouble();
+        final bucket = buckets['facturado']!;
+        bucket.dueAmount += dueAmount;
+        bucket.paidAmount += paidAmount;
+      }
+    }
+
+    return _GlobalPendingBreakdownSummary(
+      rows: <_GlobalPendingBreakdownRow>[
+        _GlobalPendingBreakdownRow(
+          label: 'Facturado',
+          dueAmount: buckets['facturado']!.dueAmount,
+          paidAmount: buckets['facturado']!.paidAmount,
+        ),
+        _GlobalPendingBreakdownRow(
+          label: 'Sin factura',
+          dueAmount: buckets['sin_factura']!.dueAmount,
+          paidAmount: buckets['sin_factura']!.paidAmount,
+        ),
+        _GlobalPendingBreakdownRow(
+          label: 'Pendiente por facturar',
+          dueAmount: buckets['pendiente_facturar']!.dueAmount,
+          paidAmount: buckets['pendiente_facturar']!.paidAmount,
+        ),
+      ],
+    );
+  }
+
+  List<_GlobalPendingDetailRow> _buildGlobalPendingDetailRows(
+    _GlobalPendingBreakdownSummary breakdown,
+  ) {
+    final detailRows = <_GlobalPendingDetailRow>[];
+    for (final row in breakdown.rows) {
+      if (row.dueAmount > 0.009) {
+        detailRows.add(
+          _GlobalPendingDetailRow(
+            concept: row.label,
+            status: 'Pendiente',
+            amount: row.dueAmount,
+          ),
+        );
+      }
+      if (row.paidAmount > 0.009) {
+        detailRows.add(
+          _GlobalPendingDetailRow(
+            concept: row.label,
+            status: 'Pagado',
+            amount: row.paidAmount,
+          ),
+        );
+      }
+    }
+    return detailRows;
   }
 
   String _csvCell(String value) =>
@@ -3496,6 +3608,7 @@ class _FinanzasProviderAccountsPageState
 
   Future<Uint8List> _buildGlobalPendingInvoicesPdfBytes(
     List<_GlobalPendingInvoiceReportRow> rows,
+    _GlobalPendingBreakdownSummary breakdown,
   ) async {
     final doc = pw.Document();
     final dicsaBlueSoft = PdfColor.fromHex('#E9F0FF');
@@ -3514,49 +3627,11 @@ class _FinanzasProviderAccountsPageState
     final printedAt =
         '${now.day.toString().padLeft(2, '0')}/${now.month.toString().padLeft(2, '0')}/${now.year} '
         '${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
-    final totalAmount = rows.fold<double>(
-      0,
-      (sum, row) => sum + row.totalAmount,
-    );
     final pendingAmount = rows.fold<double>(
       0,
       (sum, row) => sum + row.pendingAmount,
     );
-
-    pw.Widget summaryCard(String label, String value) {
-      return pw.Expanded(
-        child: pw.Container(
-          padding: const pw.EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: pw.BoxDecoration(
-            color: dicsaBlueSoft,
-            borderRadius: pw.BorderRadius.circular(14),
-            border: pw.Border.all(color: dicsaBorder),
-          ),
-          child: pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Text(
-                label,
-                style: pw.TextStyle(
-                  fontSize: 9.2,
-                  fontWeight: pw.FontWeight.bold,
-                  color: dicsaBlueDeep,
-                ),
-              ),
-              pw.SizedBox(height: 6),
-              pw.Text(
-                value,
-                style: pw.TextStyle(
-                  fontSize: 15.5,
-                  fontWeight: pw.FontWeight.bold,
-                  color: dicsaInk,
-                ),
-              ),
-            ],
-          ),
-        ),
-      );
-    }
+    final detailRows = _buildGlobalPendingDetailRows(breakdown);
 
     doc.addPage(
       pw.MultiPage(
@@ -3595,7 +3670,7 @@ class _FinanzasProviderAccountsPageState
                     ),
                     pw.SizedBox(height: 2),
                     pw.Text(
-                      '${rows.length} factura(s) pendiente(s) en todas las empresas',
+                      '${rows.length} factura(s) pendiente(s) en todas las empresas · Importe pendiente ${_money(pendingAmount)}',
                       style: pw.TextStyle(fontSize: 9.4, color: dicsaBlueDeep),
                     ),
                   ],
@@ -3605,18 +3680,8 @@ class _FinanzasProviderAccountsPageState
             ],
           ),
           pw.SizedBox(height: 18),
-          pw.Row(
-            children: [
-              summaryCard('FACTURAS', '${rows.length}'),
-              pw.SizedBox(width: 10),
-              summaryCard('MONTO', _money(totalAmount)),
-              pw.SizedBox(width: 10),
-              summaryCard('IMPORTE PENDIENTE', _money(pendingAmount)),
-            ],
-          ),
-          pw.SizedBox(height: 18),
           pw.Text(
-            'DETALLE GLOBAL',
+            'DESGLOSE OPERATIVO',
             style: pw.TextStyle(
               fontSize: 12.5,
               fontWeight: pw.FontWeight.bold,
@@ -3627,16 +3692,15 @@ class _FinanzasProviderAccountsPageState
           pw.Table(
             border: pw.TableBorder.all(color: dicsaBorder),
             columnWidths: {
-              0: const pw.FlexColumnWidth(0.9),
-              1: const pw.FlexColumnWidth(1.9),
-              2: const pw.FlexColumnWidth(1.1),
-              3: const pw.FlexColumnWidth(1.0),
-              4: const pw.FlexColumnWidth(1.15),
+              0: const pw.FlexColumnWidth(2.0),
+              1: const pw.FlexColumnWidth(1.15),
+              2: const pw.FlexColumnWidth(1.15),
+              3: const pw.FlexColumnWidth(1.15),
             },
             children: [
               pw.TableRow(
-                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
-                children: ['FECHA', 'EMPRESA', 'FACTURA', 'MONTO', 'IMPORTE']
+                decoration: pw.BoxDecoration(color: dicsaBlueSoft),
+                children: ['CONCEPTO', 'SE DEBE', 'PAGADO', 'DEBE + PAGADO']
                     .map(
                       (label) => pw.Padding(
                         padding: const pw.EdgeInsets.all(7),
@@ -3652,15 +3716,38 @@ class _FinanzasProviderAccountsPageState
                     )
                     .toList(growable: false),
               ),
-              for (final row in rows)
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
+                children:
+                    <String>[
+                          'TOTAL OPERATIVO',
+                          _money(breakdown.totalDueAmount),
+                          _money(breakdown.totalPaidAmount),
+                          _money(breakdown.totalAmount),
+                        ]
+                        .map(
+                          (value) => pw.Padding(
+                            padding: const pw.EdgeInsets.all(7),
+                            child: pw.Text(
+                              value,
+                              style: pw.TextStyle(
+                                fontSize: 9.3,
+                                fontWeight: pw.FontWeight.bold,
+                                color: dicsaInk,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+              ),
+              for (final row in breakdown.rows)
                 pw.TableRow(
                   children:
                       <String>[
-                            _dateLabel(row.date),
-                            row.companyName,
-                            row.folio,
+                            row.label,
+                            _money(row.dueAmount),
+                            _money(row.paidAmount),
                             _money(row.totalAmount),
-                            _money(row.pendingAmount),
                           ]
                           .map(
                             (value) => pw.Padding(
@@ -3675,6 +3762,137 @@ class _FinanzasProviderAccountsPageState
                 ),
             ],
           ),
+          pw.SizedBox(height: 6),
+          pw.Text(
+            'Facturado incluye tickets con factura y facturas manuales u huerfanas sin ticket ligado.',
+            style: pw.TextStyle(fontSize: 8.6, color: dicsaMuted),
+          ),
+          pw.SizedBox(height: 18),
+          pw.Text(
+            'DETALLE GLOBAL AGRUPADO',
+            style: pw.TextStyle(
+              fontSize: 12.5,
+              fontWeight: pw.FontWeight.bold,
+              color: dicsaBlueDeep,
+            ),
+          ),
+          pw.SizedBox(height: 8),
+          pw.Table(
+            border: pw.TableBorder.all(color: dicsaBorder),
+            columnWidths: {
+              0: const pw.FlexColumnWidth(1.7),
+              1: const pw.FlexColumnWidth(1.1),
+              2: const pw.FlexColumnWidth(1.2),
+            },
+            children: [
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
+                children: ['CONCEPTO', 'ESTADO', 'IMPORTE']
+                    .map(
+                      (label) => pw.Padding(
+                        padding: const pw.EdgeInsets.all(7),
+                        child: pw.Text(
+                          label,
+                          style: pw.TextStyle(
+                            fontSize: 9.4,
+                            fontWeight: pw.FontWeight.bold,
+                            color: dicsaBlueDeep,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(growable: false),
+              ),
+              if (detailRows.isEmpty)
+                pw.TableRow(
+                  children: [
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.all(7),
+                      child: pw.Text(
+                        'Sin movimientos para agrupar',
+                        style: const pw.TextStyle(fontSize: 9.2),
+                      ),
+                    ),
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.all(7),
+                      child: pw.Text(
+                        '',
+                        style: const pw.TextStyle(fontSize: 9.2),
+                      ),
+                    ),
+                    pw.Padding(
+                      padding: const pw.EdgeInsets.all(7),
+                      child: pw.Text(
+                        _money(0),
+                        style: const pw.TextStyle(fontSize: 9.2),
+                      ),
+                    ),
+                  ],
+                )
+              else
+                for (final row in detailRows)
+                  pw.TableRow(
+                    children:
+                        <String>[row.concept, row.status, _money(row.amount)]
+                            .map(
+                              (value) => pw.Padding(
+                                padding: const pw.EdgeInsets.all(7),
+                                child: pw.Text(
+                                  value,
+                                  style: const pw.TextStyle(fontSize: 9.2),
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                  ),
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: dicsaBlueSoft),
+                children:
+                    <String>[
+                          'TOTAL PENDIENTE',
+                          'Pendiente',
+                          _money(breakdown.totalDueAmount),
+                        ]
+                        .map(
+                          (value) => pw.Padding(
+                            padding: const pw.EdgeInsets.all(7),
+                            child: pw.Text(
+                              value,
+                              style: pw.TextStyle(
+                                fontSize: 9.3,
+                                fontWeight: pw.FontWeight.bold,
+                                color: dicsaInk,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+              ),
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: dicsaBlueSoft),
+                children:
+                    <String>[
+                          'TOTAL PAGADO',
+                          'Pagado',
+                          _money(breakdown.totalPaidAmount),
+                        ]
+                        .map(
+                          (value) => pw.Padding(
+                            padding: const pw.EdgeInsets.all(7),
+                            child: pw.Text(
+                              value,
+                              style: pw.TextStyle(
+                                fontSize: 9.3,
+                                fontWeight: pw.FontWeight.bold,
+                                color: dicsaInk,
+                              ),
+                            ),
+                          ),
+                        )
+                        .toList(growable: false),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -3683,12 +3901,13 @@ class _FinanzasProviderAccountsPageState
 
   Future<void> _exportGlobalPendingInvoicesPdf() async {
     final rows = _buildGlobalPendingInvoiceReportRows();
-    if (rows.isEmpty) {
+    final breakdown = _buildGlobalPendingBreakdownSummary();
+    if (rows.isEmpty && breakdown.totalAmount <= 0.009) {
       _toast('No hay facturas pendientes para exportar.');
       return;
     }
     try {
-      final bytes = await _buildGlobalPendingInvoicesPdfBytes(rows);
+      final bytes = await _buildGlobalPendingInvoicesPdfBytes(rows, breakdown);
       final stamp = DateTime.now().millisecondsSinceEpoch;
       final path = await saveBytesAs(
         bytes: bytes,
@@ -3919,16 +4138,19 @@ class _FinanzasProviderAccountsPageState
                 label: 'PDF pendientes',
                 icon: Icons.picture_as_pdf_rounded,
                 onTap: _exportGlobalPendingInvoicesPdf,
+                iconOnly: true,
               ),
               _FinHeaderButton(
                 label: 'CSV pendientes',
                 icon: Icons.table_chart_rounded,
                 onTap: _exportGlobalPendingInvoicesCsv,
+                iconOnly: true,
               ),
               _FinHeaderButton(
                 label: 'Cerrar sesión',
                 icon: Icons.logout_rounded,
                 onTap: _logout,
+                iconOnly: true,
               ),
             ],
           ),
@@ -4075,6 +4297,82 @@ String _providerMovementSourceLabelShared(String source) {
   }
 }
 
+class _ProviderPayableSummary {
+  final double amount;
+  final int openInvoicesCount;
+  final DateTime? nextDueDate;
+
+  const _ProviderPayableSummary({
+    required this.amount,
+    required this.openInvoicesCount,
+    required this.nextDueDate,
+  });
+}
+
+_ProviderPayableSummary _computeProviderPayableSummary({
+  required List<FinanzasSupplierInvoiceRecord> invoices,
+  required List<FinanzasBankMovementRecord> movements,
+}) {
+  final appliedByInvoiceId = _buildAppliedSupplierAmountByInvoiceId(movements);
+
+  double payableAmount = 0;
+  var openInvoicesCount = 0;
+  DateTime? nextDueDate;
+  for (final invoice in invoices) {
+    final effectiveBalance = _effectiveSupplierInvoiceBalance(
+      invoice,
+      appliedByInvoiceId,
+    );
+    if (effectiveBalance <= 0.009) continue;
+    payableAmount += effectiveBalance;
+    openInvoicesCount += 1;
+    final dueDate = invoice.dueDate;
+    if (dueDate == null) continue;
+    if (nextDueDate == null || dueDate.isBefore(nextDueDate)) {
+      nextDueDate = dueDate;
+    }
+  }
+
+  return _ProviderPayableSummary(
+    amount: payableAmount,
+    openInvoicesCount: openInvoicesCount,
+    nextDueDate: nextDueDate,
+  );
+}
+
+Map<String, double> _buildAppliedSupplierAmountByInvoiceId(
+  Iterable<FinanzasBankMovementRecord> movements,
+) {
+  final appliedByInvoiceId = <String, double>{};
+  for (final movement in movements) {
+    final invoiceId = movement.linkedSupplierInvoiceId;
+    if (invoiceId == null || invoiceId.isEmpty) continue;
+    final applied = movement.effectiveSupplierAppliedAmount.clamp(
+      0.0,
+      double.infinity,
+    );
+    if (applied <= 0.009) continue;
+    appliedByInvoiceId.update(
+      invoiceId,
+      (sum) => sum + applied,
+      ifAbsent: () => applied,
+    );
+  }
+  return appliedByInvoiceId;
+}
+
+double _effectiveSupplierInvoiceBalance(
+  FinanzasSupplierInvoiceRecord invoice,
+  Map<String, double> appliedByInvoiceId,
+) {
+  final linkedPaid = appliedByInvoiceId[invoice.id];
+  return linkedPaid == null
+      ? invoice.balanceAmount.clamp(0.0, invoice.totalAmount).toDouble()
+      : (invoice.totalAmount - linkedPaid)
+            .clamp(0.0, invoice.totalAmount)
+            .toDouble();
+}
+
 class _ProviderAccountView {
   final FinanzasCompanyDirectoryRecord company;
   final List<ComprasTicketRecord> tickets;
@@ -4094,6 +4392,9 @@ class _ProviderAccountView {
   final double overdueAmount;
   final int openTicketsCount;
   final DateTime? nextCommitmentDate;
+  final double payableAmount;
+  final int openInvoicesCount;
+  final DateTime? nextPayableDate;
   final String urgencyLabel;
   final Color urgencyTone;
   final String recommendation;
@@ -4116,6 +4417,9 @@ class _ProviderAccountView {
     required this.overdueAmount,
     required this.openTicketsCount,
     required this.nextCommitmentDate,
+    required this.payableAmount,
+    required this.openInvoicesCount,
+    required this.nextPayableDate,
     required this.urgencyLabel,
     required this.urgencyTone,
     required this.recommendation,
@@ -4152,6 +4456,51 @@ class _GlobalPendingInvoiceReportRow {
     required this.totalAmount,
     required this.pendingAmount,
   });
+}
+
+class _GlobalPendingBreakdownRow {
+  final String label;
+  final double dueAmount;
+  final double paidAmount;
+
+  const _GlobalPendingBreakdownRow({
+    required this.label,
+    required this.dueAmount,
+    required this.paidAmount,
+  });
+
+  double get totalAmount => dueAmount + paidAmount;
+}
+
+class _GlobalPendingBreakdownSummary {
+  final List<_GlobalPendingBreakdownRow> rows;
+
+  const _GlobalPendingBreakdownSummary({required this.rows});
+
+  double get totalDueAmount =>
+      rows.fold<double>(0, (sum, row) => sum + row.dueAmount);
+
+  double get totalPaidAmount =>
+      rows.fold<double>(0, (sum, row) => sum + row.paidAmount);
+
+  double get totalAmount => totalDueAmount + totalPaidAmount;
+}
+
+class _GlobalPendingDetailRow {
+  final String concept;
+  final String status;
+  final double amount;
+
+  const _GlobalPendingDetailRow({
+    required this.concept,
+    required this.status,
+    required this.amount,
+  });
+}
+
+class _MutableGlobalPendingBreakdownBucket {
+  double dueAmount = 0;
+  double paidAmount = 0;
 }
 
 bool _isManualSupplierInvoice(_ProviderInvoiceView row) {
@@ -6416,7 +6765,9 @@ class _ProviderAccountListCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final metrics = _computeProviderAccountMetrics(row);
+    final supportingLabel = row.openInvoicesCount <= 0
+        ? 'Sin facturas abiertas'
+        : 'Facturas ${row.openInvoicesCount} · Próximo ${dateFormatter(row.nextPayableDate)}';
     return FinanzasGlassPanel(
       borderRadius: BorderRadius.circular(20),
       padding: EdgeInsets.zero,
@@ -6471,7 +6822,7 @@ class _ProviderAccountListCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 Text(
-                  'Saldo abierto',
+                  'Por pagar',
                   style: TextStyle(
                     fontSize: 12.5,
                     fontWeight: FontWeight.w800,
@@ -6480,7 +6831,7 @@ class _ProviderAccountListCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  moneyFormatter(metrics.openAmount),
+                  moneyFormatter(row.payableAmount),
                   style: const TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.w900,
@@ -6489,7 +6840,7 @@ class _ProviderAccountListCard extends StatelessWidget {
                 ),
                 const SizedBox(height: 10),
                 Text(
-                  'Abiertos ${metrics.openTicketsCount} · Próximo ${dateFormatter(metrics.nextCommitmentDate)}',
+                  supportingLabel,
                   style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -12622,12 +12973,14 @@ class _FinHeaderButton extends StatefulWidget {
   final IconData icon;
   final Future<void> Function()? onTap;
   final VoidCallback? onTapSync;
+  final bool iconOnly;
 
   const _FinHeaderButton({
     required this.label,
     required this.icon,
     this.onTap,
     this.onTapSync,
+    this.iconOnly = false,
   });
 
   @override
@@ -12642,6 +12995,7 @@ class _FinHeaderButtonState extends State<_FinHeaderButton> {
       icon: widget.icon,
       onTap: widget.onTap,
       onTapSync: widget.onTapSync,
+      iconOnly: widget.iconOnly,
     );
   }
 }

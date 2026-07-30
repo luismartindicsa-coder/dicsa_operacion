@@ -14,6 +14,7 @@ import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/ui_contract_core/theme/editable_hover_capsule.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/date_picker_defaults.dart';
 import 'inventory_movements_grid.dart';
 
@@ -1039,18 +1040,21 @@ class _InventoryTransformationGridState
 
   Future<void> _loadRows() async {
     if (_generalMaterialId == null) return;
-    final data = await supa
-        .from('material_transformation_runs_v2')
-        .select(
-          'id,op_date,shift,source_mode,input_weight_kg,site,notes,created_at,'
-          'outputs:material_transformation_run_outputs_v2(id,commercial_material_id,output_weight_kg,output_unit_count,notes)',
-        )
-        .eq('source_general_material_id', _generalMaterialId!)
-        .order('op_date', ascending: false)
-        .order('created_at', ascending: false);
+    final data = await fetchAllSupabaseRows(
+      (from, to) => supa
+          .from('material_transformation_runs_v2')
+          .select(
+            'id,op_date,shift,source_mode,input_weight_kg,site,notes,created_at,'
+            'outputs:material_transformation_run_outputs_v2(id,commercial_material_id,output_weight_kg,output_unit_count,notes)',
+          )
+          .eq('source_general_material_id', _generalMaterialId!)
+          .order('op_date', ascending: false)
+          .order('created_at', ascending: false)
+          .range(from, to),
+    );
 
     final rows = <_TransformationRowVm>[];
-    for (final raw in (data as List).cast<Map<String, dynamic>>()) {
+    for (final raw in data) {
       final outputs = (raw['outputs'] as List? ?? const <dynamic>[])
           .cast<Map<String, dynamic>>();
       if (outputs.isEmpty) {

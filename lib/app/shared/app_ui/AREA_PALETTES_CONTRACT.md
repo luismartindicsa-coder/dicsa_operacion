@@ -19,6 +19,7 @@ Solo cambia la gama cromatica mediante tokens semanticos.
 - `Operaciones`
 - `Direccion`
 - `Recursos Humanos`
+- `Logistica`
 - `Menudeo`
 - `Mayoreo`
 - `Gerencia`
@@ -243,6 +244,56 @@ Estas areas ya quedan oficiales con paleta congelada y no deben reinterpretarse 
   - badges
   - llamadas de atencion
   - hover y foco
+
+### Logistica
+
+- estado: `congelada`
+- caracter: operativa, sobria, optimizacion diaria, control de ruta
+- familia oficial: plateado operativo / grafito / hielo
+- objetivo de diferenciacion:
+  - no confundirse con `Operaciones`
+  - no reciclar verde menta ni teal heredado de `Servicios`
+  - no verse como interfaz blanca o neutra sin jerarquia
+- anclas oficiales:
+  - `#B9C4D3`
+  - `#F2F6FB`
+  - `#D8E0EA`
+  - `#93A1B4`
+  - `#445160`
+  - `#27303A`
+  - `#141A23`
+  - `#1B232D`
+  - `#C0CBD9`
+
+#### Logistica: contrato visual congelado
+
+- `Logistica` arranca en modo `dark glass`.
+- La lectura dominante debe ser:
+  - fondo grafito profundo
+  - superficies acero oscuro
+  - acentos plateados limpios
+- El plateado no debe sentirse clinico ni administrativo.
+- Debe comunicar control de flotilla, planeacion y optimizacion, no lujo ni neutralidad vacia.
+
+#### Logistica: distribucion cromatica obligatoria
+
+- objetivo de masa visual:
+  - `72%` grafito profundo
+  - `18%` acero medio
+  - `10%` plateado claro
+- El plateado claro se reserva para:
+  - botones primarios
+  - foco
+  - seleccion
+  - iconos
+  - badges
+  - estados navegables
+
+#### Logistica: superficies auxiliares obligatorias
+
+- calendarios y date pickers deben heredar la paleta plateada del area
+- filtros popup, menús contextuales, dropdowns, tabs y modales deben abrir con la misma familia grafito / plateado
+- ningun componente auxiliar de `Logistica` puede caer al azul base del sistema ni al verde heredado de `Servicios`
 
 ### Menudeo
 

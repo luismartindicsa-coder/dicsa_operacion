@@ -1,9 +1,12 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher_string.dart';
 import '../auth/auth_access.dart';
+import '../logistica/logistics_theme.dart';
+import 'services_visual_mode.dart';
 
 enum ServicesOverlayNavModule {
   entradasSalidas,
@@ -20,7 +23,13 @@ enum ServicesOverlayNavModule {
 class ServicesShell extends StatefulWidget {
   final Widget child;
   final String? headerTitle;
+  final String? servicesNavLabel;
+  final Widget Function(BuildContext context, VoidCallback closeMenu)?
+  customSideMenuBuilder;
+  final double sideMenuWidth;
   final Widget? topContent;
+  final bool scrollTopContentWhenNeeded;
+  final double minMainContentHeight;
   final ServicesOverlayNavModule? activeOverlayModule;
   final Future<void> Function()? onLogout;
   final Future<void> Function()? onGoToGeneralDashboard;
@@ -42,7 +51,12 @@ class ServicesShell extends StatefulWidget {
     super.key,
     required this.child,
     this.headerTitle,
+    this.servicesNavLabel,
+    this.customSideMenuBuilder,
+    this.sideMenuWidth = 300,
     this.topContent,
+    this.scrollTopContentWhenNeeded = false,
+    this.minMainContentHeight = 0,
     this.activeOverlayModule,
     this.onLogout,
     this.onGoToGeneralDashboard,
@@ -111,7 +125,7 @@ class _ServicesShellState extends State<ServicesShell>
   @override
   Widget build(BuildContext context) {
     final resolvedTitle = widget.headerTitle ?? 'Viajes y Servicios';
-    const overlayWidth = 300.0;
+    final overlayWidth = widget.sideMenuWidth;
 
     return Scaffold(
       backgroundColor: Colors.transparent,
@@ -152,147 +166,198 @@ class _ServicesShellState extends State<ServicesShell>
             SafeArea(
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(18, 14, 18, 18),
-                child: Column(
-                  children: [
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        final navigationButton = AnimatedBuilder(
-                          animation: _content,
-                          builder: (context, child) => Opacity(
-                            opacity: _content.value,
-                            child: _HeaderActionButton(
-                              label: _menuOverlayOpen
-                                  ? 'Cerrar navegación'
-                                  : 'Navegación',
-                              icon: _menuOverlayOpen
-                                  ? Icons.close_rounded
-                                  : Icons.menu_rounded,
-                              onTap: () async {
-                                if (!mounted) return;
-                                setState(
-                                  () => _menuOverlayOpen = !_menuOverlayOpen,
-                                );
-                              },
-                            ),
-                          ),
-                        );
-                        final helpButton = AnimatedBuilder(
-                          animation: _content,
-                          builder: (context, child) => Opacity(
-                            opacity: _content.value,
-                            child: _HeaderHelpButton(
-                              onTap: () => _showUsageHelp(resolvedTitle),
-                            ),
-                          ),
-                        );
-                        final guideButton = widget.onHeaderGuide == null
-                            ? null
-                            : AnimatedBuilder(
-                                animation: _content,
-                                builder: (context, child) => Opacity(
-                                  opacity: _content.value,
-                                  child: _HeaderActionButton(
-                                    label: widget.headerGuideLabel ?? 'Flujo',
-                                    icon: Icons.account_tree_rounded,
-                                    onTap: () async => widget.onHeaderGuide!(),
-                                  ),
-                                ),
-                              );
-                        final logoutButton = AnimatedBuilder(
-                          animation: _content,
-                          builder: (context, child) => Opacity(
-                            opacity: _content.value,
-                            child: _HeaderActionButton(
-                              label: 'Cerrar sesión',
-                              icon: Icons.logout_rounded,
-                              onTap: widget.onLogout == null
-                                  ? null
-                                  : () async => widget.onLogout!(),
-                            ),
-                          ),
-                        );
-                        final mailButton = AnimatedBuilder(
-                          animation: _content,
-                          builder: (context, child) => Opacity(
-                            opacity: _content.value,
-                            child: _HeaderActionButton(
-                              label: 'Correo',
-                              icon: Icons.mail_outline_rounded,
-                              onTap: _openMailHostinger,
-                              compact: true,
-                            ),
-                          ),
-                        );
-                        final moveLogoutBelow = constraints.maxWidth < 980;
-                        final topActionButtons = Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          alignment: WrapAlignment.end,
-                          crossAxisAlignment: WrapCrossAlignment.center,
-                          children: [
-                            helpButton,
-                            if (guideButton != null) ...[guideButton],
-                            mailButton,
-                            if (!moveLogoutBelow) logoutButton,
-                          ],
-                        );
+                child: LayoutBuilder(
+                  builder: (context, viewportConstraints) {
+                    final moveLogoutBelow = viewportConstraints.maxWidth < 980;
+                    final headerHeight = moveLogoutBelow ? 104.0 : 56.0;
+                    final topContentAvailableHeight = math.max(
+                      0.0,
+                      viewportConstraints.maxHeight -
+                          headerHeight -
+                          12 -
+                          10 -
+                          widget.minMainContentHeight,
+                    );
 
-                        return SizedBox(
-                          height: moveLogoutBelow ? 104 : 56,
-                          child: Stack(
-                            children: [
-                              Align(
-                                alignment: Alignment.topLeft,
-                                child: navigationButton,
-                              ),
-                              Align(
-                                alignment: Alignment.topCenter,
-                                child: _HeaderBrand(
-                                  contentAnim: _content,
-                                  title: resolvedTitle,
+                    Widget? topContentSection;
+                    if (widget.topContent != null) {
+                      final topContentBody = Align(
+                        alignment: Alignment.topLeft,
+                        child: widget.topContent!,
+                      );
+
+                      if (widget.scrollTopContentWhenNeeded) {
+                        final maxHeight = topContentAvailableHeight <= 0
+                            ? 0.0
+                            : topContentAvailableHeight;
+                        topContentSection = Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: ClipRect(
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(maxHeight: maxHeight),
+                              child: ScrollConfiguration(
+                                behavior: const MaterialScrollBehavior()
+                                    .copyWith(scrollbars: false),
+                                child: SingleChildScrollView(
+                                  primary: false,
+                                  physics: const ClampingScrollPhysics(),
+                                  child: topContentBody,
                                 ),
                               ),
-                              Align(
-                                alignment: Alignment.topRight,
-                                child: Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    topActionButtons,
-                                    if (moveLogoutBelow) ...[
-                                      const SizedBox(height: 8),
-                                      logoutButton,
-                                    ],
-                                  ],
-                                ),
-                              ),
-                            ],
+                            ),
                           ),
                         );
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    if (widget.topContent != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Align(
-                          alignment: Alignment.topLeft,
-                          child: widget.topContent!,
+                      } else {
+                        topContentSection = Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: topContentBody,
+                        );
+                      }
+                    }
+
+                    final topContentChildren = topContentSection == null
+                        ? const <Widget>[]
+                        : <Widget>[topContentSection];
+
+                    return Column(
+                      children: [
+                        LayoutBuilder(
+                          builder: (context, constraints) {
+                            final navigationButton = AnimatedBuilder(
+                              animation: _content,
+                              builder: (context, child) => Opacity(
+                                opacity: _content.value,
+                                child: _HeaderActionButton(
+                                  label: _menuOverlayOpen
+                                      ? 'Cerrar navegación'
+                                      : 'Navegación',
+                                  icon: _menuOverlayOpen
+                                      ? Icons.close_rounded
+                                      : Icons.menu_rounded,
+                                  onTap: () async {
+                                    if (!mounted) return;
+                                    setState(
+                                      () =>
+                                          _menuOverlayOpen = !_menuOverlayOpen,
+                                    );
+                                  },
+                                ),
+                              ),
+                            );
+                            final helpButton = AnimatedBuilder(
+                              animation: _content,
+                              builder: (context, child) => Opacity(
+                                opacity: _content.value,
+                                child: _HeaderHelpButton(
+                                  onTap: () => _showUsageHelp(resolvedTitle),
+                                ),
+                              ),
+                            );
+                            final guideButton = widget.onHeaderGuide == null
+                                ? null
+                                : AnimatedBuilder(
+                                    animation: _content,
+                                    builder: (context, child) => Opacity(
+                                      opacity: _content.value,
+                                      child: _HeaderActionButton(
+                                        label:
+                                            widget.headerGuideLabel ?? 'Flujo',
+                                        icon: Icons.account_tree_rounded,
+                                        onTap: () async =>
+                                            widget.onHeaderGuide!(),
+                                      ),
+                                    ),
+                                  );
+                            final logoutButton = AnimatedBuilder(
+                              animation: _content,
+                              builder: (context, child) => Opacity(
+                                opacity: _content.value,
+                                child: _HeaderActionButton(
+                                  label: 'Cerrar sesión',
+                                  icon: Icons.logout_rounded,
+                                  onTap: widget.onLogout == null
+                                      ? null
+                                      : () async => widget.onLogout!(),
+                                ),
+                              ),
+                            );
+                            final mailButton = AnimatedBuilder(
+                              animation: _content,
+                              builder: (context, child) => Opacity(
+                                opacity: _content.value,
+                                child: _HeaderActionButton(
+                                  label: 'Correo',
+                                  icon: Icons.mail_outline_rounded,
+                                  onTap: _openMailHostinger,
+                                  compact: true,
+                                ),
+                              ),
+                            );
+                            final topActionButtons = Wrap(
+                              spacing: 8,
+                              runSpacing: 8,
+                              alignment: WrapAlignment.end,
+                              crossAxisAlignment: WrapCrossAlignment.center,
+                              children: [
+                                helpButton,
+                                if (guideButton != null) ...[guideButton],
+                                mailButton,
+                                if (!moveLogoutBelow) logoutButton,
+                              ],
+                            );
+
+                            return SizedBox(
+                              height: moveLogoutBelow ? 104 : 56,
+                              child: Stack(
+                                children: [
+                                  Align(
+                                    alignment: Alignment.topLeft,
+                                    child: navigationButton,
+                                  ),
+                                  Align(
+                                    alignment: Alignment.topCenter,
+                                    child: _HeaderBrand(
+                                      contentAnim: _content,
+                                      title: resolvedTitle,
+                                    ),
+                                  ),
+                                  Align(
+                                    alignment: Alignment.topRight,
+                                    child: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.end,
+                                      children: [
+                                        topActionButtons,
+                                        if (moveLogoutBelow) ...[
+                                          const SizedBox(height: 8),
+                                          logoutButton,
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
                         ),
-                      ),
-                    Expanded(
-                      child: AnimatedBuilder(
-                        animation: _content,
-                        builder: (context, child) => Opacity(
-                          opacity: _content.value,
-                          child: Transform.translate(
-                            offset: Offset(0, (1 - _content.value) * 14),
-                            child: _GlassCard(child: widget.child),
+                        const SizedBox(height: 12),
+                        ...topContentChildren,
+                        Expanded(
+                          child: AnimatedBuilder(
+                            animation: _content,
+                            builder: (context, child) => Opacity(
+                              opacity: _content.value,
+                              child: Transform.translate(
+                                offset: Offset(0, (1 - _content.value) * 14),
+                                child: _GlassCard(child: widget.child),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ),
-                  ],
+                      ],
+                    );
+                  },
                 ),
               ),
             ),
@@ -309,26 +374,35 @@ class _ServicesShellState extends State<ServicesShell>
                     duration: const Duration(milliseconds: 220),
                     curve: Curves.easeOutCubic,
                     opacity: _menuOverlayOpen ? 1 : 0,
-                    child: _ServicesSideMenu(
-                      profileFuture: _profileFuture,
-                      activeModule: widget.activeOverlayModule,
-                      onGoToGeneralDashboard: widget.onGoToGeneralDashboard,
-                      onGoToOperacion: widget.onGoToOperacion,
-                      onGoToEntriesAndOutputs: widget.onGoToEntriesAndOutputs,
-                      onGoToProduction: widget.onGoToProduction,
-                      onGoToInventory: widget.onGoToInventory,
-                      onGoToServices: widget.onGoToServices,
-                      onGoToWeighings: widget.onGoToWeighings,
-                      onGoToMaintenance: widget.onGoToMaintenance,
-                      onGoToPurchaseOrders: widget.onGoToPurchaseOrders,
-                      onGoToOperationDirectory: widget.onGoToOperationDirectory,
-                      onGoToWarehouse: widget.onGoToWarehouse,
-                      onGoToCatalogs: widget.onGoToCatalogs,
-                      onNavigate: () {
-                        if (!mounted) return;
-                        setState(() => _menuOverlayOpen = false);
-                      },
-                    ),
+                    child: widget.customSideMenuBuilder != null
+                        ? widget.customSideMenuBuilder!(context, () {
+                            if (!mounted) return;
+                            setState(() => _menuOverlayOpen = false);
+                          })
+                        : _ServicesSideMenu(
+                            profileFuture: _profileFuture,
+                            activeModule: widget.activeOverlayModule,
+                            servicesNavLabel: widget.servicesNavLabel,
+                            onGoToGeneralDashboard:
+                                widget.onGoToGeneralDashboard,
+                            onGoToOperacion: widget.onGoToOperacion,
+                            onGoToEntriesAndOutputs:
+                                widget.onGoToEntriesAndOutputs,
+                            onGoToProduction: widget.onGoToProduction,
+                            onGoToInventory: widget.onGoToInventory,
+                            onGoToServices: widget.onGoToServices,
+                            onGoToWeighings: widget.onGoToWeighings,
+                            onGoToMaintenance: widget.onGoToMaintenance,
+                            onGoToPurchaseOrders: widget.onGoToPurchaseOrders,
+                            onGoToOperationDirectory:
+                                widget.onGoToOperationDirectory,
+                            onGoToWarehouse: widget.onGoToWarehouse,
+                            onGoToCatalogs: widget.onGoToCatalogs,
+                            onNavigate: () {
+                              if (!mounted) return;
+                              setState(() => _menuOverlayOpen = false);
+                            },
+                          ),
                   ),
                 ),
               ),
@@ -740,6 +814,7 @@ class _HeaderBrand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
     return AnimatedBuilder(
       animation: contentAnim,
       builder: (context, child) => Opacity(
@@ -756,20 +831,31 @@ class _HeaderBrand extends StatelessWidget {
                     width: 56,
                     height: 56,
                     decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.24),
+                      color: palette.logisticsSilver
+                          ? const Color(0xFFF7F9FB)
+                          : Colors.white.withValues(alpha: 0.24),
+                      gradient: palette.logisticsSilver
+                          ? palette.buttonGradient
+                          : null,
                       borderRadius: BorderRadius.circular(14),
                       border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.44),
+                        color: palette.logisticsSilver
+                            ? palette.borderStrong
+                            : Colors.white.withValues(alpha: 0.44),
                       ),
                       boxShadow: [
                         BoxShadow(
-                          blurRadius: 24,
+                          blurRadius: palette.logisticsSilver ? 26 : 24,
                           spreadRadius: 1,
-                          color: const Color(
-                            0xFF0E86FF,
-                          ).withValues(alpha: 0.20),
+                          color: palette.glow,
                           offset: const Offset(0, 8),
                         ),
+                        if (palette.logisticsSilver)
+                          BoxShadow(
+                            blurRadius: 18,
+                            color: palette.deepShadow.withValues(alpha: 0.18),
+                            offset: const Offset(0, 10),
+                          ),
                       ],
                     ),
                     child: Center(
@@ -786,7 +872,7 @@ class _HeaderBrand extends StatelessWidget {
                     width: 1.5,
                     margin: const EdgeInsets.symmetric(vertical: 8),
                     decoration: BoxDecoration(
-                      color: const Color(0xFF0B2B2B).withValues(alpha: 0.28),
+                      color: palette.textPrimary.withValues(alpha: 0.18),
                       borderRadius: BorderRadius.circular(999),
                     ),
                   ),
@@ -798,12 +884,12 @@ class _HeaderBrand extends StatelessWidget {
                       child: Text(
                         title,
                         maxLines: 1,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 28,
                           fontWeight: FontWeight.w800,
                           letterSpacing: 0.25,
                           height: 1.0,
-                          color: Color(0xFF0B2B2B),
+                          color: palette.textPrimary,
                         ),
                       ),
                     ),
@@ -849,6 +935,7 @@ class _HeaderHelpButtonState extends State<_HeaderHelpButton> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -871,35 +958,55 @@ class _HeaderHelpButtonState extends State<_HeaderHelpButton> {
             height: 48,
             transform: Matrix4.translationValues(0, _hovered ? -2 : 0, 0),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.22),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  const Color(
-                    0xFF9AC5E3,
-                  ).withValues(alpha: _hovered ? 0.24 : 0.16),
-                  Colors.white.withValues(alpha: _hovered ? 0.22 : 0.14),
-                ],
-              ),
+              color: palette.logisticsSilver
+                  ? const Color(0xFFF8F9FB)
+                  : Colors.white.withValues(alpha: 0.22),
+              gradient: palette.logisticsSilver
+                  ? palette.buttonGradient
+                  : LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        const Color(
+                          0xFF9AC5E3,
+                        ).withValues(alpha: _hovered ? 0.24 : 0.16),
+                        Colors.white.withValues(alpha: _hovered ? 0.22 : 0.14),
+                      ],
+                    ),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.66)),
+              border: Border.all(
+                color: palette.logisticsSilver
+                    ? palette.borderStrong
+                    : Colors.white.withValues(alpha: 0.66),
+              ),
               boxShadow: [
                 BoxShadow(
                   blurRadius: _hovered ? 28 : 16,
-                  color: Colors.black.withValues(alpha: _hovered ? 0.22 : 0.10),
+                  color:
+                      (palette.logisticsSilver
+                              ? palette.deepShadow
+                              : Colors.black)
+                          .withValues(alpha: _hovered ? 0.22 : 0.10),
                   offset: Offset(0, _hovered ? 14 : 9),
                 ),
+                if (palette.logisticsSilver)
+                  BoxShadow(
+                    blurRadius: _hovered ? 22 : 14,
+                    color: palette.glow.withValues(
+                      alpha: _hovered ? 0.26 : 0.18,
+                    ),
+                    offset: const Offset(0, 8),
+                  ),
               ],
             ),
-            child: const Center(
+            child: Center(
               child: Text(
                 '?',
                 style: TextStyle(
                   fontSize: 22,
                   height: 1.0,
                   fontWeight: FontWeight.w900,
-                  color: Color(0xFF0B2B2B),
+                  color: palette.textPrimary,
                 ),
               ),
             ),
@@ -915,13 +1022,22 @@ class _HeaderActionButtonState extends State<_HeaderActionButton> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
     final labelLower = widget.label.toLowerCase();
     final isLogout = labelLower.contains('cerrar sesión');
     final isNavigation = labelLower.contains('navegación');
     final isRefresh = labelLower.contains('recargar');
     final enabled = widget.onTap != null;
     final highlighted = enabled && _hovered;
-    final tint = isLogout
+    final tint = palette.logisticsSilver
+        ? (isLogout
+              ? const Color(0xFFD8DDE2)
+              : isNavigation
+              ? const Color(0xFFE7EBEF)
+              : isRefresh
+              ? const Color(0xFFDCE1E6)
+              : const Color(0xFFE2E6EA))
+        : isLogout
         ? const Color(0xFF8DB5D9)
         : isNavigation
         ? const Color(0xFF87C0E2)
@@ -954,36 +1070,55 @@ class _HeaderActionButtonState extends State<_HeaderActionButton> {
               transform: Matrix4.translationValues(0, highlighted ? -2 : 0, 0),
               decoration: BoxDecoration(
                 color: enabled
-                    ? Colors.white.withValues(alpha: 0.22)
-                    : Colors.white.withValues(alpha: 0.14),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    tint.withValues(alpha: highlighted ? 0.22 : 0.14),
-                    Colors.white.withValues(alpha: highlighted ? 0.20 : 0.14),
-                  ],
-                ),
+                    ? (palette.logisticsSilver
+                          ? const Color(0xFFF8F9FB)
+                          : Colors.white.withValues(alpha: 0.22))
+                    : (palette.logisticsSilver
+                          ? const Color(0xFFF0F2F5)
+                          : Colors.white.withValues(alpha: 0.14)),
+                gradient: palette.logisticsSilver
+                    ? palette.buttonGradient
+                    : LinearGradient(
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                        colors: [
+                          tint.withValues(alpha: highlighted ? 0.22 : 0.14),
+                          Colors.white.withValues(
+                            alpha: highlighted ? 0.20 : 0.14,
+                          ),
+                        ],
+                      ),
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(
                   color: enabled
-                      ? Colors.white.withValues(
-                          alpha: highlighted ? 0.74 : 0.60,
-                        )
-                      : Colors.white.withValues(alpha: 0.32),
+                      ? (palette.logisticsSilver
+                            ? palette.borderStrong
+                            : Colors.white.withValues(
+                                alpha: highlighted ? 0.74 : 0.60,
+                              ))
+                      : (palette.logisticsSilver
+                            ? palette.border.withValues(alpha: 0.55)
+                            : Colors.white.withValues(alpha: 0.32)),
                 ),
                 boxShadow: [
                   BoxShadow(
                     blurRadius: highlighted ? 30 : 18,
-                    color: Colors.black.withValues(
-                      alpha: enabled ? (highlighted ? 0.24 : 0.11) : 0.05,
-                    ),
+                    color:
+                        (palette.logisticsSilver
+                                ? palette.deepShadow
+                                : Colors.black)
+                            .withValues(
+                              alpha: enabled
+                                  ? (highlighted ? 0.24 : 0.11)
+                                  : 0.05,
+                            ),
                     offset: Offset(0, highlighted ? 16 : 10),
                   ),
                   if (enabled)
                     BoxShadow(
                       blurRadius: highlighted ? 22 : 12,
-                      color: tint.withValues(alpha: highlighted ? 0.30 : 0.16),
+                      color: (palette.logisticsSilver ? palette.glow : tint)
+                          .withValues(alpha: highlighted ? 0.30 : 0.16),
                       offset: Offset(0, highlighted ? 9 : 4),
                     ),
                 ],
@@ -996,13 +1131,13 @@ class _HeaderActionButtonState extends State<_HeaderActionButton> {
                         child: Icon(
                           widget.icon,
                           size: 18,
-                          color: const Color(0xFF0B2B2B),
+                          color: palette.textPrimary,
                         ),
                       ),
                     )
                   else ...[
                     const SizedBox(width: 10),
-                    Icon(widget.icon, size: 18, color: const Color(0xFF0B2B2B)),
+                    Icon(widget.icon, size: 18, color: palette.textPrimary),
                     const SizedBox(width: 6),
                     Expanded(
                       child: FittedBox(
@@ -1015,8 +1150,7 @@ class _HeaderActionButtonState extends State<_HeaderActionButton> {
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w800,
-                            color: Color(0xFF0B2B2B),
-                          ),
+                          ).copyWith(color: palette.textPrimary),
                         ),
                       ),
                     ),
@@ -1035,6 +1169,7 @@ class _HeaderActionButtonState extends State<_HeaderActionButton> {
 class _ServicesSideMenu extends StatelessWidget {
   final Future<AuthResolvedProfile?> profileFuture;
   final ServicesOverlayNavModule? activeModule;
+  final String? servicesNavLabel;
   final Future<void> Function()? onGoToGeneralDashboard;
   final Future<void> Function()? onGoToOperacion;
   final Future<void> Function()? onGoToEntriesAndOutputs;
@@ -1052,6 +1187,7 @@ class _ServicesSideMenu extends StatelessWidget {
   const _ServicesSideMenu({
     required this.profileFuture,
     required this.activeModule,
+    required this.servicesNavLabel,
     required this.onGoToGeneralDashboard,
     required this.onGoToOperacion,
     required this.onGoToEntriesAndOutputs,
@@ -1075,10 +1211,12 @@ class _ServicesSideMenu extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
     return FutureBuilder<AuthResolvedProfile?>(
       future: profileFuture,
       builder: (context, snapshot) {
         final profile = snapshot.data;
+        final resolvedServicesNavLabel = servicesNavLabel ?? 'Servicios';
         bool can(ServicesOverlayNavModule module) =>
             AuthAccess.canAccessOperationalModule(profile, module);
         final canGeneralDashboard = AuthAccess.canAccessGeneralDashboard(
@@ -1101,7 +1239,7 @@ class _ServicesSideMenu extends StatelessWidget {
           if (can(ServicesOverlayNavModule.servicios)) ...[
             _SideMenuTile(
               icon: Icons.local_shipping_outlined,
-              title: 'Servicios',
+              title: resolvedServicesNavLabel,
               active: activeModule == ServicesOverlayNavModule.servicios,
               onTap: () => _handleTap(onGoToServices),
             ),
@@ -1227,15 +1365,32 @@ class _ServicesSideMenu extends StatelessWidget {
 
         return Container(
           decoration: BoxDecoration(
-            color: const Color(0xE40B2B2B),
+            color: palette.menuSurface,
+            gradient: palette.logisticsSilver
+                ? palette.menuPanelGradient
+                : null,
             borderRadius: BorderRadius.circular(20),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            border: Border.all(
+              color: palette.logisticsSilver
+                  ? palette.borderStrong
+                  : Colors.white.withValues(alpha: 0.22),
+            ),
             boxShadow: [
               BoxShadow(
                 blurRadius: 24,
-                color: Colors.black.withValues(alpha: 0.20),
+                color:
+                    (palette.logisticsSilver
+                            ? palette.deepShadow
+                            : Colors.black)
+                        .withValues(alpha: 0.20),
                 offset: const Offset(0, 14),
               ),
+              if (palette.logisticsSilver)
+                BoxShadow(
+                  blurRadius: 20,
+                  color: palette.glow.withValues(alpha: 0.12),
+                  offset: const Offset(0, 8),
+                ),
             ],
           ),
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
@@ -1276,6 +1431,7 @@ class _SideMenuSectionHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
     return Row(
       children: [
         Text(
@@ -1284,14 +1440,16 @@ class _SideMenuSectionHeader extends StatelessWidget {
             fontSize: 11,
             fontWeight: FontWeight.w800,
             letterSpacing: 1.2,
-            color: Colors.white.withValues(alpha: 0.72),
+            color: palette.menuTextMuted,
           ),
         ),
         const SizedBox(width: 10),
         Expanded(
           child: Container(
             height: 1,
-            color: Colors.white.withValues(alpha: 0.14),
+            color: palette.logisticsSilver
+                ? palette.divider.withValues(alpha: 0.65)
+                : Colors.white.withValues(alpha: 0.14),
           ),
         ),
       ],
@@ -1304,16 +1462,11 @@ class _SideMenuTileState extends State<_SideMenuTile> {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
     final enabled = widget.onTap != null;
     final highlighted =
         enabled && (_hovered || widget.active || widget.emphasize);
-    final gradient = widget.emphasize
-        ? const LinearGradient(
-            begin: Alignment.centerLeft,
-            end: Alignment.centerRight,
-            colors: [Color(0xFF2196F3), Color(0xFF1DE9B6)],
-          )
-        : null;
+    final gradient = widget.emphasize ? palette.menuEmphasisGradient : null;
 
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
@@ -1328,15 +1481,17 @@ class _SideMenuTileState extends State<_SideMenuTile> {
           decoration: BoxDecoration(
             gradient: highlighted ? gradient : null,
             color: highlighted
-                ? (gradient == null
-                      ? Colors.white.withValues(alpha: 0.14)
-                      : null)
-                : Colors.white.withValues(alpha: 0.08),
+                ? (gradient == null ? palette.menuSoftFillActive : null)
+                : palette.menuSoftFill,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(
               color: highlighted
-                  ? Colors.white.withValues(alpha: 0.28)
-                  : Colors.white.withValues(alpha: 0.18),
+                  ? (palette.logisticsSilver
+                        ? palette.border.withValues(alpha: 0.95)
+                        : Colors.white.withValues(alpha: 0.28))
+                  : (palette.logisticsSilver
+                        ? palette.border.withValues(alpha: 0.72)
+                        : Colors.white.withValues(alpha: 0.18)),
             ),
           ),
           child: Row(
@@ -1344,7 +1499,7 @@ class _SideMenuTileState extends State<_SideMenuTile> {
               Icon(
                 widget.icon,
                 size: 22,
-                color: enabled ? Colors.white : const Color(0xCCFFFFFF),
+                color: enabled ? palette.menuText : palette.menuTextMuted,
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -1353,20 +1508,19 @@ class _SideMenuTileState extends State<_SideMenuTile> {
                   style: TextStyle(
                     fontSize: 17,
                     fontWeight: FontWeight.w800,
-                    color: enabled ? Colors.white : const Color(0xCCFFFFFF),
+                    color: enabled ? palette.menuText : palette.menuTextMuted,
                   ),
                 ),
               ),
               if (widget.active)
-                const Icon(
+                Icon(
                   Icons.check_circle_rounded,
-                  color: Color(0xFF68F8C6),
+                  color: palette.logisticsSilver
+                      ? palette.icon
+                      : const Color(0xFF68F8C6),
                 ),
               if (!widget.active)
-                Icon(
-                  Icons.chevron_right_rounded,
-                  color: Colors.white.withValues(alpha: 0.78),
-                ),
+                Icon(Icons.chevron_right_rounded, color: palette.menuChevron),
             ],
           ),
         ),
@@ -1381,22 +1535,30 @@ class _GlassCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
     return ClipRRect(
       borderRadius: BorderRadius.circular(22),
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.62),
+            color: palette.surfaceBase,
+            gradient: palette.glassCardGradient,
             borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.55)),
+            border: Border.all(color: palette.border),
             boxShadow: [
               BoxShadow(
                 blurRadius: 26,
                 spreadRadius: 2,
-                color: Colors.black.withValues(alpha: 0.06),
+                color: palette.shadow,
                 offset: const Offset(0, 12),
               ),
+              if (palette.logisticsSilver)
+                BoxShadow(
+                  blurRadius: 18,
+                  color: palette.glow.withValues(alpha: 0.10),
+                  offset: const Offset(0, 6),
+                ),
             ],
           ),
           child: child,
@@ -1411,6 +1573,95 @@ class _DicsaBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
+    if (palette.logisticsSilver) {
+      return Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+                colors: [
+                  kLogisticsSilverBackgroundTop,
+                  kLogisticsSilverBackgroundMiddle,
+                  kLogisticsSilverBackgroundBottom,
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: -260,
+            top: -120,
+            child: _blurCircle(
+              720,
+              const LinearGradient(
+                colors: [
+                  Color(0xF8FFFFFF),
+                  Color(0x88E5EAF0),
+                  Color(0x14BEC6CF),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            right: -200,
+            top: -90,
+            child: _blurCircle(
+              620,
+              const LinearGradient(
+                colors: [
+                  Color(0xAAD9DEE5),
+                  Color(0x52F4F7FA),
+                  Color(0x12A2ACB7),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            left: -150,
+            bottom: -240,
+            child: _blurCircle(
+              620,
+              const LinearGradient(
+                colors: [
+                  Color(0xD8FFFFFF),
+                  Color(0x48DEE3E9),
+                  Color(0x109EA8B2),
+                ],
+              ),
+            ),
+          ),
+          Positioned(
+            right: -120,
+            bottom: -120,
+            child: Container(
+              width: 300,
+              height: 520,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(220),
+                gradient: const LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Color(0xDCE3E9EF),
+                    Color(0xB9C8D1DB),
+                    Color(0x8899A5B0),
+                  ],
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    blurRadius: 28,
+                    color: palette.deepShadow.withValues(alpha: 0.14),
+                    offset: const Offset(0, 18),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     return Stack(
       children: [
         Container(

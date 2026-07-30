@@ -70,6 +70,26 @@ class FinanzasDueAlertsSummary {
       overdueAmount + dueTodayAmount + dueIn2DaysAmount + dueIn7DaysAmount;
 }
 
+enum FinanzasDueAlertsSessionScope { finanzasDashboard, directionDashboard }
+
+class FinanzasDueAlertsSessionGate {
+  static const int maxPresentationsPerSession = 3;
+  static final Map<FinanzasDueAlertsSessionScope, int> _presentationCounts =
+      <FinanzasDueAlertsSessionScope, int>{};
+
+  static bool canPresent(FinanzasDueAlertsSessionScope scope) =>
+      (_presentationCounts[scope] ?? 0) < maxPresentationsPerSession;
+
+  static int remainingPresentations(FinanzasDueAlertsSessionScope scope) =>
+      maxPresentationsPerSession - (_presentationCounts[scope] ?? 0);
+
+  static bool registerPresentation(FinanzasDueAlertsSessionScope scope) {
+    if (!canPresent(scope)) return false;
+    _presentationCounts[scope] = (_presentationCounts[scope] ?? 0) + 1;
+    return true;
+  }
+}
+
 class FinanzasDueAlertsStore {
   static Future<FinanzasDueAlertsSummary> loadSummary() async {
     final results = await Future.wait<dynamic>([

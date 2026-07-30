@@ -26,6 +26,7 @@ import '../shared/ui_contract_core/dialogs/contract_menu_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_dashboard_page.dart';
@@ -169,29 +170,39 @@ class _HumanResourcesAttendancePageState
     setState(() => _loading = true);
     try {
       final client = Supabase.instance.client;
-      final employeesResult = await client
-          .from(_kHrProfilesTable)
-          .select(
-            'id,nombre,empresa,horario,dias_labora,labor_schedules,fecha_ingreso,salario',
-          );
-      final importLotsResult = await client
-          .from(_kHrImportLotsTable)
-          .select()
-          .order('imported_at', ascending: false);
+      final employeesResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrProfilesTable)
+            .select(
+              'id,nombre,empresa,horario,dias_labora,labor_schedules,fecha_ingreso,salario',
+            )
+            .order('id')
+            .range(from, to),
+      );
+      final importLotsResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrImportLotsTable)
+            .select()
+            .order('imported_at', ascending: false)
+            .range(from, to),
+      );
       List<dynamic> recordsResult = const <dynamic>[];
       try {
-        recordsResult = await client
-            .from(_kHrAttendanceDailyRecordsTable)
-            .select()
-            .order('source_date')
-            .order('created_at');
+        recordsResult = await fetchAllSupabaseRows(
+          (from, to) => client
+              .from(_kHrAttendanceDailyRecordsTable)
+              .select()
+              .order('source_date')
+              .order('created_at')
+              .range(from, to),
+        );
       } catch (_) {
         recordsResult = const <dynamic>[];
       }
 
       final employees =
-          (employeesResult as List)
-              .map((raw) => Map<String, dynamic>.from(raw as Map))
+          employeesResult
+              .map((raw) => Map<String, dynamic>.from(raw))
               .map(
                 (row) => _HrAttendanceEmployeeMaster(
                   employeeId: (row['id'] ?? '').toString(),
@@ -220,7 +231,7 @@ class _HumanResourcesAttendancePageState
             });
 
       final lots = importLotsResult
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrAttendanceImportLotLite.fromRow)
           .toList(growable: false);
 

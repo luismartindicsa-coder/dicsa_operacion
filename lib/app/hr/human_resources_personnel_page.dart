@@ -32,6 +32,7 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_area_chrome.dart';
@@ -6574,19 +6575,25 @@ int _compareHrEmployeeRowsById(
 
 class _HrPersonnelStore {
   static Future<List<_HumanResourcesEmployeeRow>> loadEmployees() async {
-    final profileRows = await Supabase.instance.client
-        .from(_kHrEmployeeProfilesTable)
-        .select()
-        .order('id');
-    final documentRows = await Supabase.instance.client
-        .from(_kHrEmployeeDocumentsTable)
-        .select()
-        .order('uploaded_at', ascending: false)
-        .order('created_at', ascending: false);
+    final profileRows = await fetchAllSupabaseRows(
+      (from, to) => Supabase.instance.client
+          .from(_kHrEmployeeProfilesTable)
+          .select()
+          .order('id')
+          .range(from, to),
+    );
+    final documentRows = await fetchAllSupabaseRows(
+      (from, to) => Supabase.instance.client
+          .from(_kHrEmployeeDocumentsTable)
+          .select()
+          .order('uploaded_at', ascending: false)
+          .order('created_at', ascending: false)
+          .range(from, to),
+    );
 
     final docsByEmployeeId = <String, List<_HrEmployeeAttachment>>{};
-    for (final raw in (documentRows as List)) {
-      final map = Map<String, dynamic>.from(raw as Map);
+    for (final raw in documentRows) {
+      final map = Map<String, dynamic>.from(raw);
       final ownerId = (map['employee_id'] ?? '').toString();
       if (ownerId.isEmpty) continue;
       docsByEmployeeId
@@ -6594,8 +6601,8 @@ class _HrPersonnelStore {
           .add(_hrAttachmentFromRemoteRow(map));
     }
 
-    return (profileRows as List)
-        .map((raw) => Map<String, dynamic>.from(raw as Map))
+    return profileRows
+        .map((raw) => Map<String, dynamic>.from(raw))
         .map((row) {
           final employeeId = (row['id'] ?? '').toString();
           final documents =

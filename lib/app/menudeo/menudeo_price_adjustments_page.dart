@@ -21,6 +21,7 @@ import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/friendly_error_message.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/date_picker_defaults.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/number_formatters.dart';
 import 'menudeo_catalog_page.dart';
 import 'menudeo_dashboard_page.dart';
@@ -104,26 +105,31 @@ class _MenudeoPriceAdjustmentsPageState
     });
     try {
       final responses = await Future.wait([
-        _supa
-            .from('vw_men_price_audit_catalog')
-            .select()
-            .order('counterparty_name')
-            .order('material_label_snapshot'),
-        _supa
-            .from('vw_men_price_adjustment_history')
-            .select()
-            .order('created_at', ascending: false)
-            .limit(1500),
+        fetchAllSupabaseRows(
+          (from, to) => _supa
+              .from('vw_men_price_audit_catalog')
+              .select()
+              .order('counterparty_name')
+              .order('material_label_snapshot')
+              .range(from, to),
+        ),
+        fetchAllSupabaseRows(
+          (from, to) => _supa
+              .from('vw_men_price_adjustment_history')
+              .select()
+              .order('created_at', ascending: false)
+              .range(from, to),
+        ),
       ]);
       if (!mounted) return;
-      final catalogData = responses[0] as List;
-      final historyData = responses[1] as List;
+      final catalogData = responses[0];
+      final historyData = responses[1];
       setState(() {
         _priceRows = catalogData
-            .map((row) => Map<String, dynamic>.from(row as Map))
+            .map((row) => Map<String, dynamic>.from(row))
             .toList(growable: false);
         _historyRows = historyData
-            .map((row) => Map<String, dynamic>.from(row as Map))
+            .map((row) => Map<String, dynamic>.from(row))
             .toList(growable: false);
         _selectedPriceIds.removeWhere(
           (id) => !_priceRows.any(

@@ -25,6 +25,7 @@ import '../finanzas/finanzas_dashboard_page.dart';
 import '../gerencia/gerencia_bale_weekly_tracking_store.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
 import '../hr/human_resources_dashboard_page.dart';
+import '../logistica/logistics_dashboard_page.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../shared/app_shell.dart';
@@ -58,10 +59,13 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
   bool _areasExpanded = true;
   bool _menuOverlayOpen = false;
   bool _finanzasDueAlertQueued = false;
+  FinanzasDueAlertsSummary _finanzasDueAlertsSummary =
+      const FinanzasDueAlertsSummary.empty();
 
   @override
   void initState() {
     super.initState();
+    unawaited(_refreshFinanzasDueAlertsSummary());
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(_kFinanzasDueAlertDelay, () {
         if (!mounted) return;
@@ -70,20 +74,56 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     });
   }
 
+  Future<FinanzasDueAlertsSummary> _refreshFinanzasDueAlertsSummary() async {
+    final summary = await FinanzasDueAlertsStore.loadSummary();
+    if (!mounted) return summary;
+    setState(() => _finanzasDueAlertsSummary = summary);
+    return summary;
+  }
+
   Future<void> _presentFinanzasDueAlertIfNeeded() async {
     if (!mounted || _finanzasDueAlertQueued) return;
     _finanzasDueAlertQueued = true;
     try {
-      final summary = await FinanzasDueAlertsStore.loadSummary();
+      final summary = await _refreshFinanzasDueAlertsSummary();
       if (!mounted || summary.totalCount <= 0 || summary.items.isEmpty) return;
-      final primary = summary.items.first;
+      if (!FinanzasDueAlertsSessionGate.registerPresentation(
+        FinanzasDueAlertsSessionScope.directionDashboard,
+      )) {
+        return;
+      }
       await showDialog<void>(
         context: context,
         barrierDismissible: true,
         builder: (dialogContext) {
           return _DirectionFinanzasDueNotificationDialog(
             summary: summary,
-            primaryItem: primary,
+            visibleItems: summary.items.toList(growable: false),
+            onOpenFinanzas: () async {
+              Navigator.of(dialogContext).pop();
+              await _openFinanzasDashboard();
+            },
+          );
+        },
+      );
+    } catch (_) {
+      // Keep the dashboard usable even if the notification cannot be loaded.
+    }
+  }
+
+  Future<void> _openFinanzasDueAlertsDialog() async {
+    try {
+      final summary = await _refreshFinanzasDueAlertsSummary();
+      if (!mounted || summary.totalCount <= 0 || summary.items.isEmpty) {
+        return;
+      }
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: true,
+        builder: (dialogContext) {
+          return _DirectionFinanzasDueNotificationDialog(
+            summary: summary,
+            visibleItems: summary.items.toList(growable: false),
             onOpenFinanzas: () async {
               Navigator.of(dialogContext).pop();
               await _openFinanzasDashboard();
@@ -175,6 +215,17 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     await Navigator.of(context).push(
       appPageRoute(
         page: const HumanResourcesDashboardPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openLogisticsDashboard() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const LogisticsDashboardPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -307,10 +358,22 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
           ),
           centerBuilder: (_, contentAnim) =>
               _GeneralDashboardBrand(contentAnim: contentAnim),
-          trailingBuilder: (_, _) => _GeneralHeaderButton(
-            label: 'Cerrar sesión',
-            icon: Icons.logout_rounded,
-            onTap: _logout,
+          trailingBuilder: (_, _) => Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _GeneralHeaderButton(
+                label: 'Pendientes',
+                icon: Icons.notifications_none_rounded,
+                notificationCount: _finanzasDueAlertsSummary.totalCount,
+                onTap: _openFinanzasDueAlertsDialog,
+              ),
+              const SizedBox(width: 10),
+              _GeneralHeaderButton(
+                label: 'Cerrar sesión',
+                icon: Icons.logout_rounded,
+                onTap: _logout,
+              ),
+            ],
           ),
           child: Padding(
             padding: const EdgeInsets.fromLTRB(10, 2, 8, 8),
@@ -336,6 +399,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       onOpenCompras: _openComprasDashboard,
       onOpenFinanzas: _openFinanzasDashboard,
       onOpenContabilidad: _openContabilidadDashboard,
+      onOpenLogistics: _openLogisticsDashboard,
       onOpenGerencia: _openGerenciaDashboard,
       onOpenHumanResources: _openHumanResourcesDashboard,
       onOpenCommercial: _openCommercialDashboard,
@@ -357,6 +421,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
             onOpenMenudeoAnalysis: _openDirectionMenudeoAnalysis,
             onOpenFinanzasDashboard: _openFinanzasDashboard,
             onOpenContabilidad: _openContabilidadDashboard,
+            onOpenLogistics: _openLogisticsDashboard,
             onOpenTradeAnalysis: _openDirectionTradeAnalysis,
             onOpenPurchaseOrders: _openDirectionPurchaseOrders,
             onOpenMaintenance: _openDirectionMaintenance,
@@ -414,6 +479,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
   final Future<void> Function() onOpenMenudeoAnalysis;
   final Future<void> Function() onOpenFinanzasDashboard;
   final Future<void> Function() onOpenContabilidad;
+  final Future<void> Function() onOpenLogistics;
   final Future<void> Function() onOpenTradeAnalysis;
   final Future<void> Function() onOpenPurchaseOrders;
   final Future<void> Function() onOpenMaintenance;
@@ -427,6 +493,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
     required this.onOpenMenudeoAnalysis,
     required this.onOpenFinanzasDashboard,
     required this.onOpenContabilidad,
+    required this.onOpenLogistics,
     required this.onOpenTradeAnalysis,
     required this.onOpenPurchaseOrders,
     required this.onOpenMaintenance,
@@ -579,6 +646,17 @@ class _DirectionDashboardCanvas extends StatelessWidget {
                   badge: 'Area nueva',
                   icon: Icons.badge_rounded,
                   onTap: onOpenHumanResources,
+                ),
+              ),
+              SizedBox(
+                width: 420,
+                child: _DirectionAnalysisEntryCard(
+                  title: 'Logística',
+                  subtitle:
+                      'Nueva entrada homologada del área para rutas, asignación diaria, flotilla y control operativo.',
+                  badge: 'Area nueva',
+                  icon: Icons.local_shipping_rounded,
+                  onTap: onOpenLogistics,
                 ),
               ),
               SizedBox(
@@ -1972,24 +2050,41 @@ class _DirectionTradeDashboardSummaryState
   }
 }
 
-class _DirectionFinanzasDueNotificationDialog extends StatelessWidget {
+class _DirectionFinanzasDueNotificationDialog extends StatefulWidget {
   final FinanzasDueAlertsSummary summary;
-  final FinanzasDueAlertItem primaryItem;
+  final List<FinanzasDueAlertItem> visibleItems;
   final Future<void> Function() onOpenFinanzas;
 
   const _DirectionFinanzasDueNotificationDialog({
     required this.summary,
-    required this.primaryItem,
+    required this.visibleItems,
     required this.onOpenFinanzas,
   });
 
   @override
+  State<_DirectionFinanzasDueNotificationDialog> createState() =>
+      _DirectionFinanzasDueNotificationDialogState();
+}
+
+class _DirectionFinanzasDueNotificationDialogState
+    extends State<_DirectionFinanzasDueNotificationDialog> {
+  final ScrollController _commitmentsScrollController = ScrollController();
+
+  @override
+  void dispose() {
+    _commitmentsScrollController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final primaryItem = widget.visibleItems.first;
     final accent = switch (primaryItem.severity) {
       FinanzasDueAlertSeverity.critical => const Color(0xFFFFB35C),
       FinanzasDueAlertSeverity.warning => const Color(0xFFFFD36E),
       FinanzasDueAlertSeverity.info => const Color(0xFF89F0C7),
     };
+    final commitmentsListMaxHeight = MediaQuery.of(context).size.height * 0.38;
     return Dialog(
       backgroundColor: Colors.transparent,
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
@@ -2041,7 +2136,7 @@ class _DirectionFinanzasDueNotificationDialog extends StatelessWidget {
                         ),
                         const SizedBox(height: 8),
                         Text(
-                          _directionFinanzasDialogHeadline(summary),
+                          _directionFinanzasDialogHeadline(widget.summary),
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.88),
                             fontSize: 15,
@@ -2060,16 +2155,16 @@ class _DirectionFinanzasDueNotificationDialog extends StatelessWidget {
                 runSpacing: 10,
                 children: [
                   _DirectionNotificationPill(
-                    label: 'Hoy: ${summary.dueTodayCount}',
+                    label: 'Hoy: ${widget.summary.dueTodayCount}',
                   ),
                   _DirectionNotificationPill(
-                    label: '2 días: ${summary.dueIn2DaysCount}',
+                    label: '2 días: ${widget.summary.dueIn2DaysCount}',
                   ),
                   _DirectionNotificationPill(
-                    label: '1 semana: ${summary.dueIn7DaysCount}',
+                    label: '1 semana: ${widget.summary.dueIn7DaysCount}',
                   ),
                   _DirectionNotificationPill(
-                    label: 'Monto: ${formatMoney(summary.totalAmount)}',
+                    label: 'Monto: ${formatMoney(widget.summary.totalAmount)}',
                   ),
                 ],
               ),
@@ -2087,39 +2182,41 @@ class _DirectionFinanzasDueNotificationDialog extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      _directionFinanzasPrimaryTitle(primaryItem),
-                      style: const TextStyle(
+                    const Text(
+                      'Compromisos prioritarios',
+                      style: TextStyle(
                         color: Colors.white,
                         fontSize: 15,
                         fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    Text(
-                      primaryItem.title,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.90),
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
+                    const SizedBox(height: 10),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxHeight: commitmentsListMaxHeight,
                       ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      primaryItem.subtitle,
-                      style: const TextStyle(
-                        color: Color(0xFFD5E2FF),
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '${primaryItem.reminderLabel} · ${formatMoney(primaryItem.amount)}',
-                      style: TextStyle(
-                        color: accent,
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
+                      child: Scrollbar(
+                        controller: _commitmentsScrollController,
+                        thumbVisibility: widget.visibleItems.length > 3,
+                        child: SingleChildScrollView(
+                          controller: _commitmentsScrollController,
+                          child: Column(
+                            children: [
+                              for (
+                                var index = 0;
+                                index < widget.visibleItems.length;
+                                index++
+                              ) ...[
+                                _DirectionFinanzasDueNotificationItemCard(
+                                  item: widget.visibleItems[index],
+                                  accent: accent,
+                                ),
+                                if (index != widget.visibleItems.length - 1)
+                                  const SizedBox(height: 10),
+                              ],
+                            ],
+                          ),
+                        ),
                       ),
                     ),
                   ],
@@ -2145,7 +2242,7 @@ class _DirectionFinanzasDueNotificationDialog extends StatelessWidget {
                   ),
                   const SizedBox(width: 12),
                   FilledButton.icon(
-                    onPressed: onOpenFinanzas,
+                    onPressed: widget.onOpenFinanzas,
                     icon: const Icon(Icons.open_in_new_rounded),
                     label: const Text('Abrir Finanzas'),
                     style: FilledButton.styleFrom(
@@ -2162,6 +2259,69 @@ class _DirectionFinanzasDueNotificationDialog extends StatelessWidget {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _DirectionFinanzasDueNotificationItemCard extends StatelessWidget {
+  final FinanzasDueAlertItem item;
+  final Color accent;
+
+  const _DirectionFinanzasDueNotificationItemCard({
+    required this.item,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        color: Colors.white.withValues(alpha: 0.05),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _directionFinanzasAlertSourceLabel(item),
+            style: TextStyle(
+              color: accent,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            item.title,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.90),
+              fontSize: 14,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 3),
+          Text(
+            item.subtitle,
+            style: const TextStyle(
+              color: Color(0xFFD5E2FF),
+              fontSize: 12.5,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 5),
+          Text(
+            '${item.reminderLabel} · ${formatMoney(item.amount)}',
+            style: TextStyle(
+              color: accent,
+              fontSize: 12.8,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2203,16 +2363,16 @@ String _directionFinanzasDialogHeadline(FinanzasDueAlertsSummary summary) {
   return 'Hay ${summary.dueIn7DaysCount} compromisos entrando a la ventana semanal de preparación.';
 }
 
-String _directionFinanzasPrimaryTitle(FinanzasDueAlertItem item) {
+String _directionFinanzasAlertSourceLabel(FinanzasDueAlertItem item) {
   switch (item.sourceType) {
     case 'FACTURA':
-      return 'Factura más urgente';
+      return 'Factura proveedor';
     case 'PAGO_FIJO':
-      return 'Pago fijo más urgente';
+      return 'Pago fijo';
     case 'CONVENIO':
-      return 'Convenio más urgente';
+      return 'Convenio';
     default:
-      return 'Compromiso más urgente';
+      return 'Compromiso';
   }
 }
 
@@ -5713,11 +5873,13 @@ class _GeneralHeaderButton extends StatefulWidget {
   final String label;
   final IconData icon;
   final Future<void> Function()? onTap;
+  final int notificationCount;
 
   const _GeneralHeaderButton({
     required this.label,
     required this.icon,
     required this.onTap,
+    this.notificationCount = 0,
   });
 
   @override
@@ -5750,51 +5912,99 @@ class _GeneralHeaderButtonState extends State<_GeneralHeaderButton> {
             highlightColor: Colors.transparent,
             splashFactory: NoSplash.splashFactory,
             onTap: enabled ? () => widget.onTap!() : null,
-            child: _DirectionGlassPanel(
-              width: 178,
-              height: 50,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-              borderRadius: BorderRadius.circular(16),
-              blurSigma: 26,
-              fillColor: enabled
-                  ? kDirectionOliveMist.withValues(
-                      alpha: highlighted ? 0.18 : 0.12,
-                    )
-                  : Colors.white.withValues(alpha: 0.05),
-              borderColor: enabled
-                  ? Colors.white.withValues(alpha: highlighted ? 0.54 : 0.34)
-                  : Colors.white.withValues(alpha: 0.16),
-              shadowColor: highlighted
-                  ? kDirectionOliveGlow.withValues(alpha: 0.14)
-                  : Colors.black.withValues(alpha: 0.06),
-              edgeHighlightColor: Colors.white.withValues(alpha: 0.78),
-              bevelShadowColor: Colors.black.withValues(alpha: 0.12),
-              glowColor: highlighted
-                  ? kDirectionOliveGlow.withValues(alpha: 0.18)
-                  : kDirectionOliveSoft.withValues(alpha: 0.08),
-              child: Row(
-                children: [
-                  Icon(widget.icon, size: 19, color: Colors.white),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        widget.label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: false,
-                        style: const TextStyle(
-                          fontSize: 13.5,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                _DirectionGlassPanel(
+                  width: 178,
+                  height: 50,
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  borderRadius: BorderRadius.circular(16),
+                  blurSigma: 26,
+                  fillColor: enabled
+                      ? kDirectionOliveMist.withValues(
+                          alpha: highlighted ? 0.18 : 0.12,
+                        )
+                      : Colors.white.withValues(alpha: 0.05),
+                  borderColor: enabled
+                      ? Colors.white.withValues(
+                          alpha: highlighted ? 0.54 : 0.34,
+                        )
+                      : Colors.white.withValues(alpha: 0.16),
+                  shadowColor: highlighted
+                      ? kDirectionOliveGlow.withValues(alpha: 0.14)
+                      : Colors.black.withValues(alpha: 0.06),
+                  edgeHighlightColor: Colors.white.withValues(alpha: 0.78),
+                  bevelShadowColor: Colors.black.withValues(alpha: 0.12),
+                  glowColor: highlighted
+                      ? kDirectionOliveGlow.withValues(alpha: 0.18)
+                      : kDirectionOliveSoft.withValues(alpha: 0.08),
+                  child: Row(
+                    children: [
+                      Icon(widget.icon, size: 19, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Align(
+                          alignment: Alignment.centerLeft,
+                          child: Text(
+                            widget.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            softWrap: false,
+                            style: const TextStyle(
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                    ],
+                  ),
+                ),
+                if (widget.notificationCount > 0)
+                  Positioned(
+                    right: -6,
+                    top: -8,
+                    child: Container(
+                      constraints: const BoxConstraints(
+                        minWidth: 18,
+                        minHeight: 18,
+                      ),
+                      padding: const EdgeInsets.symmetric(horizontal: 5),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFD92D20),
+                        borderRadius: BorderRadius.circular(999),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.92),
+                          width: 1.4,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            blurRadius: 12,
+                            color: const Color(
+                              0xFFD92D20,
+                            ).withValues(alpha: 0.26),
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Center(
+                        child: Text(
+                          widget.notificationCount > 9
+                              ? '9+'
+                              : '${widget.notificationCount}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            fontWeight: FontWeight.w900,
+                            color: Colors.white,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
-                ],
-              ),
+              ],
             ),
           ),
         ),
@@ -5819,6 +6029,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final Future<void> Function()? onOpenCompras;
   final Future<void> Function()? onOpenFinanzas;
   final Future<void> Function()? onOpenContabilidad;
+  final Future<void> Function()? onOpenLogistics;
   final Future<void> Function()? onOpenHumanResources;
   final Future<void> Function()? onOpenGerencia;
   final Future<void> Function()? onOpenCommercial;
@@ -5839,6 +6050,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onOpenCompras,
     this.onOpenFinanzas,
     this.onOpenContabilidad,
+    this.onOpenLogistics,
     this.onOpenHumanResources,
     this.onOpenGerencia,
     this.onOpenCommercial,
@@ -5973,6 +6185,13 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                       title: 'Finanzas',
                       subtitle: 'Centro preliminar de flujo y pagos',
                       onTap: onOpenFinanzas,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.local_shipping_rounded,
+                      title: 'Logística',
+                      subtitle: 'Dashboard inicial homologado',
+                      onTap: onOpenLogistics,
                     ),
                     const SizedBox(height: 8),
                     _MenuActionItem(

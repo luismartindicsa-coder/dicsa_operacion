@@ -13,7 +13,6 @@ import '../maintenance/maintenance_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
 import '../services/operation_directory_page.dart';
 import '../services/services_catalog_page.dart';
-import '../services/services_page.dart';
 import '../services/warehouse_page.dart';
 import '../services/weighings_page.dart';
 import '../shared/app_shell.dart';
@@ -129,11 +128,6 @@ class _DashboardPageState extends State<DashboardPage> {
     await Navigator.of(
       context,
     ).push(appPageRoute(page: const InventoryStockPage()));
-  }
-
-  Future<void> _openServices() async {
-    if (!mounted) return;
-    await Navigator.of(context).push(appPageRoute(page: const ServicesPage()));
   }
 
   Future<void> _openWeighings() async {
@@ -267,7 +261,7 @@ class _DashboardPageState extends State<DashboardPage> {
       onOpenInventoryMovements: _openInventoryMovements,
       onOpenInventoryProduction: _openInventoryProduction,
       onOpenInventoryStock: _openInventoryStock,
-      onOpenServices: _openServices,
+      onOpenServices: null,
       onOpenWeighings: _openWeighings,
       onOpenMaintenance: _openMaintenance,
       onOpenWarehouse: _openWarehouse,
@@ -374,7 +368,6 @@ class _DashboardPageState extends State<DashboardPage> {
                             child: _AnimatedDashboardSummaryPanel(
                               alignTopLeft: false,
                               maxPanelWidth: resolvedServicesWidth,
-                              onOpenServices: _openServices,
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -402,7 +395,6 @@ class _DashboardPageState extends State<DashboardPage> {
                       child: _AnimatedDashboardSummaryPanel(
                         alignTopLeft: false,
                         maxPanelWidth: constraints.maxWidth,
-                        onOpenServices: _openServices,
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -675,7 +667,7 @@ class _DashboardSideMenu extends StatelessWidget {
   final Future<void> Function() onOpenInventoryMovements;
   final Future<void> Function() onOpenInventoryProduction;
   final Future<void> Function() onOpenInventoryStock;
-  final Future<void> Function() onOpenServices;
+  final Future<void> Function()? onOpenServices;
   final Future<void> Function() onOpenWeighings;
   final Future<void> Function() onOpenMaintenance;
   final Future<void> Function() onOpenWarehouse;
@@ -746,13 +738,15 @@ class _DashboardSideMenu extends StatelessWidget {
                             subtitle: 'Captura de movimientos IN / OUT',
                             onTap: onOpenInventoryMovements,
                           ),
-                          const SizedBox(height: 8),
-                          _SideMenuActionItem(
-                            icon: Icons.local_shipping_outlined,
-                            title: 'Viajes y Servicios',
-                            subtitle: 'Programación y captura operativa',
-                            onTap: onOpenServices,
-                          ),
+                          if (onOpenServices != null) ...[
+                            const SizedBox(height: 8),
+                            _SideMenuActionItem(
+                              icon: Icons.local_shipping_outlined,
+                              title: 'Viajes y Servicios',
+                              subtitle: 'Programación y captura operativa',
+                              onTap: onOpenServices!,
+                            ),
+                          ],
                           const SizedBox(height: 8),
                           _SideMenuActionItem(
                             icon: Icons.scale_rounded,
@@ -1124,12 +1118,10 @@ class _SideMenuActionItemState extends State<_SideMenuActionItem> {
 class _AnimatedDashboardSummaryPanel extends StatelessWidget {
   final bool alignTopLeft;
   final double maxPanelWidth;
-  final Future<void> Function()? onOpenServices;
 
   const _AnimatedDashboardSummaryPanel({
     this.alignTopLeft = false,
     this.maxPanelWidth = 920,
-    this.onOpenServices,
   });
 
   @override
@@ -1139,10 +1131,7 @@ class _AnimatedDashboardSummaryPanel extends StatelessWidget {
       duration: const Duration(milliseconds: 240),
       curve: Curves.easeOutCubic,
       builder: (context, animatedMaxWidth, child) {
-        final panel = _ServicesSummaryPanel(
-          maxWidth: animatedMaxWidth,
-          onTap: onOpenServices,
-        );
+        final panel = _ServicesSummaryPanel(maxWidth: animatedMaxWidth);
         if (!alignTopLeft) return panel;
         return Align(alignment: Alignment.topLeft, child: panel);
       },
@@ -1152,9 +1141,8 @@ class _AnimatedDashboardSummaryPanel extends StatelessWidget {
 
 class _ServicesSummaryPanel extends StatefulWidget {
   final double maxWidth;
-  final Future<void> Function()? onTap;
 
-  const _ServicesSummaryPanel({this.maxWidth = 920, this.onTap});
+  const _ServicesSummaryPanel({this.maxWidth = 920});
 
   @override
   State<_ServicesSummaryPanel> createState() => _ServicesSummaryPanelState();
@@ -1391,13 +1379,14 @@ class _ServicesSummaryPanelState extends State<_ServicesSummaryPanel>
   @override
   Widget build(BuildContext context) {
     final loading = (_loadingDates || _loadingRows) && _items.isEmpty;
+    const panelTitle = 'Resumen de Logística';
     return _HoverLift(
       child: Material(
         color: Colors.transparent,
         borderRadius: BorderRadius.circular(22),
         child: InkWell(
           borderRadius: BorderRadius.circular(22),
-          onTap: widget.onTap == null ? null : () => widget.onTap!(),
+          onTap: null,
           child: Container(
             width: double.infinity,
             constraints: BoxConstraints(maxWidth: widget.maxWidth),
@@ -1423,10 +1412,10 @@ class _ServicesSummaryPanelState extends State<_ServicesSummaryPanel>
                     Expanded(
                       child: Column(
                         children: [
-                          const Text(
-                            'Resumen de Viajes y Servicios',
+                          Text(
+                            panelTitle,
                             textAlign: TextAlign.center,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 20,
                               fontWeight: FontWeight.w800,
                               color: Color(0xFF0B2B2B),

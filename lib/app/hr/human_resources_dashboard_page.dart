@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_permissions_page.dart';
@@ -522,10 +523,14 @@ class _HrDashboardPersonnelSummaryCardState
                           ),
                         ),
                         const SizedBox(height: 3),
-                        FutureBuilder<List<dynamic>>(
-                          future: Supabase.instance.client
-                              .from('hr_employee_profiles')
-                              .select('id'),
+                        FutureBuilder<List<Map<String, dynamic>>>(
+                          future: fetchAllSupabaseRows(
+                            (from, to) => Supabase.instance.client
+                                .from('hr_employee_profiles')
+                                .select('id')
+                                .order('id')
+                                .range(from, to),
+                          ),
                           builder: (context, snapshot) {
                             final total = snapshot.data?.length ?? 0;
                             final loading =

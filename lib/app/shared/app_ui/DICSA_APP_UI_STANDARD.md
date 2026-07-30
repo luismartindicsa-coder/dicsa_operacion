@@ -228,10 +228,12 @@ Reglas obligatorias:
 - `Menudeo` queda congelado en familia `azul royal / navy / midnight`.
 - `Mayoreo` queda aprobado con direccion `amarillo institucional / oro comercial`.
 - `Recursos Humanos` queda congelado en familia `morado corporativo / violeta profundo`.
+- `Logistica` queda congelada en familia `plateado operativo / grafito / hielo`.
 - `Menudeo` no puede reutilizar morados base de `Recursos Humanos`.
 - `Recursos Humanos` no puede reciclar azules base de `Menudeo`.
 - `Mayoreo` no debe parecer estado de warning ni reciclar teal de `Operaciones`.
-- Si una de estas dos areas cambia de direccion cromatica, se debe actualizar tambien `AREA_PALETTES_CONTRACT.md`.
+- `Logistica` no puede reciclar teal, verde menta ni azules operativos heredados de `Servicios`.
+- Si una de estas areas cambia de direccion cromatica, se debe actualizar tambien `AREA_PALETTES_CONTRACT.md`.
 
 #### Implementacion obligatoria
 
@@ -271,6 +273,13 @@ Regla adicional para `Direccion`:
   - contraste base de texto
   - comportamiento overlay del panel
 - cualquier desviacion intencional en `Direccion` debe justificarse como necesidad del modulo, no como preferencia visual local
+
+Reglas adicionales para `Logistica`:
+
+- `Logistica` opera en `dark glass` grafito con acentos plateados; no en verde ni en teal.
+- calendarios, date pickers, botones, badges, tabs, filtros popup, menús contextuales, dropdowns y modales deben heredar la misma paleta plateada desde `AreaThemeScope`
+- el plateado de `Logistica` se reserva para foco, seleccion, acciones primarias, iconografia y estados navegables; no debe convertirse en fondo claro dominante
+- cualquier pantalla nacida desde la migracion de `Servicios` a `Logistica` debe sustituir el color heredado antes de considerarse homologada
 
 #### Checklist minimo antes de aprobar una pagina de area nueva
 

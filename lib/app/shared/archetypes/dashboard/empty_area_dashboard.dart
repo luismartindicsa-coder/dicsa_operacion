@@ -446,6 +446,7 @@ class _AreaDashboardBackground extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return Stack(
       children: [
         DecoratedBox(
@@ -461,55 +462,196 @@ class _AreaDashboardBackground extends StatelessWidget {
         Positioned(
           left: -260,
           top: -130,
-          child: _backgroundCircle(760, config.topLeftBlobColors),
+          child: _backgroundCircle(760, config.topLeftBlobColors, tokens),
         ),
         Positioned(
           right: -180,
           top: -70,
-          child: _backgroundCircle(580, config.topRightBlobColors),
+          child: _backgroundCircle(580, config.topRightBlobColors, tokens),
         ),
         Positioned(
           left: 20,
           bottom: -260,
-          child: _backgroundCircle(640, config.bottomLeftBlobColors),
+          child: _backgroundCircle(640, config.bottomLeftBlobColors, tokens),
         ),
         Positioned(
           right: -105,
           bottom: -120,
-          child: IgnorePointer(
-            child: Container(
-              width: 320,
-              height: 500,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(220),
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: config.pillarGradientColors,
-                ),
-              ),
-            ),
-          ),
+          child: IgnorePointer(child: _backgroundPillar(tokens)),
         ),
       ],
     );
   }
 
-  Widget _backgroundCircle(double diameter, List<Color> colors) {
+  Widget _backgroundCircle(
+    double diameter,
+    List<Color> colors,
+    ContractAreaTokens tokens,
+  ) {
+    if (tokens.darkGlass) {
+      return IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            gradient: LinearGradient(colors: colors),
+            boxShadow: [
+              BoxShadow(
+                blurRadius: diameter * 0.10,
+                spreadRadius: diameter * 0.015,
+                color: Colors.white.withValues(alpha: 0.08),
+              ),
+            ],
+          ),
+          child: SizedBox(width: diameter, height: diameter),
+        ),
+      );
+    }
+
     return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          gradient: LinearGradient(colors: colors),
-          boxShadow: [
-            BoxShadow(
-              blurRadius: diameter * 0.10,
-              spreadRadius: diameter * 0.015,
-              color: Colors.white.withValues(alpha: 0.08),
+      child: SizedBox(
+        width: diameter,
+        height: diameter,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: colors,
+                ),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.46),
+                  width: 1.6,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.white.withValues(alpha: 0.68),
+                    blurRadius: diameter * 0.12,
+                    spreadRadius: diameter * 0.012,
+                    offset: Offset(-diameter * 0.012, -diameter * 0.010),
+                  ),
+                  BoxShadow(
+                    color: tokens.glow.withValues(alpha: 0.34),
+                    blurRadius: diameter * 0.10,
+                    spreadRadius: diameter * 0.012,
+                  ),
+                  BoxShadow(
+                    color: tokens.border.withValues(alpha: 0.22),
+                    blurRadius: diameter * 0.08,
+                    spreadRadius: diameter * 0.006,
+                    offset: Offset(diameter * 0.016, diameter * 0.028),
+                  ),
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.05),
+                    blurRadius: diameter * 0.06,
+                    offset: Offset(0, diameter * 0.022),
+                  ),
+                ],
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  center: const Alignment(-0.32, -0.34),
+                  radius: 0.84,
+                  colors: [
+                    Colors.white.withValues(alpha: 0.74),
+                    Colors.white.withValues(alpha: 0.28),
+                    Colors.transparent,
+                  ],
+                  stops: const [0.0, 0.28, 1.0],
+                ),
+              ),
+            ),
+            DecoratedBox(
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: RadialGradient(
+                  center: const Alignment(0.46, 0.56),
+                  radius: 0.96,
+                  colors: [
+                    Colors.transparent,
+                    tokens.border.withValues(alpha: 0.10),
+                    tokens.border.withValues(alpha: 0.18),
+                  ],
+                  stops: const [0.0, 0.72, 1.0],
+                ),
+              ),
             ),
           ],
         ),
-        child: SizedBox(width: diameter, height: diameter),
+      ),
+    );
+  }
+
+  Widget _backgroundPillar(ContractAreaTokens tokens) {
+    final borderRadius = BorderRadius.circular(220);
+    if (tokens.darkGlass) {
+      return Container(
+        width: 320,
+        height: 500,
+        decoration: BoxDecoration(
+          borderRadius: borderRadius,
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: config.pillarGradientColors,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      width: 320,
+      height: 500,
+      decoration: BoxDecoration(
+        borderRadius: borderRadius,
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: config.pillarGradientColors,
+        ),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.38),
+          width: 1.4,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.white.withValues(alpha: 0.60),
+            blurRadius: 38,
+            spreadRadius: 1,
+            offset: const Offset(-4, -6),
+          ),
+          BoxShadow(
+            color: tokens.glow.withValues(alpha: 0.30),
+            blurRadius: 34,
+            spreadRadius: 2,
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.06),
+            blurRadius: 28,
+            offset: const Offset(0, 18),
+          ),
+        ],
+      ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: borderRadius,
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: 0.38),
+              Colors.transparent,
+              Colors.white.withValues(alpha: 0.12),
+            ],
+            stops: const [0.0, 0.42, 1.0],
+          ),
+        ),
       ),
     );
   }
@@ -522,6 +664,8 @@ class _AreaHeaderBrand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final isDark = tokens.darkGlass;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -529,15 +673,39 @@ class _AreaHeaderBrand extends StatelessWidget {
           width: 54,
           height: 54,
           decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.30),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: isDark
+                  ? [
+                      Colors.white.withValues(alpha: 0.30),
+                      Colors.white.withValues(alpha: 0.16),
+                    ]
+                  : [
+                      Colors.white.withValues(alpha: 0.98),
+                      tokens.surfaceTint.withValues(alpha: 0.84),
+                    ],
+            ),
             borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.44)),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(alpha: 0.44)
+                  : tokens.border.withValues(alpha: 0.82),
+            ),
             boxShadow: [
               BoxShadow(
-                color: config.tokens.glow.withValues(alpha: 0.22),
-                blurRadius: 24,
+                color: isDark
+                    ? config.tokens.glow.withValues(alpha: 0.22)
+                    : Colors.black.withValues(alpha: 0.10),
+                blurRadius: isDark ? 24 : 22,
                 offset: const Offset(0, 12),
               ),
+              if (!isDark)
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.62),
+                  blurRadius: 18,
+                  offset: const Offset(0, -2),
+                ),
             ],
           ),
           child: const Center(child: DicsaLogoD(size: 36, progress: 1)),
@@ -658,6 +826,7 @@ class _AreaHero extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return ContractGlassCard(
       padding: EdgeInsets.zero,
       child: DecoratedBox(
@@ -681,8 +850,18 @@ class _AreaHero extends StatelessWidget {
                   gradient: config.heroGradient,
                   borderRadius: BorderRadius.circular(22),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
+                    color: tokens.darkGlass
+                        ? Colors.white.withValues(alpha: 0.18)
+                        : tokens.border.withValues(alpha: 0.74),
                   ),
+                  boxShadow: [
+                    if (!tokens.darkGlass)
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.08),
+                        blurRadius: 14,
+                        offset: const Offset(0, 8),
+                      ),
+                  ],
                 ),
                 child: Icon(
                   Icons.space_dashboard_rounded,
@@ -875,6 +1054,7 @@ class _ContractCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return SizedBox(
       width: width,
       child: ContractGlassCard(
@@ -882,7 +1062,22 @@ class _ContractCard extends StatelessWidget {
         child: Container(
           decoration: BoxDecoration(
             color: config.contractPanelColor,
+            gradient: tokens.darkGlass
+                ? null
+                : LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.92),
+                      config.contractPanelColor ?? tokens.glassSurface,
+                    ],
+                  ),
             borderRadius: BorderRadius.circular(24),
+            border: Border.all(
+              color: tokens.darkGlass
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : tokens.border.withValues(alpha: 0.36),
+            ),
           ),
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
           child: Column(
@@ -966,6 +1161,7 @@ class _ContractBadgeState extends State<_ContractBadge> {
   @override
   Widget build(BuildContext context) {
     final config = widget.config;
+    final tokens = AreaThemeScope.of(context);
     return MouseRegion(
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
@@ -987,10 +1183,18 @@ class _ContractBadgeState extends State<_ContractBadge> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: _hovered ? 0.22 : 0.12),
+              color: tokens.darkGlass
+                  ? Colors.black.withValues(alpha: _hovered ? 0.22 : 0.12)
+                  : Colors.black.withValues(alpha: _hovered ? 0.10 : 0.06),
               blurRadius: _hovered ? 20 : 12,
               offset: Offset(0, _hovered ? 10 : 6),
             ),
+            if (!tokens.darkGlass)
+              BoxShadow(
+                color: Colors.white.withValues(alpha: _hovered ? 0.58 : 0.42),
+                blurRadius: _hovered ? 12 : 8,
+                offset: const Offset(0, -1),
+              ),
           ],
         ),
         child: Row(
@@ -1182,6 +1386,7 @@ class _AreaHeaderButtonState extends State<_AreaHeaderButton> {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final isDark = tokens.darkGlass;
     final enabled = widget.onTap != null || widget.onTapSync != null;
     final highlighted = enabled && _hovered;
     return MouseRegion(
@@ -1228,32 +1433,59 @@ class _AreaHeaderButtonState extends State<_AreaHeaderButton> {
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withValues(alpha: highlighted ? 0.18 : 0.12),
-                    tokens.surfaceTint.withValues(
-                      alpha: highlighted ? 0.20 : 0.12,
-                    ),
-                  ],
+                  colors: isDark
+                      ? [
+                          Colors.white.withValues(
+                            alpha: highlighted ? 0.18 : 0.12,
+                          ),
+                          tokens.surfaceTint.withValues(
+                            alpha: highlighted ? 0.20 : 0.12,
+                          ),
+                        ]
+                      : [
+                          Color.lerp(
+                            Colors.white,
+                            tokens.primarySoft,
+                            highlighted ? 0.18 : 0.10,
+                          )!.withValues(alpha: 0.98),
+                          Color.lerp(
+                            tokens.primarySoft,
+                            tokens.surfaceTint,
+                            highlighted ? 0.68 : 0.54,
+                          )!.withValues(alpha: 0.94),
+                        ],
                 ),
                 borderRadius: BorderRadius.circular(18),
                 border: Border.all(
-                  color: highlighted
-                      ? Colors.white.withValues(alpha: 0.76)
-                      : Colors.white.withValues(alpha: 0.48),
+                  color: isDark
+                      ? (highlighted
+                            ? Colors.white.withValues(alpha: 0.76)
+                            : Colors.white.withValues(alpha: 0.48))
+                      : tokens.border.withValues(
+                          alpha: highlighted ? 0.92 : 0.74,
+                        ),
                 ),
                 boxShadow: [
                   BoxShadow(
                     blurRadius: highlighted ? 28 : 16,
-                    color: Colors.black.withValues(
-                      alpha: highlighted ? 0.22 : 0.12,
-                    ),
+                    color: isDark
+                        ? Colors.black.withValues(
+                            alpha: highlighted ? 0.22 : 0.12,
+                          )
+                        : Colors.black.withValues(
+                            alpha: highlighted ? 0.10 : 0.07,
+                          ),
                     offset: Offset(0, highlighted ? 14 : 8),
                   ),
                   BoxShadow(
                     blurRadius: highlighted ? 20 : 10,
-                    color: tokens.glow.withValues(
-                      alpha: highlighted ? 0.12 : 0.05,
-                    ),
+                    color: isDark
+                        ? tokens.glow.withValues(
+                            alpha: highlighted ? 0.12 : 0.05,
+                          )
+                        : Colors.white.withValues(
+                            alpha: highlighted ? 0.62 : 0.40,
+                          ),
                   ),
                 ],
               ),
@@ -1263,13 +1495,7 @@ class _AreaHeaderButtonState extends State<_AreaHeaderButton> {
                     ? MainAxisAlignment.center
                     : MainAxisAlignment.start,
                 children: [
-                  Icon(
-                    widget.icon,
-                    size: 20,
-                    color: tokens.darkGlass
-                        ? tokens.onGlass
-                        : tokens.primaryStrong,
-                  ),
+                  Icon(widget.icon, size: 20, color: tokens.onGlass),
                   if (!widget.compact) ...[
                     const SizedBox(width: 10),
                     Expanded(
@@ -1281,9 +1507,7 @@ class _AreaHeaderButtonState extends State<_AreaHeaderButton> {
                           maxLines: 1,
                           softWrap: false,
                           style: TextStyle(
-                            color: tokens.darkGlass
-                                ? tokens.onGlass
-                                : tokens.primaryStrong,
+                            color: tokens.onGlass,
                             fontSize: 15,
                             fontWeight: FontWeight.w800,
                           ),
@@ -1454,6 +1678,7 @@ class _AreaNavItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final accentedForeground = tokens.darkGlass ? Colors.white : tokens.onGlass;
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: Material(
@@ -1468,7 +1693,9 @@ class _AreaNavItem extends StatelessWidget {
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: accented
-                    ? Colors.white.withValues(alpha: 0.28)
+                    ? (tokens.darkGlass
+                          ? Colors.white.withValues(alpha: 0.28)
+                          : tokens.border.withValues(alpha: 0.72))
                     : Colors.white.withValues(
                         alpha: tokens.darkGlass ? 0.08 : 0.58,
                       ),
@@ -1494,10 +1721,8 @@ class _AreaNavItem extends StatelessWidget {
                 Icon(
                   icon,
                   color: accented
-                      ? Colors.white
-                      : (tokens.darkGlass
-                            ? tokens.primary
-                            : tokens.primaryStrong),
+                      ? accentedForeground
+                      : (tokens.darkGlass ? tokens.primary : tokens.primary),
                   size: 22,
                 ),
                 const SizedBox(width: 12),
@@ -1510,11 +1735,7 @@ class _AreaNavItem extends StatelessWidget {
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w900,
-                          color: accented
-                              ? Colors.white
-                              : (tokens.darkGlass
-                                    ? tokens.onGlass
-                                    : tokens.primaryStrong),
+                          color: accented ? accentedForeground : tokens.onGlass,
                         ),
                       ),
                       const SizedBox(height: 2),
@@ -1524,7 +1745,9 @@ class _AreaNavItem extends StatelessWidget {
                           fontSize: 12,
                           fontWeight: FontWeight.w700,
                           color: accented
-                              ? Colors.white.withValues(alpha: 0.92)
+                              ? (tokens.darkGlass
+                                    ? Colors.white.withValues(alpha: 0.92)
+                                    : tokens.onGlass.withValues(alpha: 0.72))
                               : (tokens.darkGlass
                                     ? tokens.onGlass.withValues(alpha: 0.58)
                                     : tokens.badgeText),

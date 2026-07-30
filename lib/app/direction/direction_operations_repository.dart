@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../shared/utils/fetch_all_supabase_rows.dart';
+
 enum DirectionFollowupSeverity { info, warning, critical }
 
 class DirectionFollowupAlert {
@@ -133,15 +135,19 @@ class DirectionOperationsRepository {
   final SupabaseClient _client;
 
   Future<DirectionPurchaseOrdersSummary> loadPurchaseOrdersSummary() async {
-    final rawOrders = await _client
-        .from('maintenance_purchase_orders')
-        .select(
-          'id,folio,status,order_date,created_at,updated_at,target_label,quote_vendor_name,quote_contact,requested_by_name,direction_comment',
-        )
-        .order('created_at', ascending: true);
+    final rawOrders = await fetchAllSupabaseRows(
+      (from, to) => _client
+          .from('maintenance_purchase_orders')
+          .select(
+            'id,folio,status,order_date,created_at,updated_at,target_label,quote_vendor_name,quote_contact,requested_by_name,direction_comment',
+          )
+          .order('created_at', ascending: true)
+          .order('id', ascending: true)
+          .range(from, to),
+    );
 
-    final orders = (rawOrders as List)
-        .map((row) => Map<String, dynamic>.from(row as Map<String, dynamic>))
+    final orders = rawOrders
+        .map((row) => Map<String, dynamic>.from(row))
         .toList(growable: false);
 
     final orderIds = orders
@@ -156,12 +162,17 @@ class DirectionOperationsRepository {
     final invalidAmountByOrderId = <String, int>{};
     final lineSummariesByOrderId = <String, List<String>>{};
     if (orderIds.isNotEmpty) {
-      final rawLines = await _client
-          .from('maintenance_purchase_order_lines')
-          .select('purchase_order_id,line_total,qty,amount,description')
-          .inFilter('purchase_order_id', orderIds);
-      for (final raw in rawLines as List) {
-        final row = Map<String, dynamic>.from(raw as Map<String, dynamic>);
+      final rawLines = await fetchAllSupabaseRows(
+        (from, to) => _client
+            .from('maintenance_purchase_order_lines')
+            .select('purchase_order_id,line_total,qty,amount,description')
+            .inFilter('purchase_order_id', orderIds)
+            .order('purchase_order_id', ascending: true)
+            .order('description', ascending: true)
+            .range(from, to),
+      );
+      for (final raw in rawLines) {
+        final row = Map<String, dynamic>.from(raw);
         final orderId = (row['purchase_order_id'] ?? '').toString();
         if (orderId.isEmpty) continue;
         lineCountByOrderId[orderId] = (lineCountByOrderId[orderId] ?? 0) + 1;
@@ -387,15 +398,19 @@ class DirectionOperationsRepository {
   }
 
   Future<DirectionMaintenanceSummary> loadMaintenanceSummary() async {
-    final rawOrders = await _client
-        .from('maintenance_orders')
-        .select(
-          'id,ot_folio,status,priority,impact,area_label,equipment_label,requested_at,updated_at,cost_estimated_total,cost_actual_total,mechanic_name,mechanic_contact,problem_description,diagnosis,work_summary,assigned_to_name',
-        )
-        .order('updated_at', ascending: true);
+    final rawOrders = await fetchAllSupabaseRows(
+      (from, to) => _client
+          .from('maintenance_orders')
+          .select(
+            'id,ot_folio,status,priority,impact,area_label,equipment_label,requested_at,updated_at,cost_estimated_total,cost_actual_total,mechanic_name,mechanic_contact,problem_description,diagnosis,work_summary,assigned_to_name',
+          )
+          .order('updated_at', ascending: true)
+          .order('id', ascending: true)
+          .range(from, to),
+    );
 
-    final orders = (rawOrders as List)
-        .map((row) => Map<String, dynamic>.from(row as Map<String, dynamic>))
+    final orders = rawOrders
+        .map((row) => Map<String, dynamic>.from(row))
         .toList(growable: false);
 
     final orderIds = orders
@@ -404,12 +419,17 @@ class DirectionOperationsRepository {
         .toList(growable: false);
     final materialCountByOtId = <String, int>{};
     if (orderIds.isNotEmpty) {
-      final rawMaterials = await _client
-          .from('maintenance_materials')
-          .select('ot_id,name')
-          .inFilter('ot_id', orderIds);
-      for (final raw in rawMaterials as List) {
-        final row = Map<String, dynamic>.from(raw as Map<String, dynamic>);
+      final rawMaterials = await fetchAllSupabaseRows(
+        (from, to) => _client
+            .from('maintenance_materials')
+            .select('ot_id,name')
+            .inFilter('ot_id', orderIds)
+            .order('ot_id', ascending: true)
+            .order('name', ascending: true)
+            .range(from, to),
+      );
+      for (final raw in rawMaterials) {
+        final row = Map<String, dynamic>.from(raw);
         final orderId = (row['ot_id'] ?? '').toString();
         if (orderId.isEmpty) continue;
         final materialName = (row['name'] ?? '').toString().trim();

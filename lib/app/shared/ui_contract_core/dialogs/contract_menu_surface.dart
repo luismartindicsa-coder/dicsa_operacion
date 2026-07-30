@@ -66,23 +66,45 @@ Future<T?> showContractContextMenu<T>({
                         gradient: LinearGradient(
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
-                          colors: [
-                            Colors.white.withValues(alpha: 0.84),
-                            Colors.white.withValues(alpha: 0.78),
-                            inheritedTokens.primarySoft.withValues(alpha: 0.18),
-                          ],
+                          colors: inheritedTokens.darkGlass
+                              ? [
+                                  Colors.white.withValues(alpha: 0.08),
+                                  inheritedTokens.fieldSurface.withValues(
+                                    alpha: 0.98,
+                                  ),
+                                  inheritedTokens.glassSurface.withValues(
+                                    alpha: 0.98,
+                                  ),
+                                ]
+                              : [
+                                  Colors.white.withValues(alpha: 0.84),
+                                  Colors.white.withValues(alpha: 0.78),
+                                  inheritedTokens.primarySoft.withValues(
+                                    alpha: 0.18,
+                                  ),
+                                ],
                         ),
                         borderRadius: BorderRadius.circular(20),
                         border: Border.all(
-                          color: Colors.white.withValues(alpha: 0.68),
+                          color: inheritedTokens.darkGlass
+                              ? Colors.white.withValues(alpha: 0.16)
+                              : Colors.white.withValues(alpha: 0.68),
                           width: 1.3,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.18),
-                            blurRadius: 24,
+                            color: inheritedTokens.darkGlass
+                                ? inheritedTokens.glow.withValues(alpha: 0.14)
+                                : Colors.black.withValues(alpha: 0.18),
+                            blurRadius: inheritedTokens.darkGlass ? 28 : 24,
                             offset: const Offset(0, 10),
                           ),
+                          if (inheritedTokens.darkGlass)
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.24),
+                              blurRadius: 22,
+                              offset: const Offset(0, 14),
+                            ),
                         ],
                       ),
                       padding: const EdgeInsets.symmetric(
@@ -105,9 +127,11 @@ Future<T?> showContractContextMenu<T>({
                               Divider(
                                 height: 1,
                                 thickness: 1,
-                                color: inheritedTokens.border.withValues(
-                                  alpha: 0.26,
-                                ),
+                                color: inheritedTokens.darkGlass
+                                    ? Colors.white.withValues(alpha: 0.08)
+                                    : inheritedTokens.border.withValues(
+                                        alpha: 0.26,
+                                      ),
                               ),
                           ],
                         ],
@@ -139,10 +163,19 @@ class _ContractMenuRowState<T> extends State<_ContractMenuRow<T>> {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     final foreground = widget.entry.enabled
-        ? const Color(0xFF173248)
-        : const Color(0xFF173248).withValues(alpha: 0.45);
+        ? tokens.onGlass
+        : tokens.onGlass.withValues(alpha: 0.44);
     final active = widget.entry.enabled && _hovered;
+    final activeFill = tokens.darkGlass
+        ? Color.lerp(
+            tokens.fieldSurface,
+            tokens.surfaceTint,
+            0.62,
+          )!.withValues(alpha: 0.92)
+        : Color.lerp(tokens.primarySoft, Colors.white, 0.58)!;
+    final activeText = tokens.darkGlass ? tokens.primaryStrong : tokens.onGlass;
     return MouseRegion(
       cursor: widget.entry.enabled
           ? SystemMouseCursors.click
@@ -159,19 +192,21 @@ class _ContractMenuRowState<T> extends State<_ContractMenuRow<T>> {
             curve: Curves.linear,
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
             decoration: BoxDecoration(
-              color: active
-                  ? const Color(0xFFE9F7EE).withValues(alpha: 0.95)
-                  : Colors.transparent,
+              color: active ? activeFill : Colors.transparent,
               borderRadius: BorderRadius.circular(14),
               border: active
                   ? Border.all(
-                      color: const Color(0xFFBFD8D3).withValues(alpha: 0.62),
+                      color: tokens.border.withValues(
+                        alpha: tokens.darkGlass ? 0.28 : 0.62,
+                      ),
                     )
                   : null,
               boxShadow: active
                   ? [
                       BoxShadow(
-                        color: const Color(0xFFBFD8D3).withValues(alpha: 0.48),
+                        color: tokens.glow.withValues(
+                          alpha: tokens.darkGlass ? 0.12 : 0.18,
+                        ),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -183,7 +218,7 @@ class _ContractMenuRowState<T> extends State<_ContractMenuRow<T>> {
               child: Text(
                 widget.entry.label,
                 style: TextStyle(
-                  color: active ? const Color(0xFF215A56) : foreground,
+                  color: active ? activeText : foreground,
                   fontSize: 14,
                   fontWeight: FontWeight.w700,
                 ),

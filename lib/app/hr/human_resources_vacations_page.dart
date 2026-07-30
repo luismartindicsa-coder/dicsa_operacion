@@ -28,6 +28,7 @@ import '../shared/ui_contract_core/dialogs/contract_menu_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
@@ -208,40 +209,59 @@ class _HumanResourcesVacationsPageState
     setState(() => _loading = true);
     try {
       final client = Supabase.instance.client;
-      final employeesResult = await client
-          .from(_kHrProfilesTable)
-          .select(
-            'id,nombre,empresa,horario,dias_labora,labor_schedules,fecha_ingreso,fecha_alta,salario,salario_real_percibido',
-          );
-      final importLotsResult = await client
-          .from(_kHrImportLotsTable)
-          .select('id,source,file_name,imported_at,period_label,entries')
-          .order('imported_at', ascending: false);
-      final rulesResult = await client
-          .from(_kHrVacationRulesTable)
-          .select()
-          .eq('active', true)
-          .order('sort_order');
-      final balancesResult = await client
-          .from(_kHrVacationBalancesTable)
-          .select()
-          .eq('exercise_year', _exerciseYear)
-          .order('employee_id');
-      final eventsResult = await client
-          .from(_kHrVacationEventsTable)
-          .select()
-          .eq('exercise_year', _exerciseYear)
-          .order('start_date');
-      final calculationsResult = await client
-          .from(_kHrVacationCalculationsTable)
-          .select()
-          .eq('exercise_year', _exerciseYear)
-          .order('vacation_event_id')
-          .order('sequence_no');
+      final employeesResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrProfilesTable)
+            .select(
+              'id,nombre,empresa,horario,dias_labora,labor_schedules,fecha_ingreso,fecha_alta,salario,salario_real_percibido',
+            )
+            .order('id')
+            .range(from, to),
+      );
+      final importLotsResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrImportLotsTable)
+            .select('id,source,file_name,imported_at,period_label,entries')
+            .order('imported_at', ascending: false)
+            .range(from, to),
+      );
+      final rulesResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrVacationRulesTable)
+            .select()
+            .eq('active', true)
+            .order('sort_order')
+            .range(from, to),
+      );
+      final balancesResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrVacationBalancesTable)
+            .select()
+            .eq('exercise_year', _exerciseYear)
+            .order('employee_id')
+            .range(from, to),
+      );
+      final eventsResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrVacationEventsTable)
+            .select()
+            .eq('exercise_year', _exerciseYear)
+            .order('start_date')
+            .range(from, to),
+      );
+      final calculationsResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrVacationCalculationsTable)
+            .select()
+            .eq('exercise_year', _exerciseYear)
+            .order('vacation_event_id')
+            .order('sequence_no')
+            .range(from, to),
+      );
 
       final employees =
-          (employeesResult as List)
-              .map((raw) => Map<String, dynamic>.from(raw as Map))
+          employeesResult
+              .map((raw) => Map<String, dynamic>.from(raw))
               .map(_HrVacationEmployeeMaster.fromRow)
               .where((row) => row.employeeId.trim().isNotEmpty)
               .toList(growable: false)
@@ -251,25 +271,25 @@ class _HumanResourcesVacationsPageState
               if (aInt != null && bInt != null) return aInt.compareTo(bInt);
               return a.employeeId.compareTo(b.employeeId);
             });
-      final attendanceLots = (importLotsResult as List)
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
+      final attendanceLots = importLotsResult
+          .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrVacationAttendanceLotLite.fromRow)
           .toList(growable: false);
 
-      final rules = (rulesResult as List)
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
+      final rules = rulesResult
+          .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrVacationRule.fromRow)
           .toList(growable: false);
-      final balances = (balancesResult as List)
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
+      final balances = balancesResult
+          .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrVacationBalanceRecord.fromRow)
           .toList(growable: false);
-      var events = (eventsResult as List)
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
+      var events = eventsResult
+          .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrVacationEventRecord.fromRow)
           .toList(growable: false);
-      var calculations = (calculationsResult as List)
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
+      var calculations = calculationsResult
+          .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrVacationCalculationRecord.fromRow)
           .toList(growable: false);
 
@@ -283,23 +303,29 @@ class _HumanResourcesVacationsPageState
         exerciseYear: _exerciseYear,
       );
       if (contpaqSyncChanged) {
-        final refreshedEventsResult = await client
-            .from(_kHrVacationEventsTable)
-            .select()
-            .eq('exercise_year', _exerciseYear)
-            .order('start_date');
-        final refreshedCalculationsResult = await client
-            .from(_kHrVacationCalculationsTable)
-            .select()
-            .eq('exercise_year', _exerciseYear)
-            .order('vacation_event_id')
-            .order('sequence_no');
-        events = (refreshedEventsResult as List)
-            .map((raw) => Map<String, dynamic>.from(raw as Map))
+        final refreshedEventsResult = await fetchAllSupabaseRows(
+          (from, to) => client
+              .from(_kHrVacationEventsTable)
+              .select()
+              .eq('exercise_year', _exerciseYear)
+              .order('start_date')
+              .range(from, to),
+        );
+        final refreshedCalculationsResult = await fetchAllSupabaseRows(
+          (from, to) => client
+              .from(_kHrVacationCalculationsTable)
+              .select()
+              .eq('exercise_year', _exerciseYear)
+              .order('vacation_event_id')
+              .order('sequence_no')
+              .range(from, to),
+        );
+        events = refreshedEventsResult
+            .map((raw) => Map<String, dynamic>.from(raw))
             .map(_HrVacationEventRecord.fromRow)
             .toList(growable: false);
-        calculations = (refreshedCalculationsResult as List)
-            .map((raw) => Map<String, dynamic>.from(raw as Map))
+        calculations = refreshedCalculationsResult
+            .map((raw) => Map<String, dynamic>.from(raw))
             .map(_HrVacationCalculationRecord.fromRow)
             .toList(growable: false);
       }
@@ -596,10 +622,15 @@ class _HumanResourcesVacationsPageState
       contpaqLot: contpaqLot,
       activePeriodLabel: activeAttendancePeriodLabel,
     );
-    final rawRows = await client
-        .from(_kHrAttendanceDailyRecordsTable)
-        .select()
-        .eq('employee_id', row.employeeId);
+    final rawRows = await fetchAllSupabaseRows(
+      (from, to) => client
+          .from(_kHrAttendanceDailyRecordsTable)
+          .select()
+          .eq('employee_id', row.employeeId)
+          .order('source_date')
+          .order('created_at')
+          .range(from, to),
+    );
     final attendanceRows = ((rawRows as List?) ?? const <dynamic>[])
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList(growable: true);
