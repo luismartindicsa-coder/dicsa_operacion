@@ -8,9 +8,10 @@ import 'package:url_launcher/url_launcher_string.dart';
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
-import '../services/inventory_page.dart';
 import '../maintenance/maintenance_page.dart';
+import '../maintenance/maintenance_statuses.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
+import '../services/inventory_page.dart';
 import '../services/operation_directory_page.dart';
 import '../services/services_catalog_page.dart';
 import '../services/warehouse_page.dart';
@@ -1298,25 +1299,38 @@ class _ServicesSummaryPanelState extends State<_ServicesSummaryPanel>
     if (showLoader && mounted) {
       setState(() => _loadingDates = true);
     }
-    final data = await _supa
-        .from('services')
-        .select('due_date')
-        .not('due_date', 'is', null)
-        .order('due_date');
+    try {
+      final data = await _supa
+          .from('services')
+          .select('due_date')
+          .not('due_date', 'is', null)
+          .order('due_date');
 
-    final set = <DateTime>{};
-    for (final row in (data as List)) {
-      final value = (row as Map<String, dynamic>)['due_date'];
-      if (value == null) continue;
-      set.add(DateUtils.dateOnly(_parseDate(value)));
+      final set = <DateTime>{};
+      for (final row in (data as List)) {
+        final value = (row as Map<String, dynamic>)['due_date'];
+        if (value == null) continue;
+        set.add(DateUtils.dateOnly(_parseDate(value)));
+      }
+
+      final sorted = set.toList()..sort();
+      if (!mounted) return;
+      setState(() {
+        _datesWithServices = sorted;
+        if (showLoader) _loadingDates = false;
+      });
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage: 'No se pudieron cargar las fechas de servicios.',
+      );
+      if (!mounted) return;
+      setState(() {
+        _datesWithServices = const [];
+        if (showLoader) _loadingDates = false;
+      });
     }
-
-    final sorted = set.toList()..sort();
-    if (!mounted) return;
-    setState(() {
-      _datesWithServices = sorted;
-      if (showLoader) _loadingDates = false;
-    });
   }
 
   Future<void> _loadRowsForSelectedDate({bool showLoader = true}) async {
@@ -1634,32 +1648,6 @@ class _DashboardOpsWidgetsColumn extends StatelessWidget {
   }
 }
 
-const List<String> _kDashboardMaintenanceFlow = <String>[
-  'aviso_falla',
-  'revision_area',
-  'reporte_mantenimiento',
-  'cotizacion',
-  'autorizacion_finanzas',
-  'material_recolectado',
-  'programado',
-  'mantenimiento_realizado',
-  'supervision',
-];
-
-const Map<String, String> _kDashboardMaintenanceStatusLabel = <String, String>{
-  'aviso_falla': 'Aviso falla',
-  'revision_area': 'Revisión área',
-  'reporte_mantenimiento': 'Reporte mantenimiento',
-  'cotizacion': 'Cotización',
-  'autorizacion_finanzas': 'Autorización finanzas',
-  'material_recolectado': 'Material recolectado',
-  'programado': 'Programado',
-  'mantenimiento_realizado': 'Mantenimiento realizado',
-  'supervision': 'Supervisión',
-  'cerrado': 'Cerrado',
-  'rechazado': 'Rechazado',
-};
-
 class _MaintenanceSummaryCard extends StatefulWidget {
   final Future<void> Function()? onTap;
 
@@ -1759,10 +1747,8 @@ class _MaintenanceSummaryCardState extends State<_MaintenanceSummaryCard> {
       byStage.removeWhere((_, value) => value <= 0);
       final sortedByStage = byStage.entries.toList()
         ..sort((a, b) {
-          final aIndex = _kDashboardMaintenanceFlow.indexOf(a.key);
-          final bIndex = _kDashboardMaintenanceFlow.indexOf(b.key);
-          final left = aIndex < 0 ? 999 : aIndex;
-          final right = bIndex < 0 ? 999 : bIndex;
+          final left = maintenanceStatusSortIndex(a.key);
+          final right = maintenanceStatusSortIndex(b.key);
           if (left != right) return left.compareTo(right);
           return a.key.compareTo(b.key);
         });
@@ -1793,18 +1779,10 @@ class _MaintenanceSummaryCardState extends State<_MaintenanceSummaryCard> {
     }
   }
 
-  String _normalizeStatus(dynamic value) =>
-      (value ?? '').toString().toLowerCase().trim();
+  String _normalizeStatus(dynamic value) => normalizeMaintenanceStatus(value);
 
   String _statusLabel(String status) {
-    final label = _kDashboardMaintenanceStatusLabel[status];
-    if (label != null) return label;
-    return status
-        .replaceAll('_', ' ')
-        .split(' ')
-        .where((w) => w.trim().isNotEmpty)
-        .map((w) => '${w[0].toUpperCase()}${w.substring(1).toLowerCase()}')
-        .join(' ');
+    return maintenanceStatusLabel(status);
   }
 
   @override
@@ -2229,20 +2207,17 @@ class _MaintenanceStageChip extends StatelessWidget {
   const _MaintenanceStageChip({required this.text});
 
   Color _bgFor(String value) {
-    final key = value.toLowerCase();
-    if (key.contains('aviso') || key.contains('revision')) {
-      return const Color(0xFFFFE0B2);
+    switch (normalizeMaintenanceStatus(value)) {
+      case 'aviso_falla':
+        return const Color(0xFFFFE0B2);
+      case 'cotizacion':
+      case 'autorizacion_finanzas':
+        return const Color(0xFFFFECB3);
+      case 'supervision':
+        return const Color(0xFFBBDEFB);
+      default:
+        return const Color(0xFFEAF1F1);
     }
-    if (key.contains('cotiz') || key.contains('autoriz')) {
-      return const Color(0xFFFFECB3);
-    }
-    if (key.contains('programado') || key.contains('realizado')) {
-      return const Color(0xFFC8E6C9);
-    }
-    if (key.contains('supervision')) {
-      return const Color(0xFFBBDEFB);
-    }
-    return const Color(0xFFEAF1F1);
   }
 
   @override

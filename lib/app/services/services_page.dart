@@ -10,6 +10,7 @@ import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
+import '../logistica/logistics_fixed_services_store.dart';
 import '../maintenance/maintenance_page.dart';
 import '../maintenance/purchase_orders_page.dart';
 import 'inventory_page.dart';
@@ -18,6 +19,7 @@ import 'services_visual_mode.dart';
 import 'warehouse_page.dart';
 import 'weighings_page.dart';
 import 'services_shell.dart'; // ajusta el path si lo guardaste en /ui/ o /app/
+import '../shared/app_error_reporter.dart';
 import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart'
     as shared_picker;
 import '../shared/ui_contract_core/dialogs/confirm_dialog_key_handler.dart';
@@ -30,7 +32,8 @@ import '../shared/utils/date_picker_defaults.dart';
 const double _kServiceDateColW = 90;
 const double _kServiceCompanyColW = 190;
 const double _kServiceMaterialColW = 190;
-const double _kServiceTypeColW = 130;
+const double _kServicePlanningKindColW = 126;
+const double _kServiceTypeColW = 132;
 const double _kServiceDriverColW = 190;
 const double _kServiceUnitColW = 140;
 const double _kServiceDueDateColW = 130;
@@ -48,6 +51,7 @@ const double _kServicesTableBaseContentW =
     _kServiceDateColW +
     _kServiceCompanyColW +
     _kServiceMaterialColW +
+    _kServicePlanningKindColW +
     _kServiceTypeColW +
     _kServiceDriverColW +
     _kServiceUnitColW +
@@ -62,6 +66,7 @@ class _ServicesTableLayout {
     required this.serviceDate,
     required this.company,
     required this.material,
+    required this.planningKind,
     required this.type,
     required this.driver,
     required this.unit,
@@ -76,6 +81,7 @@ class _ServicesTableLayout {
   final double serviceDate;
   final double company;
   final double material;
+  final double planningKind;
   final double type;
   final double driver;
   final double unit;
@@ -90,6 +96,7 @@ class _ServicesTableLayout {
       serviceDate +
       company +
       material +
+      planningKind +
       type +
       driver +
       unit +
@@ -126,6 +133,7 @@ _ServicesTableLayout _resolveServicesTableLayout(double availableWidth) {
       serviceDate: _kServiceDateColW,
       company: _kServiceCompanyColW,
       material: _kServiceMaterialColW,
+      planningKind: _kServicePlanningKindColW,
       type: _kServiceTypeColW,
       driver: _kServiceDriverColW,
       unit: _kServiceUnitColW,
@@ -142,6 +150,7 @@ _ServicesTableLayout _resolveServicesTableLayout(double availableWidth) {
     serviceDate: _kServiceDateColW * scale,
     company: _kServiceCompanyColW * scale,
     material: _kServiceMaterialColW * scale,
+    planningKind: _kServicePlanningKindColW * scale,
     type: _kServiceTypeColW * scale,
     driver: _kServiceDriverColW * scale,
     unit: _kServiceUnitColW * scale,
@@ -197,6 +206,17 @@ String _fmtServicesUiTimeOfDay(TimeOfDay value) {
 
 String _fmtServicesDbTimeOfDay(TimeOfDay value) {
   return '${_fmtServicesUiTimeOfDay(value)}:00';
+}
+
+const List<String> _kServiceMovementOptions = <String>[
+  'recoleccion',
+  'entrega',
+];
+
+const List<String> _kServicePlanningKindOptions = <String>['VARIANTE', 'FIJO'];
+
+String _normalizedServicesPlanningKind(String? raw) {
+  return raw?.trim().toUpperCase() == 'FIJO' ? 'FIJO' : 'VARIANTE';
 }
 
 Future<TimeOfDay?> _showServicesTimePicker(
@@ -883,6 +903,11 @@ class _FitText extends StatelessWidget {
 InputDecoration _glassFieldDecoration(
   BuildContext context, {
   String? hintText,
+  String? labelText,
+  Widget? suffixIcon,
+  bool alignLabelWithHint = false,
+  EdgeInsetsGeometry? contentPadding,
+  Color? fillColor,
 }) {
   final palette = ServicesVisualPalette.of(context);
   final border = OutlineInputBorder(
@@ -892,10 +917,24 @@ InputDecoration _glassFieldDecoration(
 
   return InputDecoration(
     hintText: hintText,
+    labelText: labelText,
+    suffixIcon: suffixIcon,
+    alignLabelWithHint: alignLabelWithHint,
     isDense: true,
     filled: true,
-    fillColor: palette.fieldFill,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+    fillColor: fillColor ?? palette.fieldFill,
+    labelStyle: TextStyle(
+      color: palette.textSecondary,
+      fontWeight: FontWeight.w700,
+    ),
+    floatingLabelStyle: TextStyle(
+      color: palette.filterAccent,
+      fontWeight: FontWeight.w800,
+    ),
+    hintStyle: TextStyle(color: palette.textMuted, fontWeight: FontWeight.w600),
+    contentPadding:
+        contentPadding ??
+        const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
     border: border,
     enabledBorder: border,
     focusedBorder: border.copyWith(
@@ -968,6 +1007,37 @@ ButtonStyle _actionFilledButtonStyle(BuildContext context) {
       if (states.contains(WidgetState.hovered)) return 7;
       return 0;
     }),
+  );
+}
+
+ButtonStyle _actionSoftFilledButtonStyle(BuildContext context) {
+  final palette = ServicesVisualPalette.of(context);
+  return FilledButton.styleFrom(
+    backgroundColor: palette.surfaceInteractive,
+    foregroundColor: palette.textPrimary,
+    surfaceTintColor: Colors.transparent,
+    shadowColor: palette.deepShadow,
+    side: BorderSide(color: palette.borderStrong),
+  ).copyWith(
+    overlayColor: WidgetStateProperty.all(Colors.transparent),
+    elevation: WidgetStateProperty.resolveWith((states) {
+      if (states.contains(WidgetState.disabled)) return 0;
+      if (states.contains(WidgetState.pressed)) return 1.5;
+      if (states.contains(WidgetState.hovered)) return 5;
+      return 0;
+    }),
+  );
+}
+
+ButtonStyle _actionTextButtonStyle(BuildContext context) {
+  final palette = ServicesVisualPalette.of(context);
+  return TextButton.styleFrom(
+    foregroundColor: palette.textSecondary,
+    surfaceTintColor: Colors.transparent,
+  ).copyWith(
+    overlayColor: WidgetStateProperty.all(
+      palette.surfaceInteractive.withValues(alpha: 0.22),
+    ),
   );
 }
 
@@ -1123,13 +1193,14 @@ class _ServicesPageState extends State<ServicesPage>
   List<Map<String, dynamic>> _rows = [];
   String? _selectedRowId;
   final Set<String> _bulkSelectedRowIds = <String>{};
-  static const int _insertColumnCount = 11;
-  static const int _gridColumnCount = 10;
+  static const int _insertColumnCount = 12;
+  static const int _gridColumnCount = 11;
   static const List<String> _gridColumnLabels = <String>[
     'FECHA',
     'EMPRESA',
     'MATERIAL',
-    'TIPO',
+    'PROGRAMACIÓN',
+    'MOVIMIENTO',
     'CHOFER',
     'UNIDAD',
     'PARA EL DÍA',
@@ -1161,7 +1232,7 @@ class _ServicesPageState extends State<ServicesPage>
   // ===== inline insert (fila superior) =====
   late _ServiceDraft _draft;
 
-  static const _directions = <String>['recoleccion', 'entrega'];
+  static const _directions = _kServiceMovementOptions;
   static const _statuses = <String>[
     'programado',
     'confirmado',
@@ -1208,8 +1279,8 @@ class _ServicesPageState extends State<ServicesPage>
       _insertRowActive = next;
       shouldSetState = true;
     }
-    if (_draftNotesFocusNode.hasFocus && _activeInsertColumn != 8) {
-      _activeInsertColumn = 8;
+    if (_draftNotesFocusNode.hasFocus && _activeInsertColumn != 9) {
+      _activeInsertColumn = 9;
       shouldSetState = true;
     }
     if (shouldSetState) {
@@ -1393,6 +1464,7 @@ class _ServicesPageState extends State<ServicesPage>
       _draft.serviceDate != null ||
       _draft.dueDate != null ||
       _draft.scheduledTime != null ||
+      _draft.planningKind != 'VARIANTE' ||
       _draft.direction != null ||
       _draft.status != null ||
       _draft.clientId != null ||
@@ -1570,69 +1642,90 @@ class _ServicesPageState extends State<ServicesPage>
     if (mounted) {
       setState(() => _loadingCats = true);
     }
+    try {
+      final results = await Future.wait<dynamic>([
+        supa
+            .from('sites')
+            .select('id,name,type')
+            .eq('type', 'cliente')
+            .eq('is_active', true)
+            .order('name'),
+        supa
+            .from('material_commercial_catalog_v2')
+            .select('id,name,code')
+            .eq('is_active', true)
+            .neq('classification_kind', 'legacy_alias')
+            .order('sort_order')
+            .order('name'),
+        supa
+            .from('employees')
+            .select('id,full_name')
+            .eq('is_driver', true)
+            .eq('is_active', true)
+            .order('full_name'),
+        supa
+            .from('vehicles')
+            .select('id,code,status')
+            .eq('status', 'activo')
+            .order('code'),
+      ]);
+      if (!mounted) return;
 
-    final results = await Future.wait<dynamic>([
-      supa
-          .from('sites')
-          .select('id,name,type')
-          .eq('type', 'cliente')
-          .eq('is_active', true)
-          .order('name'),
-      supa
-          .from('material_commercial_catalog_v2')
-          .select('id,name,code')
-          .eq('is_active', true)
-          .neq('classification_kind', 'legacy_alias')
-          .order('sort_order')
-          .order('name'),
-      supa
-          .from('employees')
-          .select('id,full_name')
-          .eq('is_driver', true)
-          .eq('is_active', true)
-          .order('full_name'),
-      supa
-          .from('vehicles')
-          .select('id,code,status')
-          .eq('status', 'activo')
-          .order('code'),
-    ]);
-    if (!mounted) return;
+      final clients = (results[0] as List)
+          .map(
+            (e) => _Opt(
+              id: e['id'] as String,
+              label: (e['name'] as String).trim(),
+            ),
+          )
+          .toList();
+      final materials = (results[1] as List)
+          .map(
+            (e) => _Opt(
+              id: e['id'] as String,
+              label: (e['name'] as String).trim(),
+            ),
+          )
+          .toList();
+      final drivers = (results[2] as List)
+          .map(
+            (e) => _Opt(
+              id: e['id'] as String,
+              label: (e['full_name'] as String).trim(),
+            ),
+          )
+          .toList();
+      final vehicles = (results[3] as List)
+          .map(
+            (e) => _Opt(
+              id: e['id'] as String,
+              label: (e['code'] as String).trim(),
+            ),
+          )
+          .toList();
 
-    final clients = (results[0] as List)
-        .map(
-          (e) =>
-              _Opt(id: e['id'] as String, label: (e['name'] as String).trim()),
-        )
-        .toList();
-    final materials = (results[1] as List)
-        .map(
-          (e) =>
-              _Opt(id: e['id'] as String, label: (e['name'] as String).trim()),
-        )
-        .toList();
-    final drivers = (results[2] as List)
-        .map(
-          (e) => _Opt(
-            id: e['id'] as String,
-            label: (e['full_name'] as String).trim(),
-          ),
-        )
-        .toList();
-    final vehicles = (results[3] as List)
-        .map(
-          (e) =>
-              _Opt(id: e['id'] as String, label: (e['code'] as String).trim()),
-        )
-        .toList();
-
-    setState(() {
-      _clients = clients;
-      _materials = materials;
-      _drivers = drivers;
-      _vehicles = vehicles;
-      _loadingCats = false;
-    });
+      setState(() {
+        _clients = clients;
+        _materials = materials;
+        _drivers = drivers;
+        _vehicles = vehicles;
+        _loadingCats = false;
+      });
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage: 'No se pudieron cargar los catalogos de servicios.',
+      );
+      if (!mounted) return;
+      setState(() {
+        _clients = <_Opt>[];
+        _materials = <_Opt>[];
+        _drivers = <_Opt>[];
+        _vehicles = <_Opt>[];
+        _loadingCats = false;
+      });
+    }
   }
 
   void _initDraftDefaults() {
@@ -1640,6 +1733,7 @@ class _ServicesPageState extends State<ServicesPage>
       serviceDate: null,
       dueDate: null,
       scheduledTime: null,
+      planningKind: 'VARIANTE',
       direction: null,
       status: null,
       clientId: null,
@@ -1668,8 +1762,8 @@ class _ServicesPageState extends State<ServicesPage>
           .from('services')
           .select(
             _servicesScheduledTimeColumnAvailable
-                ? 'id,service_date,due_date,scheduled_time,direction,status,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at'
-                : 'id,service_date,due_date,direction,status,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at',
+                ? 'id,service_date,due_date,scheduled_time,direction,status,planning_kind,fixed_service_id,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at'
+                : 'id,service_date,due_date,direction,status,planning_kind,fixed_service_id,client_id,material_id,driver_employee_id,vehicle_id,weight_kg,notes,area,client_name,material_type,created_at',
           )
           .order('service_date', ascending: false)
           .order('created_at', ascending: false);
@@ -1755,8 +1849,14 @@ class _ServicesPageState extends State<ServicesPage>
         return byKeys(['material_type', 'material_name']).isNotEmpty
             ? byKeys(['material_type', 'material_name'])
             : (_labelOf(_materials, row['material_id'] as String?) ?? '');
-      case 'tipo':
-        return _uiLabel(((row['direction'] as String?) ?? '').trim());
+      case 'programacion':
+        return logisticsFixedServicePlanningKindLabel(
+          _normalizedServicesPlanningKind(row['planning_kind']?.toString()),
+        );
+      case 'movimiento':
+        return logisticsFixedServiceMovementLabel(
+          ((row['direction'] as String?) ?? '').trim(),
+        );
       case 'chofer':
         return byKeys([
               'driver_name',
@@ -1910,6 +2010,8 @@ class _ServicesPageState extends State<ServicesPage>
         'due_date',
         'scheduled_time',
         'direction',
+        'planning_kind',
+        'fixed_service_id',
         'status',
         'client_id',
         'material_id',
@@ -2683,7 +2785,7 @@ class _ServicesPageState extends State<ServicesPage>
   }
 
   void _focusCommentIfActiveCell() {
-    if (_activeGridColumn != 8) return;
+    if (_activeGridColumn != 9) return;
     final rowState = _selectedRowState();
     if (rowState == null || !rowState.isEditing) return;
     rowState.focusCommentField();
@@ -2892,7 +2994,7 @@ class _ServicesPageState extends State<ServicesPage>
     if (_draft.serviceDate == null) missing.add('Fecha');
     if (_draft.clientId == null) missing.add('Empresa');
     if (_draft.materialId == null) missing.add('Material');
-    if (_draft.direction == null) missing.add('Tipo');
+    if (_draft.direction == null) missing.add('Movimiento');
     if (_draft.status == null) missing.add('Estado');
     if (missing.isNotEmpty) {
       await _showInsertMissingFieldsDialog(missing);
@@ -2907,8 +3009,11 @@ class _ServicesPageState extends State<ServicesPage>
             ? null
             : _fmtServicesDbTimeOfDay(_draft.scheduledTime!),
       'direction': _draft.direction,
+      'planning_kind': _normalizedServicesPlanningKind(_draft.planningKind),
+      'fixed_service_id': null,
       'status': _draft.status,
       'client_id': _draft.clientId,
+      'material_id': _draft.materialId,
       'driver_employee_id': _draft.driverEmployeeId,
       'vehicle_id': _draft.vehicleId,
       'notes': _draft.notes.trim().isEmpty ? null : _draft.notes.trim(),
@@ -3177,7 +3282,7 @@ class _ServicesPageState extends State<ServicesPage>
     if (!requestFocus) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_activeInsertColumn == 8) {
+      if (_activeInsertColumn == 9) {
         FocusScope.of(context).requestFocus(_draftNotesFocusNode);
       } else {
         FocusManager.instance.primaryFocus?.unfocus();
@@ -3192,13 +3297,13 @@ class _ServicesPageState extends State<ServicesPage>
 
   int _gridToInsertColumn(int gridColumn) {
     if (gridColumn < 0) return 0;
-    if (gridColumn > 9) return 9;
+    if (gridColumn > 10) return 10;
     return gridColumn;
   }
 
   int _insertToGridColumn(int insertColumn) {
     if (insertColumn < 0) return 0;
-    if (insertColumn > 9) return 9;
+    if (insertColumn > 10) return 10;
     return insertColumn;
   }
 
@@ -3210,7 +3315,7 @@ class _ServicesPageState extends State<ServicesPage>
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_activeInsertColumn == 8) {
+      if (_activeInsertColumn == 9) {
         FocusScope.of(context).requestFocus(_draftNotesFocusNode);
       } else {
         FocusManager.instance.primaryFocus?.unfocus();
@@ -3321,15 +3426,25 @@ class _ServicesPageState extends State<ServicesPage>
         return;
       case 3:
         final v = await _pickInlineString(
-          title: 'Tipo',
+          title: 'Programación',
+          options: _kServicePlanningKindOptions,
+          current: _draft.planningKind,
+          format: logisticsFixedServicePlanningKindLabel,
+        );
+        if (!mounted || v == null) return;
+        setState(() => _draft = _draft.copyWith(planningKind: v));
+        return;
+      case 4:
+        final v = await _pickInlineString(
+          title: 'Movimiento',
           options: _directions,
           current: _draft.direction,
-          format: _uiLabel,
+          format: logisticsFixedServiceMovementLabel,
         );
         if (!mounted || v == null) return;
         setState(() => _draft = _draft.copyWith(direction: v));
         return;
-      case 4:
+      case 5:
         final id = await _pickInlineOptId(
           title: 'Chofer',
           options: _drivers,
@@ -3338,7 +3453,7 @@ class _ServicesPageState extends State<ServicesPage>
         if (!mounted || id == null) return;
         setState(() => _draft = _draft.copyWith(driverEmployeeId: id));
         return;
-      case 5:
+      case 6:
         final id = await _pickInlineOptId(
           title: 'Unidad',
           options: _vehicles,
@@ -3347,20 +3462,20 @@ class _ServicesPageState extends State<ServicesPage>
         if (!mounted || id == null) return;
         setState(() => _draft = _draft.copyWith(vehicleId: id));
         return;
-      case 6:
+      case 7:
         final d = await _pickInlineDate(_draft.dueDate);
         if (!mounted || d == null) return;
         setState(() => _draft = _draft.copyWith(dueDate: d));
         return;
-      case 7:
+      case 8:
         final t = await _pickInlineTime(_draft.scheduledTime);
         if (!mounted || t == null) return;
         setState(() => _draft = _draft.copyWith(scheduledTime: t));
         return;
-      case 8:
-        _setActiveInsertColumn(8);
-        return;
       case 9:
+        _setActiveInsertColumn(9);
+        return;
+      case 10:
         final v = await _pickInlineString(
           title: 'Estado',
           options: _statuses,
@@ -3370,7 +3485,7 @@ class _ServicesPageState extends State<ServicesPage>
         if (!mounted || v == null) return;
         setState(() => _draft = _draft.copyWith(status: v));
         return;
-      case 10:
+      case 11:
         await _insertDraft();
         return;
       default:
@@ -3390,25 +3505,28 @@ class _ServicesPageState extends State<ServicesPage>
         setState(() => _draft = _draft.copyWith(materialId: null));
         return;
       case 3:
-        setState(() => _draft = _draft.copyWith(direction: null));
+        setState(() => _draft = _draft.copyWith(planningKind: 'VARIANTE'));
         return;
       case 4:
-        setState(() => _draft = _draft.copyWith(driverEmployeeId: null));
+        setState(() => _draft = _draft.copyWith(direction: null));
         return;
       case 5:
-        setState(() => _draft = _draft.copyWith(vehicleId: null));
+        setState(() => _draft = _draft.copyWith(driverEmployeeId: null));
         return;
       case 6:
-        setState(() => _draft = _draft.copyWith(dueDate: null));
+        setState(() => _draft = _draft.copyWith(vehicleId: null));
         return;
       case 7:
-        setState(() => _draft = _draft.copyWith(scheduledTime: null));
+        setState(() => _draft = _draft.copyWith(dueDate: null));
         return;
       case 8:
+        setState(() => _draft = _draft.copyWith(scheduledTime: null));
+        return;
+      case 9:
         _draftNotesC.clear();
         setState(() => _draft = _draft.copyWith(notes: ''));
         return;
-      case 9:
+      case 10:
         setState(() => _draft = _draft.copyWith(status: null));
         return;
       default:
@@ -3417,16 +3535,21 @@ class _ServicesPageState extends State<ServicesPage>
   }
 
   Widget _buildInlineInsertRow() {
+    final palette = ServicesVisualPalette.of(context);
     return Card(
       elevation: 0.4,
-      color: _insertRowActive
+      color: palette.logisticsSilver
+          ? (_insertRowActive ? palette.surfaceHover : palette.surfaceElevated)
+          : _insertRowActive
           ? const Color(0xFFD9ECFA)
           : const Color(0xFFE7F1F8),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
         side: BorderSide(
           color: _insertRowActive
-              ? const Color(0xFF3C8DCC).withValues(alpha: 0.55)
+              ? (palette.logisticsSilver
+                    ? palette.filterAccent.withValues(alpha: 0.44)
+                    : const Color(0xFF3C8DCC).withValues(alpha: 0.55))
               : Colors.transparent,
         ),
       ),
@@ -3439,26 +3562,36 @@ class _ServicesPageState extends State<ServicesPage>
             );
             Widget insertCellFrame(int columnIndex, Widget child) {
               final active = _activeInsertColumn == columnIndex;
-              return DecoratedBox(
-                position: DecorationPosition.background,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
-                  color: active
-                      ? const Color(0xFFDCEAF7).withValues(alpha: 0.72)
-                      : Colors.transparent,
-                ),
+              final rightGap = columnIndex == 10 ? 0.0 : 8.0;
+              return Padding(
+                padding: EdgeInsets.only(right: rightGap),
                 child: DecoratedBox(
-                  position: DecorationPosition.foreground,
+                  position: DecorationPosition.background,
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(
-                      color: active
-                          ? const Color(0xFF0B72FF).withValues(alpha: 0.80)
-                          : Colors.transparent,
-                      width: active ? 1.15 : 1.0,
-                    ),
+                    color: active
+                        ? (palette.logisticsSilver
+                              ? palette.surfaceInteractive
+                              : const Color(0xFFDCEAF7).withValues(alpha: 0.72))
+                        : Colors.transparent,
                   ),
-                  child: child,
+                  child: DecoratedBox(
+                    position: DecorationPosition.foreground,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(
+                        color: active
+                            ? (palette.logisticsSilver
+                                  ? palette.filterAccent.withValues(alpha: 0.72)
+                                  : const Color(
+                                      0xFF0B72FF,
+                                    ).withValues(alpha: 0.80))
+                            : Colors.transparent,
+                        width: active ? 1.15 : 1.0,
+                      ),
+                    ),
+                    child: child,
+                  ),
                 ),
               );
             }
@@ -3594,12 +3727,30 @@ class _ServicesPageState extends State<ServicesPage>
                       insertCellFrame(
                         3,
                         SizedBox(
+                          width: tableLayout.planningKind,
+                          child: _DropStrInline(
+                            value: _draft.planningKind,
+                            items: _kServicePlanningKindOptions,
+                            format: logisticsFixedServicePlanningKindLabel,
+                            onTapStart: () => _setActiveInsertColumn(3),
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(
+                                () => _draft = _draft.copyWith(planningKind: v),
+                              );
+                            },
+                          ),
+                        ),
+                      ),
+                      insertCellFrame(
+                        4,
+                        SizedBox(
                           width: tableLayout.type,
                           child: _DropStrInline(
                             value: _draft.direction,
                             items: _directions,
-                            format: _uiLabel,
-                            onTapStart: () => _setActiveInsertColumn(3),
+                            format: logisticsFixedServiceMovementLabel,
+                            onTapStart: () => _setActiveInsertColumn(4),
                             onChanged: (v) => setState(
                               () => _draft = _draft.copyWith(direction: v),
                             ),
@@ -3607,13 +3758,13 @@ class _ServicesPageState extends State<ServicesPage>
                         ),
                       ),
                       insertCellFrame(
-                        4,
+                        5,
                         SizedBox(
                           width: tableLayout.driver,
                           child: _DropOptInline(
                             valueId: _draft.driverEmployeeId,
                             items: _drivers,
-                            onTapStart: () => _setActiveInsertColumn(4),
+                            onTapStart: () => _setActiveInsertColumn(5),
                             onChanged: (id) => setState(
                               () => _draft = _draft.copyWith(
                                 driverEmployeeId: id,
@@ -3623,13 +3774,13 @@ class _ServicesPageState extends State<ServicesPage>
                         ),
                       ),
                       insertCellFrame(
-                        5,
+                        6,
                         SizedBox(
                           width: tableLayout.unit,
                           child: _DropOptInline(
                             valueId: _draft.vehicleId,
                             items: _vehicles,
-                            onTapStart: () => _setActiveInsertColumn(5),
+                            onTapStart: () => _setActiveInsertColumn(6),
                             onChanged: (id) => setState(
                               () => _draft = _draft.copyWith(vehicleId: id),
                             ),
@@ -3637,13 +3788,13 @@ class _ServicesPageState extends State<ServicesPage>
                         ),
                       ),
                       insertCellFrame(
-                        6,
+                        7,
                         SizedBox(
                           width: tableLayout.dueDate,
                           child: InkWell(
                             borderRadius: BorderRadius.circular(12),
                             onTap: () async {
-                              _setActiveInsertColumn(6);
+                              _setActiveInsertColumn(7);
                               final d = await _pickInlineDate(_draft.dueDate);
                               if (!mounted || d == null) return;
                               setState(
@@ -3672,13 +3823,13 @@ class _ServicesPageState extends State<ServicesPage>
                         ),
                       ),
                       insertCellFrame(
-                        7,
+                        8,
                         SizedBox(
                           width: tableLayout.scheduledTime,
                           child: InkWell(
                             borderRadius: BorderRadius.circular(12),
                             onTap: () async {
-                              _setActiveInsertColumn(7);
+                              _setActiveInsertColumn(8);
                               final t = await _pickInlineTime(
                                 _draft.scheduledTime,
                               );
@@ -3713,7 +3864,7 @@ class _ServicesPageState extends State<ServicesPage>
                         ),
                       ),
                       insertCellFrame(
-                        8,
+                        9,
                         SizedBox(
                           width: tableLayout.comment,
                           child: Focus(
@@ -3744,7 +3895,7 @@ class _ServicesPageState extends State<ServicesPage>
                               focusNode: _draftNotesFocusNode,
                               decoration: _glassFieldDecoration(context),
                               onTap: () => _setActiveInsertColumn(
-                                8,
+                                9,
                                 requestFocus: false,
                               ),
                               onChanged: (t) => setState(
@@ -3759,7 +3910,7 @@ class _ServicesPageState extends State<ServicesPage>
                       ),
                       SizedBox(width: tableLayout.actionsGap),
                       insertCellFrame(
-                        9,
+                        10,
                         AnchoredActionSlot(
                           width: tableLayout.actions,
                           trailingWidth: tableLayout.insertActionButtonWidth,
@@ -3769,13 +3920,13 @@ class _ServicesPageState extends State<ServicesPage>
                             items: _statuses,
                             format: _uiLabel,
                             compact: true,
-                            onTapStart: () => _setActiveInsertColumn(9),
+                            onTapStart: () => _setActiveInsertColumn(10),
                             onChanged: (v) => setState(
                               () => _draft = _draft.copyWith(status: v),
                             ),
                           ),
                           trailing: insertCellFrame(
-                            10,
+                            11,
                             Tooltip(
                               message: 'AGREGAR',
                               child: InkWell(
@@ -3785,20 +3936,25 @@ class _ServicesPageState extends State<ServicesPage>
                                   width: tableLayout.insertActionButtonWidth,
                                   height: tableLayout.insertActionButtonWidth,
                                   decoration: BoxDecoration(
-                                    color: const Color(
-                                      0xFF19C37D,
-                                    ).withValues(alpha: 0.92),
+                                    gradient: palette.buttonGradient,
                                     borderRadius: BorderRadius.circular(10),
                                     border: Border.all(
-                                      color: Colors.white.withValues(
-                                        alpha: 0.52,
-                                      ),
+                                      color: palette.borderStrong,
                                     ),
+                                    boxShadow: [
+                                      BoxShadow(
+                                        blurRadius: 10,
+                                        color: palette.shadow.withValues(
+                                          alpha: 0.10,
+                                        ),
+                                        offset: const Offset(0, 4),
+                                      ),
+                                    ],
                                   ),
                                   child: Icon(
                                     Icons.add,
                                     size: 18,
-                                    color: Colors.white,
+                                    color: palette.textPrimary,
                                   ),
                                 ),
                               ),
@@ -3840,6 +3996,15 @@ class _ServicesPageState extends State<ServicesPage>
                   ),
                   label: const Text('Descargar CSV'),
                 ),
+                if (widget.logisticsSilverMode) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    style: _actionOutlinedButtonStyle(context),
+                    onPressed: _loadingCats ? null : _openFixedServicesManager,
+                    icon: const Icon(Icons.repeat_rounded),
+                    label: const Text('Servicios fijos'),
+                  ),
+                ],
                 if (_selectedCount > 0) ...[
                   const SizedBox(width: 8),
                   FilledButton.icon(
@@ -3959,6 +4124,22 @@ class _ServicesPageState extends State<ServicesPage>
         _buildLogisticsPlanningScopeStrip(),
       ],
     );
+  }
+
+  Future<void> _openFixedServicesManager() async {
+    if (_loadingCats) return;
+    final changed = await showDialog<bool>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.42),
+      builder: (dialogContext) => _FixedServicesManagerDialog(
+        clients: _clients,
+        materials: _materials,
+        drivers: _drivers,
+        vehicles: _vehicles,
+      ),
+    );
+    if (!mounted || changed != true) return;
+    await _loadRows(showLoader: false, onlyApplyIfChanged: false);
   }
 
   Widget _buildLogisticsPlanningCompactPicker() {
@@ -5019,11 +5200,19 @@ class _HeaderRow extends StatelessWidget {
                     onFilter: () => onOpenFilter('material', 'MATERIAL'),
                   ),
                   _HCell(
-                    'TIPO',
+                    'PROGRAMACIÓN',
+                    resolvedLayout.planningKind,
+                    s,
+                    active: hasActiveFilter('programacion'),
+                    onFilter: () =>
+                        onOpenFilter('programacion', 'PROGRAMACIÓN'),
+                  ),
+                  _HCell(
+                    'MOVIMIENTO',
                     resolvedLayout.type,
                     s,
-                    active: hasActiveFilter('tipo'),
-                    onFilter: () => onOpenFilter('tipo', 'TIPO'),
+                    active: hasActiveFilter('movimiento'),
+                    onFilter: () => onOpenFilter('movimiento', 'MOVIMIENTO'),
                   ),
                   _HCell(
                     'CHOFER',
@@ -5438,8 +5627,10 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
 
   String? _clientId;
   String? _materialId;
+  String _planningKind = 'VARIANTE';
   String _direction = 'recoleccion';
   String _status = 'programado';
+  String? _fixedServiceId;
 
   String? _driverId;
   String? _vehicleId;
@@ -5603,7 +5794,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
             items: widget.statuses,
             format: widget.uiLabel,
             compact: true,
-            onTapStart: () => widget.onActivateColumn(9),
+            onTapStart: () => widget.onActivateColumn(10),
             onChanged: (v) {
               if (v == null) return;
               setState(() => _status = v);
@@ -5647,8 +5838,15 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
       }
     }
 
-    _direction = (r['direction'] as String?) ?? 'recoleccion';
+    final rawDirection = ((r['direction'] as String?) ?? 'recoleccion').trim();
+    _direction = widget.directions.contains(rawDirection)
+        ? rawDirection
+        : 'recoleccion';
+    _planningKind = _normalizedServicesPlanningKind(
+      r['planning_kind']?.toString(),
+    );
     _status = (r['status'] as String?) ?? 'programado';
+    _fixedServiceId = r['fixed_service_id']?.toString();
 
     _driverId = r['driver_employee_id'] as String?;
     _vehicleId = r['vehicle_id'] as String?;
@@ -5728,15 +5926,25 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
         return;
       case 3:
         final next = await _pickStringOption(
-          title: 'Tipo',
+          title: 'Programación',
+          options: _kServicePlanningKindOptions,
+          current: _planningKind,
+          format: logisticsFixedServicePlanningKindLabel,
+        );
+        if (!mounted || next == null) return;
+        setState(() => _planningKind = next);
+        return;
+      case 4:
+        final next = await _pickStringOption(
+          title: 'Movimiento',
           options: widget.directions,
           current: _direction,
-          format: widget.uiLabel,
+          format: logisticsFixedServiceMovementLabel,
         );
         if (!mounted || next == null) return;
         setState(() => _direction = next);
         return;
-      case 4:
+      case 5:
         final next = await _pickOptId(
           title: 'Chofer',
           options: widget.drivers,
@@ -5745,7 +5953,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
         if (!mounted || next == null) return;
         setState(() => _driverId = next);
         return;
-      case 5:
+      case 6:
         final next = await _pickOptId(
           title: 'Unidad',
           options: widget.vehicles,
@@ -5754,13 +5962,13 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
         if (!mounted || next == null) return;
         setState(() => _vehicleId = next);
         return;
-      case 6:
+      case 7:
         await _pickDueDate();
         return;
-      case 7:
+      case 8:
         await _pickScheduledTime();
         return;
-      case 9:
+      case 10:
         final next = await _pickStringOption(
           title: 'Estado',
           options: widget.statuses,
@@ -5770,7 +5978,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
         if (!mounted || next == null) return;
         setState(() => _status = next);
         return;
-      case 8:
+      case 9:
         focusCommentField();
         return;
       default:
@@ -5821,6 +6029,13 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
   }
 
   Future<void> _save({bool keepEditing = false}) async {
+    final normalizedPlanningKind = _normalizedServicesPlanningKind(
+      _planningKind,
+    );
+    _planningKind = normalizedPlanningKind;
+    if (normalizedPlanningKind != 'FIJO') {
+      _fixedServiceId = null;
+    }
     final patch = <String, dynamic>{
       'service_date': widget.fmtDateDb(_serviceDate),
       'due_date': _dueDate == null ? null : widget.fmtDateDb(_dueDate!),
@@ -5829,8 +6044,13 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
             ? null
             : _fmtServicesDbTimeOfDay(_scheduledTime!),
       'direction': _direction,
+      'planning_kind': normalizedPlanningKind,
+      'fixed_service_id': normalizedPlanningKind == 'FIJO'
+          ? _fixedServiceId
+          : null,
       'status': _status,
       'client_id': _clientId,
+      'material_id': _materialId,
       'driver_employee_id': _driverId,
       'vehicle_id': _vehicleId,
       'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),
@@ -6169,28 +6389,63 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                               ),
                             ),
 
-                            // TIPO (recolección/entrega)
+                            // PROGRAMACIÓN (fija / variante)
                             gridCellFrame(
                               3,
+                              SizedBox(
+                                width: tableLayout.planningKind,
+                                child: _editing
+                                    ? _DropStrInline(
+                                        value: _planningKind,
+                                        items: _kServicePlanningKindOptions,
+                                        format:
+                                            logisticsFixedServicePlanningKindLabel,
+                                        onTapStart: () =>
+                                            widget.onActivateColumn(3),
+                                        onChanged: (v) {
+                                          if (v == null) return;
+                                          setState(() => _planningKind = v);
+                                        },
+                                      )
+                                    : previewEditableCell(
+                                        col: 3,
+                                        child: readonlyCell(
+                                          child: _ServicePlanningKindBadge(
+                                            text:
+                                                logisticsFixedServicePlanningKindLabel(
+                                                  _planningKind,
+                                                ),
+                                          ),
+                                        ),
+                                      ),
+                              ),
+                            ),
+
+                            // MOVIMIENTO
+                            gridCellFrame(
+                              4,
                               SizedBox(
                                 width: tableLayout.type,
                                 child: _editing
                                     ? _DropStrInline(
                                         value: _direction,
                                         items: widget.directions,
-                                        format: widget.uiLabel,
+                                        format:
+                                            logisticsFixedServiceMovementLabel,
                                         onTapStart: () =>
-                                            widget.onActivateColumn(3),
+                                            widget.onActivateColumn(4),
                                         onChanged: (v) {
                                           if (v == null) return;
                                           setState(() => _direction = v);
                                         },
                                       )
                                     : previewEditableCell(
-                                        col: 3,
+                                        col: 4,
                                         child: readonlyCell(
                                           child: _FitText(
-                                            widget.uiLabel(_direction),
+                                            logisticsFixedServiceMovementLabel(
+                                              _direction,
+                                            ),
                                           ),
                                         ),
                                       ),
@@ -6199,7 +6454,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
 
                             // CHOFER
                             gridCellFrame(
-                              4,
+                              5,
                               SizedBox(
                                 width: tableLayout.driver,
                                 child: _editing
@@ -6207,12 +6462,12 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                         valueId: _driverId,
                                         items: widget.drivers,
                                         onTapStart: () =>
-                                            widget.onActivateColumn(4),
+                                            widget.onActivateColumn(5),
                                         onChanged: (v) =>
                                             setState(() => _driverId = v),
                                       )
                                     : previewEditableCell(
-                                        col: 4,
+                                        col: 5,
                                         child: readonlyCell(
                                           child: _FitText(
                                             _labelOf(
@@ -6228,7 +6483,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
 
                             // UNIDAD
                             gridCellFrame(
-                              5,
+                              6,
                               SizedBox(
                                 width: tableLayout.unit,
                                 child: _editing
@@ -6236,12 +6491,12 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                         valueId: _vehicleId,
                                         items: widget.vehicles,
                                         onTapStart: () =>
-                                            widget.onActivateColumn(5),
+                                            widget.onActivateColumn(6),
                                         onChanged: (v) =>
                                             setState(() => _vehicleId = v),
                                       )
                                     : previewEditableCell(
-                                        col: 5,
+                                        col: 6,
                                         child: readonlyCell(
                                           child: _ServiceUnitBadge(
                                             text:
@@ -6258,13 +6513,13 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
 
                             // PARA EL DÍA (due_date)
                             gridCellFrame(
-                              6,
+                              7,
                               SizedBox(
                                 width: tableLayout.dueDate,
                                 child: _editing
                                     ? InkWell(
                                         onTap: () {
-                                          widget.onActivateColumn(6);
+                                          widget.onActivateColumn(7);
                                           _pickDueDate();
                                         },
                                         child: _CellBox(
@@ -6275,7 +6530,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                         ),
                                       )
                                     : previewEditableCell(
-                                        col: 6,
+                                        col: 7,
                                         child: readonlyCell(
                                           child: _FitText(
                                             _dueDate == null
@@ -6289,13 +6544,13 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
 
                             // HORARIO
                             gridCellFrame(
-                              7,
+                              8,
                               SizedBox(
                                 width: tableLayout.scheduledTime,
                                 child: _editing
                                     ? InkWell(
                                         onTap: () {
-                                          widget.onActivateColumn(7);
+                                          widget.onActivateColumn(8);
                                           _pickScheduledTime();
                                         },
                                         child: _CellBox(
@@ -6308,7 +6563,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                         ),
                                       )
                                     : previewEditableCell(
-                                        col: 7,
+                                        col: 8,
                                         child: readonlyCell(
                                           child: _FitText(
                                             _scheduledTime == null
@@ -6324,7 +6579,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
 
                             // COMENTARIO
                             gridCellFrame(
-                              8,
+                              9,
                               SizedBox(
                                 width: tableLayout.comment,
                                 child: _editing
@@ -6342,19 +6597,19 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                                   LogicalKeyboardKey
                                                       .arrowLeft &&
                                               isCommentCaretAtStart) {
-                                            widget.onActivateColumn(7);
+                                            widget.onActivateColumn(8);
                                             return KeyEventResult.handled;
                                           }
                                           if (event.logicalKey ==
                                                   LogicalKeyboardKey
                                                       .arrowRight &&
                                               isCommentCaretAtEnd) {
-                                            widget.onActivateColumn(9);
+                                            widget.onActivateColumn(10);
                                             WidgetsBinding.instance
                                                 .addPostFrameCallback((_) {
                                                   if (!mounted) return;
                                                   unawaited(
-                                                    activateGridCell(9),
+                                                    activateGridCell(10),
                                                   );
                                                 });
                                             return KeyEventResult.handled;
@@ -6378,7 +6633,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                                     ),
                                               ),
                                           onTap: () {
-                                            widget.onActivateColumn(8);
+                                            widget.onActivateColumn(9);
                                             if (!_notesFocusNode.hasFocus) {
                                               _notesFocusNode.requestFocus();
                                             }
@@ -6388,7 +6643,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                         ),
                                       )
                                     : previewEditableCell(
-                                        col: 8,
+                                        col: 9,
                                         child: readonlyCell(
                                           showDivider: false,
                                           child: _FitText(
@@ -6405,7 +6660,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                             // ACCIONES
                             // ACCIONES
                             gridCellFrame(
-                              9,
+                              10,
                               AnchoredActionSlot(
                                 width: tableLayout.actions,
                                 trailingWidth: tableLayout.rowActionButtonWidth,
@@ -6421,7 +6676,7 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
                                         format: widget.uiLabel,
                                         compact: true,
                                         onTapStart: () =>
-                                            widget.onActivateColumn(9),
+                                            widget.onActivateColumn(10),
                                         onChanged: (v) {
                                           if (v == null) return;
                                           setState(() => _status = v);
@@ -6676,6 +6931,57 @@ class _ServiceUnitBadge extends StatelessWidget {
             color: palette.logisticsSilver
                 ? palette.textPrimary
                 : const Color(0xFF36485C),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ServicePlanningKindBadge extends StatelessWidget {
+  final String text;
+
+  const _ServicePlanningKindBadge({required this.text});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
+    final fixed = text.trim().toUpperCase().startsWith('FIJ');
+    final top = fixed ? const Color(0xFFE6EDF0) : const Color(0xFFF2F4F6);
+    final bottom = fixed ? const Color(0xFFD3DBE0) : const Color(0xFFE2E6EA);
+    final border = fixed ? const Color(0xFFB5C0C8) : const Color(0xFFC7CCD2);
+    final foreground = fixed
+        ? const Color(0xFF30404C)
+        : const Color(0xFF4A5661);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+        decoration: BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [top, bottom],
+          ),
+          borderRadius: BorderRadius.circular(999),
+          border: Border.all(color: border),
+          boxShadow: [
+            BoxShadow(
+              color: palette.shadow.withValues(alpha: 0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 4),
+            ),
+          ],
+        ),
+        child: Text(
+          text,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontSize: 11,
+            fontWeight: FontWeight.w900,
+            color: foreground,
+            letterSpacing: 0.15,
           ),
         ),
       ),
@@ -7133,6 +7439,1065 @@ class _DropStrInline extends StatelessWidget {
   }
 }
 
+class _FixedServicesManagerDialog extends StatefulWidget {
+  final List<_Opt> clients;
+  final List<_Opt> materials;
+  final List<_Opt> drivers;
+  final List<_Opt> vehicles;
+
+  const _FixedServicesManagerDialog({
+    required this.clients,
+    required this.materials,
+    required this.drivers,
+    required this.vehicles,
+  });
+
+  @override
+  State<_FixedServicesManagerDialog> createState() =>
+      _FixedServicesManagerDialogState();
+}
+
+class _FixedServicesManagerDialogState
+    extends State<_FixedServicesManagerDialog> {
+  final ScrollController _scrollController = ScrollController();
+  bool _loading = true;
+  bool _working = false;
+  bool _changedRows = false;
+  List<LogisticsFixedServiceRecord> _records = <LogisticsFixedServiceRecord>[];
+  DateTime _targetDate = DateUtils.dateOnly(
+    DateTime.now().add(const Duration(days: 1)),
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    unawaited(_loadRecords());
+  }
+
+  @override
+  void dispose() {
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadRecords() async {
+    setState(() => _loading = true);
+    try {
+      final rows = await LogisticsFixedServicesStore.loadRecords();
+      if (!mounted) return;
+      setState(() {
+        _records = rows;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      _toast('No se pudieron cargar los servicios fijos: $e');
+    }
+  }
+
+  void _toast(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
+    );
+  }
+
+  String _labelOf(List<_Opt> list, String? id) {
+    if (id == null || id.trim().isEmpty) return '—';
+    for (final item in list) {
+      if (item.id == id) return item.label;
+    }
+    return '—';
+  }
+
+  Future<void> _pickTargetDate() async {
+    final picked = await _showGlassDatePickerDialog(
+      context,
+      initialDate: _targetDate,
+      firstDate: DateTime(2024, 1, 1),
+      lastDate: DateTime(2035, 12, 31),
+    );
+    if (!mounted || picked == null) return;
+    setState(() => _targetDate = DateUtils.dateOnly(picked));
+  }
+
+  Future<void> _openEditor({LogisticsFixedServiceRecord? record}) async {
+    final result = await showDialog<LogisticsFixedServiceRecord>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.44),
+      builder: (dialogContext) => _FixedServiceEditorDialog(
+        record: record,
+        clients: widget.clients,
+        materials: widget.materials,
+        drivers: widget.drivers,
+        vehicles: widget.vehicles,
+      ),
+    );
+    if (!mounted || result == null) return;
+
+    setState(() => _working = true);
+    try {
+      await LogisticsFixedServicesStore.saveRecord(result);
+      _changedRows = true;
+      await _loadRecords();
+      if (!mounted) return;
+      _toast(
+        record == null ? 'Servicio fijo guardado' : 'Servicio fijo actualizado',
+      );
+    } catch (e) {
+      if (!mounted) return;
+      _toast('No se pudo guardar el servicio fijo: $e');
+      setState(() => _working = false);
+    } finally {
+      if (mounted) {
+        setState(() => _working = false);
+      }
+    }
+  }
+
+  Future<void> _toggleActive(
+    LogisticsFixedServiceRecord record,
+    bool active,
+  ) async {
+    setState(() => _working = true);
+    try {
+      await LogisticsFixedServicesStore.saveRecord(
+        record.copyWith(isActive: active),
+      );
+      _changedRows = true;
+      await _loadRecords();
+      if (!mounted) return;
+      _toast(active ? 'Servicio fijo reactivado' : 'Servicio fijo pausado');
+    } catch (e) {
+      if (!mounted) return;
+      _toast('No se pudo actualizar el estatus del fijo: $e');
+      setState(() => _working = false);
+    } finally {
+      if (mounted) {
+        setState(() => _working = false);
+      }
+    }
+  }
+
+  Future<void> _deleteRecord(LogisticsFixedServiceRecord record) async {
+    if (record.id == null || record.id!.trim().isEmpty) return;
+    final ok = await _showGlassConfirmDialog(
+      context,
+      title: 'Eliminar servicio fijo',
+      content:
+          '¿Seguro que quieres eliminar el fijo de ${record.siteName} a las ${logisticsFormatFixedServiceTimeUi(record.scheduledTime)}?',
+      confirmText: 'Eliminar',
+    );
+    if (ok != true || !mounted) return;
+
+    setState(() => _working = true);
+    try {
+      await LogisticsFixedServicesStore.deleteRecord(record.id!);
+      _changedRows = true;
+      await _loadRecords();
+      if (!mounted) return;
+      _toast('Servicio fijo eliminado');
+    } catch (e) {
+      if (!mounted) return;
+      _toast('No se pudo eliminar el servicio fijo: $e');
+      setState(() => _working = false);
+    } finally {
+      if (mounted) {
+        setState(() => _working = false);
+      }
+    }
+  }
+
+  Future<void> _scheduleRecords(
+    List<LogisticsFixedServiceRecord> records,
+  ) async {
+    if (records.isEmpty) {
+      _toast('No hay servicios fijos para agendar con esa selección.');
+      return;
+    }
+    setState(() => _working = true);
+    try {
+      final result = await LogisticsFixedServicesStore.scheduleForDate(
+        _targetDate,
+        records: records,
+      );
+      if (!mounted) return;
+      if (result.inserted > 0) {
+        _changedRows = true;
+      }
+      _toast(_scheduleSummary(result));
+    } catch (e) {
+      if (!mounted) return;
+      _toast('No se pudo alimentar Control Diario con los fijos: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _working = false);
+      }
+    }
+  }
+
+  String _scheduleSummary(LogisticsFixedServiceScheduleResult result) {
+    final parts = <String>[];
+    if (result.inserted > 0) {
+      parts.add('${result.inserted} agendado(s)');
+    }
+    if (result.skippedExisting > 0) {
+      parts.add('${result.skippedExisting} ya existían');
+    }
+    if (result.skippedWeekday > 0) {
+      parts.add('${result.skippedWeekday} no aplican ese día');
+    }
+    if (result.skippedInactive > 0) {
+      parts.add('${result.skippedInactive} están pausados');
+    }
+    if (parts.isEmpty) {
+      return 'No hubo servicios fijos aplicables para esa fecha.';
+    }
+    return parts.join(' · ');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 1120, maxHeight: 760),
+        child: _LogisticsPlanningSurface(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Container(
+                    width: 46,
+                    height: 46,
+                    decoration: BoxDecoration(
+                      gradient: palette.buttonGradient,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(color: palette.borderStrong),
+                    ),
+                    child: Icon(Icons.repeat_rounded, color: palette.icon),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Servicios fijos de Logística',
+                          style: TextStyle(
+                            fontSize: 22,
+                            fontWeight: FontWeight.w900,
+                            color: palette.textPrimary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Aquí se definen los servicios repetitivos para después alimentar Control Diario con un solo click.',
+                          style: TextStyle(
+                            fontSize: 12.8,
+                            height: 1.4,
+                            fontWeight: FontWeight.w600,
+                            color: palette.textSecondary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton.icon(
+                    style: _actionTextButtonStyle(context),
+                    onPressed: () => Navigator.of(context).pop(_changedRows),
+                    icon: const Icon(Icons.close_rounded),
+                    label: const Text('Cerrar'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Wrap(
+                spacing: 10,
+                runSpacing: 10,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  OutlinedButton.icon(
+                    style: _actionOutlinedButtonStyle(context),
+                    onPressed: _working ? null : _pickTargetDate,
+                    icon: const Icon(Icons.calendar_today_rounded),
+                    label: Text('Agendar para ${_fmtDateLabel(_targetDate)}'),
+                  ),
+                  FilledButton.icon(
+                    style: _actionFilledButtonStyle(context),
+                    onPressed: _working ? null : () => unawaited(_openEditor()),
+                    icon: const Icon(Icons.add_rounded),
+                    label: const Text('Nuevo fijo'),
+                  ),
+                  FilledButton.tonalIcon(
+                    style: _actionSoftFilledButtonStyle(context),
+                    onPressed: _working
+                        ? null
+                        : () => unawaited(
+                            _scheduleRecords(
+                              _records
+                                  .where((record) => record.isActive)
+                                  .toList(growable: false),
+                            ),
+                          ),
+                    icon: const Icon(Icons.playlist_add_check_rounded),
+                    label: const Text('Agendar del día'),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 14),
+              Expanded(
+                child: _loading
+                    ? Center(
+                        child: CircularProgressIndicator(
+                          color: palette.filterAccent,
+                        ),
+                      )
+                    : _records.isEmpty
+                    ? Container(
+                        decoration: BoxDecoration(
+                          color: palette.fieldFillStrong,
+                          gradient: palette.glassCardGradient,
+                          borderRadius: BorderRadius.circular(20),
+                          border: Border.all(color: palette.border),
+                        ),
+                        padding: const EdgeInsets.all(24),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              Icons.event_repeat_rounded,
+                              size: 42,
+                              color: palette.icon,
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              'Todavía no hay servicios fijos capturados',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w900,
+                                color: palette.textPrimary,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              'Empieza guardando los recorridos repetitivos para que mañana solo tengas que elegir fecha y volverlos a alimentar.',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 12.8,
+                                height: 1.45,
+                                fontWeight: FontWeight.w600,
+                                color: palette.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    : Scrollbar(
+                        controller: _scrollController,
+                        thumbVisibility: true,
+                        child: ListView.separated(
+                          controller: _scrollController,
+                          itemCount: _records.length,
+                          separatorBuilder: (_, _) =>
+                              const SizedBox(height: 10),
+                          itemBuilder: (context, index) {
+                            final record = _records[index];
+                            final appliesToday = record.appliesTo(_targetDate);
+                            final driverLabel = _labelOf(
+                              widget.drivers,
+                              record.defaultDriverEmployeeId,
+                            );
+                            final vehicleLabel = _labelOf(
+                              widget.vehicles,
+                              record.defaultVehicleId,
+                            );
+                            return Container(
+                              padding: const EdgeInsets.all(16),
+                              decoration: BoxDecoration(
+                                color: palette.fieldFillStrong,
+                                gradient: palette.glassCardGradient,
+                                borderRadius: BorderRadius.circular(18),
+                                border: Border.all(
+                                  color: record.isActive
+                                      ? palette.borderStrong
+                                      : palette.border,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    blurRadius: 14,
+                                    color: palette.shadow.withValues(
+                                      alpha: 0.08,
+                                    ),
+                                    offset: const Offset(0, 8),
+                                  ),
+                                ],
+                              ),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            Text(
+                                              record.siteName,
+                                              style: TextStyle(
+                                                fontSize: 18,
+                                                fontWeight: FontWeight.w900,
+                                                color: palette.textPrimary,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              '${record.materialName} · ${logisticsFixedServiceMovementLabel(record.movement)} · ${logisticsFormatFixedServiceTimeUi(record.scheduledTime)}',
+                                              style: TextStyle(
+                                                fontSize: 12.5,
+                                                fontWeight: FontWeight.w700,
+                                                color: palette.textSecondary,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      Switch.adaptive(
+                                        value: record.isActive,
+                                        activeThumbColor: palette.surfaceBase,
+                                        activeTrackColor: palette.filterAccent,
+                                        inactiveThumbColor: palette.surfaceBase,
+                                        inactiveTrackColor:
+                                            palette.surfaceInteractive,
+                                        onChanged: _working
+                                            ? null
+                                            : (value) => unawaited(
+                                                _toggleActive(record, value),
+                                              ),
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 10),
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      _ServicePlanningKindBadge(
+                                        text:
+                                            logisticsFixedServicePlanningKindLabel(
+                                              'FIJO',
+                                            ),
+                                      ),
+                                      for (final weekday in record.weekdays)
+                                        _InlineMetaChip(
+                                          label: logisticsWeekdayShortLabel(
+                                            weekday,
+                                          ),
+                                        ),
+                                      _InlineMetaChip(
+                                        label: driverLabel == '—'
+                                            ? 'Sin chofer base'
+                                            : 'Chofer: $driverLabel',
+                                      ),
+                                      _InlineMetaChip(
+                                        label: vehicleLabel == '—'
+                                            ? 'Sin unidad base'
+                                            : 'Unidad: $vehicleLabel',
+                                      ),
+                                    ],
+                                  ),
+                                  if (record.notes.trim().isNotEmpty) ...[
+                                    const SizedBox(height: 10),
+                                    Text(
+                                      record.notes.trim(),
+                                      style: TextStyle(
+                                        fontSize: 12.3,
+                                        height: 1.4,
+                                        fontWeight: FontWeight.w600,
+                                        color: palette.textSecondary,
+                                      ),
+                                    ),
+                                  ],
+                                  const SizedBox(height: 12),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          appliesToday
+                                              ? 'Sí aplica para ${logisticsWeekdayLongLabel(_targetDate.weekday)} ${_fmtDateLabel(_targetDate)}.'
+                                              : 'No toca en ${logisticsWeekdayLongLabel(_targetDate.weekday)} ${_fmtDateLabel(_targetDate)}.',
+                                          style: TextStyle(
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w700,
+                                            color: appliesToday
+                                                ? palette.textPrimary
+                                                : palette.textMuted,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      OutlinedButton.icon(
+                                        style: _actionOutlinedButtonStyle(
+                                          context,
+                                        ),
+                                        onPressed: _working
+                                            ? null
+                                            : () => unawaited(
+                                                _openEditor(record: record),
+                                              ),
+                                        icon: const Icon(Icons.edit_outlined),
+                                        label: const Text('Editar'),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      FilledButton.tonalIcon(
+                                        style: _actionSoftFilledButtonStyle(
+                                          context,
+                                        ),
+                                        onPressed:
+                                            _working ||
+                                                !record.isActive ||
+                                                !appliesToday
+                                            ? null
+                                            : () => unawaited(
+                                                _scheduleRecords(
+                                                  <LogisticsFixedServiceRecord>[
+                                                    record,
+                                                  ],
+                                                ),
+                                              ),
+                                        icon: const Icon(
+                                          Icons.playlist_add_rounded,
+                                        ),
+                                        label: const Text('Agendar'),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      TextButton.icon(
+                                        style: _actionTextButtonStyle(context),
+                                        onPressed: _working
+                                            ? null
+                                            : () => unawaited(
+                                                _deleteRecord(record),
+                                              ),
+                                        icon: const Icon(Icons.delete_outline),
+                                        label: const Text('Eliminar'),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FixedServiceEditorDialog extends StatefulWidget {
+  final LogisticsFixedServiceRecord? record;
+  final List<_Opt> clients;
+  final List<_Opt> materials;
+  final List<_Opt> drivers;
+  final List<_Opt> vehicles;
+
+  const _FixedServiceEditorDialog({
+    required this.record,
+    required this.clients,
+    required this.materials,
+    required this.drivers,
+    required this.vehicles,
+  });
+
+  @override
+  State<_FixedServiceEditorDialog> createState() =>
+      _FixedServiceEditorDialogState();
+}
+
+class _FixedServiceEditorDialogState extends State<_FixedServiceEditorDialog> {
+  static const String _kNoneValue = '__NONE__';
+
+  final TextEditingController _notesController = TextEditingController();
+  String? _clientId;
+  String? _materialId;
+  String? _driverId;
+  String? _vehicleId;
+  String _movement = 'recoleccion';
+  bool _isActive = true;
+  TimeOfDay? _scheduledTime;
+  Set<int> _weekdays = <int>{};
+
+  @override
+  void initState() {
+    super.initState();
+    final record = widget.record;
+    _clientId = record?.siteId;
+    _materialId = record?.materialId;
+    _driverId = record?.defaultDriverEmployeeId;
+    _vehicleId = record?.defaultVehicleId;
+    _movement = record?.movement ?? 'recoleccion';
+    _isActive = record?.isActive ?? true;
+    _scheduledTime =
+        logisticsParseFixedServiceTime(record?.scheduledTime) ??
+        const TimeOfDay(hour: 8, minute: 0);
+    _weekdays = (record?.weekdays ?? const <int>[]).toSet();
+    _notesController.text = record?.notes ?? '';
+  }
+
+  @override
+  void dispose() {
+    _notesController.dispose();
+    super.dispose();
+  }
+
+  String _labelOf(List<_Opt> list, String? id) {
+    if (id == null || id.trim().isEmpty) return 'Seleccionar';
+    for (final item in list) {
+      if (item.id == id) return item.label;
+    }
+    return 'Seleccionar';
+  }
+
+  Future<void> _pickClient() async {
+    final selected = await _showSearchablePickerDialog<String>(
+      context,
+      title: 'Empresa',
+      initialValue: _clientId,
+      options: widget.clients
+          .map(
+            (item) => _PickerOption<String>(value: item.id, label: item.label),
+          )
+          .toList(growable: false),
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _clientId = selected);
+  }
+
+  Future<void> _pickMaterial() async {
+    final selected = await _showSearchablePickerDialog<String>(
+      context,
+      title: 'Material',
+      initialValue: _materialId,
+      options: widget.materials
+          .map(
+            (item) => _PickerOption<String>(value: item.id, label: item.label),
+          )
+          .toList(growable: false),
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _materialId = selected);
+  }
+
+  Future<void> _pickDriver() async {
+    final selected = await _showSearchablePickerDialog<String>(
+      context,
+      title: 'Chofer base',
+      initialValue: _driverId ?? _kNoneValue,
+      options: <_PickerOption<String>>[
+        const _PickerOption<String>(
+          value: _kNoneValue,
+          label: 'Sin chofer base',
+        ),
+        ...widget.drivers.map(
+          (item) => _PickerOption<String>(value: item.id, label: item.label),
+        ),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _driverId = selected == _kNoneValue ? null : selected);
+  }
+
+  Future<void> _pickVehicle() async {
+    final selected = await _showSearchablePickerDialog<String>(
+      context,
+      title: 'Unidad base',
+      initialValue: _vehicleId ?? _kNoneValue,
+      options: <_PickerOption<String>>[
+        const _PickerOption<String>(
+          value: _kNoneValue,
+          label: 'Sin unidad base',
+        ),
+        ...widget.vehicles.map(
+          (item) => _PickerOption<String>(value: item.id, label: item.label),
+        ),
+      ],
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _vehicleId = selected == _kNoneValue ? null : selected);
+  }
+
+  Future<void> _pickTime() async {
+    final selected = await _showServicesTimePicker(
+      context,
+      initialTime: _scheduledTime ?? const TimeOfDay(hour: 8, minute: 0),
+    );
+    if (!mounted || selected == null) return;
+    setState(() => _scheduledTime = selected);
+  }
+
+  void _submit() {
+    if (_clientId == null || _clientId!.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona la empresa del fijo.')),
+      );
+      return;
+    }
+    if (_materialId == null || _materialId!.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona el material del fijo.')),
+      );
+      return;
+    }
+    if (_scheduledTime == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Selecciona la hora del fijo.')),
+      );
+      return;
+    }
+    if (_weekdays.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Marca al menos un día de la semana.')),
+      );
+      return;
+    }
+
+    final record = LogisticsFixedServiceRecord(
+      id: widget.record?.id,
+      siteId: _clientId!,
+      siteName: _labelOf(widget.clients, _clientId),
+      materialId: _materialId,
+      materialName: _labelOf(widget.materials, _materialId),
+      movement: _movement,
+      scheduledTime: logisticsFormatFixedServiceTimeDb(_scheduledTime!),
+      weekdays: (_weekdays.toList()..sort((a, b) => a.compareTo(b))),
+      defaultDriverEmployeeId: _driverId,
+      defaultVehicleId: _vehicleId,
+      isActive: _isActive,
+      notes: _notesController.text.trim(),
+      createdAt: widget.record?.createdAt,
+      updatedAt: widget.record?.updatedAt,
+    );
+
+    Navigator.of(context).pop(record);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 760, maxHeight: 760),
+        child: _LogisticsPlanningSurface(
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  widget.record == null
+                      ? 'Nuevo servicio fijo'
+                      : 'Editar servicio fijo',
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.w900,
+                    color: palette.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  'Define aquí el patrón que después volverá a alimentar Control Diario sin volver a capturar fila por fila.',
+                  style: TextStyle(
+                    fontSize: 12.8,
+                    height: 1.4,
+                    fontWeight: FontWeight.w600,
+                    color: palette.textSecondary,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                _FixedServicePickerField(
+                  label: 'Empresa',
+                  value: _labelOf(widget.clients, _clientId),
+                  icon: Icons.apartment_rounded,
+                  onTap: _pickClient,
+                ),
+                const SizedBox(height: 12),
+                _FixedServicePickerField(
+                  label: 'Material',
+                  value: _labelOf(widget.materials, _materialId),
+                  icon: Icons.inventory_2_outlined,
+                  onTap: _pickMaterial,
+                ),
+                const SizedBox(height: 12),
+                Row(
+                  children: [
+                    Expanded(
+                      child: DropdownButtonFormField<String>(
+                        initialValue: _movement,
+                        dropdownColor: palette.surfaceBase,
+                        iconEnabledColor: palette.icon,
+                        style: TextStyle(
+                          color: palette.textPrimary,
+                          fontWeight: FontWeight.w800,
+                        ),
+                        borderRadius: BorderRadius.circular(16),
+                        decoration: _glassFieldDecoration(
+                          context,
+                          labelText: 'Movimiento',
+                          fillColor: palette.fieldFillStrong,
+                        ),
+                        items: const <String>['recoleccion', 'entrega']
+                            .map(
+                              (value) => DropdownMenuItem<String>(
+                                value: value,
+                                child: Text(
+                                  logisticsFixedServiceMovementLabel(value),
+                                ),
+                              ),
+                            )
+                            .toList(growable: false),
+                        onChanged: (value) {
+                          if (value == null) return;
+                          setState(() => _movement = value);
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _FixedServicePickerField(
+                        label: 'Hora',
+                        value: _scheduledTime == null
+                            ? 'Seleccionar'
+                            : _fmtServicesUiTimeOfDay(_scheduledTime!),
+                        icon: Icons.schedule_rounded,
+                        onTap: _pickTime,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Text(
+                  'Días en que se repite',
+                  style: TextStyle(
+                    fontSize: 13.2,
+                    fontWeight: FontWeight.w800,
+                    color: palette.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: kLogisticsWeekdayOrder
+                      .map((weekday) {
+                        final selected = _weekdays.contains(weekday);
+                        return FilterChip(
+                          selected: selected,
+                          showCheckmark: false,
+                          backgroundColor: palette.fieldFillStrong,
+                          selectedColor: palette.surfaceInteractive,
+                          side: BorderSide(
+                            color: selected
+                                ? palette.filterAccent.withValues(alpha: 0.72)
+                                : palette.border,
+                          ),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          elevation: 0,
+                          pressElevation: 0,
+                          shadowColor: Colors.transparent,
+                          selectedShadowColor: Colors.transparent,
+                          labelStyle: TextStyle(
+                            color: selected
+                                ? palette.textPrimary
+                                : palette.textSecondary,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          label: Text(logisticsWeekdayShortLabel(weekday)),
+                          onSelected: (value) {
+                            setState(() {
+                              if (value) {
+                                _weekdays.add(weekday);
+                              } else {
+                                _weekdays.remove(weekday);
+                              }
+                            });
+                          },
+                        );
+                      })
+                      .toList(growable: false),
+                ),
+                const SizedBox(height: 14),
+                _FixedServicePickerField(
+                  label: 'Chofer base',
+                  value: _driverId == null
+                      ? 'Sin chofer base'
+                      : _labelOf(widget.drivers, _driverId),
+                  icon: Icons.badge_outlined,
+                  onTap: _pickDriver,
+                ),
+                const SizedBox(height: 12),
+                _FixedServicePickerField(
+                  label: 'Unidad base',
+                  value: _vehicleId == null
+                      ? 'Sin unidad base'
+                      : _labelOf(widget.vehicles, _vehicleId),
+                  icon: Icons.local_shipping_outlined,
+                  onTap: _pickVehicle,
+                ),
+                const SizedBox(height: 12),
+                SwitchListTile.adaptive(
+                  value: _isActive,
+                  activeThumbColor: palette.surfaceBase,
+                  activeTrackColor: palette.filterAccent,
+                  inactiveThumbColor: palette.surfaceBase,
+                  inactiveTrackColor: palette.surfaceInteractive,
+                  onChanged: (value) => setState(() => _isActive = value),
+                  contentPadding: EdgeInsets.zero,
+                  title: Text(
+                    'Activo para programación',
+                    style: TextStyle(
+                      color: palette.textPrimary,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  subtitle: Text(
+                    'Si lo apagas, el fijo se conserva pero deja de alimentar el control.',
+                    style: TextStyle(
+                      color: palette.textSecondary,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: _notesController,
+                  maxLines: 4,
+                  style: TextStyle(
+                    color: palette.textPrimary,
+                    fontWeight: FontWeight.w700,
+                  ),
+                  decoration: _glassFieldDecoration(
+                    context,
+                    labelText: 'Notas del fijo',
+                    hintText:
+                        'Chofer preferente, restricción, negociación o contexto.',
+                    alignLabelWithHint: true,
+                    fillColor: palette.fieldFillStrong,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 16,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 18),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    TextButton(
+                      style: _actionTextButtonStyle(context),
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancelar'),
+                    ),
+                    const SizedBox(width: 10),
+                    FilledButton.icon(
+                      style: _actionFilledButtonStyle(context),
+                      onPressed: _submit,
+                      icon: const Icon(Icons.save_outlined),
+                      label: const Text('Guardar fijo'),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _FixedServicePickerField extends StatelessWidget {
+  final String label;
+  final String value;
+  final IconData icon;
+  final VoidCallback onTap;
+
+  const _FixedServicePickerField({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: InputDecorator(
+        decoration: _glassFieldDecoration(
+          context,
+          labelText: label,
+          suffixIcon: Icon(icon, color: palette.icon),
+          fillColor: palette.fieldFillStrong,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 14,
+            vertical: 14,
+          ),
+        ),
+        child: Text(
+          value,
+          style: TextStyle(
+            color: palette.textPrimary,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InlineMetaChip extends StatelessWidget {
+  final String label;
+
+  const _InlineMetaChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    final palette = ServicesVisualPalette.of(context);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: palette.surfaceInteractive,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: palette.border),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: 11.2,
+          fontWeight: FontWeight.w700,
+          color: palette.textSecondary,
+        ),
+      ),
+    );
+  }
+}
+
 // ======================
 // Models
 // ======================
@@ -7147,6 +8512,7 @@ class _ServiceDraft {
   final DateTime? serviceDate;
   final DateTime? dueDate;
   final TimeOfDay? scheduledTime;
+  final String planningKind;
 
   // Que siempre existan:
   final String? direction;
@@ -7162,6 +8528,7 @@ class _ServiceDraft {
     required this.serviceDate,
     required this.dueDate,
     required this.scheduledTime,
+    required this.planningKind,
     required this.direction,
     required this.status,
     required this.clientId,
@@ -7175,6 +8542,7 @@ class _ServiceDraft {
     serviceDate: null,
     dueDate: null,
     scheduledTime: null,
+    planningKind: 'VARIANTE',
     direction: null,
     status: null,
     clientId: null,
@@ -7190,6 +8558,7 @@ class _ServiceDraft {
     Object? serviceDate = _unset,
     Object? dueDate = _unset,
     Object? scheduledTime = _unset,
+    String? planningKind,
     Object? direction = _unset,
     Object? status = _unset,
     Object? clientId = _unset,
@@ -7206,6 +8575,7 @@ class _ServiceDraft {
       scheduledTime: scheduledTime == _unset
           ? this.scheduledTime
           : scheduledTime as TimeOfDay?,
+      planningKind: planningKind ?? this.planningKind,
       direction: direction == _unset ? this.direction : direction as String?,
       status: status == _unset ? this.status : status as String?,
       clientId: clientId == _unset ? this.clientId : clientId as String?,

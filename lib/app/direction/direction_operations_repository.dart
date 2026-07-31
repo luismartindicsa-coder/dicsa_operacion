@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../maintenance/maintenance_statuses.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 
 enum DirectionFollowupSeverity { info, warning, critical }
@@ -441,14 +442,14 @@ class DirectionOperationsRepository {
     final openItems =
         orders
             .where((row) {
-              final status = (row['status'] ?? '').toString();
-              return status != 'cerrado' && status != 'rechazado';
+              final status = normalizeMaintenanceStatus(row['status']);
+              return !isMaintenanceClosedStatus(status);
             })
             .map((row) {
               final updatedAt =
                   DateTime.tryParse((row['updated_at'] ?? '').toString()) ??
                   DateTime.tryParse((row['requested_at'] ?? '').toString());
-              final status = (row['status'] ?? '').toString();
+              final status = normalizeMaintenanceStatus(row['status']);
               return DirectionMaintenancePendingItem(
                 id: (row['id'] ?? '').toString(),
                 folio: (row['ot_folio'] ?? '').toString(),
@@ -465,8 +466,7 @@ class DirectionOperationsRepository {
                 ),
                 estimatedTotal: _toDouble(row['cost_estimated_total']),
                 actualTotal: _toDouble(row['cost_actual_total']),
-                waitingDirection:
-                    status == 'cotizacion' || status == 'autorizacion_finanzas',
+                waitingDirection: isMaintenanceWaitingActionStatus(status),
                 ageHours: _hoursSince(updatedAt),
                 missingReasons: _maintenanceMissingReasons(
                   status: status,
@@ -523,7 +523,7 @@ class DirectionOperationsRepository {
         DirectionFollowupAlert(
           title: 'OT esperando decisión o impulso',
           detail:
-              'Hay $waitingDirectionCount órdenes en cotización o autorización financiera que siguen abiertas.',
+              'Hay $waitingDirectionCount órdenes en cotización o autorización que siguen abiertas.',
           severity: waitingDirectionCount >= 4
               ? DirectionFollowupSeverity.warning
               : DirectionFollowupSeverity.info,
@@ -542,7 +542,7 @@ class DirectionOperationsRepository {
     }
     for (final entry in _topMissingReasonEntries(openItems, limit: 4)) {
       final severity = switch (entry.key) {
-        'Aprobación financiera / Dirección' =>
+        'Aprobación / preparación operativa' =>
           DirectionFollowupSeverity.critical,
         'Diagnóstico' ||
         'Responsable o mecánico' ||
@@ -641,27 +641,19 @@ class DirectionOperationsRepository {
         diagnosis.trim().isEmpty) {
       reasons.add('Diagnóstico');
     }
-    if ((status == 'programado' ||
-            status == 'mantenimiento_realizado' ||
-            status == 'supervision') &&
-        workSummary.trim().isEmpty) {
+    if (status == 'supervision' && workSummary.trim().isEmpty) {
       reasons.add('Resumen de trabajo');
     }
-    if (assignedToName.trim().isEmpty &&
-        status != 'aviso_falla' &&
-        status != 'revision_area') {
+    if (assignedToName.trim().isEmpty && status != 'aviso_falla') {
       reasons.add('Asignación');
     }
     if (status == 'autorizacion_finanzas') {
-      reasons.add('Aprobación financiera / Dirección');
+      reasons.add('Aprobación / preparación operativa');
     } else if (status == 'cotizacion') {
       reasons.add('Impulso para cotización');
     }
     if (materialCount <= 0 &&
-        (status == 'material_recolectado' ||
-            status == 'programado' ||
-            status == 'mantenimiento_realizado' ||
-            status == 'supervision')) {
+        (status == 'autorizacion_finanzas' || status == 'supervision')) {
       reasons.add('Materiales / refacciones / mano de obra');
     }
     return _dedupeReasons(reasons);

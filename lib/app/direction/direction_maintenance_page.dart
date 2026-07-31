@@ -6,6 +6,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../dashboard/general_dashboard_page.dart';
 import '../maintenance/maintenance_page.dart';
+import '../maintenance/maintenance_statuses.dart';
 import '../shared/app_shell.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
@@ -17,20 +18,6 @@ import 'direction_purchase_orders_page.dart';
 import 'direction_theme.dart';
 
 String _fmtDirectionMaintenanceMoney(num value) => formatMoney(value);
-
-const Map<String, String> _kDirectionMaintenanceStatusLabel = {
-  'aviso_falla': 'Aviso falla',
-  'revision_area': 'Revisión área',
-  'reporte_mantenimiento': 'Reporte mantenimiento',
-  'cotizacion': 'Cotización',
-  'autorizacion_finanzas': 'Autorización finanzas',
-  'material_recolectado': 'Material recolectado',
-  'programado': 'Programado',
-  'mantenimiento_realizado': 'Mantenimiento realizado',
-  'supervision': 'Supervisión',
-  'cerrado': 'Cerrado',
-  'rechazado': 'Rechazado',
-};
 
 class DirectionMaintenancePage extends StatefulWidget {
   final bool instantOpen;
@@ -567,7 +554,7 @@ class _DirectionMaintenancePendingListCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    '${_kDirectionMaintenanceStatusLabel[item.status] ?? item.status} · ${item.priority} · ${item.impact}',
+                    '${maintenanceStatusLabel(item.status)} · ${item.priority} · ${item.impact}',
                     style: const TextStyle(
                       color: kDirectionMutedText,
                       fontWeight: FontWeight.w600,

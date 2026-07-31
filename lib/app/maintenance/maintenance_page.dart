@@ -17,6 +17,8 @@ import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../direction/direction_operations_repository.dart';
+import '../maintenance/maintenance_ot_purchase_link_service.dart';
+import '../maintenance/maintenance_statuses.dart';
 import '../maintenance/purchase_orders_page.dart';
 import '../services/inventory_page.dart';
 import '../services/operation_directory_page.dart';
@@ -32,32 +34,9 @@ import '../shared/page_routes.dart';
 import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
 
-const List<String> _kStatusFlow = [
-  'aviso_falla',
-  'revision_area',
-  'reporte_mantenimiento',
-  'cotizacion',
-  'autorizacion_finanzas',
-  'material_recolectado',
-  'programado',
-  'mantenimiento_realizado',
-  'supervision',
-  'cerrado',
-];
-
-const Map<String, String> _kStatusLabel = {
-  'aviso_falla': 'Aviso falla',
-  'revision_area': 'Revision area',
-  'reporte_mantenimiento': 'Reporte mantenimiento',
-  'cotizacion': 'Cotizacion',
-  'autorizacion_finanzas': 'Autorizacion finanzas',
-  'material_recolectado': 'Material recolectado',
-  'programado': 'Programado',
-  'mantenimiento_realizado': 'Mantenimiento realizado',
-  'supervision': 'Supervision',
-  'cerrado': 'Cerrado',
-  'rechazado': 'Rechazado',
-};
+const List<String> _kStatusFlow = kMaintenanceVisibleStatusFlow;
+const List<String> _kSelectableStatuses = kMaintenanceSelectableStatuses;
+const Map<String, String> _kStatusLabel = kMaintenanceStatusLabel;
 
 const Map<String, String> _kPriorityLabel = {
   'alta': 'Alta',
@@ -121,16 +100,11 @@ const Map<String, String> _kPurchaseOrderLineTypeLabel = {
 };
 
 const Map<String, List<String>> _kNextStatuses = {
-  'aviso_falla': ['revision_area', 'rechazado'],
-  'revision_area': ['reporte_mantenimiento', 'rechazado'],
-  'reporte_mantenimiento': ['cotizacion', 'rechazado'],
+  'aviso_falla': ['cotizacion', 'rechazado'],
   'cotizacion': ['autorizacion_finanzas', 'rechazado'],
-  'autorizacion_finanzas': ['material_recolectado', 'rechazado'],
-  'material_recolectado': ['programado', 'rechazado'],
-  'programado': ['mantenimiento_realizado', 'rechazado'],
-  'mantenimiento_realizado': ['supervision', 'rechazado'],
+  'autorizacion_finanzas': ['supervision', 'rechazado'],
   'supervision': ['cerrado', 'rechazado'],
-  'rechazado': ['revision_area', 'reporte_mantenimiento', 'cotizacion'],
+  'rechazado': ['aviso_falla', 'cotizacion', 'autorizacion_finanzas'],
 };
 
 class _MaintenanceFilterDialogResult {
@@ -139,19 +113,25 @@ class _MaintenanceFilterDialogResult {
 }
 
 const Map<String, List<String>> _kTransitionRoles = {
-  'aviso_falla->revision_area': [
+  'aviso_falla->cotizacion': [
     'jefe_area',
     'control_transporte',
     'encargado_fabricas',
+    'jefe_operativo',
+    'auxiliar_direccion',
     'ops_manager',
+    'operacion',
+    'operations',
+    'maintenance',
   ],
-  'revision_area->reporte_mantenimiento': ['jefe_operativo', 'ops_manager'],
-  'reporte_mantenimiento->cotizacion': ['auxiliar_direccion'],
   'cotizacion->autorizacion_finanzas': ['finanzas'],
-  'autorizacion_finanzas->material_recolectado': ['mensajeria'],
-  'material_recolectado->programado': ['auxiliar_direccion'],
-  'programado->mantenimiento_realizado': ['tecnico', 'mecanico', 'services'],
-  'mantenimiento_realizado->supervision': ['jefe_area', 'control_transporte'],
+  'autorizacion_finanzas->supervision': [
+    'tecnico',
+    'mecanico',
+    'services',
+    'jefe_area',
+    'control_transporte',
+  ],
   'supervision->cerrado': ['jefe_operativo', 'ops_manager'],
 };
 
@@ -211,6 +191,8 @@ class MaintenancePage extends StatefulWidget {
 class _MaintenancePageState extends State<MaintenancePage>
     with WidgetsBindingObserver {
   final SupabaseClient _supa = Supabase.instance.client;
+  late final MaintenanceOtPurchaseLinkService _otPurchaseLinkService =
+      MaintenanceOtPurchaseLinkService(_supa);
   Timer? _autoRefreshTimer;
   Timer? _deferredAutoRefreshTimer;
   RealtimeChannel? _maintenanceRealtimeChannel;
@@ -386,7 +368,7 @@ class _MaintenancePageState extends State<MaintenancePage>
         .cast<Map<String, dynamic>>()
         .map((row) {
           final mapped = Map<String, dynamic>.from(row);
-          mapped['status'] = _normEnum(mapped['status']);
+          mapped['status'] = normalizeMaintenanceStatus(mapped['status']);
           mapped['priority'] = _normEnum(mapped['priority']);
           mapped['type'] = _normEnum(mapped['type']);
           return mapped;
@@ -735,7 +717,7 @@ class _MaintenancePageState extends State<MaintenancePage>
 
       final list = (rows as List).cast<Map<String, dynamic>>().map((row) {
         final mapped = Map<String, dynamic>.from(row);
-        mapped['status'] = _normEnum(mapped['status']);
+        mapped['status'] = normalizeMaintenanceStatus(mapped['status']);
         mapped['priority'] = _normEnum(mapped['priority']);
         mapped['type'] = _normEnum(mapped['type']);
         return mapped;
@@ -889,7 +871,7 @@ class _MaintenancePageState extends State<MaintenancePage>
         .order('created_at');
 
     _selectedOrder = Map<String, dynamic>.from(row)
-      ..['status'] = _normEnum(row['status'])
+      ..['status'] = normalizeMaintenanceStatus(row['status'])
       ..['priority'] = _normEnum(row['priority'])
       ..['type'] = _normEnum(row['type'])
       ..['category'] = _normEnum(row['category'])
@@ -1347,15 +1329,16 @@ class _MaintenancePageState extends State<MaintenancePage>
     return 'OT-$year-$next';
   }
 
-  Future<void> _saveCurrentOrder({
+  Future<bool> _saveCurrentOrder({
     bool showToast = true,
     bool refreshAfterSave = true,
   }) async {
     final order = _selectedOrder;
-    if (order == null || _saving) return;
+    if (order == null || _saving) return false;
     final orderId = order['id']?.toString();
-    if (orderId == null || orderId.isEmpty) return;
+    if (orderId == null || orderId.isEmpty) return false;
     final fingerprintBeforeSave = _buildAutosaveFingerprint();
+    var saved = false;
 
     setState(() => _saving = true);
     try {
@@ -1461,6 +1444,7 @@ class _MaintenancePageState extends State<MaintenancePage>
         });
       }
       if (showToast) _toast('OT guardada');
+      saved = true;
     } catch (e) {
       _toast('No se pudo guardar: $e');
     } finally {
@@ -1471,6 +1455,7 @@ class _MaintenancePageState extends State<MaintenancePage>
         _scheduleAutosave();
       }
     }
+    return saved;
   }
 
   Future<void> _replaceChildRows(
@@ -1666,23 +1651,70 @@ class _MaintenancePageState extends State<MaintenancePage>
     }
 
     final user = _supa.auth.currentUser;
-    await _supa
-        .from('maintenance_orders')
-        .update({'status': next})
-        .eq('id', orderId);
+    try {
+      MaintenanceOtPurchaseSyncResult? syncResult;
+      if (next == 'cotizacion') {
+        final saved = await _saveCurrentOrder(
+          showToast: false,
+          refreshAfterSave: false,
+        );
+        if (!saved) return;
+        syncResult = await _otPurchaseLinkService
+            .ensurePurchaseOrdersForOtCotizacion(
+              otId: orderId,
+              actorUserId: user?.id,
+              actorName: _profileName,
+            );
+        if (!syncResult.hasLinkedRows) {
+          _toast(
+            'Agrega al menos un material, refaccion o mano de obra con fuente distinta a Almacen antes de enviar a Cotizacion.',
+          );
+          return;
+        }
+      }
 
-    await _supa.from('maintenance_status_log').insert({
-      'ot_id': orderId,
-      'from_status': current,
-      'to_status': next,
-      'changed_by': user?.id,
-      'changed_by_name': _profileName,
-      'comment': comment.isEmpty ? null : comment,
-    });
+      await _supa
+          .from('maintenance_orders')
+          .update({'status': next})
+          .eq('id', orderId);
 
-    await _loadOrders();
-    await _loadOrderDetails(orderId);
-    _toast('Estado actualizado');
+      await _supa.from('maintenance_status_log').insert({
+        'ot_id': orderId,
+        'from_status': current,
+        'to_status': next,
+        'changed_by': user?.id,
+        'changed_by_name': _profileName,
+        'comment': comment.isEmpty ? null : comment,
+      });
+
+      await _loadOrders();
+      await _loadOrderDetails(orderId);
+      if (next == 'cotizacion' && syncResult != null) {
+        if (syncResult.createdCount > 0) {
+          _toast(
+            'Estado actualizado y ${syncResult.createdCount} fila(s) enviadas a Compras OT.',
+          );
+          return;
+        }
+        if (syncResult.alreadyLinkedCount > 0) {
+          _toast(
+            'Estado actualizado. Los conceptos de esta OT ya estaban ligados en Compras OT.',
+          );
+          return;
+        }
+      }
+      _toast('Estado actualizado');
+    } on PostgrestException catch (e) {
+      if (_isMissingOtPurchaseLinkSchemaError(e)) {
+        _toast(
+          'Falta aplicar la migracion de vinculo OT/OC en Supabase antes de usar Cotizacion.',
+        );
+        return;
+      }
+      _toast('No se pudo actualizar el estado: $e');
+    } catch (e) {
+      _toast('No se pudo actualizar el estado: $e');
+    }
   }
 
   Future<void> _deleteSelectedOrder() async {
@@ -2768,7 +2800,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   String? _validateStatusChange(String current, String next) {
-    if (next == 'mantenimiento_realizado') {
+    if (next == 'supervision') {
       if (_diagnosisC.text.trim().isEmpty) {
         return 'No se puede completar sin diagnostico';
       }
@@ -2793,22 +2825,8 @@ class _MaintenancePageState extends State<MaintenancePage>
       if (validTasks.isEmpty) {
         return 'No se puede cerrar sin actividades';
       }
-      final hasAfterEvidence = _evidences.any(
-        (e) => (e['category'] ?? '').toString() == 'despues',
-      );
-      if (!hasAfterEvidence) {
-        return 'No se puede cerrar sin evidencia "despues"';
-      }
-    }
-
-    if (current == 'programado' && next == 'mantenimiento_realizado') {
-      final hasFinance = _orders.any(
-        (e) =>
-            (e['id'] ?? '').toString() == _selectedOrderId &&
-            (_selectedOrder?['status'] ?? '').toString() == 'programado',
-      );
-      if (!hasFinance) {
-        return 'No se puede ejecutar sin autorizacion de finanzas';
+      if (_evidences.isEmpty) {
+        return 'No se puede cerrar sin al menos una evidencia';
       }
     }
 
@@ -2824,8 +2842,43 @@ class _MaintenancePageState extends State<MaintenancePage>
 
     final key = '$from->$to';
     final allowed = _kTransitionRoles[key] ?? const [];
-    final role = _normalizeRole(_profileRole);
-    return allowed.contains(role) || allowed.contains(_profileRole);
+    final currentRoles = _currentTransitionRoles();
+    return currentRoles.any(allowed.contains);
+  }
+
+  Set<String> _currentTransitionRoles() {
+    final roles = <String>{};
+
+    void addRole(String? rawRole) {
+      final direct = (rawRole ?? '').trim();
+      if (direct.isEmpty) return;
+      roles.add(direct);
+      final normalized = _normalizeRole(direct);
+      if (normalized.isNotEmpty) roles.add(normalized);
+    }
+
+    addRole(_profileRole);
+    addRole(_resolvedProfile?.role);
+
+    if (AuthAccess.hasFullOperationsAccess(_resolvedProfile)) {
+      roles.addAll(<String>{
+        'operacion',
+        'operations',
+        'jefe_operativo',
+        'ops_manager',
+      });
+    }
+    if (AuthAccess.isDirectionRole(_resolvedProfile)) {
+      roles.addAll(<String>{'auxiliar_direccion', 'direccion', 'direction'});
+    }
+    if (AuthAccess.canAccessFinanzasArea(_resolvedProfile)) {
+      roles.addAll(<String>{'finanzas', 'accounting', 'contabilidad'});
+    }
+    if ((_resolvedProfile?.role ?? '').trim() == 'maintenance') {
+      roles.addAll(<String>{'maintenance', 'tecnico', 'mecanico'});
+    }
+
+    return roles;
   }
 
   String _normalizeRole(String role) {
@@ -2833,6 +2886,7 @@ class _MaintenancePageState extends State<MaintenancePage>
       case 'ops_manager':
         return 'jefe_operativo';
       case 'services':
+      case 'maintenance':
         return 'tecnico';
       default:
         return role;
@@ -4130,7 +4184,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   Widget _buildOrdersTopActionsBar() {
     final openStates = _orders.where((e) {
       final st = (e['status'] ?? '').toString();
-      return st != 'cerrado' && st != 'rechazado';
+      return !isMaintenanceClosedStatus(st);
     }).length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
@@ -4645,7 +4699,7 @@ class _MaintenancePageState extends State<MaintenancePage>
         .toSet();
     _reportAreaFilters = _reportAreaFilters.where(areaOptions.contains).toSet();
     _reportStatusFilters = _reportStatusFilters
-        .where(_kStatusLabel.keys.contains)
+        .where(_kSelectableStatuses.contains)
         .toSet();
     _reportTypeFilters = _reportTypeFilters
         .where(_kTypeLabel.keys.contains)
@@ -5068,12 +5122,12 @@ class _MaintenancePageState extends State<MaintenancePage>
                     child: _reportMultiSelectFilterButton(
                       label: 'Estatus',
                       values: _reportStatusFilters,
-                      options: _kStatusLabel.keys.toList(),
+                      options: _kSelectableStatuses,
                       pluralLabel: 'estatus',
                       labelBuilder: (v) => _kStatusLabel[v] ?? v,
                       onPressed: () => _openReportMultiSelectFilter(
                         label: 'Estatus',
-                        options: _kStatusLabel.keys.toList(),
+                        options: _kSelectableStatuses,
                         initialSelected: _reportStatusFilters,
                         labelBuilder: (v) => _kStatusLabel[v] ?? v,
                         onApplied: (values) =>
@@ -6631,18 +6685,9 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _showOtFlowGuide() async {
-    const flow = <String>[
-      'AVISO_FALLA',
-      'REVISION_AREA',
-      'REPORTE_MANTENIMIENTO',
-      'COTIZACION',
-      'AUTORIZACION_FINANZAS',
-      'MATERIAL_RECOLECTADO',
-      'PROGRAMADO',
-      'MANTENIMIENTO_REALIZADO',
-      'SUPERVISION',
-      'CERRADO',
-    ];
+    final flow = _kStatusFlow
+        .map((status) => (_kStatusLabel[status] ?? status).toUpperCase())
+        .toList(growable: false);
 
     await _showMaintenanceDialog<void>(
       context: context,
@@ -6700,7 +6745,7 @@ class _MaintenancePageState extends State<MaintenancePage>
                     icon: Icons.timeline_rounded,
                     title: '4) Cuando mover el estado',
                     body:
-                        'El estado debe cambiar conforme avanza el trabajo real: aviso, revision, reporte, cotizacion, autorizacion, recoleccion de material, programacion, ejecucion, supervision y cierre. No se usa como semaforo decorativo.',
+                        'El estado debe cambiar conforme avanza el trabajo real: aviso de falla, cotizacion, autorizacion, supervision y cierre. No se usa como semaforo decorativo.',
                   ),
                   const SizedBox(height: 10),
                   _guideBlock(
@@ -6823,18 +6868,18 @@ class _MaintenancePageState extends State<MaintenancePage>
   Widget _buildDashboardCards() {
     final openStates = _orders.where((e) {
       final st = (e['status'] ?? '').toString();
-      return st != 'cerrado' && st != 'rechazado';
+      return !isMaintenanceClosedStatus(st);
+    }).length;
+    final inProcessStates = _orders.where((e) {
+      final st = (e['status'] ?? '').toString();
+      return isMaintenanceExecutionStatus(st);
     }).length;
 
     return Row(
       children: [
         _metricCard('Abiertas', '$openStates', Icons.inventory_2_rounded),
         const SizedBox(width: 8),
-        _metricCard(
-          'En proceso',
-          '${_countStatus('programado') + _countStatus('mantenimiento_realizado')}',
-          Icons.build_rounded,
-        ),
+        _metricCard('En proceso', '$inProcessStates', Icons.build_rounded),
         const SizedBox(width: 8),
         _metricCard(
           'Pend. aprobacion',
@@ -7187,12 +7232,19 @@ class _MaintenancePageState extends State<MaintenancePage>
                             value: 'all',
                             child: Text('Todos los estados'),
                           ),
-                          ..._kStatusLabel.entries.map(
-                            (e) => DropdownMenuItem(
-                              value: e.key,
-                              child: Text(e.value),
-                            ),
-                          ),
+                          ..._kSelectableStatuses
+                              .map(
+                                (status) => MapEntry(
+                                  status,
+                                  _kStatusLabel[status] ?? status,
+                                ),
+                              )
+                              .map(
+                                (e) => DropdownMenuItem(
+                                  value: e.key,
+                                  child: Text(e.value),
+                                ),
+                              ),
                         ],
                         onChanged: (v) => setState(
                           () => _statusFilter = v == 'all' ? null : v,
@@ -8620,6 +8672,14 @@ String _fmtDateTimeNullable(dynamic raw) {
 bool _isMissingAuthorizedPurchaseOrdersViewError(PostgrestException error) {
   final message = error.message.toLowerCase();
   return message.contains('v_maintenance_authorized_purchase_order_lines');
+}
+
+bool _isMissingOtPurchaseLinkSchemaError(PostgrestException error) {
+  final message = error.message.toLowerCase();
+  return message.contains('linked_ot_id') ||
+      message.contains('linked_ot_folio') ||
+      message.contains('linked_material_label') ||
+      message.contains('generated_from_ot');
 }
 
 String _labelForImpact(List<MapEntry<String, int>> impacts) {

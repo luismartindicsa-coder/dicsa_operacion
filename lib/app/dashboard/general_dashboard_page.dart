@@ -26,8 +26,10 @@ import '../gerencia/gerencia_bale_weekly_tracking_store.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
 import '../hr/human_resources_dashboard_page.dart';
 import '../logistica/logistics_dashboard_page.dart';
+import '../maintenance/maintenance_statuses.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
+import '../shared/app_error_reporter.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
@@ -562,6 +564,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
             builder: (context, constraints) {
               const servicesWidth = 420.0;
               const sectionGap = 14.0;
+              const servicesSectionHeight = 560.0;
               final canSplit =
                   constraints.maxWidth >= servicesWidth + 760 + sectionGap;
               final productionWidget = const ProductionDailySummaryWidget(
@@ -592,7 +595,11 @@ class _DirectionDashboardCanvas extends StatelessWidget {
                   children: [
                     productionWidget,
                     const SizedBox(height: 14),
-                    SizedBox(width: servicesWidth, child: servicesWidget),
+                    SizedBox(
+                      width: servicesWidth,
+                      height: servicesSectionHeight,
+                      child: servicesWidget,
+                    ),
                   ],
                 );
               }
@@ -601,7 +608,11 @@ class _DirectionDashboardCanvas extends StatelessWidget {
                 children: [
                   Expanded(child: productionWidget),
                   const SizedBox(width: sectionGap),
-                  SizedBox(width: servicesWidth, child: servicesWidget),
+                  SizedBox(
+                    width: servicesWidth,
+                    height: servicesSectionHeight,
+                    child: servicesWidget,
+                  ),
                 ],
               );
             },
@@ -1447,28 +1458,7 @@ class _DirectionMaintenanceMiniTable extends StatelessWidget {
   });
 
   String _statusLabel(String status) {
-    switch (status.trim().toLowerCase()) {
-      case 'aviso_falla':
-        return 'Aviso';
-      case 'revision_area':
-        return 'Revision';
-      case 'reporte_mantenimiento':
-        return 'Reporte';
-      case 'cotizacion':
-        return 'Cotizacion';
-      case 'autorizacion_finanzas':
-        return 'Autorizacion';
-      case 'material_recolectado':
-        return 'Material';
-      case 'programado':
-        return 'Programado';
-      case 'mantenimiento_realizado':
-        return 'Realizado';
-      case 'supervision':
-        return 'Supervision';
-      default:
-        return status.isEmpty ? 'Sin estatus' : status;
-    }
+    return maintenanceStatusShortLabel(status);
   }
 
   @override
@@ -4231,25 +4221,38 @@ class _DirectionOperationalServicesSummaryState
     if (showLoader && mounted) {
       setState(() => _loadingDates = true);
     }
-    final data = await _supa
-        .from('services')
-        .select('due_date')
-        .not('due_date', 'is', null)
-        .order('due_date');
+    try {
+      final data = await _supa
+          .from('services')
+          .select('due_date')
+          .not('due_date', 'is', null)
+          .order('due_date');
 
-    final dates = <DateTime>{};
-    for (final row in (data as List)) {
-      final value = (row as Map<String, dynamic>)['due_date'];
-      if (value == null) continue;
-      dates.add(DateUtils.dateOnly(_parseDate(value)));
+      final dates = <DateTime>{};
+      for (final row in (data as List)) {
+        final value = (row as Map<String, dynamic>)['due_date'];
+        if (value == null) continue;
+        dates.add(DateUtils.dateOnly(_parseDate(value)));
+      }
+
+      final sorted = dates.toList()..sort();
+      if (!mounted) return;
+      setState(() {
+        _datesWithServices = sorted;
+        if (showLoader) _loadingDates = false;
+      });
+    } catch (e, st) {
+      AppErrorReporter.report(
+        e,
+        st,
+        fallbackMessage: 'No se pudieron cargar las fechas de servicios.',
+      );
+      if (!mounted) return;
+      setState(() {
+        _datesWithServices = const [];
+        if (showLoader) _loadingDates = false;
+      });
     }
-
-    final sorted = dates.toList()..sort();
-    if (!mounted) return;
-    setState(() {
-      _datesWithServices = sorted;
-      if (showLoader) _loadingDates = false;
-    });
   }
 
   Future<void> _loadRowsForSelectedDate({bool showLoader = true}) async {
@@ -4318,7 +4321,6 @@ class _DirectionOperationalServicesSummaryState
   @override
   Widget build(BuildContext context) {
     final loading = (_loadingDates || _loadingRows) && _items.isEmpty;
-    final visibleItems = _items.take(4).toList(growable: false);
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -4353,151 +4355,158 @@ class _DirectionOperationalServicesSummaryState
                 glowColor: kDirectionOliveGlow.withValues(
                   alpha: _hovering ? 0.18 : 0.12,
                 ),
-                child: SizedBox(
-                  height: 356,
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          _DirectionDateNavButton(
-                            icon: Icons.arrow_back_ios_new_rounded,
-                            enabled: _prevDate != null,
-                            onTap: _prevDate == null
-                                ? null
-                                : () => _goToDate(_prevDate!),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        _DirectionDateNavButton(
+                          icon: Icons.arrow_back_ios_new_rounded,
+                          enabled: _prevDate != null,
+                          onTap: _prevDate == null
+                              ? null
+                              : () => _goToDate(_prevDate!),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: Column(
+                            children: [
+                              const Text(
+                                'Resumen de Viajes y Servicios',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 20,
+                                  fontWeight: FontWeight.w800,
+                                  color: Colors.white,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _formatDateEs(_selectedDate),
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: kDirectionSurfaceText,
+                                ),
+                              ),
+                              const SizedBox(height: 2),
+                              Text(
+                                '${_items.length} servicio${_items.length == 1 ? '' : 's'}',
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.w700,
+                                  color: kDirectionMutedText,
+                                ),
+                              ),
+                            ],
                           ),
-                          const SizedBox(width: 10),
+                        ),
+                        const SizedBox(width: 10),
+                        _DirectionDateNavButton(
+                          icon: Icons.arrow_forward_ios_rounded,
+                          enabled: _nextDate != null,
+                          onTap: _nextDate == null
+                              ? null
+                              : () => _goToDate(_nextDate!),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.08),
+                        borderRadius: BorderRadius.circular(14),
+                      ),
+                      child: const Row(
+                        children: [
                           Expanded(
-                            child: Column(
-                              children: [
-                                const Text(
-                                  'Resumen de Viajes y Servicios',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    fontSize: 20,
-                                    fontWeight: FontWeight.w800,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  _formatDateEs(_selectedDate),
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.w600,
-                                    color: kDirectionSurfaceText,
-                                  ),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${_items.length} servicio${_items.length == 1 ? '' : 's'}',
-                                  textAlign: TextAlign.center,
-                                  style: const TextStyle(
-                                    fontSize: 12,
-                                    fontWeight: FontWeight.w700,
-                                    color: kDirectionMutedText,
-                                  ),
-                                ),
-                              ],
+                            flex: 3,
+                            child: Text(
+                              'EMPRESA',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
                             ),
                           ),
-                          const SizedBox(width: 10),
-                          _DirectionDateNavButton(
-                            icon: Icons.arrow_forward_ios_rounded,
-                            enabled: _nextDate != null,
-                            onTap: _nextDate == null
-                                ? null
-                                : () => _goToDate(_nextDate!),
+                          Expanded(
+                            flex: 3,
+                            child: Text(
+                              'OPERADOR',
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
+                          ),
+                          Expanded(
+                            flex: 2,
+                            child: Text(
+                              'ESTADO',
+                              textAlign: TextAlign.right,
+                              style: TextStyle(
+                                fontSize: 11,
+                                fontWeight: FontWeight.w800,
+                                color: Colors.white,
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 12,
-                          vertical: 7,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                        child: const Row(
-                          children: [
-                            Expanded(
-                              flex: 3,
+                    ),
+                    const SizedBox(height: 8),
+                    Expanded(
+                      child: loading
+                          ? const Center(child: CircularProgressIndicator())
+                          : _items.isEmpty
+                          ? const Center(
                               child: Text(
-                                'EMPRESA',
+                                'No hay servicios para la fecha seleccionada.',
+                                textAlign: TextAlign.center,
                                 style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
+                                  color: kDirectionMutedText,
+                                  fontSize: 12.5,
+                                  fontWeight: FontWeight.w700,
                                 ),
                               ),
-                            ),
-                            Expanded(
-                              flex: 3,
-                              child: Text(
-                                'OPERADOR',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                            Expanded(
-                              flex: 2,
-                              child: Text(
-                                'ESTADO',
-                                textAlign: TextAlign.right,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 8),
-                      Expanded(
-                        child: loading
-                            ? const Center(child: CircularProgressIndicator())
-                            : visibleItems.isEmpty
-                            ? const Center(
-                                child: Text(
-                                  'No hay servicios para la fecha seleccionada.',
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: kDirectionMutedText,
-                                    fontSize: 12.5,
-                                    fontWeight: FontWeight.w700,
+                            )
+                          : Column(
+                              children: [
+                                Expanded(
+                                  child: ListView.separated(
+                                    physics: const ClampingScrollPhysics(),
+                                    padding: EdgeInsets.zero,
+                                    itemCount: _items.length,
+                                    separatorBuilder: (_, _) =>
+                                        const SizedBox(height: 8),
+                                    itemBuilder: (context, index) =>
+                                        _DirectionServiceSummaryRow(
+                                          item: _items[index],
+                                        ),
                                   ),
                                 ),
-                              )
-                            : Column(
-                                children: [
-                                  for (final item in visibleItems) ...[
-                                    _DirectionServiceSummaryRow(item: item),
-                                    const SizedBox(height: 8),
-                                  ],
-                                  const Spacer(),
-                                  if (_items.length > visibleItems.length)
-                                    Text(
-                                      '+${_items.length - visibleItems.length} más en Operación',
-                                      style: const TextStyle(
-                                        color: kDirectionMutedText,
-                                        fontSize: 11.5,
-                                        fontWeight: FontWeight.w700,
-                                      ),
+                                if (_items.length > 4) ...[
+                                  const SizedBox(height: 8),
+                                  const Text(
+                                    'Desliza para ver más servicios.',
+                                    style: TextStyle(
+                                      color: kDirectionMutedText,
+                                      fontSize: 11.5,
+                                      fontWeight: FontWeight.w700,
                                     ),
+                                  ),
                                 ],
-                              ),
-                      ),
-                    ],
-                  ),
+                              ],
+                            ),
+                    ),
+                  ],
                 ),
               ),
             ),

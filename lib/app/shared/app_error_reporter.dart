@@ -21,7 +21,9 @@ class AppErrorReporter {
     StackTrace stackTrace, {
     String? fallbackMessage,
   }) {
-    debugPrintStack(stackTrace: stackTrace, label: error.toString());
+    if (!isNetworkError(error)) {
+      debugPrintStack(stackTrace: stackTrace, label: error.toString());
+    }
     showMessage(_messageFrom(error, fallbackMessage: fallbackMessage));
   }
 
@@ -30,9 +32,12 @@ class AppErrorReporter {
     if (text.isEmpty) return;
 
     final now = DateTime.now();
+    final dedupeWindow = _isNetworkMessage(text)
+        ? const Duration(seconds: 20)
+        : const Duration(seconds: 2);
     if (_lastMessage == text &&
         _lastShownAt != null &&
-        now.difference(_lastShownAt!) < const Duration(seconds: 2)) {
+        now.difference(_lastShownAt!) < dedupeWindow) {
       return;
     }
 
@@ -88,5 +93,10 @@ class AppErrorReporter {
       return fallbackMessage ?? error.toString();
     }
     return friendlyErrorMessage(error, fallbackMessage: fallbackMessage);
+  }
+
+  static bool _isNetworkMessage(String message) {
+    return message.contains('No se pudo resolver el host de Supabase') ||
+        message.contains('No se pudo conectar con Supabase');
   }
 }

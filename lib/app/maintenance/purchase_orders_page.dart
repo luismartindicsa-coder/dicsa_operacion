@@ -26,7 +26,9 @@ import '../shared/ui_contract_core/theme/anchored_action_slot.dart';
 import '../shared/ui_contract_core/theme/contract_grid_scaled_row.dart';
 import '../shared/utils/date_picker_defaults.dart';
 import '../shared/utils/number_formatters.dart';
+import 'maintenance_ot_purchase_link_service.dart';
 import 'maintenance_page.dart';
+import 'maintenance_statuses.dart';
 
 const List<String> _kPurchaseOrderFixedTargets = <String>[
   'ALMACEN',
@@ -62,6 +64,7 @@ const Map<String, String> _kPurchaseOrderLineTypeLabel = <String, String>{
 const double _kPoFolioColW = 150;
 const double _kPoDateColW = 96;
 const double _kPoTargetColW = 142;
+const double _kPoOtColW = 126;
 const double _kPoVendorColW = 250;
 const double _kPoStatusColW = 156;
 const double _kPoCashColW = 126;
@@ -81,6 +84,8 @@ class PurchaseOrdersPage extends StatefulWidget {
 
 class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   final SupabaseClient _supa = Supabase.instance.client;
+  late final MaintenanceOtPurchaseLinkService _otPurchaseLinkService =
+      MaintenanceOtPurchaseLinkService(_supa);
   final FocusNode _rowsFocusNode = FocusNode(
     debugLabel: 'purchase-orders-rows',
   );
@@ -100,6 +105,9 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
       <String, List<Map<String, dynamic>>>{};
   List<String> _targetOptions = <String>[];
   List<Map<String, dynamic>> _directoryContacts = <Map<String, dynamic>>[];
+  List<Map<String, dynamic>> _maintenanceOrders = <Map<String, dynamic>>[];
+  final Map<String, Map<String, dynamic>> _maintenanceOrdersById =
+      <String, Map<String, dynamic>>{};
   final Map<String, Set<String>> _columnValueFilters = <String, Set<String>>{};
   String? _selectedOrderId;
   String? _selectionAnchorOrderId;
@@ -138,6 +146,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
       await Future.wait<void>([
         _loadTargetOptions(),
         _loadDirectoryContacts(),
+        _loadMaintenanceOrders(),
         _loadOrders(),
       ]);
     } finally {
@@ -207,6 +216,24 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     }
   }
 
+  Future<void> _loadMaintenanceOrders() async {
+    final rows = await _supa
+        .from('maintenance_orders')
+        .select('id,ot_folio,equipment_label,area_label,status,requested_at')
+        .order('requested_at', ascending: false)
+        .order('created_at', ascending: false);
+    _maintenanceOrders = (rows as List)
+        .map((row) => Map<String, dynamic>.from(row as Map<String, dynamic>))
+        .toList();
+    _maintenanceOrdersById
+      ..clear()
+      ..addEntries(
+        _maintenanceOrders.map(
+          (row) => MapEntry((row['id'] ?? '').toString(), row),
+        ),
+      );
+  }
+
   Future<void> _loadOrders() async {
     try {
       final targetInitialOrderId = widget.initialOrderId?.trim() ?? '';
@@ -238,7 +265,41 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
           orderList.insert(0, exactList.first);
         }
       }
-      _orders = orderList;
+      final linkedOtIds = orderList
+          .map((row) => (row['linked_ot_id'] ?? '').toString().trim())
+          .where((id) => id.isNotEmpty)
+          .toSet()
+          .toList(growable: false);
+      final linkedOtStatusById = <String, Map<String, dynamic>>{};
+      if (linkedOtIds.isNotEmpty) {
+        final linkedOtRows = await _supa
+            .from('maintenance_orders')
+            .select('id,ot_folio,status,equipment_label,area_label')
+            .inFilter('id', linkedOtIds);
+        for (final raw in linkedOtRows as List) {
+          final row = Map<String, dynamic>.from(raw as Map<String, dynamic>);
+          final id = (row['id'] ?? '').toString().trim();
+          if (id.isEmpty) continue;
+          linkedOtStatusById[id] = row;
+          _maintenanceOrdersById[id] = row;
+        }
+      }
+
+      _orders = orderList.map((order) {
+        final linkedOtId = (order['linked_ot_id'] ?? '').toString().trim();
+        final linkedOt =
+            linkedOtStatusById[linkedOtId] ??
+            _maintenanceOrdersById[linkedOtId];
+        final linkedOtFolio = (order['linked_ot_folio'] ?? '')
+            .toString()
+            .trim();
+        return {
+          ...order,
+          if (linkedOt != null) 'linked_ot_status': linkedOt['status'],
+          if (linkedOtFolio.isEmpty && linkedOt != null)
+            'linked_ot_folio': linkedOt['ot_folio'],
+        };
+      }).toList();
 
       final ids = orderList
           .map((row) => row['id']?.toString() ?? '')
@@ -311,6 +372,24 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   bool _hasColumnFilter(String columnId) =>
       (_columnValueFilters[columnId] ?? const <String>{}).isNotEmpty;
 
+  String _linkedOtFolio(Map<String, dynamic> order) {
+    final explicit = (order['linked_ot_folio'] ?? '').toString().trim();
+    if (explicit.isNotEmpty) return explicit;
+    final linkedOtId = (order['linked_ot_id'] ?? '').toString().trim();
+    final ot = _maintenanceOrdersById[linkedOtId];
+    return (ot?['ot_folio'] ?? '').toString().trim();
+  }
+
+  String _purchaseOrderConceptLabel(Map<String, dynamic> order) {
+    final linkedConcept = (order['linked_material_label'] ?? '')
+        .toString()
+        .trim();
+    if (linkedConcept.isNotEmpty) return linkedConcept;
+    final vendorName = (order['quote_vendor_name'] ?? '').toString().trim();
+    if (vendorName.isNotEmpty) return vendorName;
+    return 'Sin nombre';
+  }
+
   String _filterValueForOrder(Map<String, dynamic> order, String columnId) {
     switch (columnId) {
       case 'folio':
@@ -321,8 +400,10 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
         );
       case 'unidad_area':
         return (order['target_label'] ?? '').toString().trim();
+      case 'ot':
+        return _linkedOtFolio(order);
       case 'cotizacion':
-        return (order['quote_vendor_name'] ?? 'Sin nombre').toString().trim();
+        return _purchaseOrderConceptLabel(order);
       case 'estatus':
         final status = (order['status'] ?? 'draft').toString();
         return _kPurchaseOrderStatusLabel[status] ?? status;
@@ -1035,6 +1116,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
           initial: initial,
           targetOptions: _targetOptions,
           directoryContacts: _directoryContacts,
+          maintenanceOrders: _maintenanceOrders,
           initialLines: List<Map<String, dynamic>>.from(
             (_linesByOrderId[initial?['id']?.toString() ?? ''] ?? const []).map(
               (row) => Map<String, dynamic>.from(row),
@@ -1057,6 +1139,8 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
       initial: initial,
       orderDate: draft.orderDate,
       targetLabel: draft.targetLabel,
+      linkedOtId: draft.linkedOtId,
+      linkedOtFolio: draft.linkedOtFolio,
       providerType: draft.providerType,
       vendorName: draft.vendorName,
       contact: draft.contact,
@@ -1078,6 +1162,8 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     required Map<String, dynamic>? initial,
     required DateTime orderDate,
     required String targetLabel,
+    required String linkedOtId,
+    required String linkedOtFolio,
     required String providerType,
     required String vendorName,
     required String contact,
@@ -1091,9 +1177,23 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     if (_saving) return;
     setState(() => _saving = true);
     try {
+      final normalizedLinkedOtId = linkedOtId.trim();
+      final firstLineDescription = lines
+          .map((line) => (line['description'] ?? '').toString().trim())
+          .firstWhere((value) => value.isNotEmpty, orElse: () => '');
       final payload = <String, dynamic>{
         'order_date': _fmtDbDate(orderDate),
         'target_label': targetLabel.trim(),
+        'linked_ot_id': normalizedLinkedOtId.isEmpty
+            ? null
+            : normalizedLinkedOtId,
+        'linked_ot_folio': linkedOtFolio.trim().isEmpty
+            ? null
+            : linkedOtFolio.trim(),
+        'linked_material_label':
+            normalizedLinkedOtId.isEmpty || firstLineDescription.isEmpty
+            ? null
+            : firstLineDescription,
         'quote_vendor_name': vendorName.isEmpty ? null : vendorName,
         'quote_vendor_type': providerType,
         'quote_contact': contact.isEmpty ? null : contact,
@@ -1119,6 +1219,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                 (initial['status'] ?? '').toString() != 'purchased'))
           'actual_total_at': null,
         if (initial == null) 'requested_by': _supa.auth.currentUser?.id,
+        if (initial == null) 'generated_from_ot': false,
         if (initial == null)
           'requested_by_name': _profile?.email ?? _supa.auth.currentUser?.email,
       };
@@ -1137,18 +1238,20 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
             .from('maintenance_purchase_orders')
             .update(payload)
             .eq('id', orderId);
-        await _supa
-            .from('maintenance_purchase_order_lines')
-            .delete()
-            .eq('purchase_order_id', orderId);
       }
 
-      final linePayload = <Map<String, dynamic>>[];
+      final currentLineIds = initial == null
+          ? <String>{}
+          : ((_linesByOrderId[orderId] ?? const <Map<String, dynamic>>[])
+                .map((line) => (line['id'] ?? '').toString().trim())
+                .where((id) => id.isNotEmpty)
+                .toSet());
+      final retainedLineIds = <String>{};
       for (var i = 0; i < lines.length; i++) {
         final line = lines[i];
         final description = (line['description'] ?? '').toString().trim();
         if (description.isEmpty) continue;
-        linePayload.add({
+        final linePayload = <String, dynamic>{
           'purchase_order_id': orderId,
           'line_no': i + 1,
           'line_type': (line['line_type'] ?? 'material').toString(),
@@ -1158,15 +1261,60 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
           'amount': _toDouble(line['amount']),
           'line_total': _lineTotal(line),
           'notes': _emptyAsNull(line['notes']),
-        });
+        };
+        final lineId = (line['id'] ?? '').toString().trim();
+        if (lineId.isNotEmpty && currentLineIds.contains(lineId)) {
+          retainedLineIds.add(lineId);
+          await _supa
+              .from('maintenance_purchase_order_lines')
+              .update(linePayload)
+              .eq('id', lineId);
+          continue;
+        }
+        final inserted = await _supa
+            .from('maintenance_purchase_order_lines')
+            .insert(linePayload)
+            .select('id')
+            .single();
+        line['id'] = inserted['id'];
       }
-      if (linePayload.isNotEmpty) {
+
+      final lineIdsToDelete = currentLineIds
+          .difference(retainedLineIds)
+          .toList();
+      if (lineIdsToDelete.isNotEmpty) {
         await _supa
             .from('maintenance_purchase_order_lines')
-            .insert(linePayload);
+            .delete()
+            .inFilter('id', lineIdsToDelete);
       }
+
+      if (normalizedLinkedOtId.isNotEmpty) {
+        await _otPurchaseLinkService.syncLinkedPurchaseOrderIntoOtMaterials(
+          purchaseOrderId: orderId,
+        );
+      }
+      final status = (initial?['status'] ?? 'draft').toString();
+      if ((status == 'authorized' || status == 'purchased') &&
+          normalizedLinkedOtId.isNotEmpty) {
+        await _otPurchaseLinkService.syncOtStatusFromLinkedPurchaseOrder(
+          purchaseOrderId: orderId,
+          actorUserId: _supa.auth.currentUser?.id,
+          actorName: _profile?.email ?? _supa.auth.currentUser?.email,
+        );
+      }
+
       await _loadOrders();
       _toast(initial == null ? 'Orden creada' : 'Orden actualizada');
+    } on PostgrestException catch (e) {
+      if (_isMissingPurchaseOrdersSchemaError(e)) {
+        setState(() {
+          _purchaseOrdersSchemaReady = false;
+          _purchaseOrdersSchemaMessage =
+              'Compras OT necesita aplicar la migración de vínculo OT/OC en Supabase. Aplica `supabase db push` y vuelve a cargar.';
+        });
+      }
+      _toast('No se pudo guardar la orden: $e');
     } catch (e) {
       _toast('No se pudo guardar la orden: $e');
     } finally {
@@ -1511,9 +1659,26 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
           .from('maintenance_purchase_orders')
           .update({'status': status, ...?extra})
           .eq('id', id);
+      await _otPurchaseLinkService.syncLinkedPurchaseOrderIntoOtMaterials(
+        purchaseOrderId: id,
+      );
+      if (status == 'authorized' || status == 'purchased') {
+        await _otPurchaseLinkService.syncOtStatusFromLinkedPurchaseOrder(
+          purchaseOrderId: id,
+          actorUserId: _supa.auth.currentUser?.id,
+          actorName: _profile?.email ?? _supa.auth.currentUser?.email,
+        );
+      }
       await _loadOrders();
       _toast(toast);
     } catch (e) {
+      if (e is PostgrestException && _isMissingPurchaseOrdersSchemaError(e)) {
+        setState(() {
+          _purchaseOrdersSchemaReady = false;
+          _purchaseOrdersSchemaMessage =
+              'Compras OT necesita aplicar la migración de vínculo OT/OC en Supabase. Aplica `supabase db push` y vuelve a cargar.';
+        });
+      }
       if (e is PostgrestException &&
           _isMissingPurchasedPurchaseOrderSchemaError(e)) {
         setState(() {
@@ -2139,6 +2304,14 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                                   'unidad_area',
                                   'UNIDAD/AREA',
                                 ),
+                              ),
+                              const _PurchaseOrderGridColumnDivider(),
+                              _PurchaseOrderHeaderCell(
+                                label: 'ID OT',
+                                width: _kPoOtColW,
+                                active: _hasColumnFilter('ot'),
+                                onFilter: () =>
+                                    _openColumnFilterDialog('ot', 'ID OT'),
                               ),
                               const _PurchaseOrderGridColumnDivider(),
                               _PurchaseOrderHeaderCell(
@@ -2808,6 +2981,20 @@ class _PurchaseOrderRowCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final status = (order['status'] ?? 'draft').toString();
+    final linkedOtId = (order['linked_ot_id'] ?? '').toString().trim();
+    final linkedOtFolio = (order['linked_ot_folio'] ?? '').toString().trim();
+    final linkedOtStatus = normalizeMaintenanceStatus(
+      order['linked_ot_status'],
+    );
+    final linkedOtStatusLabel = linkedOtStatus.isEmpty
+        ? ''
+        : maintenanceStatusShortLabel(linkedOtStatus);
+    final conceptLabel =
+        (order['linked_material_label'] ?? '').toString().trim().isNotEmpty
+        ? (order['linked_material_label'] ?? '').toString().trim()
+        : (order['quote_vendor_name'] ?? 'Sin nombre').toString().trim();
+    final highlightOtCotizacion =
+        linkedOtId.isNotEmpty && linkedOtStatus == 'cotizacion';
     final requestLabel = switch (status) {
       'authorized' => 'Pendiente de compra física',
       'purchased' => 'Compra verificada',
@@ -2815,27 +3002,34 @@ class _PurchaseOrderRowCard extends StatelessWidget {
       'rejected' => 'Requiere corrección',
       _ => 'Lista para captura',
     };
+    final cardColor = selected
+        ? const Color(0xFFD9ECFA)
+        : highlightOtCotizacion
+        ? const Color(0xFFFFE4E4).withValues(alpha: 0.94)
+        : Colors.white.withValues(alpha: 0.86);
+    final borderColor = selected
+        ? const Color(0xFF3C8DCC).withValues(alpha: 0.55)
+        : highlightOtCotizacion
+        ? const Color(0xFFE2A4A4).withValues(alpha: 0.85)
+        : Colors.white.withValues(alpha: 0.35);
+    final hoverColor = highlightOtCotizacion
+        ? const Color(0xFFFFF0F0)
+        : const Color(0xFFEFF7FD);
 
     return Card(
       elevation: selected ? 2.8 : 0.9,
       shadowColor: const Color(
         0xFF17324A,
       ).withValues(alpha: selected ? 0.18 : 0.08),
-      color: selected
-          ? const Color(0xFFD9ECFA)
-          : Colors.white.withValues(alpha: 0.86),
+      color: cardColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(
-          color: selected
-              ? const Color(0xFF3C8DCC).withValues(alpha: 0.55)
-              : Colors.white.withValues(alpha: 0.35),
-        ),
+        side: BorderSide(color: borderColor),
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         mouseCursor: SystemMouseCursors.click,
-        hoverColor: const Color(0xFFEFF7FD),
+        hoverColor: hoverColor,
         onTapDown: (_) => onTap(),
         onDoubleTap: onDoubleTap,
         onSecondaryTapDown: onSecondaryTapDown,
@@ -2894,19 +3088,65 @@ class _PurchaseOrderRowCard extends StatelessWidget {
                 ),
                 const _PurchaseOrderGridColumnDivider(),
                 SizedBox(
+                  width: _kPoOtColW,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        linkedOtFolio.isEmpty ? 'Sin OT' : linkedOtFolio,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontWeight: FontWeight.w800,
+                          color: linkedOtFolio.isEmpty
+                              ? const Color(0xFF5A7287)
+                              : const Color(0xFF17324A),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        linkedOtStatusLabel.isEmpty
+                            ? 'Sin relacion'
+                            : linkedOtStatusLabel,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: highlightOtCotizacion
+                              ? const Color(0xFF9A2B2B)
+                              : const Color(0xFF5A7287),
+                          fontWeight: highlightOtCotizacion
+                              ? FontWeight.w800
+                              : FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const _PurchaseOrderGridColumnDivider(),
+                SizedBox(
                   width: _kPoVendorColW,
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        (order['quote_vendor_name'] ?? 'Sin nombre').toString(),
+                        conceptLabel.isEmpty ? 'Sin nombre' : conceptLabel,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w800),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        (order['quote_vendor_type'] ?? '').toString(),
+                        linkedOtId.isNotEmpty
+                            ? ((order['quote_vendor_name'] ?? '')
+                                      .toString()
+                                      .trim()
+                                      .isEmpty
+                                  ? 'Ligada a OT'
+                                  : (order['quote_vendor_name'] ?? '')
+                                        .toString()
+                                        .trim())
+                            : (order['quote_vendor_type'] ?? '').toString(),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(
@@ -3255,6 +3495,8 @@ class _OrderLineCard extends StatelessWidget {
 class _PurchaseOrderDraft {
   final DateTime orderDate;
   final String targetLabel;
+  final String linkedOtId;
+  final String linkedOtFolio;
   final String providerType;
   final String vendorName;
   final String contact;
@@ -3264,6 +3506,8 @@ class _PurchaseOrderDraft {
   const _PurchaseOrderDraft({
     required this.orderDate,
     required this.targetLabel,
+    required this.linkedOtId,
+    required this.linkedOtFolio,
     required this.providerType,
     required this.vendorName,
     required this.contact,
@@ -3276,6 +3520,7 @@ class _PurchaseOrderDialog extends StatefulWidget {
   final Map<String, dynamic>? initial;
   final List<String> targetOptions;
   final List<Map<String, dynamic>> directoryContacts;
+  final List<Map<String, dynamic>> maintenanceOrders;
   final List<Map<String, dynamic>> initialLines;
   final Future<Map<String, dynamic>?> Function({Map<String, dynamic>? initial})
   onShowLineDialog;
@@ -3284,6 +3529,7 @@ class _PurchaseOrderDialog extends StatefulWidget {
     required this.initial,
     required this.targetOptions,
     required this.directoryContacts,
+    required this.maintenanceOrders,
     required this.initialLines,
     required this.onShowLineDialog,
   });
@@ -3299,6 +3545,8 @@ class _PurchaseOrderDialogState extends State<_PurchaseOrderDialog> {
   final Map<int, GlobalKey> _lineKeys = <int, GlobalKey>{};
   late DateTime _date;
   String? _target;
+  late String _linkedOtId;
+  late String _linkedOtFolio;
   late String _providerType;
   String _selectedDirectoryContactId = '';
   late final TextEditingController _vendorNameC;
@@ -3306,6 +3554,7 @@ class _PurchaseOrderDialogState extends State<_PurchaseOrderDialog> {
   late final TextEditingController _notesC;
   late List<Map<String, dynamic>> _lines;
   int? _selectedLineIndex;
+  late final bool _linkedOtLocked;
 
   @override
   void initState() {
@@ -3315,6 +3564,12 @@ class _PurchaseOrderDialogState extends State<_PurchaseOrderDialog> {
         .toString()
         .trim();
     _target = targetValue.isEmpty ? null : targetValue;
+    _linkedOtId = (widget.initial?['linked_ot_id'] ?? '').toString().trim();
+    _linkedOtFolio = (widget.initial?['linked_ot_folio'] ?? '')
+        .toString()
+        .trim();
+    _linkedOtLocked =
+        widget.initial?['generated_from_ot'] == true || _linkedOtId.isNotEmpty;
     final provider = (widget.initial?['quote_vendor_type'] ?? 'Empresa')
         .toString();
     _providerType = _kPurchaseOrderProviderTypes.contains(provider)
@@ -3333,6 +3588,23 @@ class _PurchaseOrderDialogState extends State<_PurchaseOrderDialog> {
     _lines = List<Map<String, dynamic>>.from(
       widget.initialLines.map((row) => Map<String, dynamic>.from(row)),
     );
+  }
+
+  bool get _canEditLinkedOt => !_linkedOtLocked;
+
+  Map<String, dynamic>? get _selectedMaintenanceOrder {
+    if (_linkedOtId.isEmpty) return null;
+    return widget.maintenanceOrders.cast<Map<String, dynamic>?>().firstWhere(
+      (row) => (row?['id'] ?? '').toString() == _linkedOtId,
+      orElse: () => null,
+    );
+  }
+
+  String get _linkedOtDisplayLabel {
+    final selected = _selectedMaintenanceOrder;
+    if (selected != null) return _maintenanceOrderDialogLabel(selected);
+    if (_linkedOtFolio.isNotEmpty) return _linkedOtFolio;
+    return 'Sin OT ligada';
   }
 
   @override
@@ -3379,6 +3651,20 @@ class _PurchaseOrderDialogState extends State<_PurchaseOrderDialog> {
       final contact = (selected['contact'] ?? '').toString().trim();
       if (contact.isNotEmpty) {
         _contactC.text = contact;
+      }
+    });
+  }
+
+  void _applyMaintenanceOrder(String maintenanceOrderId) {
+    setState(() {
+      _linkedOtId = maintenanceOrderId.trim();
+      final row = _selectedMaintenanceOrder;
+      _linkedOtFolio = (row?['ot_folio'] ?? '').toString().trim();
+      if ((_target ?? '').trim().isEmpty) {
+        final suggestedTarget = _maintenanceOrderTargetLabel(row);
+        if (suggestedTarget.isNotEmpty) {
+          _target = suggestedTarget;
+        }
       }
     });
   }
@@ -3603,6 +3889,8 @@ class _PurchaseOrderDialogState extends State<_PurchaseOrderDialog> {
       _PurchaseOrderDraft(
         orderDate: _date,
         targetLabel: (_target ?? '').trim(),
+        linkedOtId: _linkedOtId.trim(),
+        linkedOtFolio: _linkedOtFolio.trim(),
         providerType: _providerType,
         vendorName: _vendorNameC.text.trim(),
         contact: _contactC.text.trim(),
@@ -3759,6 +4047,73 @@ class _PurchaseOrderDialogState extends State<_PurchaseOrderDialog> {
                                 ),
                               ],
                             ),
+                            const SizedBox(height: 12),
+                            if (_canEditLinkedOt)
+                              SizedBox(
+                                width: double.infinity,
+                                child: _PurchaseOrderSelectField<String>(
+                                  label: 'OT ligada',
+                                  value: _linkedOtId,
+                                  displayValue: _linkedOtId.isEmpty
+                                      ? 'Sin OT ligada'
+                                      : _linkedOtDisplayLabel,
+                                  options: [
+                                    const _PurchaseOrderPickerOption(
+                                      value: '',
+                                      label: 'Sin OT ligada',
+                                    ),
+                                    ...widget.maintenanceOrders.map(
+                                      (row) =>
+                                          _PurchaseOrderPickerOption<String>(
+                                            value: (row['id'] ?? '').toString(),
+                                            label: _maintenanceOrderDialogLabel(
+                                              row,
+                                            ),
+                                          ),
+                                    ),
+                                  ],
+                                  onChanged: (value) {
+                                    if (value.trim().isEmpty) {
+                                      setState(() {
+                                        _linkedOtId = '';
+                                        _linkedOtFolio = '';
+                                      });
+                                      return;
+                                    }
+                                    _applyMaintenanceOrder(value);
+                                  },
+                                ),
+                              )
+                            else
+                              InputDecorator(
+                                decoration: _poInputDecoration(
+                                  labelText: 'OT ligada',
+                                ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      _linkedOtId.isEmpty
+                                          ? 'Sin OT ligada'
+                                          : _linkedOtDisplayLabel,
+                                      style: const TextStyle(
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    if (_linkedOtId.isNotEmpty) ...[
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'En esta etapa la OT ligada se conserva para no perder la relación histórica.',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w700,
+                                          color: Color(0xFF5A7287),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
                             if (widget.directoryContacts.isNotEmpty) ...[
                               const SizedBox(height: 12),
                               _PurchaseOrderSelectField<String>(
@@ -3993,6 +4348,7 @@ class _PurchaseOrderSummaryDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final folio = (order['folio'] ?? '').toString().trim();
     final target = (order['target_label'] ?? '').toString().trim();
+    final linkedOtFolio = (order['linked_ot_folio'] ?? '').toString().trim();
     final vendor = (order['quote_vendor_name'] ?? '').toString().trim();
     final contact = (order['quote_contact'] ?? '').toString().trim();
     final notes = (order['notes'] ?? '').toString().trim();
@@ -4103,6 +4459,12 @@ class _PurchaseOrderSummaryDialog extends StatelessWidget {
                                 _SummaryField(
                                   label: 'Unidad o área',
                                   value: target.isEmpty ? '-' : target,
+                                ),
+                                _SummaryField(
+                                  label: 'ID OT',
+                                  value: linkedOtFolio.isEmpty
+                                      ? '-'
+                                      : linkedOtFolio,
                                 ),
                                 _SummaryField(
                                   label: 'Proveedor',
@@ -4859,10 +5221,33 @@ String _fmtDateLabel(DateTime value) =>
 
 String _fmtMoney(num value) => formatMoney(value);
 
+String _maintenanceOrderTargetLabel(Map<String, dynamic>? row) {
+  if (row == null) return '';
+  final equipment = (row['equipment_label'] ?? '').toString().trim();
+  if (equipment.isNotEmpty) return equipment;
+  return (row['area_label'] ?? '').toString().trim();
+}
+
+String _maintenanceOrderDialogLabel(Map<String, dynamic>? row) {
+  if (row == null) return 'Sin OT ligada';
+  final folio = (row['ot_folio'] ?? '').toString().trim();
+  final target = _maintenanceOrderTargetLabel(row);
+  final status = maintenanceStatusShortLabel(row['status']);
+  return [
+    if (folio.isNotEmpty) folio,
+    if (target.isNotEmpty) target,
+    if (status.isNotEmpty) status,
+  ].join(' · ');
+}
+
 bool _isMissingPurchaseOrdersSchemaError(PostgrestException error) {
   final message = error.message.toLowerCase();
   return message.contains('maintenance_purchase_orders') ||
-      message.contains('maintenance_purchase_order_lines');
+      message.contains('maintenance_purchase_order_lines') ||
+      message.contains('linked_ot_id') ||
+      message.contains('linked_ot_folio') ||
+      message.contains('linked_material_label') ||
+      message.contains('generated_from_ot');
 }
 
 bool _isMissingPurchasedPurchaseOrderSchemaError(PostgrestException error) {
