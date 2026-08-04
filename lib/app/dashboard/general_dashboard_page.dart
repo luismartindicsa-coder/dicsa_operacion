@@ -45,6 +45,7 @@ const double _kDirectionExecutiveWidgetWidth = 394;
 const double _kDirectionExecutiveWidgetHeight = 428;
 const double _kDirectionVaultDeposits = 40350;
 const double _kDirectionVaultExpenses = 8850;
+const int _kDirectionMaterialFlowLookbackDays = 42;
 
 class GeneralDashboardPage extends StatefulWidget {
   final bool instantOpen;
@@ -1801,8 +1802,8 @@ class _DirectionTradeDashboardSummaryState
       setState(() => _loading = true);
     }
     try {
-      final bundle = await CommercialStore.loadDashboard();
-      final points = _buildTradeMonthPoints(bundle.marketEvents);
+      final events = await CommercialStore.loadRecentMarketEvents();
+      final points = _buildTradeMonthPoints(events);
       if (!mounted) return;
       setState(() {
         _points = points;
@@ -2614,7 +2615,9 @@ class _DirectionMaterialFlowChartsSectionState
     }
     try {
       final startDate = DateUtils.dateOnly(
-        DateTime.now().subtract(const Duration(days: 119)),
+        DateTime.now().subtract(
+          const Duration(days: _kDirectionMaterialFlowLookbackDays - 1),
+        ),
       );
       final endDate = DateUtils.dateOnly(DateTime.now());
       final inRowsRaw = await _fetchDirectionMovementRows(
@@ -2623,9 +2626,10 @@ class _DirectionMaterialFlowChartsSectionState
         startDate: startDate,
         endDate: endDate,
         select:
-            '*,general_material:general_material_id(id,code,name),'
-            'commercial_material:commercial_material_id(id,code,name,general_material_id),'
-            'source_commercial:source_commercial_material_id(id,code,name,general_material_id,general_material:general_material_id(code,name))',
+            'op_date,weight_kg,net_kg,gross_kg,tare_kg,total_amount_kg,'
+            'general_material:general_material_id(code,name),'
+            'source_commercial:source_commercial_material_id('
+            'code,name,general_material:general_material_id(code,name))',
       );
       final outRowsRaw = await _fetchDirectionMovementRows(
         flow: 'OUT',
@@ -2633,9 +2637,10 @@ class _DirectionMaterialFlowChartsSectionState
         startDate: startDate,
         endDate: endDate,
         select:
-            '*,general_material:general_material_id(id,code,name),'
-            'commercial_material:commercial_material_id(id,code,name,general_material_id,general_material:general_material_id(code,name)),'
-            'source_commercial:source_commercial_material_id(id,code,name)',
+            'op_date,weight_kg,net_kg,gross_kg,tare_kg,total_amount_kg,'
+            'general_material:general_material_id(code,name),'
+            'commercial_material:commercial_material_id('
+            'code,name,general_material:general_material_id(code,name))',
       );
       final inRows = _normalizeDirectionMovementRows(
         rows: inRowsRaw,
@@ -2687,7 +2692,6 @@ class _DirectionMaterialFlowChartsSectionState
           .gte('op_date', _directionDbDate(startDate))
           .lte('op_date', _directionDbDate(endDate))
           .order('op_date', ascending: true)
-          .order('created_at', ascending: true)
           .range(from, from + batchSize - 1);
       final batch = (data as List).cast<Map<String, dynamic>>();
       rows.addAll(batch);
@@ -4657,7 +4661,7 @@ class _DirectionCommercialFollowUpsSummary extends StatefulWidget {
 
 class _DirectionCommercialFollowUpsSummaryState
     extends State<_DirectionCommercialFollowUpsSummary> {
-  CommercialDirectoryBundle? _bundle;
+  List<CommercialWeeklyFollowUpSummaryRecord>? _weeklyRows;
   bool _loading = true;
   bool _hovering = false;
   bool _refreshing = false;
@@ -4699,10 +4703,14 @@ class _DirectionCommercialFollowUpsSummaryState
       setState(() => _loading = true);
     }
     try {
-      final bundle = await CommercialStore.loadDirectory();
+      final currentWeek = _directionCurrentWeekRange(DateTime.now());
+      final bundle = await CommercialStore.loadWeeklyFollowUpSummary(
+        weekStart: currentWeek.$1,
+        weekEnd: currentWeek.$2,
+      );
       if (!mounted) return;
       setState(() {
-        _bundle = bundle;
+        _weeklyRows = bundle;
         _loading = false;
       });
     } catch (_) {
@@ -4719,15 +4727,19 @@ class _DirectionCommercialFollowUpsSummaryState
 
   @override
   Widget build(BuildContext context) {
-    final bundle = _bundle;
     final currentWeek = _directionCurrentWeekRange(DateTime.now());
-    final rows = bundle == null
+    final rows = _weeklyRows == null
         ? const <_DirectionCommercialFollowUpRowData>[]
-        : _directionBuildCommercialWeeklyRows(
-            bundle,
-            currentWeek.$1,
-            currentWeek.$2,
-          );
+        : _weeklyRows!
+              .map(
+                (entry) => _DirectionCommercialFollowUpRowData(
+                  accountName: entry.accountName,
+                  interactionType: entry.interactionType,
+                  status: entry.status,
+                  date: entry.referenceDate,
+                ),
+              )
+              .toList(growable: false);
     final visibleRows = rows.take(4).toList(growable: false);
 
     return MouseRegion(
@@ -4860,7 +4872,7 @@ class _DirectionCommercialFollowUpsSummaryState
                       ),
                       const SizedBox(height: 8),
                       Expanded(
-                        child: _loading && bundle == null
+                        child: _loading && _weeklyRows == null
                             ? const Center(child: CircularProgressIndicator())
                             : visibleRows.isEmpty
                             ? const Center(
@@ -4919,46 +4931,6 @@ class _DirectionCommercialFollowUpRowData {
     required this.status,
     required this.date,
   });
-}
-
-List<_DirectionCommercialFollowUpRowData> _directionBuildCommercialWeeklyRows(
-  CommercialDirectoryBundle bundle,
-  DateTime weekStart,
-  DateTime weekEnd,
-) {
-  final accountsById = <String, CommercialDirectoryAccountRecord>{
-    for (final account in bundle.accounts) account.id: account,
-  };
-  final rows = <_DirectionCommercialFollowUpRowData>[];
-  final weekEndInclusive = weekEnd.add(
-    const Duration(hours: 23, minutes: 59, seconds: 59),
-  );
-
-  for (final entry in bundle.followUpsByAccountId.entries) {
-    final account = accountsById[entry.key];
-    final accountName = account?.displayName.trim().isNotEmpty == true
-        ? account!.displayName.trim()
-        : 'SIN CUENTA';
-    for (final followUp in entry.value) {
-      final referenceDate = followUp.nextFollowUpAt ?? followUp.interactionAt;
-      if (referenceDate == null) continue;
-      if (referenceDate.isBefore(weekStart) ||
-          referenceDate.isAfter(weekEndInclusive)) {
-        continue;
-      }
-      rows.add(
-        _DirectionCommercialFollowUpRowData(
-          accountName: accountName,
-          interactionType: followUp.interactionType,
-          status: followUp.status,
-          date: referenceDate,
-        ),
-      );
-    }
-  }
-
-  rows.sort((a, b) => a.date.compareTo(b.date));
-  return rows;
 }
 
 (DateTime, DateTime) _directionCurrentWeekRange(DateTime value) {

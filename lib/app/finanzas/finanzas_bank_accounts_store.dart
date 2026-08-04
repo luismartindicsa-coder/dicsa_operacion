@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../compras/compras_tickets_store.dart';
+import '../mayoreo/mayoreo_financial_status.dart';
 import 'finanzas_company_identity.dart';
 import 'finanzas_evidence_store.dart';
 import 'finanzas_fixed_payments_store.dart';
@@ -575,7 +576,7 @@ class FinanzasBankAccountsStore {
       final rows = await Supabase.instance.client
           .from(_kMayoreoAccountsTable)
           .select(
-            'id, approved_amount, paid_amount, status, operation_type, settlement_date',
+            'id, approved_amount, paid_amount, status, operation_type, settlement_date, client_name_snapshot, document_number, document_date',
           )
           .eq('id', movement.linkedExternalRef!)
           .limit(1);
@@ -589,24 +590,35 @@ class FinanzasBankAccountsStore {
             .toDouble();
         final operationType = (row['operation_type'] ?? 'factura').toString();
         final currentStatus = (row['status'] ?? '').toString();
-        String nextStatus = currentStatus;
-        if (nextPaidAmount <= 0.009) {
-          nextStatus = operationType == 'cheque'
-              ? 'chequePendienteCanje'
-              : 'facturadaPendientePago';
-        } else if (nextPaidAmount < approvedAmount - 0.009) {
-          nextStatus = operationType == 'cheque'
-              ? 'chequePendienteCanje'
-              : 'facturadaPendientePago';
-        }
+        final clientName = (row['client_name_snapshot'] ?? '').toString();
+        final documentNumber = (row['document_number'] ?? '').toString();
+        final documentDate = _tryParseDateTime(row['document_date'] as String?);
+        final currentSettlementDate = _tryParseDateTime(
+          row['settlement_date'] as String?,
+        );
+        final nextSettlementDate = operationType == 'cheque'
+            ? nextPaidAmount >= approvedAmount - 0.009
+                  ? currentSettlementDate
+                  : null
+            : nextPaidAmount > 0.009
+            ? currentSettlementDate
+            : null;
+        final nextStatus = deriveMayoreoFinancialStatus(
+          baseStatus: currentStatus,
+          operationType: operationType,
+          isPalomarAccount: isMayoreoPalomarClientName(clientName),
+          documentNumber: documentNumber,
+          documentDate: documentDate,
+          settlementDate: nextSettlementDate,
+          paidAmount: nextPaidAmount,
+          approvedAmount: approvedAmount,
+        );
         await Supabase.instance.client
             .from(_kMayoreoAccountsTable)
             .update(<String, dynamic>{
               'paid_amount': nextPaidAmount,
               'status': nextStatus,
-              'settlement_date': nextPaidAmount >= approvedAmount - 0.009
-                  ? row['settlement_date']
-                  : null,
+              'settlement_date': nextSettlementDate?.toIso8601String(),
             })
             .eq('id', movement.linkedExternalRef!);
       }
@@ -807,7 +819,7 @@ class FinanzasBankAccountsStore {
     final rows = await Supabase.instance.client
         .from(_kMayoreoAccountsTable)
         .select(
-          'id, approved_amount, paid_amount, status, operation_type, settlement_date',
+          'id, approved_amount, paid_amount, status, operation_type, settlement_date, client_name_snapshot, document_number, document_date',
         )
         .eq('id', accountId)
         .limit(1);
@@ -816,23 +828,36 @@ class FinanzasBankAccountsStore {
     final approvedAmount = ((row['approved_amount'] as num?) ?? 0).toDouble();
     final paidAmount = ((row['paid_amount'] as num?) ?? 0).toDouble();
     final currentStatus = (row['status'] ?? '').toString();
+    final operationType = (row['operation_type'] ?? 'factura').toString();
+    final clientName = (row['client_name_snapshot'] ?? '').toString();
+    final documentNumber = (row['document_number'] ?? '').toString();
+    final documentDate = _tryParseDateTime(row['document_date'] as String?);
     final nextPaidAmount = (paidAmount + normalizedAmount)
         .clamp(0, approvedAmount)
         .toDouble();
-    final fullySettled = nextPaidAmount >= approvedAmount - 0.009;
-    final partiallySettled = nextPaidAmount > 0.009 && !fullySettled;
+    final nextSettlementDate = operationType == 'cheque'
+        ? nextPaidAmount >= approvedAmount - 0.009
+              ? movementDate
+              : null
+        : nextPaidAmount > 0.009
+        ? movementDate
+        : null;
+    final nextStatus = deriveMayoreoFinancialStatus(
+      baseStatus: currentStatus,
+      operationType: operationType,
+      isPalomarAccount: isMayoreoPalomarClientName(clientName),
+      documentNumber: documentNumber,
+      documentDate: documentDate,
+      settlementDate: nextSettlementDate,
+      paidAmount: nextPaidAmount,
+      approvedAmount: approvedAmount,
+    );
     await Supabase.instance.client
         .from(_kMayoreoAccountsTable)
         .update(<String, dynamic>{
           'paid_amount': nextPaidAmount,
-          'status': fullySettled
-              ? 'pagada'
-              : partiallySettled
-              ? 'pagoParcial'
-              : currentStatus,
-          'settlement_date': nextPaidAmount > 0.009
-              ? movementDate.toIso8601String()
-              : null,
+          'status': nextStatus,
+          'settlement_date': nextSettlementDate?.toIso8601String(),
         })
         .eq('id', accountId);
   }
@@ -848,7 +873,7 @@ class FinanzasBankAccountsStore {
     final rows = await Supabase.instance.client
         .from(_kMayoreoAccountsTable)
         .select(
-          'id, approved_amount, paid_amount, status, operation_type, settlement_date',
+          'id, approved_amount, paid_amount, status, operation_type, settlement_date, client_name_snapshot, document_number, document_date',
         )
         .eq('id', accountId)
         .limit(1);
@@ -857,28 +882,39 @@ class FinanzasBankAccountsStore {
     final approvedAmount = ((row['approved_amount'] as num?) ?? 0).toDouble();
     final paidAmount = ((row['paid_amount'] as num?) ?? 0).toDouble();
     final operationType = (row['operation_type'] ?? 'factura').toString();
+    final currentStatus = (row['status'] ?? '').toString();
+    final clientName = (row['client_name_snapshot'] ?? '').toString();
+    final documentNumber = (row['document_number'] ?? '').toString();
+    final documentDate = _tryParseDateTime(row['document_date'] as String?);
+    final currentSettlementDate = _tryParseDateTime(
+      row['settlement_date'] as String?,
+    );
     final nextPaidAmount = (paidAmount - normalizedAmount)
         .clamp(0, approvedAmount)
         .toDouble();
-    final nextStatus = nextPaidAmount <= 0.009
-        ? operationType == 'cheque'
-              ? 'chequePendienteCanje'
-              : 'facturadaPendientePago'
-        : nextPaidAmount >= approvedAmount - 0.009
-        ? operationType == 'cheque'
-              ? 'chequeCanjeado'
-              : 'pagada'
-        : operationType == 'cheque'
-        ? 'chequePendienteCanje'
-        : 'pagoParcial';
+    final nextSettlementDate = operationType == 'cheque'
+        ? nextPaidAmount >= approvedAmount - 0.009
+              ? currentSettlementDate
+              : null
+        : nextPaidAmount > 0.009
+        ? currentSettlementDate
+        : null;
+    final nextStatus = deriveMayoreoFinancialStatus(
+      baseStatus: currentStatus,
+      operationType: operationType,
+      isPalomarAccount: isMayoreoPalomarClientName(clientName),
+      documentNumber: documentNumber,
+      documentDate: documentDate,
+      settlementDate: nextSettlementDate,
+      paidAmount: nextPaidAmount,
+      approvedAmount: approvedAmount,
+    );
     await Supabase.instance.client
         .from(_kMayoreoAccountsTable)
         .update(<String, dynamic>{
           'paid_amount': nextPaidAmount,
           'status': nextStatus,
-          'settlement_date': nextPaidAmount >= approvedAmount - 0.009
-              ? row['settlement_date']
-              : null,
+          'settlement_date': nextSettlementDate?.toIso8601String(),
         })
         .eq('id', accountId);
   }

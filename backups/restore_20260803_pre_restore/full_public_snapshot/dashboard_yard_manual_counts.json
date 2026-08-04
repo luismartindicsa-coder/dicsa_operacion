@@ -1,0 +1,62 @@
+[
+  {
+    "id": "71aea566-b093-4102-afb7-8db8476e1312",
+    "site": "DICSA_CELAYA",
+    "widget_key": "default_3_commercial_material_total",
+    "source_kind": "commercial_material",
+    "material": null,
+    "commercial_material_code": "PACA_AMERICANA",
+    "count_units": 14,
+    "weight_kg": 0.000,
+    "notes": null,
+    "counted_at": "2026-08-03T08:55:05.224446+00:00",
+    "created_at": "2026-07-22T14:55:37.9008+00:00",
+    "updated_at": "2026-08-03T14:55:04.846784+00:00",
+    "updated_by": "2055357c-e784-43f4-8e86-078696db1a0d"
+  },
+  {
+    "id": "18f0b0bb-c147-4284-924a-1bfb0f97ff0f",
+    "site": "DICSA_CELAYA",
+    "widget_key": "default_1_bales_total_total",
+    "source_kind": "bales_total",
+    "material": null,
+    "commercial_material_code": null,
+    "count_units": 80,
+    "weight_kg": 0.000,
+    "notes": null,
+    "counted_at": "2026-08-03T08:57:26.215381+00:00",
+    "created_at": "2026-06-18T19:48:24.064663+00:00",
+    "updated_at": "2026-08-03T14:57:25.793381+00:00",
+    "updated_by": "2055357c-e784-43f4-8e86-078696db1a0d"
+  },
+  {
+    "id": "bd3ff0f5-d0d0-46c4-9fb5-cd518a59c069",
+    "site": "DICSA_CELAYA",
+    "widget_key": "default_5_commercial_material_total",
+    "source_kind": "commercial_material",
+    "material": null,
+    "commercial_material_code": "PACA_BASURA",
+    "count_units": 11,
+    "weight_kg": 0.000,
+    "notes": null,
+    "counted_at": "2026-07-28T08:37:11.532285+00:00",
+    "created_at": "2026-06-18T19:47:38.106225+00:00",
+    "updated_at": "2026-07-28T14:37:10.952598+00:00",
+    "updated_by": "2055357c-e784-43f4-8e86-078696db1a0d"
+  },
+  {
+    "id": "09409ef1-a65d-4b27-85d8-99a347d14660",
+    "site": "DICSA_CELAYA",
+    "widget_key": "default_6_commercial_material_total",
+    "source_kind": "commercial_material",
+    "material": null,
+    "commercial_material_code": "CAPLE",
+    "count_units": 30,
+    "weight_kg": 0.000,
+    "notes": null,
+    "counted_at": "2026-07-30T08:45:56.529214+00:00",
+    "created_at": "2026-06-18T19:47:28.602005+00:00",
+    "updated_at": "2026-07-30T14:45:57.072992+00:00",
+    "updated_by": "2055357c-e784-43f4-8e86-078696db1a0d"
+  }
+]

@@ -1058,11 +1058,18 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
 
   Future<void> _openOrderPrimaryAction(Map<String, dynamic> order) async {
     final status = (order['status'] ?? '').toString();
-    if (status == 'authorized' || status == 'purchased') {
+    if ((status == 'authorized' || status == 'purchased') &&
+        !_canEditOrderOtLink(order)) {
       await _showOrderSummary(order);
       return;
     }
     await _showOrderDialog(initial: order);
+  }
+
+  bool _canEditOrderOtLink(Map<String, dynamic> order) {
+    final generatedFromOt = order['generated_from_ot'] == true;
+    final linkedOtId = (order['linked_ot_id'] ?? '').toString().trim();
+    return !generatedFromOt && linkedOtId.isEmpty;
   }
 
   Future<void> _showOrderSummary(Map<String, dynamic> order) async {
@@ -1459,7 +1466,9 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     _selectOrder(orderId, requestFocus: true, ensureVisible: false);
 
     final status = (order['status'] ?? 'draft').toString();
-    final canEdit = true;
+    final canEditOtLink = _canEditOrderOtLink(order);
+    final canEdit = status != 'authorized' && status != 'purchased';
+    final canViewSummary = status == 'authorized' || status == 'purchased';
     final canSend = status == 'draft' || status == 'rejected';
     final canAuthorize =
         _isDirection && status != 'authorized' && status != 'purchased';
@@ -1511,15 +1520,27 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
           PopupMenuItem<String>(
             value: 'edit',
             child: _PurchaseOrderActionMenuLabel(
-              icon: status == 'authorized' || status == 'purchased'
-                  ? Icons.receipt_long_rounded
-                  : Icons.edit_outlined,
-              title: status == 'authorized' || status == 'purchased'
-                  ? 'Ver resumen'
-                  : 'Editar',
-              subtitle: status == 'authorized' || status == 'purchased'
-                  ? 'Consultar datos y renglones de la orden'
-                  : 'Abrir la captura de la orden',
+              icon: Icons.edit_outlined,
+              title: 'Editar',
+              subtitle: 'Abrir la captura completa de la orden',
+            ),
+          ),
+        if (canEditOtLink)
+          const PopupMenuItem<String>(
+            value: 'link_ot',
+            child: _PurchaseOrderActionMenuLabel(
+              icon: Icons.link_rounded,
+              title: 'Ligar a OT',
+              subtitle: 'Relacionar esta OC con una orden de mantenimiento',
+            ),
+          ),
+        if (canViewSummary)
+          const PopupMenuItem<String>(
+            value: 'summary',
+            child: _PurchaseOrderActionMenuLabel(
+              icon: Icons.receipt_long_rounded,
+              title: 'Ver resumen',
+              subtitle: 'Consultar datos y renglones de la orden',
             ),
           ),
         if (canCaptureActualTotal)
@@ -1609,6 +1630,12 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     switch (action) {
       case 'edit':
         await _openOrderPrimaryAction(order);
+        break;
+      case 'link_ot':
+        await _showOrderDialog(initial: order);
+        break;
+      case 'summary':
+        await _showOrderSummary(order);
         break;
       case 'actual_total':
         await _editActualTotal(order);

@@ -257,34 +257,107 @@ class DirectionVaultRepository {
   ) {
     final rawId = (row['id'] ?? '').toString().trim();
     final rawLines = row['lines'];
+    final parsedDate =
+        _tryParseLegacyVoucherDate((row['date'] ?? '').toString()) ??
+        DateTime.now();
+    final type = (row['type'] ?? 'expense').toString() == 'deposit'
+        ? 'deposit'
+        : 'expense';
+    final person = (row['person'] ?? '').toString();
+    final rubric = (row['rubric'] ?? '').toString();
+    final folio = (row['folio'] ?? '').toString();
+    final comment = (row['comment'] ?? '').toString();
+    final lines = List<DirectionVaultVoucherLineRecord>.unmodifiable(
+      rawLines is List
+          ? rawLines
+                .whereType<Map>()
+                .map(
+                  (line) => _lineFromLegacyRow(Map<String, dynamic>.from(line)),
+                )
+                .toList(growable: false)
+          : const <DirectionVaultVoucherLineRecord>[],
+    );
     return DirectionVaultVoucherRecord(
       id: rawId.isEmpty
-          ? 'dir-vault-${DateTime.now().microsecondsSinceEpoch}'
+          ? _stableLegacyVoucherId(
+              date: parsedDate,
+              folio: folio,
+              type: type,
+              person: person,
+              rubric: rubric,
+              comment: comment,
+              lines: lines,
+            )
           : rawId,
-      date:
-          _tryParseLegacyVoucherDate((row['date'] ?? '').toString()) ??
-          DateTime.now(),
-      folio: (row['folio'] ?? '').toString(),
-      type: (row['type'] ?? 'expense').toString() == 'deposit'
-          ? 'deposit'
-          : 'expense',
-      person: (row['person'] ?? '').toString(),
-      rubric: (row['rubric'] ?? '').toString(),
-      comment: (row['comment'] ?? '').toString(),
-      lines: List<DirectionVaultVoucherLineRecord>.unmodifiable(
-        rawLines is List
-            ? rawLines
-                  .whereType<Map>()
-                  .map(
-                    (line) =>
-                        _lineFromLegacyRow(Map<String, dynamic>.from(line)),
-                  )
-                  .toList(growable: false)
-            : const <DirectionVaultVoucherLineRecord>[],
-      ),
+      date: parsedDate,
+      folio: folio,
+      type: type,
+      person: person,
+      rubric: rubric,
+      comment: comment,
+      lines: lines,
       createdAt: null,
       updatedAt: null,
     );
+  }
+
+  static String _stableLegacyVoucherId({
+    required DateTime date,
+    required String folio,
+    required String type,
+    required String person,
+    required String rubric,
+    required String comment,
+    required List<DirectionVaultVoucherLineRecord> lines,
+  }) {
+    final normalizedDate =
+        '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+    final normalizedFolio = _normalizeLegacyIdPart(folio);
+    final normalizedType = _normalizeLegacyIdPart(type);
+    final normalizedPerson = _normalizeLegacyIdPart(person);
+    final normalizedRubric = _normalizeLegacyIdPart(rubric);
+    final normalizedComment = _normalizeLegacyIdPart(comment);
+    final normalizedLines = lines
+        .map(
+          (line) => [
+            _normalizeLegacyIdPart(line.concept),
+            _normalizeLegacyIdPart(line.company),
+            _normalizeLegacyIdPart(line.destination),
+            line.amountValue.toStringAsFixed(2),
+          ].join('|'),
+        )
+        .join('||');
+    final payload = [
+      normalizedDate,
+      normalizedFolio,
+      normalizedType,
+      normalizedPerson,
+      normalizedRubric,
+      normalizedComment,
+      normalizedLines,
+    ].join('::');
+    return 'dir-vault-legacy-${_fnv1a32(payload)}';
+  }
+
+  static String _normalizeLegacyIdPart(String value) {
+    return value
+        .toUpperCase()
+        .trim()
+        .replaceAll('Á', 'A')
+        .replaceAll('É', 'E')
+        .replaceAll('Í', 'I')
+        .replaceAll('Ó', 'O')
+        .replaceAll('Ú', 'U')
+        .replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  static String _fnv1a32(String input) {
+    var hash = 0x811C9DC5;
+    for (final codeUnit in input.codeUnits) {
+      hash ^= codeUnit;
+      hash = (hash * 0x01000193) & 0xFFFFFFFF;
+    }
+    return hash.toRadixString(16).padLeft(8, '0');
   }
 
   static DirectionVaultVoucherLineRecord _lineFromLegacyRow(

@@ -23,8 +23,13 @@ import 'gerencia_theme.dart';
 
 class GerenciaBaleWeeklyTrackingPage extends StatefulWidget {
   final bool instantOpen;
+  final DateTime? initialWeekStartDate;
 
-  const GerenciaBaleWeeklyTrackingPage({super.key, this.instantOpen = false});
+  const GerenciaBaleWeeklyTrackingPage({
+    super.key,
+    this.instantOpen = false,
+    this.initialWeekStartDate,
+  });
 
   @override
   State<GerenciaBaleWeeklyTrackingPage> createState() =>
@@ -39,6 +44,7 @@ class _GerenciaBaleWeeklyTrackingPageState
   bool _loading = true;
   bool _canReturnToDirection = false;
   bool _refreshing = false;
+  late DateTime _visibleWeekStartDate;
   GerenciaBaleWeeklyTrackingBundle? _bundle;
   Timer? _reloadTimer;
   RealtimeChannel? _weeklyTrackingChannel;
@@ -46,6 +52,11 @@ class _GerenciaBaleWeeklyTrackingPageState
   @override
   void initState() {
     super.initState();
+    _visibleWeekStartDate =
+        GerenciaBaleWeeklyTrackingStore.normalizeWeekStartDate(
+          widget.initialWeekStartDate ??
+              GerenciaBaleWeeklyTrackingStore.currentWeekStartDate(),
+        );
     unawaited(_resolveNavigationAccess());
     unawaited(_load());
     _reloadTimer = Timer.periodic(_kSilentReloadInterval, (_) {
@@ -90,7 +101,8 @@ class _GerenciaBaleWeeklyTrackingPageState
       setState(() => _loading = true);
     }
     try {
-      final bundle = await GerenciaBaleWeeklyTrackingStore.loadCurrentWeek(
+      final bundle = await GerenciaBaleWeeklyTrackingStore.loadWeek(
+        _visibleWeekStartDate,
         forceRefresh: forceRefresh,
       );
       if (!mounted) return;
@@ -106,6 +118,48 @@ class _GerenciaBaleWeeklyTrackingPageState
     } finally {
       _refreshing = false;
     }
+  }
+
+  bool get _isViewingCurrentWeek =>
+      _visibleWeekStartDate ==
+      GerenciaBaleWeeklyTrackingStore.currentWeekStartDate();
+
+  bool get _canGoToNextWeek => _visibleWeekStartDate.isBefore(
+    GerenciaBaleWeeklyTrackingStore.currentWeekStartDate(),
+  );
+
+  Future<void> _changeVisibleWeek(DateTime nextWeekStartDate) async {
+    final normalized = GerenciaBaleWeeklyTrackingStore.normalizeWeekStartDate(
+      nextWeekStartDate,
+    );
+    if (normalized == _visibleWeekStartDate) return;
+    if (mounted) {
+      setState(() {
+        _visibleWeekStartDate = normalized;
+      });
+    } else {
+      _visibleWeekStartDate = normalized;
+    }
+    await _load(forceRefresh: true);
+  }
+
+  Future<void> _openPreviousWeek() async {
+    await _changeVisibleWeek(
+      _visibleWeekStartDate.subtract(const Duration(days: 7)),
+    );
+  }
+
+  Future<void> _openCurrentWeek() async {
+    await _changeVisibleWeek(
+      GerenciaBaleWeeklyTrackingStore.currentWeekStartDate(),
+    );
+  }
+
+  Future<void> _openNextWeek() async {
+    if (!_canGoToNextWeek) return;
+    await _changeVisibleWeek(
+      _visibleWeekStartDate.add(const Duration(days: 7)),
+    );
   }
 
   Future<void> _logout() async {
@@ -351,6 +405,11 @@ class _GerenciaBaleWeeklyTrackingPageState
               _GerenciaTrackingBody(
                 loading: _loading,
                 bundle: _bundle,
+                isViewingCurrentWeek: _isViewingCurrentWeek,
+                canGoToNextWeek: _canGoToNextWeek,
+                onOpenPreviousWeek: _openPreviousWeek,
+                onOpenCurrentWeek: _openCurrentWeek,
+                onOpenNextWeek: _openNextWeek,
                 onCreatePlan: _createPlan,
                 onEditLine: _editLine,
               ),
@@ -406,12 +465,22 @@ class _GerenciaBaleWeeklyTrackingPageState
 class _GerenciaTrackingBody extends StatelessWidget {
   final bool loading;
   final GerenciaBaleWeeklyTrackingBundle? bundle;
+  final bool isViewingCurrentWeek;
+  final bool canGoToNextWeek;
+  final Future<void> Function() onOpenPreviousWeek;
+  final Future<void> Function() onOpenCurrentWeek;
+  final Future<void> Function() onOpenNextWeek;
   final Future<void> Function() onCreatePlan;
   final Future<void> Function(GerenciaBaleWeeklyPlanLineRecord line) onEditLine;
 
   const _GerenciaTrackingBody({
     required this.loading,
     required this.bundle,
+    required this.isViewingCurrentWeek,
+    required this.canGoToNextWeek,
+    required this.onOpenPreviousWeek,
+    required this.onOpenCurrentWeek,
+    required this.onOpenNextWeek,
     required this.onCreatePlan,
     required this.onEditLine,
   });
@@ -428,27 +497,41 @@ class _GerenciaTrackingBody extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              _GerenciaHeroCard(bundle: bundle, hasPlan: plan != null),
+              _GerenciaHeroCard(
+                bundle: bundle,
+                hasPlan: plan != null,
+                isViewingCurrentWeek: isViewingCurrentWeek,
+                canGoToNextWeek: canGoToNextWeek,
+                onOpenPreviousWeek: onOpenPreviousWeek,
+                onOpenCurrentWeek: onOpenCurrentWeek,
+                onOpenNextWeek: onOpenNextWeek,
+              ),
               const SizedBox(height: 18),
+              if (!loading &&
+                  bundle != null &&
+                  isViewingCurrentWeek &&
+                  bundle!.totalProductionActual <= 0 &&
+                  bundle!.totalShipmentActual <= 0) ...[
+                _GerenciaWeekHintCard(onOpenPreviousWeek: onOpenPreviousWeek),
+                const SizedBox(height: 18),
+              ],
               if (loading)
                 const _GerenciaLoadingPanel()
               else if (bundle == null)
                 const _GerenciaErrorPanel()
-              else if (plan == null)
-                _GerenciaEmptyPlanPanel(
-                  bundle: bundle!,
-                  onCreatePlan: onCreatePlan,
-                )
               else ...[
+                if (plan == null) ...[
+                  _GerenciaEmptyPlanPanel(
+                    bundle: bundle!,
+                    onCreatePlan: onCreatePlan,
+                  ),
+                  const SizedBox(height: 18),
+                ],
                 _GerenciaKpiRow(bundle: bundle!, plan: plan),
                 const SizedBox(height: 18),
                 _GerenciaVisualSummary(bundle: bundle!),
                 const SizedBox(height: 18),
-                _GerenciaPlanBoard(
-                  bundle: bundle!,
-                  plan: plan,
-                  onEditLine: onEditLine,
-                ),
+                _GerenciaPlanBoard(bundle: bundle!, onEditLine: onEditLine),
                 const SizedBox(height: 18),
                 _GerenciaDailyBreakdown(bundle: bundle!),
               ],
@@ -463,8 +546,21 @@ class _GerenciaTrackingBody extends StatelessWidget {
 class _GerenciaHeroCard extends StatelessWidget {
   final GerenciaBaleWeeklyTrackingBundle? bundle;
   final bool hasPlan;
+  final bool isViewingCurrentWeek;
+  final bool canGoToNextWeek;
+  final Future<void> Function() onOpenPreviousWeek;
+  final Future<void> Function() onOpenCurrentWeek;
+  final Future<void> Function() onOpenNextWeek;
 
-  const _GerenciaHeroCard({required this.bundle, required this.hasPlan});
+  const _GerenciaHeroCard({
+    required this.bundle,
+    required this.hasPlan,
+    required this.isViewingCurrentWeek,
+    required this.canGoToNextWeek,
+    required this.onOpenPreviousWeek,
+    required this.onOpenCurrentWeek,
+    required this.onOpenNextWeek,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -530,9 +626,24 @@ class _GerenciaHeroCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 18),
-          _StatusCapsule(
-            label: hasPlan ? 'Plan activo' : 'Sin plan',
-            tone: hasPlan ? const Color(0xFFB23346) : const Color(0xFF784B12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              _StatusCapsule(
+                label: hasPlan ? 'Plan activo' : 'Sin plan',
+                tone: hasPlan
+                    ? const Color(0xFFB23346)
+                    : const Color(0xFF784B12),
+              ),
+              const SizedBox(height: 14),
+              _GerenciaWeekNavigator(
+                isViewingCurrentWeek: isViewingCurrentWeek,
+                canGoToNextWeek: canGoToNextWeek,
+                onOpenPreviousWeek: onOpenPreviousWeek,
+                onOpenCurrentWeek: onOpenCurrentWeek,
+                onOpenNextWeek: onOpenNextWeek,
+              ),
+            ],
           ),
         ],
       ),
@@ -542,7 +653,7 @@ class _GerenciaHeroCard extends StatelessWidget {
 
 class _GerenciaKpiRow extends StatelessWidget {
   final GerenciaBaleWeeklyTrackingBundle bundle;
-  final GerenciaBaleWeeklyPlanRecord plan;
+  final GerenciaBaleWeeklyPlanRecord? plan;
 
   const _GerenciaKpiRow({required this.bundle, required this.plan});
 
@@ -555,7 +666,7 @@ class _GerenciaKpiRow extends StatelessWidget {
         _KpiCard(
           title: 'Meta producción',
           value:
-              '${formatDecimal(plan.totalProductionTarget, decimals: 0)} pacas',
+              '${formatDecimal(plan?.totalProductionTarget ?? 0, decimals: 0)} pacas',
           subtitle:
               'Real ${formatDecimal(bundle.totalProductionActual, decimals: 0)} · Est ${formatDecimal(bundle.totalProductionEstimated, decimals: 0)}',
           icon: Icons.precision_manufacturing_rounded,
@@ -563,7 +674,7 @@ class _GerenciaKpiRow extends StatelessWidget {
         _KpiCard(
           title: 'Meta embarque',
           value:
-              '${formatDecimal(plan.totalShipmentTarget, decimals: 0)} pacas',
+              '${formatDecimal(plan?.totalShipmentTarget ?? 0, decimals: 0)} pacas',
           subtitle:
               'Real ${formatDecimal(bundle.totalShipmentActual, decimals: 0)} · Est ${formatDecimal(bundle.totalShipmentEstimated, decimals: 0)}',
           icon: Icons.local_shipping_rounded,
@@ -600,14 +711,9 @@ class _GerenciaVisualSummary extends StatelessWidget {
 
 class _GerenciaPlanBoard extends StatelessWidget {
   final GerenciaBaleWeeklyTrackingBundle bundle;
-  final GerenciaBaleWeeklyPlanRecord plan;
   final Future<void> Function(GerenciaBaleWeeklyPlanLineRecord line) onEditLine;
 
-  const _GerenciaPlanBoard({
-    required this.bundle,
-    required this.plan,
-    required this.onEditLine,
-  });
+  const _GerenciaPlanBoard({required this.bundle, required this.onEditLine});
 
   @override
   Widget build(BuildContext context) {
@@ -663,6 +769,134 @@ class _GerenciaPlanBoard extends StatelessWidget {
               shipmentCodes: bundle.unmappedShipmentCodes,
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _GerenciaWeekNavigator extends StatelessWidget {
+  final bool isViewingCurrentWeek;
+  final bool canGoToNextWeek;
+  final Future<void> Function() onOpenPreviousWeek;
+  final Future<void> Function() onOpenCurrentWeek;
+  final Future<void> Function() onOpenNextWeek;
+
+  const _GerenciaWeekNavigator({
+    required this.isViewingCurrentWeek,
+    required this.canGoToNextWeek,
+    required this.onOpenPreviousWeek,
+    required this.onOpenCurrentWeek,
+    required this.onOpenNextWeek,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      crossAxisAlignment: WrapCrossAlignment.center,
+      spacing: 8,
+      runSpacing: 8,
+      alignment: WrapAlignment.end,
+      children: [
+        _GerenciaWeekNavButton(
+          icon: Icons.chevron_left_rounded,
+          tooltip: 'Semana anterior',
+          onPressed: onOpenPreviousWeek,
+        ),
+        OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            foregroundColor: Colors.white,
+            side: BorderSide(
+              color: isViewingCurrentWeek
+                  ? Colors.white.withValues(alpha: 0.18)
+                  : const Color(0x66FFE4E8),
+            ),
+            backgroundColor: isViewingCurrentWeek
+                ? Colors.white.withValues(alpha: 0.08)
+                : Colors.transparent,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            minimumSize: const Size(0, 44),
+          ),
+          onPressed: isViewingCurrentWeek ? null : onOpenCurrentWeek,
+          icon: const Icon(Icons.today_rounded, size: 18),
+          label: Text(isViewingCurrentWeek ? 'Semana actual' : 'Ir a actual'),
+        ),
+        _GerenciaWeekNavButton(
+          icon: Icons.chevron_right_rounded,
+          tooltip: 'Semana siguiente',
+          onPressed: canGoToNextWeek ? onOpenNextWeek : null,
+        ),
+      ],
+    );
+  }
+}
+
+class _GerenciaWeekNavButton extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final Future<void> Function()? onPressed;
+
+  const _GerenciaWeekNavButton({
+    required this.icon,
+    required this.tooltip,
+    required this.onPressed,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: IconButton(
+        onPressed: onPressed,
+        style: IconButton.styleFrom(
+          foregroundColor: Colors.white,
+          backgroundColor: Colors.white.withValues(alpha: 0.08),
+          disabledBackgroundColor: Colors.white.withValues(alpha: 0.03),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+          minimumSize: const Size(44, 44),
+        ),
+        icon: Icon(icon),
+      ),
+    );
+  }
+}
+
+class _GerenciaWeekHintCard extends StatelessWidget {
+  final Future<void> Function() onOpenPreviousWeek;
+
+  const _GerenciaWeekHintCard({required this.onOpenPreviousWeek});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      decoration: BoxDecoration(
+        color: const Color(0xCC19070D),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0x40FF9AA6)),
+      ),
+      child: Row(
+        children: [
+          const Icon(Icons.history_rounded, color: Color(0xFFFFC07A)),
+          const SizedBox(width: 12),
+          const Expanded(
+            child: Text(
+              'Esta semana todavía no tiene producción ni embarques. Si buscas capturas anteriores, abre la semana pasada con la navegación.',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+                color: Color(0xCCFFE4E8),
+                height: 1.35,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          FilledButton.icon(
+            style: contractSecondaryButtonStyle(context),
+            onPressed: onOpenPreviousWeek,
+            icon: const Icon(Icons.chevron_left_rounded),
+            label: const Text('Semana anterior'),
+          ),
         ],
       ),
     );

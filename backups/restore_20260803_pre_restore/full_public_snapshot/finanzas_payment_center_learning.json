@@ -1,0 +1,23 @@
+[
+  {
+    "id": "compras_co_1779230989617207_Saldo general_1779916387784577_220",
+    "captured_at": "2026-05-27T15:13:07.784577+00:00",
+    "provider_id": "compras_co_1779230989617207",
+    "provider_name": "AVON",
+    "bucket": "RECOMENDADO",
+    "item_type": "Saldo general",
+    "source_label": "Cuenta abierta",
+    "due_date": null,
+    "target_company": "DICSA",
+    "target_branch": "CELAYA",
+    "suggested_action": "ESPERAR",
+    "suggested_amount": 2772.90,
+    "recommendation": "No hay saldo disponible en la cuenta objetivo.",
+    "status": "PENDIENTE",
+    "executed_action": null,
+    "executed_amount": null,
+    "notes": "Proveedor bajo convenio",
+    "created_at": "2026-05-27T21:13:08.117002+00:00",
+    "updated_at": "2026-05-27T21:13:08.117002+00:00"
+  }
+]

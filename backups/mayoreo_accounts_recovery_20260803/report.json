@@ -1,0 +1,2812 @@
+[
+  {
+    "id": "sale-report-1777415680528393",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 68076.0,
+    "recoveredApprovedAmount": 68076.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 68076.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-04-28T17:31:34.516523Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1777415680528393"
+    ],
+    "changes": {
+      "id": "sale-report-1777415680528393",
+      "status": "chequeCanjeado",
+      "paid_amount": 68076.0,
+      "settlement_date": "2026-04-28T17:31:34.516523Z"
+    }
+  },
+  {
+    "id": "sale-report-1777494177291470",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 79668.0,
+    "recoveredApprovedAmount": 79668.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 79668.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-04-28T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1777494177291470"
+    ],
+    "changes": {
+      "id": "sale-report-1777494177291470",
+      "status": "chequeCanjeado",
+      "paid_amount": 79668.0,
+      "settlement_date": "2026-04-28T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1777494223851293",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 78422.4,
+    "recoveredApprovedAmount": 78422.4,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 78422.4,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-04-28T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1777494223851293"
+    ],
+    "changes": {
+      "id": "sale-report-1777494223851293",
+      "status": "chequeCanjeado",
+      "paid_amount": 78422.4,
+      "settlement_date": "2026-04-28T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1777494295555016",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 86428.0,
+    "recoveredApprovedAmount": 86428.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 86428.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-04-28T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1777494295555016"
+    ],
+    "changes": {
+      "id": "sale-report-1777494295555016",
+      "status": "chequeCanjeado",
+      "paid_amount": 86428.0,
+      "settlement_date": "2026-04-28T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1777494543362992",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 49203.0,
+    "recoveredApprovedAmount": 49203.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 49203.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-04-28T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1777494543362992"
+    ],
+    "changes": {
+      "id": "sale-report-1777494543362992",
+      "status": "chequeCanjeado",
+      "paid_amount": 49203.0,
+      "settlement_date": "2026-04-28T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1777497725625588",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 10000.0,
+    "recoveredApprovedAmount": 10000.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 10000.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-04-29T15:20:58.346758Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1777497725625588"
+    ],
+    "changes": {
+      "id": "sale-report-1777497725625588",
+      "status": "chequeCanjeado",
+      "paid_amount": 10000.0,
+      "settlement_date": "2026-04-29T15:20:58.346758Z"
+    }
+  },
+  {
+    "id": "sale-report-1777562955848107",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 51186.0,
+    "recoveredApprovedAmount": 51186.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 51186.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-04-29T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1777562955848107"
+    ],
+    "changes": {
+      "id": "sale-report-1777562955848107",
+      "status": "chequeCanjeado",
+      "paid_amount": 51186.0,
+      "settlement_date": "2026-04-29T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1777569431271121",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 73896.0,
+    "recoveredApprovedAmount": 73896.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 73896.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-04-29T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1777569431271121"
+    ],
+    "changes": {
+      "id": "sale-report-1777569431271121",
+      "status": "chequeCanjeado",
+      "paid_amount": 73896.0,
+      "settlement_date": "2026-04-29T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1777593034035133",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 51558.0,
+    "recoveredApprovedAmount": 51558.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 51558.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-04-30T17:49:19.734164Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1777593034035133"
+    ],
+    "changes": {
+      "id": "sale-report-1777593034035133",
+      "status": "chequeCanjeado",
+      "paid_amount": 51558.0,
+      "settlement_date": "2026-04-30T17:49:19.734164Z"
+    }
+  },
+  {
+    "id": "sale-report-1778196967039115",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 63432.0,
+    "recoveredApprovedAmount": 63432.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 63432.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-07T17:35:38.093295Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1778196967039115"
+    ],
+    "changes": {
+      "id": "sale-report-1778196967039115",
+      "status": "chequeCanjeado",
+      "paid_amount": 63432.0,
+      "settlement_date": "2026-05-07T17:35:38.093295Z"
+    }
+  },
+  {
+    "id": "sale-report-1778196993391608",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 63816.0,
+    "recoveredApprovedAmount": 63816.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 63816.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-07T17:36:13.936523Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1778196993391608"
+    ],
+    "changes": {
+      "id": "sale-report-1778196993391608",
+      "status": "chequeCanjeado",
+      "paid_amount": 63816.0,
+      "settlement_date": "2026-05-07T17:36:13.936523Z"
+    }
+  },
+  {
+    "id": "sale-report-1778197029399131",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 76452.0,
+    "recoveredApprovedAmount": 76452.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 76452.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-07T17:36:40.209508Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1778197029399131"
+    ],
+    "changes": {
+      "id": "sale-report-1778197029399131",
+      "status": "chequeCanjeado",
+      "paid_amount": 76452.0,
+      "settlement_date": "2026-05-07T17:36:40.209508Z"
+    }
+  },
+  {
+    "id": "sale-report-1778512322240383",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 65962.0,
+    "recoveredApprovedAmount": 65962.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 65962.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-08T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1778512322240383"
+    ],
+    "changes": {
+      "id": "sale-report-1778512322240383",
+      "status": "chequeCanjeado",
+      "paid_amount": 65962.0,
+      "settlement_date": "2026-05-08T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1778512368953298",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 100200.0,
+    "recoveredApprovedAmount": 100200.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 100200.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-08T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1778512368953298"
+    ],
+    "changes": {
+      "id": "sale-report-1778512368953298",
+      "status": "chequeCanjeado",
+      "paid_amount": 100200.0,
+      "settlement_date": "2026-05-08T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1778683507300319",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 68820.0,
+    "recoveredApprovedAmount": 68820.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 68820.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-12T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1778683507300319"
+    ],
+    "changes": {
+      "id": "sale-report-1778683507300319",
+      "status": "chequeCanjeado",
+      "paid_amount": 68820.0,
+      "settlement_date": "2026-05-12T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1778683535526431",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 70567.2,
+    "recoveredApprovedAmount": 70567.2,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 70567.2,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-12T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1778683535526431"
+    ],
+    "changes": {
+      "id": "sale-report-1778683535526431",
+      "status": "chequeCanjeado",
+      "paid_amount": 70567.2,
+      "settlement_date": "2026-05-12T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1778868679247600",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 106800.0,
+    "recoveredApprovedAmount": 106800.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 106800.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-15T12:09:36.393912Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1778868679247600"
+    ],
+    "changes": {
+      "id": "sale-report-1778868679247600",
+      "status": "chequeCanjeado",
+      "paid_amount": 106800.0,
+      "settlement_date": "2026-05-15T12:09:36.393912Z"
+    }
+  },
+  {
+    "id": "sale-report-1778884349660580",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 73750.0,
+    "recoveredApprovedAmount": 73750.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 73750.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-15T16:31:52.014499Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1778884349660580"
+    ],
+    "changes": {
+      "id": "sale-report-1778884349660580",
+      "status": "chequeCanjeado",
+      "paid_amount": 73750.0,
+      "settlement_date": "2026-05-15T16:31:52.014499Z"
+    }
+  },
+  {
+    "id": "sale-report-1779118983224803",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 95400.0,
+    "recoveredApprovedAmount": 95400.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 95400.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-16T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1779118983224803"
+    ],
+    "changes": {
+      "id": "sale-report-1779118983224803",
+      "status": "chequeCanjeado",
+      "paid_amount": 95400.0,
+      "settlement_date": "2026-05-16T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1779148370417159",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 92300.0,
+    "recoveredApprovedAmount": 92300.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 92300.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-18T17:52:09.768671Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1779148370417159"
+    ],
+    "changes": {
+      "id": "sale-report-1779148370417159",
+      "status": "chequeCanjeado",
+      "paid_amount": 92300.0,
+      "settlement_date": "2026-05-18T17:52:09.768671Z"
+    }
+  },
+  {
+    "id": "sale-report-1779220978128205",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 148941.0,
+    "recoveredApprovedAmount": 148941.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 148941.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-19T14:02:11.771303Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1779220978128205"
+    ],
+    "changes": {
+      "id": "sale-report-1779220978128205",
+      "status": "chequeCanjeado",
+      "paid_amount": 148941.0,
+      "settlement_date": "2026-05-19T14:02:11.771303Z"
+    }
+  },
+  {
+    "id": "sale-report-1779234621497885",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 67953.6,
+    "recoveredApprovedAmount": 67953.6,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 67953.6,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-19T17:49:55.419960Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1779234621497885"
+    ],
+    "changes": {
+      "id": "sale-report-1779234621497885",
+      "status": "chequeCanjeado",
+      "paid_amount": 67953.6,
+      "settlement_date": "2026-05-19T17:49:55.419960Z"
+    }
+  },
+  {
+    "id": "sale-report-1779234642385911",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 69744.0,
+    "recoveredApprovedAmount": 69744.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 69744.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-19T17:50:25.035496Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1779234642385911"
+    ],
+    "changes": {
+      "id": "sale-report-1779234642385911",
+      "status": "chequeCanjeado",
+      "paid_amount": 69744.0,
+      "settlement_date": "2026-05-19T17:50:25.035496Z"
+    }
+  },
+  {
+    "id": "sale-report-1779401688009432",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 131521.0,
+    "recoveredApprovedAmount": 131521.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 131521.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-21T16:14:13.424958Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1779401688009432"
+    ],
+    "changes": {
+      "id": "sale-report-1779401688009432",
+      "status": "chequeCanjeado",
+      "paid_amount": 131521.0,
+      "settlement_date": "2026-05-21T16:14:13.424958Z"
+    }
+  },
+  {
+    "id": "sale-report-1779492332119693",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 78182.0,
+    "recoveredApprovedAmount": 78182.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 78182.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-22T17:24:53.944509Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1779492332119693"
+    ],
+    "changes": {
+      "id": "sale-report-1779492332119693",
+      "status": "chequeCanjeado",
+      "paid_amount": 78182.0,
+      "settlement_date": "2026-05-22T17:24:53.944509Z"
+    }
+  },
+  {
+    "id": "sale-report-1779721755953221",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 56760.0,
+    "recoveredApprovedAmount": 56760.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 56760.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-22T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1779721755953221"
+    ],
+    "changes": {
+      "id": "sale-report-1779721755953221",
+      "status": "chequeCanjeado",
+      "paid_amount": 56760.0,
+      "settlement_date": "2026-05-22T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1779721782516179",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 66528.0,
+    "recoveredApprovedAmount": 66528.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 66528.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-22T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1779721782516179"
+    ],
+    "changes": {
+      "id": "sale-report-1779721782516179",
+      "status": "chequeCanjeado",
+      "paid_amount": 66528.0,
+      "settlement_date": "2026-05-22T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1779752556194187",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 93130.0,
+    "recoveredApprovedAmount": 93130.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 93130.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-25T17:42:04.957841Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1779752556194187"
+    ],
+    "changes": {
+      "id": "sale-report-1779752556194187",
+      "status": "chequeCanjeado",
+      "paid_amount": 93130.0,
+      "settlement_date": "2026-05-25T17:42:04.957841Z"
+    }
+  },
+  {
+    "id": "sale-report-1780356772018025",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 75396.0,
+    "recoveredApprovedAmount": 75396.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 75396.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-01T17:32:19.762111Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1780356772018025"
+    ],
+    "changes": {
+      "id": "sale-report-1780356772018025",
+      "status": "chequeCanjeado",
+      "paid_amount": 75396.0,
+      "settlement_date": "2026-06-01T17:32:19.762111Z"
+    }
+  },
+  {
+    "id": "sale-report-1780438179170400",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 120771.0,
+    "recoveredApprovedAmount": 120771.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 120771.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-02T16:09:08.903109Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1780438179170400"
+    ],
+    "changes": {
+      "id": "sale-report-1780438179170400",
+      "status": "chequeCanjeado",
+      "paid_amount": 120771.0,
+      "settlement_date": "2026-06-02T16:09:08.903109Z"
+    }
+  },
+  {
+    "id": "sale-report-1780526892855471",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 66055.2,
+    "recoveredApprovedAmount": 66055.2,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 66055.2,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-28T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1780526892855471"
+    ],
+    "changes": {
+      "id": "sale-report-1780526892855471",
+      "status": "chequeCanjeado",
+      "paid_amount": 66055.2,
+      "settlement_date": "2026-05-28T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1780526930119477",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 68167.2,
+    "recoveredApprovedAmount": 68167.2,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 68167.2,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-05-28T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1780526930119477"
+    ],
+    "changes": {
+      "id": "sale-report-1780526930119477",
+      "status": "chequeCanjeado",
+      "paid_amount": 68167.2,
+      "settlement_date": "2026-05-28T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1780703733307541",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 72168.0,
+    "recoveredApprovedAmount": 72168.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 72168.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-05T17:55:00.069804Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1780703733307541"
+    ],
+    "changes": {
+      "id": "sale-report-1780703733307541",
+      "status": "chequeCanjeado",
+      "paid_amount": 72168.0,
+      "settlement_date": "2026-06-05T17:55:00.069804Z"
+    }
+  },
+  {
+    "id": "sale-report-1781104729415768",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 75492.0,
+    "recoveredApprovedAmount": 75492.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 75492.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-09T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1781104729415768"
+    ],
+    "changes": {
+      "id": "sale-report-1781104729415768",
+      "status": "chequeCanjeado",
+      "paid_amount": 75492.0,
+      "settlement_date": "2026-06-09T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1781104759440312",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 71882.4,
+    "recoveredApprovedAmount": 71882.4,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 71882.4,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-09T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1781104759440312"
+    ],
+    "changes": {
+      "id": "sale-report-1781104759440312",
+      "status": "chequeCanjeado",
+      "paid_amount": 71882.4,
+      "settlement_date": "2026-06-09T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1781287689100851",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 117008.0,
+    "recoveredApprovedAmount": 117008.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 117008.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-12T12:07:07.061217Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1781287689100851"
+    ],
+    "changes": {
+      "id": "sale-report-1781287689100851",
+      "status": "chequeCanjeado",
+      "paid_amount": 117008.0,
+      "settlement_date": "2026-06-12T12:07:07.061217Z"
+    }
+  },
+  {
+    "id": "sale-report-1781305422598558",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 141360.0,
+    "recoveredApprovedAmount": 141360.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 141360.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-12T17:02:45.712130Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1781305422598558"
+    ],
+    "changes": {
+      "id": "sale-report-1781305422598558",
+      "status": "chequeCanjeado",
+      "paid_amount": 141360.0,
+      "settlement_date": "2026-06-12T17:02:45.712130Z"
+    }
+  },
+  {
+    "id": "sale-report-1781534603906521",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 38056.0,
+    "recoveredApprovedAmount": 38056.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 38056.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-12T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1781534603906521"
+    ],
+    "changes": {
+      "id": "sale-report-1781534603906521",
+      "status": "chequeCanjeado",
+      "paid_amount": 38056.0,
+      "settlement_date": "2026-06-12T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1781534878466236",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 73704.0,
+    "recoveredApprovedAmount": 73704.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 73704.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-12T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1781534878466236"
+    ],
+    "changes": {
+      "id": "sale-report-1781534878466236",
+      "status": "chequeCanjeado",
+      "paid_amount": 73704.0,
+      "settlement_date": "2026-06-12T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1781534911257965",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 74270.4,
+    "recoveredApprovedAmount": 74270.4,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 74270.4,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-12T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1781534911257965"
+    ],
+    "changes": {
+      "id": "sale-report-1781534911257965",
+      "status": "chequeCanjeado",
+      "paid_amount": 74270.4,
+      "settlement_date": "2026-06-12T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1782147042411577",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 94805.0,
+    "recoveredApprovedAmount": 94805.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 94805.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-19T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1782147042411577"
+    ],
+    "changes": {
+      "id": "sale-report-1782147042411577",
+      "status": "chequeCanjeado",
+      "paid_amount": 94805.0,
+      "settlement_date": "2026-06-19T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1782147103580312",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 85434.0,
+    "recoveredApprovedAmount": 85434.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 85434.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-19T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1782147103580312"
+    ],
+    "changes": {
+      "id": "sale-report-1782147103580312",
+      "status": "chequeCanjeado",
+      "paid_amount": 85434.0,
+      "settlement_date": "2026-06-19T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1782171743033403",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 80347.2,
+    "recoveredApprovedAmount": 80347.2,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 80347.2,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-22T17:41:58.925227Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1782171743033403"
+    ],
+    "changes": {
+      "id": "sale-report-1782171743033403",
+      "status": "chequeCanjeado",
+      "paid_amount": 80347.2,
+      "settlement_date": "2026-06-22T17:41:58.925227Z"
+    }
+  },
+  {
+    "id": "sale-report-1782320333062776",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 75031.2,
+    "recoveredApprovedAmount": 75031.2,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 75031.2,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-23T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1782320333062776"
+    ],
+    "changes": {
+      "id": "sale-report-1782320333062776",
+      "status": "chequeCanjeado",
+      "paid_amount": 75031.2,
+      "settlement_date": "2026-06-23T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1782400680343289",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 61439.0,
+    "recoveredApprovedAmount": 61439.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 61439.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-24T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1782400680343289"
+    ],
+    "changes": {
+      "id": "sale-report-1782400680343289",
+      "status": "chequeCanjeado",
+      "paid_amount": 61439.0,
+      "settlement_date": "2026-06-24T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1782400749975246",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 27873.0,
+    "recoveredApprovedAmount": 27873.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 27873.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-24T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1782400749975246"
+    ],
+    "changes": {
+      "id": "sale-report-1782400749975246",
+      "status": "chequeCanjeado",
+      "paid_amount": 27873.0,
+      "settlement_date": "2026-06-24T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1782400880839398",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 51040.0,
+    "recoveredApprovedAmount": 51040.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 51040.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-06-24T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1782400880839398"
+    ],
+    "changes": {
+      "id": "sale-report-1782400880839398",
+      "status": "chequeCanjeado",
+      "paid_amount": 51040.0,
+      "settlement_date": "2026-06-24T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1783008900703506",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 71152.8,
+    "recoveredApprovedAmount": 71152.8,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 71152.8,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-01T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1783008900703506"
+    ],
+    "changes": {
+      "id": "sale-report-1783008900703506",
+      "status": "chequeCanjeado",
+      "paid_amount": 71152.8,
+      "settlement_date": "2026-07-01T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1783008929431986",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 71851.2,
+    "recoveredApprovedAmount": 71851.2,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 71851.2,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-01T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1783008929431986"
+    ],
+    "changes": {
+      "id": "sale-report-1783008929431986",
+      "status": "chequeCanjeado",
+      "paid_amount": 71851.2,
+      "settlement_date": "2026-07-01T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1783090069792517",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 73505.0,
+    "recoveredApprovedAmount": 73505.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 73505.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-02T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1783090069792517"
+    ],
+    "changes": {
+      "id": "sale-report-1783090069792517",
+      "status": "chequeCanjeado",
+      "paid_amount": 73505.0,
+      "settlement_date": "2026-07-02T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1783116324914468",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 107136.0,
+    "recoveredApprovedAmount": 107136.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 107136.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-03T16:04:38.966408Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1783116324914468"
+    ],
+    "changes": {
+      "id": "sale-report-1783116324914468",
+      "status": "chequeCanjeado",
+      "paid_amount": 107136.0,
+      "settlement_date": "2026-07-03T16:04:38.966408Z"
+    }
+  },
+  {
+    "id": "sale-report-1783350283241401",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 62643.0,
+    "recoveredApprovedAmount": 62643.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 62643.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-03T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1783350283241401"
+    ],
+    "changes": {
+      "id": "sale-report-1783350283241401",
+      "status": "chequeCanjeado",
+      "paid_amount": 62643.0,
+      "settlement_date": "2026-07-03T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1783350467984586",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 115709.3,
+    "recoveredApprovedAmount": 115709.3,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 115709.3,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-03T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1783350467984586"
+    ],
+    "changes": {
+      "id": "sale-report-1783350467984586",
+      "status": "chequeCanjeado",
+      "paid_amount": 115709.3,
+      "settlement_date": "2026-07-03T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1783608008955679",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 70099.2,
+    "recoveredApprovedAmount": 70099.2,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 70099.2,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-08T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1783608008955679"
+    ],
+    "changes": {
+      "id": "sale-report-1783608008955679",
+      "status": "chequeCanjeado",
+      "paid_amount": 70099.2,
+      "settlement_date": "2026-07-08T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1783608048379403",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 70063.2,
+    "recoveredApprovedAmount": 70063.2,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 70063.2,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-08T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1783608048379403"
+    ],
+    "changes": {
+      "id": "sale-report-1783608048379403",
+      "status": "chequeCanjeado",
+      "paid_amount": 70063.2,
+      "settlement_date": "2026-07-08T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1784235214528434",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 118788.0,
+    "recoveredApprovedAmount": 118788.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 118788.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-15T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1784235214528434"
+    ],
+    "changes": {
+      "id": "sale-report-1784235214528434",
+      "status": "chequeCanjeado",
+      "paid_amount": 118788.0,
+      "settlement_date": "2026-07-15T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1784240336791627",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 130500.0,
+    "recoveredApprovedAmount": 130500.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 130500.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-16T16:17:46.463171Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1784240336791627"
+    ],
+    "changes": {
+      "id": "sale-report-1784240336791627",
+      "status": "chequeCanjeado",
+      "paid_amount": 130500.0,
+      "settlement_date": "2026-07-16T16:17:46.463171Z"
+    }
+  },
+  {
+    "id": "sale-report-1784311203468657",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 69854.4,
+    "recoveredApprovedAmount": 69854.4,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 69854.4,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-16T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1784311203468657"
+    ],
+    "changes": {
+      "id": "sale-report-1784311203468657",
+      "status": "chequeCanjeado",
+      "paid_amount": 69854.4,
+      "settlement_date": "2026-07-16T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1784312043115690",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 73008.0,
+    "recoveredApprovedAmount": 73008.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 73008.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-16T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1784312043115690"
+    ],
+    "changes": {
+      "id": "sale-report-1784312043115690",
+      "status": "chequeCanjeado",
+      "paid_amount": 73008.0,
+      "settlement_date": "2026-07-16T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1784312907274984",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 49344.0,
+    "recoveredApprovedAmount": 49344.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 49344.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-16T00:00:00.000Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1784312907274984"
+    ],
+    "changes": {
+      "id": "sale-report-1784312907274984",
+      "status": "chequeCanjeado",
+      "paid_amount": 49344.0,
+      "settlement_date": "2026-07-16T00:00:00.000Z"
+    }
+  },
+  {
+    "id": "sale-report-1785369260317386",
+    "clientName": "EL PALOMAR",
+    "operationType": "cheque",
+    "recoveryType": "cheque_canjeado_palomar",
+    "confidence": "high",
+    "currentStatus": "pendienteCheque",
+    "recoveredStatus": "chequeCanjeado",
+    "currentApprovedAmount": 50760.0,
+    "recoveredApprovedAmount": 50760.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 50760.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": "2026-07-29T17:53:58.955085Z",
+    "evidence": [
+      "mayoreo_palomar_movements:remisionAplicada",
+      "source_report_id:sale-report-1785369260317386"
+    ],
+    "changes": {
+      "id": "sale-report-1785369260317386",
+      "status": "chequeCanjeado",
+      "paid_amount": 50760.0,
+      "settlement_date": "2026-07-29T17:53:58.955085Z"
+    }
+  },
+  {
+    "id": "sale-report-1777914458896477",
+    "clientName": "MONROE MEXICO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 34073.84,
+    "recoveredApprovedAmount": 34073.84,
+    "currentPaidAmount": 34073.84,
+    "recoveredPaidAmount": 34073.84,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3075",
+    "currentSettlementDate": "2026-07-02T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-02T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3075"
+    ],
+    "changes": {
+      "id": "sale-report-1777914458896477",
+      "status": "pagada",
+      "document_number": "B-3075"
+    }
+  },
+  {
+    "id": "sale-report-1777914628986875",
+    "clientName": "MONROE MEXICO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 28041.84,
+    "recoveredApprovedAmount": 28041.84,
+    "currentPaidAmount": 28041.84,
+    "recoveredPaidAmount": 28041.84,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3108",
+    "currentSettlementDate": "2026-06-18T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-18T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3108"
+    ],
+    "changes": {
+      "id": "sale-report-1777914628986875",
+      "status": "pagada",
+      "document_number": "B-3108"
+    }
+  },
+  {
+    "id": "sale-report-1777918784539475",
+    "clientName": "KS",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 10055.89,
+    "recoveredApprovedAmount": 10055.89,
+    "currentPaidAmount": 10055.89,
+    "recoveredPaidAmount": 10055.89,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3116",
+    "currentSettlementDate": "2026-06-24T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-24T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3116"
+    ],
+    "changes": {
+      "id": "sale-report-1777918784539475",
+      "status": "pagada",
+      "document_number": "B-3116"
+    }
+  },
+  {
+    "id": "sale-report-1778085317505115",
+    "clientName": "SETEX",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 34277.42,
+    "recoveredApprovedAmount": 34277.42,
+    "currentPaidAmount": 34277.42,
+    "recoveredPaidAmount": 34277.42,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3138",
+    "currentSettlementDate": "2026-06-11T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-11T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3138"
+    ],
+    "changes": {
+      "id": "sale-report-1778085317505115",
+      "status": "pagada",
+      "document_number": "B-3138"
+    }
+  },
+  {
+    "id": "sale-report-1780502789268785",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 61010.4,
+    "recoveredApprovedAmount": 61010.4,
+    "currentPaidAmount": 61010.4,
+    "recoveredPaidAmount": 61010.4,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3172",
+    "currentSettlementDate": "2026-06-11T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-11T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3172"
+    ],
+    "changes": {
+      "id": "sale-report-1780502789268785",
+      "status": "pagada",
+      "document_number": "B-3172"
+    }
+  },
+  {
+    "id": "sale-report-1780671770356201",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 62739.6,
+    "recoveredApprovedAmount": 62739.6,
+    "currentPaidAmount": 62739.6,
+    "recoveredPaidAmount": 62739.6,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3175",
+    "currentSettlementDate": "2026-06-15T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-15T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3175"
+    ],
+    "changes": {
+      "id": "sale-report-1780671770356201",
+      "status": "pagada",
+      "document_number": "B-3175"
+    }
+  },
+  {
+    "id": "sale-report-1780671822887530",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 56573.0,
+    "recoveredApprovedAmount": 56573.0,
+    "currentPaidAmount": 56573.0,
+    "recoveredPaidAmount": 56573.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3176",
+    "currentSettlementDate": "2026-06-15T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-15T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3176"
+    ],
+    "changes": {
+      "id": "sale-report-1780671822887530",
+      "status": "pagada",
+      "document_number": "B-3176"
+    }
+  },
+  {
+    "id": "sale-report-1780942917081167",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 56940.4,
+    "recoveredApprovedAmount": 56940.4,
+    "currentPaidAmount": 56940.4,
+    "recoveredPaidAmount": 56940.4,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3178",
+    "currentSettlementDate": "2026-06-16T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-16T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3178"
+    ],
+    "changes": {
+      "id": "sale-report-1780942917081167",
+      "status": "pagada",
+      "document_number": "B-3178"
+    }
+  },
+  {
+    "id": "sale-report-1781104067432239",
+    "clientName": "DESPERDICIOS QUERETANA TOLUCA",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 120581.6,
+    "recoveredApprovedAmount": 120581.6,
+    "currentPaidAmount": 120581.6,
+    "recoveredPaidAmount": 120581.6,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3180",
+    "currentSettlementDate": "2026-06-10T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-10T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3180"
+    ],
+    "changes": {
+      "id": "sale-report-1781104067432239",
+      "status": "pagada",
+      "document_number": "B-3180"
+    }
+  },
+  {
+    "id": "sale-report-1781104134472548",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 76027.5,
+    "recoveredApprovedAmount": 76027.5,
+    "currentPaidAmount": 76027.5,
+    "recoveredPaidAmount": 76027.5,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3181",
+    "currentSettlementDate": "2026-06-17T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-17T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3181"
+    ],
+    "changes": {
+      "id": "sale-report-1781104134472548",
+      "status": "pagada",
+      "document_number": "B-3181"
+    }
+  },
+  {
+    "id": "sale-report-1781104311167952",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 73225.0,
+    "recoveredApprovedAmount": 73225.0,
+    "currentPaidAmount": 73225.0,
+    "recoveredPaidAmount": 73225.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3181",
+    "currentSettlementDate": "2026-06-16T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-16T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3181"
+    ],
+    "changes": {
+      "id": "sale-report-1781104311167952",
+      "status": "pagada",
+      "document_number": "B-3181"
+    }
+  },
+  {
+    "id": "sale-report-1781191130783276",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 63973.8,
+    "recoveredApprovedAmount": 63973.8,
+    "currentPaidAmount": 63973.8,
+    "recoveredPaidAmount": 63973.8,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3185",
+    "currentSettlementDate": "2026-06-22T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-22T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3185"
+    ],
+    "changes": {
+      "id": "sale-report-1781191130783276",
+      "status": "pagada",
+      "document_number": "B-3185"
+    }
+  },
+  {
+    "id": "sale-report-1781279597684831",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 74360.0,
+    "recoveredApprovedAmount": 74360.0,
+    "currentPaidAmount": 74360.0,
+    "recoveredPaidAmount": 74360.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "C-582",
+    "currentSettlementDate": "2026-06-15T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-15T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:C-582"
+    ],
+    "changes": {
+      "id": "sale-report-1781279597684831",
+      "status": "pagada",
+      "document_number": "C-582"
+    }
+  },
+  {
+    "id": "sale-report-1781279621853209",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 75075.0,
+    "recoveredApprovedAmount": 75075.0,
+    "currentPaidAmount": 75075.0,
+    "recoveredPaidAmount": 75075.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3188",
+    "currentSettlementDate": "2026-06-15T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-15T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3188"
+    ],
+    "changes": {
+      "id": "sale-report-1781279621853209",
+      "status": "pagada",
+      "document_number": "B-3188"
+    }
+  },
+  {
+    "id": "sale-report-1781279653309572",
+    "clientName": "DESPERDICIOS QUERETANA TOLUCA",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 115185.6,
+    "recoveredApprovedAmount": 115185.6,
+    "currentPaidAmount": 115185.6,
+    "recoveredPaidAmount": 115185.6,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3187",
+    "currentSettlementDate": "2026-06-12T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-12T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3187"
+    ],
+    "changes": {
+      "id": "sale-report-1781279653309572",
+      "status": "pagada",
+      "document_number": "B-3187"
+    }
+  },
+  {
+    "id": "sale-report-1781286291091449",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 72960.8,
+    "recoveredApprovedAmount": 72960.8,
+    "currentPaidAmount": 72960.8,
+    "recoveredPaidAmount": 72960.8,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3189",
+    "currentSettlementDate": "2026-06-22T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-22T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3189"
+    ],
+    "changes": {
+      "id": "sale-report-1781286291091449",
+      "status": "pagada",
+      "document_number": "B-3189"
+    }
+  },
+  {
+    "id": "sale-report-1781534972465830",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 78050.0,
+    "recoveredApprovedAmount": 78050.0,
+    "currentPaidAmount": 78050.0,
+    "recoveredPaidAmount": 78050.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3191",
+    "currentSettlementDate": "2026-06-16T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-16T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3191"
+    ],
+    "changes": {
+      "id": "sale-report-1781534972465830",
+      "status": "pagada",
+      "document_number": "B-3191"
+    }
+  },
+  {
+    "id": "sale-report-1781535080706253",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 64946.2,
+    "recoveredApprovedAmount": 64946.2,
+    "currentPaidAmount": 64946.2,
+    "recoveredPaidAmount": 64946.2,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3190",
+    "currentSettlementDate": "2026-06-23T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-23T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3190"
+    ],
+    "changes": {
+      "id": "sale-report-1781535080706253",
+      "status": "pagada",
+      "document_number": "B-3190"
+    }
+  },
+  {
+    "id": "sale-report-1781542030797319",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 78025.0,
+    "recoveredApprovedAmount": 78025.0,
+    "currentPaidAmount": 78025.0,
+    "recoveredPaidAmount": 78025.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3191",
+    "currentSettlementDate": "2026-06-16T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-16T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3191"
+    ],
+    "changes": {
+      "id": "sale-report-1781542030797319",
+      "status": "pagada",
+      "document_number": "B-3191"
+    }
+  },
+  {
+    "id": "sale-report-1781708751723589",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 77420.0,
+    "recoveredApprovedAmount": 77420.0,
+    "currentPaidAmount": 77420.0,
+    "recoveredPaidAmount": 77420.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3192",
+    "currentSettlementDate": "2026-06-17T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-17T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3192"
+    ],
+    "changes": {
+      "id": "sale-report-1781708751723589",
+      "status": "pagada",
+      "document_number": "B-3192"
+    }
+  },
+  {
+    "id": "sale-report-1781708785684182",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 77042.5,
+    "recoveredApprovedAmount": 77042.5,
+    "currentPaidAmount": 77042.5,
+    "recoveredPaidAmount": 77042.5,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3192",
+    "currentSettlementDate": "2026-06-17T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-17T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3192"
+    ],
+    "changes": {
+      "id": "sale-report-1781708785684182",
+      "status": "pagada",
+      "document_number": "B-3192"
+    }
+  },
+  {
+    "id": "sale-report-1781728646479383",
+    "clientName": "DESPERDICIOS QUERETANA TOLUCA",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 92769.4,
+    "recoveredApprovedAmount": 92769.4,
+    "currentPaidAmount": 92769.4,
+    "recoveredPaidAmount": 92769.4,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3193",
+    "currentSettlementDate": "2026-06-18T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-18T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3193"
+    ],
+    "changes": {
+      "id": "sale-report-1781728646479383",
+      "status": "pagada",
+      "document_number": "B-3193"
+    }
+  },
+  {
+    "id": "sale-report-1782239534900179",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 71918.0,
+    "recoveredApprovedAmount": 71918.0,
+    "currentPaidAmount": 71918.0,
+    "recoveredPaidAmount": 71918.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "F-3197",
+    "currentSettlementDate": "2026-07-02T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-02T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:F-3197"
+    ],
+    "changes": {
+      "id": "sale-report-1782239534900179",
+      "status": "pagada",
+      "document_number": "F-3197"
+    }
+  },
+  {
+    "id": "sale-report-1782321655008745",
+    "clientName": "DESPERDICIOS QUERETANA TOLUCA",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 125381.0,
+    "recoveredApprovedAmount": 125381.0,
+    "currentPaidAmount": 125381.0,
+    "recoveredPaidAmount": 125381.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3198",
+    "currentSettlementDate": "2026-06-26T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-06-26T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3198"
+    ],
+    "changes": {
+      "id": "sale-report-1782321655008745",
+      "status": "pagada",
+      "document_number": "B-3198"
+    }
+  },
+  {
+    "id": "sale-report-1782495724920436",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 72375.0,
+    "recoveredApprovedAmount": 72375.0,
+    "currentPaidAmount": 72375.0,
+    "recoveredPaidAmount": 72375.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3202",
+    "currentSettlementDate": "2026-07-01T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-01T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3202"
+    ],
+    "changes": {
+      "id": "sale-report-1782495724920436",
+      "status": "pagada",
+      "document_number": "B-3202"
+    }
+  },
+  {
+    "id": "sale-report-1782504494677460",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 63208.2,
+    "recoveredApprovedAmount": 63208.2,
+    "currentPaidAmount": 63208.2,
+    "recoveredPaidAmount": 63208.2,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3200",
+    "currentSettlementDate": "2026-07-06T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-06T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3200"
+    ],
+    "changes": {
+      "id": "sale-report-1782504494677460",
+      "status": "pagada",
+      "document_number": "B-3200"
+    }
+  },
+  {
+    "id": "sale-report-1782505114223444",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 79025.0,
+    "recoveredApprovedAmount": 79025.0,
+    "currentPaidAmount": 79025.0,
+    "recoveredPaidAmount": 79025.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3202",
+    "currentSettlementDate": "2026-07-01T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-01T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3202"
+    ],
+    "changes": {
+      "id": "sale-report-1782505114223444",
+      "status": "pagada",
+      "document_number": "B-3202"
+    }
+  },
+  {
+    "id": "sale-report-1782837595162405",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 60073.2,
+    "recoveredApprovedAmount": 60073.2,
+    "currentPaidAmount": 60073.2,
+    "recoveredPaidAmount": 60073.2,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3203",
+    "currentSettlementDate": "2026-07-09T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-09T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3203"
+    ],
+    "changes": {
+      "id": "sale-report-1782837595162405",
+      "status": "pagada",
+      "document_number": "B-3203"
+    }
+  },
+  {
+    "id": "sale-report-1782917855921885",
+    "clientName": "DESPERDICIOS QUERETANA TOLUCA",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 112613.0,
+    "recoveredApprovedAmount": 112613.0,
+    "currentPaidAmount": 112613.0,
+    "recoveredPaidAmount": 112613.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "C-584",
+    "currentSettlementDate": "2026-07-01T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-01T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:C-584"
+    ],
+    "changes": {
+      "id": "sale-report-1782917855921885",
+      "status": "pagada",
+      "document_number": "C-584"
+    }
+  },
+  {
+    "id": "sale-report-1783009537239764",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 62011.4,
+    "recoveredApprovedAmount": 62011.4,
+    "currentPaidAmount": 62011.4,
+    "recoveredPaidAmount": 62011.4,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3204",
+    "currentSettlementDate": "2026-07-13T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-13T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3204"
+    ],
+    "changes": {
+      "id": "sale-report-1783009537239764",
+      "status": "pagada",
+      "document_number": "B-3204"
+    }
+  },
+  {
+    "id": "sale-report-1783009609423582",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 62968.4,
+    "recoveredApprovedAmount": 62968.4,
+    "currentPaidAmount": 62968.4,
+    "recoveredPaidAmount": 62968.4,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3211",
+    "currentSettlementDate": "2026-07-17T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-17T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3211"
+    ],
+    "changes": {
+      "id": "sale-report-1783009609423582",
+      "status": "pagada",
+      "document_number": "B-3211"
+    }
+  },
+  {
+    "id": "sale-report-1783118201363365",
+    "clientName": "DESPERDICIOS QUERETANA TOLUCA",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 106673.6,
+    "recoveredApprovedAmount": 106673.6,
+    "currentPaidAmount": 106673.6,
+    "recoveredPaidAmount": 106673.6,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3205",
+    "currentSettlementDate": "2026-07-06T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-06T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3205"
+    ],
+    "changes": {
+      "id": "sale-report-1783118201363365",
+      "status": "pagada",
+      "document_number": "B-3205"
+    }
+  },
+  {
+    "id": "sale-report-1783612754301948",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 65091.4,
+    "recoveredApprovedAmount": 65091.4,
+    "currentPaidAmount": 65091.4,
+    "recoveredPaidAmount": 65091.4,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3216",
+    "currentSettlementDate": "2026-07-21T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-21T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3216"
+    ],
+    "changes": {
+      "id": "sale-report-1783612754301948",
+      "status": "pagada",
+      "document_number": "B-3216"
+    }
+  },
+  {
+    "id": "sale-report-1783725684407623",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 62299.6,
+    "recoveredApprovedAmount": 62299.6,
+    "currentPaidAmount": 62299.6,
+    "recoveredPaidAmount": 62299.6,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3217",
+    "currentSettlementDate": "2026-07-22T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-22T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3217"
+    ],
+    "changes": {
+      "id": "sale-report-1783725684407623",
+      "status": "pagada",
+      "document_number": "B-3217"
+    }
+  },
+  {
+    "id": "sale-report-1784129808605826",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 62123.6,
+    "recoveredApprovedAmount": 62123.6,
+    "currentPaidAmount": 62123.6,
+    "recoveredPaidAmount": 62123.6,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3218",
+    "currentSettlementDate": "2026-07-23T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-23T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3218"
+    ],
+    "changes": {
+      "id": "sale-report-1784129808605826",
+      "status": "pagada",
+      "document_number": "B-3218"
+    }
+  },
+  {
+    "id": "sale-report-1784311087845494",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 61054.4,
+    "recoveredApprovedAmount": 61054.4,
+    "currentPaidAmount": 61054.4,
+    "recoveredPaidAmount": 61054.4,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3226",
+    "currentSettlementDate": "2026-07-29T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-29T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3226"
+    ],
+    "changes": {
+      "id": "sale-report-1784311087845494",
+      "status": "pagada",
+      "document_number": "B-3226"
+    }
+  },
+  {
+    "id": "sale-report-1784755429435751",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 62057.6,
+    "recoveredApprovedAmount": 62057.6,
+    "currentPaidAmount": 62057.6,
+    "recoveredPaidAmount": 62057.6,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3229",
+    "currentSettlementDate": "2026-07-29T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-29T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3229"
+    ],
+    "changes": {
+      "id": "sale-report-1784755429435751",
+      "status": "pagada",
+      "document_number": "B-3229"
+    }
+  },
+  {
+    "id": "sale-report-1785167680109490",
+    "clientName": "DESPERDICIOS QUERETANA TOLUCA",
+    "operationType": "factura",
+    "recoveryType": "factura_pagada_por_banco",
+    "confidence": "high",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "pagada",
+    "currentApprovedAmount": 107224.6,
+    "recoveredApprovedAmount": 107224.6,
+    "currentPaidAmount": 107224.6,
+    "recoveredPaidAmount": 107224.6,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3236",
+    "currentSettlementDate": "2026-07-27T00:00:00.000Z",
+    "recoveredSettlementDate": "2026-07-27T00:00:00.000Z",
+    "evidence": [
+      "finanzas_bank_movements:VENTA_FACTURA",
+      "bank_reference:B-3236"
+    ],
+    "changes": {
+      "id": "sale-report-1785167680109490",
+      "status": "pagada",
+      "document_number": "B-3236"
+    }
+  },
+  {
+    "id": "sale-report-1777497947506469",
+    "clientName": "BIO PAPPEL",
+    "operationType": "factura",
+    "recoveryType": "factura_con_folio_en_observaciones",
+    "confidence": "medium",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "facturadaPendientePago",
+    "currentApprovedAmount": 52795.6,
+    "recoveredApprovedAmount": 52795.6,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 0.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3134",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": null,
+    "evidence": [
+      "sale_notes:FACT. B-3134"
+    ],
+    "changes": {
+      "id": "sale-report-1777497947506469",
+      "status": "facturadaPendientePago",
+      "document_number": "B-3134"
+    }
+  },
+  {
+    "id": "sale-report-1777498091578579",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_con_folio_en_observaciones",
+    "confidence": "medium",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "facturadaPendientePago",
+    "currentApprovedAmount": 69450.0,
+    "recoveredApprovedAmount": 69450.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 0.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "C-578",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": null,
+    "evidence": [
+      "sale_notes:fact. C-578"
+    ],
+    "changes": {
+      "id": "sale-report-1777498091578579",
+      "status": "facturadaPendientePago",
+      "document_number": "C-578"
+    }
+  },
+  {
+    "id": "sale-report-1777498240874643",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_con_folio_en_observaciones",
+    "confidence": "medium",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "facturadaPendientePago",
+    "currentApprovedAmount": 66082.5,
+    "recoveredApprovedAmount": 66082.5,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 0.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "C-578",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": null,
+    "evidence": [
+      "sale_notes:fact.C-578"
+    ],
+    "changes": {
+      "id": "sale-report-1777498240874643",
+      "status": "facturadaPendientePago",
+      "document_number": "C-578"
+    }
+  },
+  {
+    "id": "sale-report-1777574752254326",
+    "clientName": "GRUPAK",
+    "operationType": "factura",
+    "recoveryType": "factura_con_folio_en_observaciones",
+    "confidence": "medium",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "facturadaPendientePago",
+    "currentApprovedAmount": 35910.35,
+    "recoveredApprovedAmount": 35910.35,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 0.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3135",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": null,
+    "evidence": [
+      "sale_notes:FACT. B-3135"
+    ],
+    "changes": {
+      "id": "sale-report-1777574752254326",
+      "status": "facturadaPendientePago",
+      "document_number": "B-3135"
+    }
+  },
+  {
+    "id": "sale-report-1777574910094912",
+    "clientName": "GRUPAK",
+    "operationType": "factura",
+    "recoveryType": "factura_con_folio_en_observaciones",
+    "confidence": "medium",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "facturadaPendientePago",
+    "currentApprovedAmount": 17941.9,
+    "recoveredApprovedAmount": 17941.9,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 0.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3135",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": null,
+    "evidence": [
+      "sale_notes:FACT.B-3135"
+    ],
+    "changes": {
+      "id": "sale-report-1777574910094912",
+      "status": "facturadaPendientePago",
+      "document_number": "B-3135"
+    }
+  },
+  {
+    "id": "sale-report-1777575029518510",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_con_folio_en_observaciones",
+    "confidence": "medium",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "facturadaPendientePago",
+    "currentApprovedAmount": 64825.0,
+    "recoveredApprovedAmount": 64825.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 0.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3136",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": null,
+    "evidence": [
+      "sale_notes:fact. b-3136"
+    ],
+    "changes": {
+      "id": "sale-report-1777575029518510",
+      "status": "facturadaPendientePago",
+      "document_number": "B-3136"
+    }
+  },
+  {
+    "id": "sale-report-1777575071454205",
+    "clientName": "DESPERDICIOS QUERETANA SAN PABLO",
+    "operationType": "factura",
+    "recoveryType": "factura_con_folio_en_observaciones",
+    "confidence": "medium",
+    "currentStatus": "pendienteFactura",
+    "recoveredStatus": "facturadaPendientePago",
+    "currentApprovedAmount": 63875.0,
+    "recoveredApprovedAmount": 63875.0,
+    "currentPaidAmount": 0.0,
+    "recoveredPaidAmount": 0.0,
+    "currentDocumentNumber": "",
+    "recoveredDocumentNumber": "B-3136",
+    "currentSettlementDate": null,
+    "recoveredSettlementDate": null,
+    "evidence": [
+      "sale_notes:fact. b-3136"
+    ],
+    "changes": {
+      "id": "sale-report-1777575071454205",
+      "status": "facturadaPendientePago",
+      "document_number": "B-3136"
+    }
+  }
+]

@@ -1,0 +1,317 @@
+[
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783707107131473-ct_legacy_row_1774-0",
+    "ticket_id": "ct_legacy_row_1774",
+    "provider_movement_id": "compras-provider-mov-1783707107131473",
+    "applied_amount": 5103.14,
+    "applied_at": "2026-04-02T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783707107131473-ct_legacy_row_1775-1",
+    "ticket_id": "ct_legacy_row_1775",
+    "provider_movement_id": "compras-provider-mov-1783707107131473",
+    "applied_amount": 6580.05,
+    "applied_at": "2026-04-02T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1781569138520837-ct_legacy_row_1550-0",
+    "ticket_id": "ct_legacy_row_1550",
+    "provider_movement_id": "compras-provider-mov-1781569138520837",
+    "applied_amount": 11368.50,
+    "applied_at": "2026-06-10T00:00:00+00:00",
+    "created_at": "2026-06-16T00:18:59.78521+00:00",
+    "updated_at": "2026-06-16T00:18:59.78521+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783707107131473-ct_legacy_row_1758-2",
+    "ticket_id": "ct_legacy_row_1758",
+    "provider_movement_id": "compras-provider-mov-1783707107131473",
+    "applied_amount": 8316.81,
+    "applied_at": "2026-04-02T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783707064584643-ct_legacy_row_1758-3",
+    "ticket_id": "ct_legacy_row_1758",
+    "provider_movement_id": "compras-provider-mov-1783707064584643",
+    "applied_amount": 1936.00,
+    "applied_at": "2026-04-17T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783707064584643-ct_legacy_row_1752-4",
+    "ticket_id": "ct_legacy_row_1752",
+    "provider_movement_id": "compras-provider-mov-1783707064584643",
+    "applied_amount": 8625.00,
+    "applied_at": "2026-04-17T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783707064584643-ct_legacy_row_1740-5",
+    "ticket_id": "ct_legacy_row_1740",
+    "provider_movement_id": "compras-provider-mov-1783707064584643",
+    "applied_amount": 7004.76,
+    "applied_at": "2026-04-17T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783707064584643-ct_legacy_row_1730-6",
+    "ticket_id": "ct_legacy_row_1730",
+    "provider_movement_id": "compras-provider-mov-1783707064584643",
+    "applied_amount": 8947.88,
+    "applied_at": "2026-04-17T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783707064584643-ct_legacy_row_1721-7",
+    "ticket_id": "ct_legacy_row_1721",
+    "provider_movement_id": "compras-provider-mov-1783707064584643",
+    "applied_amount": 3486.36,
+    "applied_at": "2026-04-17T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706981736850-ct_legacy_row_1721-8",
+    "ticket_id": "ct_legacy_row_1721",
+    "provider_movement_id": "compras-provider-mov-1783706981736850",
+    "applied_amount": 5505.99,
+    "applied_at": "2026-05-15T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706981736850-ct_legacy_row_1708-9",
+    "ticket_id": "ct_legacy_row_1708",
+    "provider_movement_id": "compras-provider-mov-1783706981736850",
+    "applied_amount": 5144.98,
+    "applied_at": "2026-05-15T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706981736850-ct_legacy_row_1697-10",
+    "ticket_id": "ct_legacy_row_1697",
+    "provider_movement_id": "compras-provider-mov-1783706981736850",
+    "applied_amount": 7675.50,
+    "applied_at": "2026-05-15T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706981736850-ct_legacy_row_1683-11",
+    "ticket_id": "ct_legacy_row_1683",
+    "provider_movement_id": "compras-provider-mov-1783706981736850",
+    "applied_amount": 1673.53,
+    "applied_at": "2026-05-15T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706954863694-ct_legacy_row_1683-12",
+    "ticket_id": "ct_legacy_row_1683",
+    "provider_movement_id": "compras-provider-mov-1783706954863694",
+    "applied_amount": 5098.75,
+    "applied_at": "2026-06-05T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706954863694-ct_legacy_row_1665-13",
+    "ticket_id": "ct_legacy_row_1665",
+    "provider_movement_id": "compras-provider-mov-1783706954863694",
+    "applied_amount": 2594.97,
+    "applied_at": "2026-06-05T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706954863694-ct_legacy_row_1653-14",
+    "ticket_id": "ct_legacy_row_1653",
+    "provider_movement_id": "compras-provider-mov-1783706954863694",
+    "applied_amount": 9704.59,
+    "applied_at": "2026-06-05T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706954863694-ct_legacy_row_1644-15",
+    "ticket_id": "ct_legacy_row_1644",
+    "provider_movement_id": "compras-provider-mov-1783706954863694",
+    "applied_amount": 6577.48,
+    "applied_at": "2026-06-05T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706954863694-ct_legacy_row_1643-16",
+    "ticket_id": "ct_legacy_row_1643",
+    "provider_movement_id": "compras-provider-mov-1783706954863694",
+    "applied_amount": 1024.21,
+    "applied_at": "2026-06-05T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706816365745-ct_legacy_row_1643-17",
+    "ticket_id": "ct_legacy_row_1643",
+    "provider_movement_id": "compras-provider-mov-1783706816365745",
+    "applied_amount": 2350.79,
+    "applied_at": "2026-06-18T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706816365745-ct_legacy_row_1638-18",
+    "ticket_id": "ct_legacy_row_1638",
+    "provider_movement_id": "compras-provider-mov-1783706816365745",
+    "applied_amount": 6966.00,
+    "applied_at": "2026-06-18T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706816365745-ct_legacy_row_1635-19",
+    "ticket_id": "ct_legacy_row_1635",
+    "provider_movement_id": "compras-provider-mov-1783706816365745",
+    "applied_amount": 3743.78,
+    "applied_at": "2026-06-18T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706816365745-ct_legacy_row_1632-20",
+    "ticket_id": "ct_legacy_row_1632",
+    "provider_movement_id": "compras-provider-mov-1783706816365745",
+    "applied_amount": 6939.43,
+    "applied_at": "2026-06-18T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706911631922-ct_legacy_row_1632-21",
+    "ticket_id": "ct_legacy_row_1632",
+    "provider_movement_id": "compras-provider-mov-1783706911631922",
+    "applied_amount": 1768.12,
+    "applied_at": "2026-06-19T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706911631922-ct_legacy_row_1629-22",
+    "ticket_id": "ct_legacy_row_1629",
+    "provider_movement_id": "compras-provider-mov-1783706911631922",
+    "applied_amount": 7882.92,
+    "applied_at": "2026-06-19T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706911631922-ct_legacy_row_1613-23",
+    "ticket_id": "ct_legacy_row_1613",
+    "provider_movement_id": "compras-provider-mov-1783706911631922",
+    "applied_amount": 4837.50,
+    "applied_at": "2026-06-19T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706911631922-ct_legacy_row_1604-24",
+    "ticket_id": "ct_legacy_row_1604",
+    "provider_movement_id": "compras-provider-mov-1783706911631922",
+    "applied_amount": 5511.46,
+    "applied_at": "2026-06-19T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706786141679-ct_legacy_row_1604-25",
+    "ticket_id": "ct_legacy_row_1604",
+    "provider_movement_id": "compras-provider-mov-1783706786141679",
+    "applied_amount": 5513.43,
+    "applied_at": "2026-06-26T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706786141679-ct_legacy_row_1592-26",
+    "ticket_id": "ct_legacy_row_1592",
+    "provider_movement_id": "compras-provider-mov-1783706786141679",
+    "applied_amount": 11449.88,
+    "applied_at": "2026-06-26T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783706786141679-ct_legacy_row_1580-27",
+    "ticket_id": "ct_legacy_row_1580",
+    "provider_movement_id": "compras-provider-mov-1783706786141679",
+    "applied_amount": 3036.69,
+    "applied_at": "2026-06-26T00:00:00+00:00",
+    "created_at": "2026-07-10T18:11:49.085775+00:00",
+    "updated_at": "2026-07-10T18:11:49.085775+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783698975037854-ct_legacy_row_1575-0",
+    "ticket_id": "ct_legacy_row_1575",
+    "provider_movement_id": "compras-provider-mov-1783698975037854",
+    "applied_amount": 7423.00,
+    "applied_at": "2026-06-17T00:00:00+00:00",
+    "created_at": "2026-07-10T15:58:59.062391+00:00",
+    "updated_at": "2026-07-10T15:58:59.062391+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783698975037854-ct_legacy_row_1359-1",
+    "ticket_id": "ct_legacy_row_1359",
+    "provider_movement_id": "compras-provider-mov-1783698975037854",
+    "applied_amount": 42577.00,
+    "applied_at": "2026-06-17T00:00:00+00:00",
+    "created_at": "2026-07-10T15:58:59.062391+00:00",
+    "updated_at": "2026-07-10T15:58:59.062391+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783698933092943-ct_legacy_row_1359-2",
+    "ticket_id": "ct_legacy_row_1359",
+    "provider_movement_id": "compras-provider-mov-1783698933092943",
+    "applied_amount": 32970.00,
+    "applied_at": "2026-06-19T00:00:00+00:00",
+    "created_at": "2026-07-10T15:58:59.062391+00:00",
+    "updated_at": "2026-07-10T15:58:59.062391+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783698933092943-ct_legacy_row_1574-3",
+    "ticket_id": "ct_legacy_row_1574",
+    "provider_movement_id": "compras-provider-mov-1783698933092943",
+    "applied_amount": 6297.50,
+    "applied_at": "2026-06-19T00:00:00+00:00",
+    "created_at": "2026-07-10T15:58:59.062391+00:00",
+    "updated_at": "2026-07-10T15:58:59.062391+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783698933092943-ct_legacy_row_1348-4",
+    "ticket_id": "ct_legacy_row_1348",
+    "provider_movement_id": "compras-provider-mov-1783698933092943",
+    "applied_amount": 10732.50,
+    "applied_at": "2026-06-19T00:00:00+00:00",
+    "created_at": "2026-07-10T15:58:59.062391+00:00",
+    "updated_at": "2026-07-10T15:58:59.062391+00:00"
+  },
+  {
+    "id": "compras-ticket-app-compras-provider-mov-1783698899294568-ct_legacy_row_1348-5",
+    "ticket_id": "ct_legacy_row_1348",
+    "provider_movement_id": "compras-provider-mov-1783698899294568",
+    "applied_amount": 50000.00,
+    "applied_at": "2026-06-26T00:00:00+00:00",
+    "created_at": "2026-07-10T15:58:59.062391+00:00",
+    "updated_at": "2026-07-10T15:58:59.062391+00:00"
+  }
+]

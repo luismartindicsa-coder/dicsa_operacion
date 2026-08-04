@@ -1,0 +1,593 @@
+[
+  {
+    "id": "sale-report-1785369260317386",
+    "status": "chequeCanjeado",
+    "paid_amount": 50760.0,
+    "settlement_date": "2026-07-29T17:53:58.955085Z"
+  },
+  {
+    "id": "sale-report-1785167680109490",
+    "status": "pagada",
+    "document_number": "B-3236"
+  },
+  {
+    "id": "sale-report-1784755429435751",
+    "status": "pagada",
+    "document_number": "B-3229"
+  },
+  {
+    "id": "sale-report-1784240336791627",
+    "status": "chequeCanjeado",
+    "paid_amount": 130500.0,
+    "settlement_date": "2026-07-16T16:17:46.463171Z"
+  },
+  {
+    "id": "sale-report-1784312907274984",
+    "status": "chequeCanjeado",
+    "paid_amount": 49344.0,
+    "settlement_date": "2026-07-16T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1784312043115690",
+    "status": "chequeCanjeado",
+    "paid_amount": 73008.0,
+    "settlement_date": "2026-07-16T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1784311203468657",
+    "status": "chequeCanjeado",
+    "paid_amount": 69854.4,
+    "settlement_date": "2026-07-16T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1784311087845494",
+    "status": "pagada",
+    "document_number": "B-3226"
+  },
+  {
+    "id": "sale-report-1784235214528434",
+    "status": "chequeCanjeado",
+    "paid_amount": 118788.0,
+    "settlement_date": "2026-07-15T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1784129808605826",
+    "status": "pagada",
+    "document_number": "B-3218"
+  },
+  {
+    "id": "sale-report-1783725684407623",
+    "status": "pagada",
+    "document_number": "B-3217"
+  },
+  {
+    "id": "sale-report-1783612754301948",
+    "status": "pagada",
+    "document_number": "B-3216"
+  },
+  {
+    "id": "sale-report-1783608048379403",
+    "status": "chequeCanjeado",
+    "paid_amount": 70063.2,
+    "settlement_date": "2026-07-08T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1783608008955679",
+    "status": "chequeCanjeado",
+    "paid_amount": 70099.2,
+    "settlement_date": "2026-07-08T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1783116324914468",
+    "status": "chequeCanjeado",
+    "paid_amount": 107136.0,
+    "settlement_date": "2026-07-03T16:04:38.966408Z"
+  },
+  {
+    "id": "sale-report-1780671822887530",
+    "status": "pagada",
+    "document_number": "B-3176"
+  },
+  {
+    "id": "sale-report-1779220978128205",
+    "status": "chequeCanjeado",
+    "paid_amount": 148941.0,
+    "settlement_date": "2026-05-19T14:02:11.771303Z"
+  },
+  {
+    "id": "sale-report-1778868679247600",
+    "status": "chequeCanjeado",
+    "paid_amount": 106800.0,
+    "settlement_date": "2026-05-15T12:09:36.393912Z"
+  },
+  {
+    "id": "sale-report-1783350467984586",
+    "status": "chequeCanjeado",
+    "paid_amount": 115709.3,
+    "settlement_date": "2026-07-03T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1783350283241401",
+    "status": "chequeCanjeado",
+    "paid_amount": 62643.0,
+    "settlement_date": "2026-07-03T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1783118201363365",
+    "status": "pagada",
+    "document_number": "B-3205"
+  },
+  {
+    "id": "sale-report-1783090069792517",
+    "status": "chequeCanjeado",
+    "paid_amount": 73505.0,
+    "settlement_date": "2026-07-02T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1783009609423582",
+    "status": "pagada",
+    "document_number": "B-3211"
+  },
+  {
+    "id": "sale-report-1783008929431986",
+    "status": "chequeCanjeado",
+    "paid_amount": 71851.2,
+    "settlement_date": "2026-07-01T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1783008900703506",
+    "status": "chequeCanjeado",
+    "paid_amount": 71152.8,
+    "settlement_date": "2026-07-01T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1782837595162405",
+    "status": "pagada",
+    "document_number": "B-3203"
+  },
+  {
+    "id": "sale-report-1783009537239764",
+    "status": "pagada",
+    "document_number": "B-3204"
+  },
+  {
+    "id": "sale-report-1782917855921885",
+    "status": "pagada",
+    "document_number": "C-584"
+  },
+  {
+    "id": "sale-report-1782504494677460",
+    "status": "pagada",
+    "document_number": "B-3200"
+  },
+  {
+    "id": "sale-report-1782495724920436",
+    "status": "pagada",
+    "document_number": "B-3202"
+  },
+  {
+    "id": "sale-report-1782400880839398",
+    "status": "chequeCanjeado",
+    "paid_amount": 51040.0,
+    "settlement_date": "2026-06-24T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1782400749975246",
+    "status": "chequeCanjeado",
+    "paid_amount": 27873.0,
+    "settlement_date": "2026-06-24T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1782400680343289",
+    "status": "chequeCanjeado",
+    "paid_amount": 61439.0,
+    "settlement_date": "2026-06-24T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1779148370417159",
+    "status": "chequeCanjeado",
+    "paid_amount": 92300.0,
+    "settlement_date": "2026-05-18T17:52:09.768671Z"
+  },
+  {
+    "id": "sale-report-1782321655008745",
+    "status": "pagada",
+    "document_number": "B-3198"
+  },
+  {
+    "id": "sale-report-1782320333062776",
+    "status": "chequeCanjeado",
+    "paid_amount": 75031.2,
+    "settlement_date": "2026-06-23T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1782239534900179",
+    "status": "pagada",
+    "document_number": "F-3197"
+  },
+  {
+    "id": "sale-report-1782147103580312",
+    "status": "chequeCanjeado",
+    "paid_amount": 85434.0,
+    "settlement_date": "2026-06-19T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1781728646479383",
+    "status": "pagada",
+    "document_number": "B-3193"
+  },
+  {
+    "id": "sale-report-1781708785684182",
+    "status": "pagada",
+    "document_number": "B-3192"
+  },
+  {
+    "id": "sale-report-1781542030797319",
+    "status": "pagada",
+    "document_number": "B-3191"
+  },
+  {
+    "id": "sale-report-1781534972465830",
+    "status": "pagada",
+    "document_number": "B-3191"
+  },
+  {
+    "id": "sale-report-1781305422598558",
+    "status": "chequeCanjeado",
+    "paid_amount": 141360.0,
+    "settlement_date": "2026-06-12T17:02:45.712130Z"
+  },
+  {
+    "id": "sale-report-1778884349660580",
+    "status": "chequeCanjeado",
+    "paid_amount": 73750.0,
+    "settlement_date": "2026-05-15T16:31:52.014499Z"
+  },
+  {
+    "id": "sale-report-1781287689100851",
+    "status": "chequeCanjeado",
+    "paid_amount": 117008.0,
+    "settlement_date": "2026-06-12T12:07:07.061217Z"
+  },
+  {
+    "id": "sale-report-1781534878466236",
+    "status": "chequeCanjeado",
+    "paid_amount": 73704.0,
+    "settlement_date": "2026-06-12T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1781535080706253",
+    "status": "pagada",
+    "document_number": "B-3190"
+  },
+  {
+    "id": "sale-report-1781286291091449",
+    "status": "pagada",
+    "document_number": "B-3189"
+  },
+  {
+    "id": "sale-report-1781279621853209",
+    "status": "pagada",
+    "document_number": "B-3188"
+  },
+  {
+    "id": "sale-report-1781279597684831",
+    "status": "pagada",
+    "document_number": "C-582"
+  },
+  {
+    "id": "sale-report-1781191130783276",
+    "status": "pagada",
+    "document_number": "B-3185"
+  },
+  {
+    "id": "sale-report-1781104759440312",
+    "status": "chequeCanjeado",
+    "paid_amount": 71882.4,
+    "settlement_date": "2026-06-09T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1781104067432239",
+    "status": "pagada",
+    "document_number": "B-3180"
+  },
+  {
+    "id": "sale-report-1780942917081167",
+    "status": "pagada",
+    "document_number": "B-3178"
+  },
+  {
+    "id": "sale-report-1780703733307541",
+    "status": "chequeCanjeado",
+    "paid_amount": 72168.0,
+    "settlement_date": "2026-06-05T17:55:00.069804Z"
+  },
+  {
+    "id": "sale-report-1777494177291470",
+    "status": "chequeCanjeado",
+    "paid_amount": 79668.0,
+    "settlement_date": "2026-04-28T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1782171743033403",
+    "status": "chequeCanjeado",
+    "paid_amount": 80347.2,
+    "settlement_date": "2026-06-22T17:41:58.925227Z"
+  },
+  {
+    "id": "sale-report-1781534603906521",
+    "status": "chequeCanjeado",
+    "paid_amount": 38056.0,
+    "settlement_date": "2026-06-12T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1780671770356201",
+    "status": "pagada",
+    "document_number": "B-3175"
+  },
+  {
+    "id": "sale-report-1780438179170400",
+    "status": "chequeCanjeado",
+    "paid_amount": 120771.0,
+    "settlement_date": "2026-06-02T16:09:08.903109Z"
+  },
+  {
+    "id": "sale-report-1780502789268785",
+    "status": "pagada",
+    "document_number": "B-3172"
+  },
+  {
+    "id": "sale-report-1780356772018025",
+    "status": "chequeCanjeado",
+    "paid_amount": 75396.0,
+    "settlement_date": "2026-06-01T17:32:19.762111Z"
+  },
+  {
+    "id": "sale-report-1780526892855471",
+    "status": "chequeCanjeado",
+    "paid_amount": 66055.2,
+    "settlement_date": "2026-05-28T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1779752556194187",
+    "status": "chequeCanjeado",
+    "paid_amount": 93130.0,
+    "settlement_date": "2026-05-25T17:42:04.957841Z"
+  },
+  {
+    "id": "sale-report-1779721755953221",
+    "status": "chequeCanjeado",
+    "paid_amount": 56760.0,
+    "settlement_date": "2026-05-22T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1779401688009432",
+    "status": "chequeCanjeado",
+    "paid_amount": 131521.0,
+    "settlement_date": "2026-05-21T16:14:13.424958Z"
+  },
+  {
+    "id": "sale-report-1779234642385911",
+    "status": "chequeCanjeado",
+    "paid_amount": 69744.0,
+    "settlement_date": "2026-05-19T17:50:25.035496Z"
+  },
+  {
+    "id": "sale-report-1779234621497885",
+    "status": "chequeCanjeado",
+    "paid_amount": 67953.6,
+    "settlement_date": "2026-05-19T17:49:55.419960Z"
+  },
+  {
+    "id": "sale-report-1782505114223444",
+    "status": "pagada",
+    "document_number": "B-3202"
+  },
+  {
+    "id": "sale-report-1782147042411577",
+    "status": "chequeCanjeado",
+    "paid_amount": 94805.0,
+    "settlement_date": "2026-06-19T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1781279653309572",
+    "status": "pagada",
+    "document_number": "B-3187"
+  },
+  {
+    "id": "sale-report-1781534911257965",
+    "status": "chequeCanjeado",
+    "paid_amount": 74270.4,
+    "settlement_date": "2026-06-12T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1781104729415768",
+    "status": "chequeCanjeado",
+    "paid_amount": 75492.0,
+    "settlement_date": "2026-06-09T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1781104311167952",
+    "status": "pagada",
+    "document_number": "B-3181"
+  },
+  {
+    "id": "sale-report-1781104134472548",
+    "status": "pagada",
+    "document_number": "B-3181"
+  },
+  {
+    "id": "sale-report-1780526930119477",
+    "status": "chequeCanjeado",
+    "paid_amount": 68167.2,
+    "settlement_date": "2026-05-28T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1779492332119693",
+    "status": "chequeCanjeado",
+    "paid_amount": 78182.0,
+    "settlement_date": "2026-05-22T17:24:53.944509Z"
+  },
+  {
+    "id": "sale-report-1779721782516179",
+    "status": "chequeCanjeado",
+    "paid_amount": 66528.0,
+    "settlement_date": "2026-05-22T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1779118983224803",
+    "status": "chequeCanjeado",
+    "paid_amount": 95400.0,
+    "settlement_date": "2026-05-16T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1777593034035133",
+    "status": "chequeCanjeado",
+    "paid_amount": 51558.0,
+    "settlement_date": "2026-04-30T17:49:19.734164Z"
+  },
+  {
+    "id": "sale-report-1777575071454205",
+    "status": "facturadaPendientePago",
+    "document_number": "B-3136"
+  },
+  {
+    "id": "sale-report-1777574752254326",
+    "status": "facturadaPendientePago",
+    "document_number": "B-3135"
+  },
+  {
+    "id": "sale-report-1777498240874643",
+    "status": "facturadaPendientePago",
+    "document_number": "C-578"
+  },
+  {
+    "id": "sale-report-1777497725625588",
+    "status": "chequeCanjeado",
+    "paid_amount": 10000.0,
+    "settlement_date": "2026-04-29T15:20:58.346758Z"
+  },
+  {
+    "id": "sale-report-1777569431271121",
+    "status": "chequeCanjeado",
+    "paid_amount": 73896.0,
+    "settlement_date": "2026-04-29T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1777562955848107",
+    "status": "chequeCanjeado",
+    "paid_amount": 51186.0,
+    "settlement_date": "2026-04-29T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1777498091578579",
+    "status": "facturadaPendientePago",
+    "document_number": "C-578"
+  },
+  {
+    "id": "sale-report-1777415680528393",
+    "status": "chequeCanjeado",
+    "paid_amount": 68076.0,
+    "settlement_date": "2026-04-28T17:31:34.516523Z"
+  },
+  {
+    "id": "sale-report-1781708751723589",
+    "status": "pagada",
+    "document_number": "B-3192"
+  },
+  {
+    "id": "sale-report-1778683507300319",
+    "status": "chequeCanjeado",
+    "paid_amount": 68820.0,
+    "settlement_date": "2026-05-12T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1777575029518510",
+    "status": "facturadaPendientePago",
+    "document_number": "B-3136"
+  },
+  {
+    "id": "sale-report-1777574910094912",
+    "status": "facturadaPendientePago",
+    "document_number": "B-3135"
+  },
+  {
+    "id": "sale-report-1777497947506469",
+    "status": "facturadaPendientePago",
+    "document_number": "B-3134"
+  },
+  {
+    "id": "sale-report-1777494543362992",
+    "status": "chequeCanjeado",
+    "paid_amount": 49203.0,
+    "settlement_date": "2026-04-28T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1777918784539475",
+    "status": "pagada",
+    "document_number": "B-3116"
+  },
+  {
+    "id": "sale-report-1777914628986875",
+    "status": "pagada",
+    "document_number": "B-3108"
+  },
+  {
+    "id": "sale-report-1777914458896477",
+    "status": "pagada",
+    "document_number": "B-3075"
+  },
+  {
+    "id": "sale-report-1778683535526431",
+    "status": "chequeCanjeado",
+    "paid_amount": 70567.2,
+    "settlement_date": "2026-05-12T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1778512368953298",
+    "status": "chequeCanjeado",
+    "paid_amount": 100200.0,
+    "settlement_date": "2026-05-08T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1778512322240383",
+    "status": "chequeCanjeado",
+    "paid_amount": 65962.0,
+    "settlement_date": "2026-05-08T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1778197029399131",
+    "status": "chequeCanjeado",
+    "paid_amount": 76452.0,
+    "settlement_date": "2026-05-07T17:36:40.209508Z"
+  },
+  {
+    "id": "sale-report-1778196993391608",
+    "status": "chequeCanjeado",
+    "paid_amount": 63816.0,
+    "settlement_date": "2026-05-07T17:36:13.936523Z"
+  },
+  {
+    "id": "sale-report-1778196967039115",
+    "status": "chequeCanjeado",
+    "paid_amount": 63432.0,
+    "settlement_date": "2026-05-07T17:35:38.093295Z"
+  },
+  {
+    "id": "sale-report-1778085317505115",
+    "status": "pagada",
+    "document_number": "B-3138"
+  },
+  {
+    "id": "sale-report-1777494295555016",
+    "status": "chequeCanjeado",
+    "paid_amount": 86428.0,
+    "settlement_date": "2026-04-28T00:00:00.000Z"
+  },
+  {
+    "id": "sale-report-1777494223851293",
+    "status": "chequeCanjeado",
+    "paid_amount": 78422.4,
+    "settlement_date": "2026-04-28T00:00:00.000Z"
+  }
+]

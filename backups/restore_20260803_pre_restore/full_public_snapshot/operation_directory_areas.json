@@ -1,0 +1,65 @@
+[
+  {
+    "id": "640d2935-522c-481e-8e0c-9c96b4a5257c",
+    "name": "CARTON",
+    "active": true,
+    "created_at": "2026-06-02T15:04:08.671185+00:00",
+    "updated_at": "2026-06-03T21:01:51.524531+00:00"
+  },
+  {
+    "id": "ec2f64c0-4f6c-424c-bd9b-091c7f0d02bf",
+    "name": "TORNILLOS Y HERRAMIENTAS",
+    "active": true,
+    "created_at": "2026-05-21T15:00:03.021696+00:00",
+    "updated_at": "2026-06-03T21:01:51.524531+00:00"
+  },
+  {
+    "id": "a472f302-6eeb-444e-a015-898194124301",
+    "name": "VARIOS",
+    "active": true,
+    "created_at": "2026-05-26T17:12:40.347262+00:00",
+    "updated_at": "2026-06-03T21:01:51.524531+00:00"
+  },
+  {
+    "id": "3fc3e5f7-58e8-40a2-b4b9-9fe63f069826",
+    "name": "OFICINA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-07-02T16:01:04.940734+00:00"
+  },
+  {
+    "id": "ff403fca-59e7-4d0b-99ed-0b4b71ac65f8",
+    "name": "MANTENIMIENTO",
+    "active": true,
+    "created_at": "2026-05-26T15:38:15.981355+00:00",
+    "updated_at": "2026-07-03T15:08:54.672615+00:00"
+  },
+  {
+    "id": "cd002f7d-1349-432b-8848-35cd143615f8",
+    "name": "PATIO",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-07-03T15:51:15.326333+00:00"
+  },
+  {
+    "id": "e0348f33-23cb-49c6-af0d-8cf46d6b9420",
+    "name": "FLOTILLA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-07-31T22:05:44.590904+00:00"
+  },
+  {
+    "id": "1ccbf9f1-6e6b-46b1-b5a9-b5b7f3080486",
+    "name": "BASCULA",
+    "active": true,
+    "created_at": "2026-06-03T18:48:20.539101+00:00",
+    "updated_at": "2026-08-03T16:17:55.532737+00:00"
+  },
+  {
+    "id": "ee0c070e-fa2b-4f5e-8b46-b91be9e5e09e",
+    "name": "FABRICAS",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-29T17:43:11.157568+00:00"
+  }
+]

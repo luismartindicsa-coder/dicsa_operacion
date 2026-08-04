@@ -1,0 +1,464 @@
+[
+  {
+    "id": "41c2c64e-035f-421e-9e80-0b36d8953132",
+    "name": "ELECTRICISTA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "91328048-2c82-4b68-9337-d95750d0dab4",
+    "name": "REPARACION DE BOMBAS",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "e8cf632e-e0ed-483b-bb4a-cf48474733eb",
+    "name": "INSTALACIONES ELECTRICAS",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "3c3bd8db-65ee-4537-acdd-acf7fe4d547b",
+    "name": "IMPERMEABILIZACION",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "8d6d1e23-c053-47ab-8997-ff959c801b1d",
+    "name": "ELECTRICO AUTOMOTRIZ",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "ce7481f7-62a7-4031-b6a7-b5d9d00f4a50",
+    "name": "SERVICIO DE UNIDADES",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "4c3355d1-244a-4cdd-bd79-3d8c6d82ebc8",
+    "name": "TRANSFORMADORES",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "4ab7172b-f0bc-462b-ad80-b3512ad0b300",
+    "name": "SISTEMAS DE SEGURIDAD",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "aca08c13-f53e-462a-b8e8-af596e3ab5e4",
+    "name": "TECHOS",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "a3047aec-b80c-4cc6-a022-ff79053f24b4",
+    "name": "SUBESTACIONES",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "3666764f-93b1-40b5-8765-9506a5251fe0",
+    "name": "PLOMERIA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "1622263d-ff6d-4b12-b489-bc85c1502c1b",
+    "name": "OBRA CIVIL",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "f0341883-ccba-421a-a94f-0e5e2a9e93aa",
+    "name": "REPARACION",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "e82109fc-3f6d-4653-b12b-b7d69c9785d9",
+    "name": "CAMARAS",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "6aa3a3fe-0b63-4893-818e-3afaacd049c9",
+    "name": "REPARACION DE GRUA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "661d00bd-c5b1-4730-af0d-5f1cfac23e98",
+    "name": "MOTORES",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "3a183f97-1a9d-4f97-9ac9-48a5b5f28faf",
+    "name": "INSTALACION",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "51bf3aac-a7e0-4d1e-aa47-8659badbfb43",
+    "name": "MUELLES",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "a366371f-c620-486b-8405-d9c12bd83cda",
+    "name": "TAPICERIA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "dd656f5d-4aea-421a-af1d-f0adc89f4d67",
+    "name": "HOJALATERIA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-14T18:54:23.182851+00:00"
+  },
+  {
+    "id": "8fd5e922-2980-42c4-9c85-c6a18b15d3d7",
+    "name": "CAMBIO DE LLANTAS",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-19T20:31:27.731377+00:00"
+  },
+  {
+    "id": "33d4f71f-f9e0-494a-b7c0-e6028cf98f2a",
+    "name": "REPARACION DE RESCATES",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-19T20:31:27.731377+00:00"
+  },
+  {
+    "id": "d9c2f3a3-1237-41ba-ad30-2c4ee66a3ab7",
+    "name": "FERRETERIA",
+    "active": true,
+    "created_at": "2026-05-20T15:06:29.346029+00:00",
+    "updated_at": "2026-05-20T15:06:29.346029+00:00"
+  },
+  {
+    "id": "258841ef-a943-4bc4-a0ec-7d64c135c7ec",
+    "name": "ALIMENTO MASCOTAS",
+    "active": true,
+    "created_at": "2026-05-20T17:58:08.845773+00:00",
+    "updated_at": "2026-05-20T17:58:08.845773+00:00"
+  },
+  {
+    "id": "3e7e7b44-eb71-4038-9277-ad9674e8af0e",
+    "name": "MEDICAMENTOS",
+    "active": true,
+    "created_at": "2026-06-09T17:35:33.437449+00:00",
+    "updated_at": "2026-06-09T17:35:33.437449+00:00"
+  },
+  {
+    "id": "ddea1642-9256-4935-a9a6-692f5d71ccff",
+    "name": "TORNILLOS Y HERRAMIENTAS",
+    "active": true,
+    "created_at": "2026-05-21T15:00:03.174809+00:00",
+    "updated_at": "2026-05-21T15:00:03.174809+00:00"
+  },
+  {
+    "id": "ab7239bf-85b3-4054-a588-04a2b2f8b9a8",
+    "name": "HIDRAULICO MONTACARGAS",
+    "active": true,
+    "created_at": "2026-05-21T18:02:47.034439+00:00",
+    "updated_at": "2026-05-21T18:02:47.034439+00:00"
+  },
+  {
+    "id": "94b215a1-eeee-4b25-8890-d51be0c9a11e",
+    "name": "SEGURIDAD PERSONAL",
+    "active": true,
+    "created_at": "2026-05-21T18:46:16.979328+00:00",
+    "updated_at": "2026-05-21T18:46:16.979328+00:00"
+  },
+  {
+    "id": "5b7002c3-e2f0-40c7-8d9d-9157431936f7",
+    "name": "MECANICO MONTACARGAS",
+    "active": true,
+    "created_at": "2026-05-21T17:59:42.004325+00:00",
+    "updated_at": "2026-05-25T15:32:04.651118+00:00"
+  },
+  {
+    "id": "398762a4-10c8-41a8-b854-4d16b405577a",
+    "name": "GAS Y OXIGENO",
+    "active": true,
+    "created_at": "2026-05-20T17:40:03.939287+00:00",
+    "updated_at": "2026-06-15T15:03:56.554567+00:00"
+  },
+  {
+    "id": "052b250b-5b63-49a1-8e08-703c3ee906c1",
+    "name": "PINTURA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-26T15:56:38.399236+00:00"
+  },
+  {
+    "id": "4d3226d9-d256-4a62-be08-a44dbcdda975",
+    "name": "EXTINTORES",
+    "active": true,
+    "created_at": "2026-06-16T14:45:40.995255+00:00",
+    "updated_at": "2026-06-16T14:46:50.029396+00:00"
+  },
+  {
+    "id": "beca347a-c6fb-4e15-8b8a-f24b9533e0ae",
+    "name": "MANGUERAS",
+    "active": true,
+    "created_at": "2026-05-22T18:31:44.6876+00:00",
+    "updated_at": "2026-05-26T17:52:46.150329+00:00"
+  },
+  {
+    "id": "9e6a64af-10b2-441e-a80f-1b99cab22fef",
+    "name": "COMPUTACION E INTERNET",
+    "active": true,
+    "created_at": "2026-06-16T18:06:57.263218+00:00",
+    "updated_at": "2026-06-16T18:06:57.263218+00:00"
+  },
+  {
+    "id": "a1ff35b1-7b23-4fc9-8fab-d98121e028c6",
+    "name": "FABRICACION DE SELLOS",
+    "active": true,
+    "created_at": "2026-05-28T21:33:56.460102+00:00",
+    "updated_at": "2026-05-28T22:52:39.592367+00:00"
+  },
+  {
+    "id": "6611f030-19e3-421f-8eed-f13968934912",
+    "name": "LLANTAS",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-06-18T16:53:35.107256+00:00"
+  },
+  {
+    "id": "969b7295-a3fe-4491-9ab5-12d14d55fabf",
+    "name": "MAQUINADO",
+    "active": true,
+    "created_at": "2026-05-28T21:33:56.460102+00:00",
+    "updated_at": "2026-05-28T22:52:39.592367+00:00"
+  },
+  {
+    "id": "1aa26fc0-42ea-43d2-afe2-89f60cfa757e",
+    "name": "ESTRUCTURAS",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-29T16:55:01.178206+00:00"
+  },
+  {
+    "id": "690ee992-913a-43a4-97c6-125a305eeadf",
+    "name": "TALACHERO",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-06-18T20:03:42.170977+00:00"
+  },
+  {
+    "id": "34739c61-9ede-4b06-bc10-8b158d8cc58c",
+    "name": "ACCESO A WHIRPOOL",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-29T17:43:11.28932+00:00"
+  },
+  {
+    "id": "0ff15056-a283-4fcb-a057-afbb57cb0c3d",
+    "name": "ELECTRICIDAD",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-29T17:43:11.28932+00:00"
+  },
+  {
+    "id": "d8931949-15a0-4f66-b7a9-71bd98c1a3d5",
+    "name": "FABRICACION DE MAQUINARIA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-29T17:43:11.28932+00:00"
+  },
+  {
+    "id": "b3aace71-2993-4c42-ba29-8a1d4231f8f3",
+    "name": "HIDRAULICA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-29T17:43:11.28932+00:00"
+  },
+  {
+    "id": "69974183-0d8a-4047-a93a-c2f72bedb9a7",
+    "name": "SOLDADURA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-29T17:43:11.28932+00:00"
+  },
+  {
+    "id": "1416fff0-1d94-46fd-8bbd-d083b9eea045",
+    "name": "TRABAJO EN ALTURA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-29T17:43:11.28932+00:00"
+  },
+  {
+    "id": "b578b456-0821-4aff-9d23-566b8ab97551",
+    "name": "HIDRAULICO",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-29T17:43:25.162749+00:00"
+  },
+  {
+    "id": "74ce3bf4-d343-4aea-af67-41c15a5ac82c",
+    "name": "HIDRAULICA ESPECIALIZADA",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-05-29T17:43:44.409027+00:00"
+  },
+  {
+    "id": "3882ce53-b208-464e-9299-6fb2cbfcb46d",
+    "name": "PAPELERIA",
+    "active": true,
+    "created_at": "2026-06-22T18:33:38.384605+00:00",
+    "updated_at": "2026-06-22T18:33:38.384605+00:00"
+  },
+  {
+    "id": "99b4dce6-65af-41d9-8ca0-b9baae10f5ba",
+    "name": "DE TODO",
+    "active": true,
+    "created_at": "2026-05-20T16:15:29.262298+00:00",
+    "updated_at": "2026-06-03T17:35:58.310304+00:00"
+  },
+  {
+    "id": "004bcdd7-942f-4d13-abf5-8a0a626d70ea",
+    "name": "MANTENIMIENTO CORRECTIVO",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-06-03T21:01:51.688242+00:00"
+  },
+  {
+    "id": "f0b09e3d-5d66-487b-be69-060b1b974073",
+    "name": "MANTENIMIENTO PREVENTIVO",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-06-03T21:01:51.688242+00:00"
+  },
+  {
+    "id": "4687bbe7-da28-4922-b4d5-727a9e3e98be",
+    "name": "OFICINA",
+    "active": true,
+    "created_at": "2026-06-30T16:06:57.234324+00:00",
+    "updated_at": "2026-06-30T16:06:57.234324+00:00"
+  },
+  {
+    "id": "68cc399b-49b5-4e33-b05a-3c28cad42413",
+    "name": "UNIFORMES, CHALECOS CAMISOLAS",
+    "active": true,
+    "created_at": "2026-06-30T16:06:57.234324+00:00",
+    "updated_at": "2026-06-30T16:06:57.234324+00:00"
+  },
+  {
+    "id": "e4d801dc-9e1a-4edf-80c3-ebcfeac5b2cb",
+    "name": "ACEITE",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-07-01T23:31:59.727178+00:00"
+  },
+  {
+    "id": "d2444f18-8624-4cd2-b2af-73ce5dbbdb41",
+    "name": "AIRES",
+    "active": true,
+    "created_at": "2026-05-20T21:34:07.04321+00:00",
+    "updated_at": "2026-07-01T23:49:10.187816+00:00"
+  },
+  {
+    "id": "d61191ff-56dd-49a1-bbe3-998d399699e1",
+    "name": "MECANICO",
+    "active": true,
+    "created_at": "2026-05-14T18:54:23.182851+00:00",
+    "updated_at": "2026-07-01T23:49:10.187816+00:00"
+  },
+  {
+    "id": "c829bc42-284b-449f-b4b5-bdfa3cc7fef9",
+    "name": "SERIGRAFIA",
+    "active": true,
+    "created_at": "2026-05-19T16:31:37.135703+00:00",
+    "updated_at": "2026-07-01T23:49:30.374939+00:00"
+  },
+  {
+    "id": "eae2e81c-1110-4dc7-baf1-523a1bfcc524",
+    "name": "AIRE ACONDICIONADO",
+    "active": true,
+    "created_at": "2026-07-02T16:01:05.123944+00:00",
+    "updated_at": "2026-07-02T16:01:05.123944+00:00"
+  },
+  {
+    "id": "c177cd4c-1543-463a-86e3-05658e11ab05",
+    "name": "ACESORIOS Y REFACCIONES",
+    "active": true,
+    "created_at": "2026-06-01T17:30:02.970081+00:00",
+    "updated_at": "2026-07-03T15:08:54.821086+00:00"
+  },
+  {
+    "id": "2a6f2f42-3f50-46a1-ae5a-747f96346bd4",
+    "name": "TALACHAS",
+    "active": true,
+    "created_at": "2026-07-10T22:55:41.248384+00:00",
+    "updated_at": "2026-07-10T22:55:41.248384+00:00"
+  },
+  {
+    "id": "e9b57123-9a67-496c-b8e4-97a21e09be30",
+    "name": "REFACCIONES",
+    "active": true,
+    "created_at": "2026-05-28T16:16:43.799328+00:00",
+    "updated_at": "2026-07-16T21:38:41.138296+00:00"
+  },
+  {
+    "id": "964c5ee8-b46b-489e-8c6e-48c3010dc866",
+    "name": "MANIFIESTOS",
+    "active": true,
+    "created_at": "2026-07-17T14:43:15.25086+00:00",
+    "updated_at": "2026-07-17T14:43:15.25086+00:00"
+  },
+  {
+    "id": "66f8b45b-d4eb-4e01-9c15-0fffc8aa2965",
+    "name": "TIKETS",
+    "active": true,
+    "created_at": "2026-06-03T18:48:20.678872+00:00",
+    "updated_at": "2026-07-17T14:43:15.25086+00:00"
+  },
+  {
+    "id": "dcd31408-d08a-43ae-a0a7-4875412b9242",
+    "name": "PROTECCION PERSONAL",
+    "active": true,
+    "created_at": "2026-07-29T21:09:08.841956+00:00",
+    "updated_at": "2026-07-29T21:09:08.841956+00:00"
+  },
+  {
+    "id": "e70dbc56-8826-45af-bdbd-c179aeb1eb8d",
+    "name": "LONAS IMPERMEABLES",
+    "active": true,
+    "created_at": "2026-06-03T15:51:33.547795+00:00",
+    "updated_at": "2026-07-31T22:05:44.763103+00:00"
+  },
+  {
+    "id": "a7e00961-b069-4095-ade7-c506fc7c6c43",
+    "name": "RAFIA",
+    "active": true,
+    "created_at": "2026-08-03T16:16:28.56184+00:00",
+    "updated_at": "2026-08-03T16:17:55.683537+00:00"
+  }
+]

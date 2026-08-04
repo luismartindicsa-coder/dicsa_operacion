@@ -599,8 +599,136 @@ class CommercialDirectoryBundle {
   });
 }
 
+class CommercialWeeklyFollowUpSummaryRecord {
+  final String accountName;
+  final String interactionType;
+  final String status;
+  final DateTime referenceDate;
+
+  const CommercialWeeklyFollowUpSummaryRecord({
+    required this.accountName,
+    required this.interactionType,
+    required this.status,
+    required this.referenceDate,
+  });
+}
+
 class CommercialStore {
   static final SupabaseClient _supa = Supabase.instance.client;
+
+  static Future<List<CommercialMarketEventRecord>> loadRecentMarketEvents({
+    Duration lookback = const Duration(days: 210),
+  }) async {
+    final cutoff = DateTime.now().subtract(lookback).toUtc().toIso8601String();
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => _supa
+          .from(_kCommercialMarketEventsView)
+          .select()
+          .gte('event_at', cutoff)
+          .order('event_at', ascending: true)
+          .range(from, to),
+      pageSize: 500,
+    );
+    return rows
+        .map(CommercialMarketEventRecord.fromRow)
+        .toList(growable: false);
+  }
+
+  static Future<List<CommercialWeeklyFollowUpSummaryRecord>>
+  loadWeeklyFollowUpSummary({
+    required DateTime weekStart,
+    required DateTime weekEnd,
+  }) async {
+    final weekStartUtc = weekStart.toUtc().toIso8601String();
+    final weekEndExclusiveUtc = weekEnd
+        .add(const Duration(days: 1))
+        .toUtc()
+        .toIso8601String();
+
+    final results = await Future.wait<dynamic>([
+      fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from(_kCommercialAccountsTable)
+            .select('id,display_name')
+            .order('display_name', ascending: true)
+            .range(from, to),
+        pageSize: 500,
+      ),
+      fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from(_kCommercialFollowUpsTable)
+            .select(
+              'id,account_id,interaction_at,interaction_type,next_follow_up_at,status',
+            )
+            .not('next_follow_up_at', 'is', null)
+            .gte('next_follow_up_at', weekStartUtc)
+            .lt('next_follow_up_at', weekEndExclusiveUtc)
+            .order('next_follow_up_at', ascending: true)
+            .range(from, to),
+        pageSize: 500,
+      ),
+      fetchAllSupabaseRows(
+        (from, to) => _supa
+            .from(_kCommercialFollowUpsTable)
+            .select(
+              'id,account_id,interaction_at,interaction_type,next_follow_up_at,status',
+            )
+            .isFilter('next_follow_up_at', null)
+            .gte('interaction_at', weekStartUtc)
+            .lt('interaction_at', weekEndExclusiveUtc)
+            .order('interaction_at', ascending: true)
+            .range(from, to),
+        pageSize: 500,
+      ),
+    ]);
+
+    final accountRows = _rows(results[0]);
+    final withNextRows = _rows(results[1]);
+    final withoutNextRows = _rows(results[2]);
+
+    final accountNameById = <String, String>{
+      for (final row in accountRows)
+        (row['id'] ?? '').toString(): (row['display_name'] ?? '').toString(),
+    };
+
+    final followUpRowsById = <String, Map<String, dynamic>>{};
+    for (final row in <Map<String, dynamic>>[
+      ...withNextRows,
+      ...withoutNextRows,
+    ]) {
+      final id = (row['id'] ?? '').toString();
+      if (id.isEmpty || followUpRowsById.containsKey(id)) continue;
+      followUpRowsById[id] = row;
+    }
+
+    final records =
+        followUpRowsById.values
+            .map((row) {
+              final accountId = (row['account_id'] ?? '').toString();
+              final interactionAt = _tryParseDateTime(
+                row['interaction_at'] as String?,
+              );
+              final nextFollowUpAt = _tryParseDateTime(
+                row['next_follow_up_at'] as String?,
+              );
+              final referenceDate = nextFollowUpAt ?? interactionAt;
+              if (referenceDate == null) {
+                return null;
+              }
+              final rawName = accountNameById[accountId]?.trim() ?? '';
+              return CommercialWeeklyFollowUpSummaryRecord(
+                accountName: rawName.isEmpty ? 'SIN CUENTA' : rawName,
+                interactionType: (row['interaction_type'] ?? '').toString(),
+                status: (row['status'] ?? '').toString(),
+                referenceDate: referenceDate,
+              );
+            })
+            .whereType<CommercialWeeklyFollowUpSummaryRecord>()
+            .toList()
+          ..sort((a, b) => a.referenceDate.compareTo(b.referenceDate));
+
+    return records;
+  }
 
   static Future<CommercialDashboardBundle> loadDashboard() async {
     final results = await Future.wait<dynamic>([

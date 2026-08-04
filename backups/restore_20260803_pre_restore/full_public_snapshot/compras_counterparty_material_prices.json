@@ -1,0 +1,682 @@
+[
+  {
+    "id": "cpr_rehydrated_958cafe4c7f71b80fa86634deea7c63c",
+    "company_id": "co_1782160320540728",
+    "material_id": "ca_comercial_carton",
+    "final_price": 1.3500,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "pr_1785183531738304",
+    "company_id": "co_1785183511873247",
+    "material_id": "ca_comercial_carton",
+    "final_price": 1.0000,
+    "is_active": true,
+    "notes": null,
+    "created_at": "2026-07-27T20:18:53.517709+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "pr_1785183636906811",
+    "company_id": "co_1785183511873247",
+    "material_id": "ca_comercial_madera_tarimas_120_x_100",
+    "final_price": 0.4500,
+    "is_active": true,
+    "notes": null,
+    "created_at": "2026-07-27T20:20:38.641179+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "pr_1785183596256817",
+    "company_id": "co_1785183511873247",
+    "material_id": "ma_1785183574643263",
+    "final_price": 0.6500,
+    "is_active": true,
+    "notes": null,
+    "created_at": "2026-07-27T20:19:57.798509+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "pr_1785183692076550",
+    "company_id": "co_1785183511873247",
+    "material_id": "ma_1785183683335791",
+    "final_price": 0.0000,
+    "is_active": true,
+    "notes": null,
+    "created_at": "2026-07-27T20:21:33.650559+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_6939150801623ee3b31017caf9885ae3",
+    "company_id": "cp_import_ks",
+    "material_id": "ca_comercial_cintas_sierra",
+    "final_price": 132.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_21128d4a8b1c1fcc0cf385cf18bb1589",
+    "company_id": "cp_import_ks",
+    "material_id": "ca_comercial_madera",
+    "final_price": 0.3000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_42faddb340617fe94b75e5fe3b59cda6",
+    "company_id": "cp_import_migavid",
+    "material_id": "ca_comercial_chatarra",
+    "final_price": 2.7500,
+    "is_active": true,
+    "notes": "SUBE .30 CENTAVOS 31/07/2026",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_8cb796bbbb75719b39444399ba3a1fe0",
+    "company_id": "cp_import_migavid",
+    "material_id": "ca_comercial_rebaba",
+    "final_price": 2.5500,
+    "is_active": true,
+    "notes": "BAJA .20 20/07/2026",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "pr_1782420723829654",
+    "company_id": "cp_import_miguel_sanchez",
+    "material_id": "ca_comercial_carton",
+    "final_price": 1.7000,
+    "is_active": true,
+    "notes": null,
+    "created_at": "2026-06-25T20:52:04.945079+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_644f04cd7cd23e8455092e952679c4fe",
+    "company_id": "cp_import_monroe",
+    "material_id": "ca_comercial_basura",
+    "final_price": 0.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "pr_1785773937833977",
+    "company_id": "cp_import_monroe",
+    "material_id": "ca_comercial_cajon_madera",
+    "final_price": 12.0000,
+    "is_active": true,
+    "notes": null,
+    "created_at": "2026-08-03T16:18:58.955373+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_2d8ad369dcfbcebdbecc32f76b9fa900",
+    "company_id": "cp_import_monroe",
+    "material_id": "ca_comercial_carton",
+    "final_price": 1.4000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_2514b950c2954fc4016e4c4e3f4651df",
+    "company_id": "cp_import_monroe",
+    "material_id": "ca_comercial_cobre",
+    "final_price": 25.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_38bd3b82fd3bf07703b6c710b84b5eac",
+    "company_id": "cp_import_monroe",
+    "material_id": "ca_comercial_lena",
+    "final_price": 0.3500,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_bf23c40422c0ac4ca19137a38d953afe",
+    "company_id": "cp_import_rodolfo_vera",
+    "material_id": "ca_comercial_carton_recogido",
+    "final_price": 1.4000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "pr_1785183655195303",
+    "company_id": "co_1785183511873247",
+    "material_id": "ca_comercial_pedaceria_madera",
+    "final_price": 0.0000,
+    "is_active": true,
+    "notes": null,
+    "created_at": "2026-07-27T20:20:56.739791+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_bb75b1b318ec17edf484e2535a1d5bf4",
+    "company_id": "cp_import_adolfo_gutierrez",
+    "material_id": "ca_comercial_plastico",
+    "final_price": 0.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_d342d809d9bd27f300520f4d1b94d6ed",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_acero_inoxidable",
+    "final_price": 8.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_dfda08cac39e31f31b99361f7b66099e",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_bond",
+    "final_price": 1.2000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_ec1bd54857a9a105b7dbd1a97d38b279",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_caple_cajilla",
+    "final_price": 0.7000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_e988f6570211ffa91270110c3c9f6b88",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_chatarra",
+    "final_price": 2.8000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_5f3963a813530eb28c37ded8bb9c34b7",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_corrugado_carton",
+    "final_price": 1.2000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_f93613b4b9b0313d7cc48bdecc972f02",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_filtros_de_celulosa",
+    "final_price": 0.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_e13d6c6696023d7a1a905c142f428860",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_folleto",
+    "final_price": 0.7000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_c97b131ff37b08798812f466c5b9cf36",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_pedaceria_madera",
+    "final_price": 0.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_b41c0da2582bdb07d42a8316ed5eed17",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_plastico_mixto",
+    "final_price": 1.2000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_f57ae4522bac79f4ac203a6862eb31d4",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_sabados_viaje",
+    "final_price": 500.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_b6b3e494b80aede8fbf04497de4639d5",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_tarima_madera",
+    "final_price": 1.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_ff5e02243f53a6c5b9768a5af8ecd1c6",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_textil",
+    "final_price": 1.8000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_683ba89405ec8658ca9138a9fb769282",
+    "company_id": "cp_import_avon",
+    "material_id": "ca_comercial_vidrio",
+    "final_price": 0.1000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_cfd9c12e94d99d726bda3681069bf40b",
+    "company_id": "cp_import_decasa",
+    "material_id": "ca_comercial_carton",
+    "final_price": 1.1000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_9275eff27ac540c6420faa530040c810",
+    "company_id": "cp_import_ks",
+    "material_id": "ca_comercial_basura",
+    "final_price": 0.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_5d83f9b51511832ad1037ecf40a77cf1",
+    "company_id": "cp_import_ks",
+    "material_id": "ca_comercial_carton",
+    "final_price": 1.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_28a54d7046d4a85e5ac193235ec36b0d",
+    "company_id": "cp_import_ks",
+    "material_id": "ca_comercial_chatarra_general",
+    "final_price": 3.3400,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_78808bee799b278a0f3c9e657f0ef8c5",
+    "company_id": "cp_import_setexmes",
+    "material_id": "ca_comercial_basura",
+    "final_price": 0.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_8a03322a62248b205f8a0cb8f1cac90d",
+    "company_id": "cp_import_setexmes",
+    "material_id": "ca_comercial_carton",
+    "final_price": 0.9000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_7be2dc6d4d7f4948b440ec7158ec0bbc",
+    "company_id": "cp_import_setexmes",
+    "material_id": "ca_comercial_chatarra",
+    "final_price": 2.3000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_ddbd28ea83e81717185dd9e58f89e6d6",
+    "company_id": "cp_import_whirlpool",
+    "material_id": "ca_comercial_carton",
+    "final_price": 0.4000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_cc230cf6e87a6f1f3456a6c03fb53dd2",
+    "company_id": "cp_import_ks",
+    "material_id": "ca_comercial_piston_de_acero",
+    "final_price": 3.0400,
+    "is_active": true,
+    "notes": "AJUSTE AMM JUNIO",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_509ff2507517638181e2f414839282ce",
+    "company_id": "cp_import_ks",
+    "material_id": "ca_comercial_plastico",
+    "final_price": 2.6400,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_8a035c22991a3207ba01219609c3df40",
+    "company_id": "cp_import_ks",
+    "material_id": "ca_comercial_rebaba",
+    "final_price": 3.0400,
+    "is_active": true,
+    "notes": "AJUSTE AMM JUNIO",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_d83561c5adb7e0fa8ebed8f394acec11",
+    "company_id": "cp_import_licbox",
+    "material_id": "ca_comercial_carton",
+    "final_price": 1.4000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_d9dc9f30d607eac16b5e5aa21e705afa",
+    "company_id": "cp_import_monroe",
+    "material_id": "ca_comercial_plastico",
+    "final_price": 2.2500,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_497dbf3c98ff30739bc17b4dd98a6a0a",
+    "company_id": "cp_import_monroe",
+    "material_id": "ca_comercial_rebaba",
+    "final_price": 2.2100,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_4cca8a28806df2ad62e2672a0037c8b0",
+    "company_id": "cp_import_monroe",
+    "material_id": "ca_comercial_tarimas",
+    "final_price": 13.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_a2d08d7eee02cf2ddc5cb8340904cfcd",
+    "company_id": "cp_import_recicla_metal",
+    "material_id": "ca_comercial_carton_recogido",
+    "final_price": 1.4000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_2a658817092e2e583fb1ff69a97253cd",
+    "company_id": "cp_import_rocio_carvajal",
+    "material_id": "ca_comercial_carton",
+    "final_price": 1.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_b8292ea9dc4c0fe029345227f5bb5822",
+    "company_id": "cp_import_rodolfo_vera",
+    "material_id": "ca_comercial_chatarra",
+    "final_price": 4.2000,
+    "is_active": true,
+    "notes": "SUBE .30 CENTAVOS 31/07/2026",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_b66557b8dfc23f5431d59e61bedffe04",
+    "company_id": "cp_import_setexmes",
+    "material_id": "ca_comercial_plastico",
+    "final_price": 1.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_142bb96eb11219f09aa5b314f63a68d1",
+    "company_id": "cp_import_setexmes",
+    "material_id": "ca_comercial_tarima",
+    "final_price": 5.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_3124424898a05e56668790fdfd64b731",
+    "company_id": "cp_import_tenneco",
+    "material_id": "ca_comercial_chatarra",
+    "final_price": 3.2900,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_4afbb661a0ebee24bdc39a5063f322d8",
+    "company_id": "cp_import_victor_garcia",
+    "material_id": "ca_comercial_carton_strokpack",
+    "final_price": 1.3000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_3623b088765dd7ad8ec20b9a6f24aa22",
+    "company_id": "cp_import_whirlpool",
+    "material_id": "ca_comercial_charola_pet",
+    "final_price": 0.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_a548790cea981360557014858b597452",
+    "company_id": "cp_import_whirlpool",
+    "material_id": "ca_comercial_madera_tarimas_120_x_100",
+    "final_price": 0.4500,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_c43f384b821fa8fba603e9b2f7c0f819",
+    "company_id": "cp_import_whirlpool",
+    "material_id": "ca_comercial_pedaceria_madera",
+    "final_price": 0.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_e7bf52e108dee9e7de5fb17d192c69ad",
+    "company_id": "cp_import_whirlpool",
+    "material_id": "ca_comercial_poliestireno_rigido_plastico_rigido",
+    "final_price": 0.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_aaaba09e07cd0424839159c8016993d3",
+    "company_id": "cp_import_whirlpool",
+    "material_id": "ca_comercial_polietileno",
+    "final_price": 0.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_d8ccb949779abb772ac087424e27e488",
+    "company_id": "cp_import_whirlpool",
+    "material_id": "ca_comercial_polietileno_de_baja_densidad_polifoam",
+    "final_price": 0.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "pr_1784568138237531",
+    "company_id": "cp_import_whirlpool",
+    "material_id": "ca_comercial_residuos_electronicos",
+    "final_price": 0.5000,
+    "is_active": true,
+    "notes": null,
+    "created_at": "2026-07-20T17:22:19.372702+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_adfca749362b96471c2ce0061480c87a",
+    "company_id": "cp_import_whirlpool",
+    "material_id": "ca_comercial_unicel",
+    "final_price": 0.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "pr_1784565803658939",
+    "company_id": "cp_import_whirlpool",
+    "material_id": "ma_1784565771101179",
+    "final_price": 10.0000,
+    "is_active": true,
+    "notes": null,
+    "created_at": "2026-07-20T16:43:24.426096+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "pr_1784569145406769",
+    "company_id": "cp_import_whirlpool",
+    "material_id": "ma_1784569123765079",
+    "final_price": 2.7000,
+    "is_active": true,
+    "notes": null,
+    "created_at": "2026-07-20T17:39:06.654612+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_10ce1451831163e123d125d57f4b03f4",
+    "company_id": "cp_import_yorozu",
+    "material_id": "ca_comercial_acero",
+    "final_price": 2.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_a5109c837007f1d1e317e97240246bb4",
+    "company_id": "cp_import_yorozu",
+    "material_id": "ca_comercial_aluminio",
+    "final_price": 15.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_5e9b99d3b701966cf21e63bc59624ee1",
+    "company_id": "cp_import_yorozu",
+    "material_id": "ca_comercial_carton",
+    "final_price": 0.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_05bdf32345514643fce63767dcc9a287",
+    "company_id": "cp_import_yorozu",
+    "material_id": "ca_comercial_madera",
+    "final_price": 0.0000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  },
+  {
+    "id": "cpr_rehydrated_01d22a48a1a242c370e6c44a72f95331",
+    "company_id": "cp_import_yorozu",
+    "material_id": "ca_comercial_plastico",
+    "final_price": 1.5000,
+    "is_active": true,
+    "notes": "REHIDRATADO DESDE COMPRAS_TICKETS 2026-06-24 17:02:02",
+    "created_at": "2026-06-24T23:02:02.677397+00:00",
+    "updated_at": "2026-08-03T16:18:58.955373+00:00"
+  }
+]

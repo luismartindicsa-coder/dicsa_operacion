@@ -1,0 +1,37 @@
+[
+  {
+    "id": "sale-report-1777575071454205",
+    "status": "facturadaPendientePago",
+    "document_number": "B-3136"
+  },
+  {
+    "id": "sale-report-1777574752254326",
+    "status": "facturadaPendientePago",
+    "document_number": "B-3135"
+  },
+  {
+    "id": "sale-report-1777498240874643",
+    "status": "facturadaPendientePago",
+    "document_number": "C-578"
+  },
+  {
+    "id": "sale-report-1777498091578579",
+    "status": "facturadaPendientePago",
+    "document_number": "C-578"
+  },
+  {
+    "id": "sale-report-1777575029518510",
+    "status": "facturadaPendientePago",
+    "document_number": "B-3136"
+  },
+  {
+    "id": "sale-report-1777574910094912",
+    "status": "facturadaPendientePago",
+    "document_number": "B-3135"
+  },
+  {
+    "id": "sale-report-1777497947506469",
+    "status": "facturadaPendientePago",
+    "document_number": "B-3134"
+  }
+]

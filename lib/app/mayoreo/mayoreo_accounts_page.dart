@@ -33,6 +33,7 @@ import '../finanzas/finanzas_bank_accounts_store.dart';
 import 'mayoreo_catalog_page.dart';
 import 'mayoreo_dashboard_preview_page.dart';
 import 'mayoreo_el_palomar_page.dart';
+import 'mayoreo_financial_status.dart';
 import 'mayoreo_price_adjustments_page.dart';
 import 'mayoreo_sales_report_page.dart';
 import 'mayoreo_sorting.dart';
@@ -304,7 +305,6 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     final rows = _reconcileRowsWithBankMovements(baseRows, bankMovements);
 
     if (!mounted) return;
-    final baseSignature = _rowsSignature(baseRows);
     final signature = _rowsSignature(rows);
     setState(() {
       _rows = rows;
@@ -331,11 +331,10 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
       }
       _currentPage = _effectiveCurrentPageFor(rows.length);
     });
-    _lastPersistedRowsSignature = baseSignature;
-    _lastQueuedRowsSignature = baseSignature;
-    if (signature != baseSignature) {
-      _persistState();
-    }
+    // Never rewrite the whole accounts table just because bank-linked balances
+    // were reconciled during load. Persist only explicit user edits.
+    _lastPersistedRowsSignature = signature;
+    _lastQueuedRowsSignature = signature;
   }
 
   List<_MayoreoAccountRow> _reconcileRowsWithBankMovements(
@@ -4879,7 +4878,7 @@ class _MayoreoAccountRow {
 
   double get pendingBalance => approvedAmount - paidAmount;
 
-  bool get isPalomarAccount => _isPalomarClientName(clientName);
+  bool get isPalomarAccount => isMayoreoPalomarClientName(clientName);
 
   bool get isFinanciallyOpen =>
       status != _MayoreoAccountsStatus.pagada &&
@@ -5698,18 +5697,6 @@ String _monthNameEs(int month) {
   return names[month];
 }
 
-bool _isPalomarClientName(String value) {
-  final normalized = value
-      .toUpperCase()
-      .trim()
-      .replaceAll('Á', 'A')
-      .replaceAll('É', 'E')
-      .replaceAll('Í', 'I')
-      .replaceAll('Ó', 'O')
-      .replaceAll('Ú', 'U');
-  return normalized.contains('PALOMAR');
-}
-
 Future<bool> _showFinancialExceptionConfirmDialog(BuildContext context) async {
   final result = await showDialog<bool>(
     context: context,
@@ -5747,38 +5734,20 @@ _MayoreoAccountsStatus _normalizeFinancialStatus({
   required double paidAmount,
   required double approvedAmount,
 }) {
-  const tolerance = 0.5;
-  final normalizedPaidAmount = paidAmount < 0 ? 0.0 : paidAmount;
-  final pendingBalance = approvedAmount - normalizedPaidAmount;
-  final isSettled = pendingBalance <= tolerance;
-
-  if (baseStatus == _MayoreoAccountsStatus.cancelada ||
-      baseStatus == _MayoreoAccountsStatus.porRevisar) {
-    return baseStatus;
-  }
-  if (operationType == _MayoreoAccountsOperationType.factura) {
-    if (documentNumber.isEmpty || documentDate == null) {
-      return _MayoreoAccountsStatus.pendienteFactura;
-    }
-    if (normalizedPaidAmount <= tolerance) {
-      return _MayoreoAccountsStatus.facturadaPendientePago;
-    }
-    if (!isSettled) return _MayoreoAccountsStatus.pagoParcial;
-    return _MayoreoAccountsStatus.pagada;
-  }
-  if (isPalomarAccount && baseStatus == _MayoreoAccountsStatus.chequeCanjeado) {
-    return _MayoreoAccountsStatus.chequeCanjeado;
-  }
-  if (documentNumber.isEmpty || documentDate == null) {
-    return _MayoreoAccountsStatus.pendienteCheque;
-  }
-  if (settlementDate == null && normalizedPaidAmount <= tolerance) {
-    return _MayoreoAccountsStatus.chequeRecibido;
-  }
-  if (settlementDate == null) {
-    return _MayoreoAccountsStatus.chequePendienteCanje;
-  }
-  return _MayoreoAccountsStatus.chequeCanjeado;
+  final nextStatusKey = deriveMayoreoFinancialStatus(
+    baseStatus: baseStatus.name,
+    operationType: operationType.name,
+    isPalomarAccount: isPalomarAccount,
+    documentNumber: documentNumber,
+    documentDate: documentDate,
+    settlementDate: settlementDate,
+    paidAmount: paidAmount,
+    approvedAmount: approvedAmount,
+  );
+  return _MayoreoAccountsStatus.values.firstWhere(
+    (item) => item.name == nextStatusKey,
+    orElse: () => _MayoreoAccountsStatus.porRevisar,
+  );
 }
 
 bool _isFinalFinancialStatus(_MayoreoAccountsStatus status) {

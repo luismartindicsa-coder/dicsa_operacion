@@ -1,0 +1,4528 @@
+[
+  {
+    "id": "ngteco_1782933027732276",
+    "source": "ngteco",
+    "file_name": "217da777-b050-4f72-b545-2d898686a875.csv",
+    "imported_at": "2026-07-01T13:10:27.732279+00:00",
+    "valid_rows": 416,
+    "rejected_rows": 0,
+    "period_label": "06/19/2026 → 06/13/2026",
+    "issues": [],
+    "preview_rows": [
+      {
+        "name": "JOSE CANDIDO SALOMON ANGELES",
+        "detail": "06/19/2026 · 19:11:08",
+        "employee_id": "139"
+      },
+      {
+        "name": "RIGOBERTO GONZALEZ MALAGON",
+        "detail": "06/19/2026 · 18:46:41",
+        "employee_id": "234"
+      },
+      {
+        "name": "DIANA PAVANA FLORES",
+        "detail": "06/19/2026 · 18:24:21",
+        "employee_id": "290"
+      },
+      {
+        "name": "DIANA PAVANA FLORES",
+        "detail": "06/19/2026 · 18:12:07",
+        "employee_id": "290"
+      },
+      {
+        "name": "REBECA SOLORZANO GRANADOS",
+        "detail": "06/19/2026 · 18:11:48",
+        "employee_id": "8"
+      },
+      {
+        "name": "MARICRUZ GARCIA YAÑEZ",
+        "detail": "06/19/2026 · 18:08:30",
+        "employee_id": "268"
+      }
+    ],
+    "unique_employee_ids": [
+      "139",
+      "234",
+      "290",
+      "8",
+      "268",
+      "153",
+      "275",
+      "138",
+      "276",
+      "285",
+      "118",
+      "94",
+      "280",
+      "239",
+      "174",
+      "217",
+      "261",
+      "191",
+      "93",
+      "273",
+      "135",
+      "287",
+      "150",
+      "607",
+      "132",
+      "289",
+      "136",
+      "141",
+      "190",
+      "213",
+      "173",
+      "196",
+      "143",
+      "264",
+      "144",
+      "149"
+    ],
+    "entries": [
+      {
+        "net": "",
+        "detail": "06/19/2026 · 19:11:08",
+        "salary": "",
+        "employee_id": "139",
+        "source_date": "06/19/2026",
+        "source_name": "JOSE CANDIDO SALOMON ANGELES",
+        "source_time": "19:11:08"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:46:41",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/19/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "18:46:41"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:24:21",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/19/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "18:24:21"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:12:07",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/19/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "18:12:07"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:11:48",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/19/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "18:11:48"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:08:30",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/19/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "18:08:30"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:08:14",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/19/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "18:08:14"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:06:12",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/19/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "18:06:12"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:05:30",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/19/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "18:05:30"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:05:15",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/19/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "18:05:15"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:04:07",
+        "salary": "",
+        "employee_id": "285",
+        "source_date": "06/19/2026",
+        "source_name": "ERNESTO RICO MENDOZA",
+        "source_time": "18:04:07"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:04:01",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/19/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "18:04:01"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:03:14",
+        "salary": "",
+        "employee_id": "94",
+        "source_date": "06/19/2026",
+        "source_name": "RENE JULIAN JIMENEZ MARTINEZ",
+        "source_time": "18:03:14"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:00:18",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/19/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "18:00:18"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 18:00:12",
+        "salary": "",
+        "employee_id": "239",
+        "source_date": "06/19/2026",
+        "source_name": "EDUARDO MONTES SERVIN",
+        "source_time": "18:00:12"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 17:59:31",
+        "salary": "",
+        "employee_id": "174",
+        "source_date": "06/19/2026",
+        "source_name": "FRANCISCO JAVIER AYALA CAPILLA",
+        "source_time": "17:59:31"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 17:56:01",
+        "salary": "",
+        "employee_id": "217",
+        "source_date": "06/19/2026",
+        "source_name": "LUIS ANGEL CENTENO GONZALEZ",
+        "source_time": "17:56:01"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 17:55:49",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/19/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "17:55:49"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 17:50:30",
+        "salary": "",
+        "employee_id": "191",
+        "source_date": "06/19/2026",
+        "source_name": "JOSE MANUEL MALDONADO CALZADA",
+        "source_time": "17:50:30"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 16:57:45",
+        "salary": "",
+        "employee_id": "93",
+        "source_date": "06/19/2026",
+        "source_name": "GABRIEL RODRIGUEZ CARRANCO",
+        "source_time": "16:57:45"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 15:09:15",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/19/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "15:09:15"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 14:26:13",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/19/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "14:26:13"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 14:19:28",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/19/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "14:19:28"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 14:06:32",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/19/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "14:06:32"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 14:04:53",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/19/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "14:04:53"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 14:01:14",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/19/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "14:01:14"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 14:01:08",
+        "salary": "",
+        "employee_id": "273",
+        "source_date": "06/19/2026",
+        "source_name": "HECTOR URIEL SALOMON",
+        "source_time": "14:01:08"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 14:00:28",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/19/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "14:00:28"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 14:00:10",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/19/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "14:00:10"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:59:46",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/19/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "13:59:46"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:59:39",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/19/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "13:59:39"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:58:02",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/19/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "13:58:02"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:57:56",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/19/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "13:57:56"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:50:56",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/19/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "13:50:56"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:05:48",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/19/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "13:05:48"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:05:41",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/19/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "13:05:41"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:05:11",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/19/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "13:05:11"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:04:42",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/19/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "13:04:42"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:04:33",
+        "salary": "",
+        "employee_id": "150",
+        "source_date": "06/19/2026",
+        "source_name": "JUAN ERNESTO PRADO RENDON",
+        "source_time": "13:04:33"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:04:27",
+        "salary": "",
+        "employee_id": "607",
+        "source_date": "06/19/2026",
+        "source_name": "ELIZABETH LOPEZ ROQUE",
+        "source_time": "13:04:27"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:04:21",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/19/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "13:04:21"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:04:11",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/19/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "13:04:11"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:03:58",
+        "salary": "",
+        "employee_id": "139",
+        "source_date": "06/19/2026",
+        "source_name": "JOSE CANDIDO SALOMON ANGELES",
+        "source_time": "13:03:58"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:03:54",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/19/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "13:03:54"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:01:47",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/19/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "13:01:47"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:01:04",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/19/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "13:01:04"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 13:00:05",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/19/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "13:00:05"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:21:10",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/19/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "8:21:10"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:17:02",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/19/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "8:17:02"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:14:42",
+        "salary": "",
+        "employee_id": "239",
+        "source_date": "06/19/2026",
+        "source_name": "EDUARDO MONTES SERVIN",
+        "source_time": "8:14:42"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:12:45",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/19/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "8:12:45"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:07:18",
+        "salary": "",
+        "employee_id": "150",
+        "source_date": "06/19/2026",
+        "source_name": "JUAN ERNESTO PRADO RENDON",
+        "source_time": "8:07:18"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:06:55",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/19/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "8:06:55"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:06:47",
+        "salary": "",
+        "employee_id": "217",
+        "source_date": "06/19/2026",
+        "source_name": "LUIS ANGEL CENTENO GONZALEZ",
+        "source_time": "8:06:47"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:06:26",
+        "salary": "",
+        "employee_id": "132",
+        "source_date": "06/19/2026",
+        "source_name": "JOSE DE JESUS CIENEGA HERNANDEZ",
+        "source_time": "8:06:26"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:05:48",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/19/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "8:05:48"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:05:22",
+        "salary": "",
+        "employee_id": "273",
+        "source_date": "06/19/2026",
+        "source_name": "HECTOR URIEL SALOMON",
+        "source_time": "8:05:22"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:05:14",
+        "salary": "",
+        "employee_id": "289",
+        "source_date": "06/19/2026",
+        "source_name": "LUIS GABRIEL SALOMON",
+        "source_time": "8:05:14"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:04:58",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/19/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "8:04:58"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:04:56",
+        "salary": "",
+        "employee_id": "607",
+        "source_date": "06/19/2026",
+        "source_name": "ELIZABETH LOPEZ ROQUE",
+        "source_time": "8:04:56"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:00:59",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/19/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "8:00:59"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 8:00:07",
+        "salary": "",
+        "employee_id": "94",
+        "source_date": "06/19/2026",
+        "source_name": "RENE JULIAN JIMENEZ MARTINEZ",
+        "source_time": "8:00:07"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 7:59:23",
+        "salary": "",
+        "employee_id": "136",
+        "source_date": "06/19/2026",
+        "source_name": "ANTONIO RODRIGUEZ MEDINA",
+        "source_time": "7:59:23"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 7:59:01",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/19/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "7:59:01"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 7:58:48",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/19/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "7:58:48"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 7:58:37",
+        "salary": "",
+        "employee_id": "141",
+        "source_date": "06/19/2026",
+        "source_name": "RIGOBERTO CASTRO DIAZ",
+        "source_time": "7:58:37"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 7:58:18",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/19/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "7:58:18"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 7:56:08",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/19/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "7:56:08"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 7:52:04",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/19/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "7:52:04"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 7:51:52",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/19/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "7:51:52"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 7:18:31",
+        "salary": "",
+        "employee_id": "174",
+        "source_date": "06/19/2026",
+        "source_name": "FRANCISCO JAVIER AYALA CAPILLA",
+        "source_time": "7:18:31"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 7:12:54",
+        "salary": "",
+        "employee_id": "191",
+        "source_date": "06/19/2026",
+        "source_name": "JOSE MANUEL MALDONADO CALZADA",
+        "source_time": "7:12:54"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 6:48:20",
+        "salary": "",
+        "employee_id": "190",
+        "source_date": "06/19/2026",
+        "source_name": "JESUS MARTIN RODRIGUEZ JIMENEZ",
+        "source_time": "6:48:20"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 5:31:44",
+        "salary": "",
+        "employee_id": "213",
+        "source_date": "06/19/2026",
+        "source_name": "JOSE LUIS PAVANA FLORES",
+        "source_time": "5:31:44"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 5:24:27",
+        "salary": "",
+        "employee_id": "93",
+        "source_date": "06/19/2026",
+        "source_name": "GABRIEL RODRIGUEZ CARRANCO",
+        "source_time": "5:24:27"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 5:01:38",
+        "salary": "",
+        "employee_id": "173",
+        "source_date": "06/19/2026",
+        "source_name": "JORGE LUIS RODRIGUEZ",
+        "source_time": "5:01:38"
+      },
+      {
+        "net": "",
+        "detail": "06/19/2026 · 4:54:44",
+        "salary": "",
+        "employee_id": "196",
+        "source_date": "06/19/2026",
+        "source_name": "IRVING GUERRERO ABUNDIS",
+        "source_time": "4:54:44"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:08:01",
+        "salary": "",
+        "employee_id": "141",
+        "source_date": "06/18/2026",
+        "source_name": "RIGOBERTO CASTRO DIAZ",
+        "source_time": "18:08:01"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:07:10",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/18/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "18:07:10"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:06:15",
+        "salary": "",
+        "employee_id": "173",
+        "source_date": "06/18/2026",
+        "source_name": "JORGE LUIS RODRIGUEZ",
+        "source_time": "18:06:15"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:05:55",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/18/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "18:05:55"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:05:10",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/18/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "18:05:10"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:05:04",
+        "salary": "",
+        "employee_id": "213",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE LUIS PAVANA FLORES",
+        "source_time": "18:05:04"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:04:02",
+        "salary": "",
+        "employee_id": "132",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE DE JESUS CIENEGA HERNANDEZ",
+        "source_time": "18:04:02"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:03:20",
+        "salary": "",
+        "employee_id": "217",
+        "source_date": "06/18/2026",
+        "source_name": "LUIS ANGEL CENTENO GONZALEZ",
+        "source_time": "18:03:20"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:02:52",
+        "salary": "",
+        "employee_id": "196",
+        "source_date": "06/18/2026",
+        "source_name": "IRVING GUERRERO ABUNDIS",
+        "source_time": "18:02:52"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:02:35",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/18/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "18:02:35"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:02:28",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "18:02:28"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:02:00",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/18/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "18:02:00"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:01:54",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/18/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "18:01:54"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:01:48",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/18/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "18:01:48"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:00:57",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/18/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "18:00:57"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 18:00:00",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/18/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "18:00:00"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 17:59:51",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/18/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "17:59:51"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 17:59:47",
+        "salary": "",
+        "employee_id": "143",
+        "source_date": "06/18/2026",
+        "source_name": "JUAN DANIEL GARCIA DIAZ",
+        "source_time": "17:59:47"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 17:59:07",
+        "salary": "",
+        "employee_id": "136",
+        "source_date": "06/18/2026",
+        "source_name": "ANTONIO RODRIGUEZ MEDINA",
+        "source_time": "17:59:07"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 17:58:20",
+        "salary": "",
+        "employee_id": "94",
+        "source_date": "06/18/2026",
+        "source_name": "RENE JULIAN JIMENEZ MARTINEZ",
+        "source_time": "17:58:20"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 17:57:46",
+        "salary": "",
+        "employee_id": "289",
+        "source_date": "06/18/2026",
+        "source_name": "LUIS GABRIEL SALOMON",
+        "source_time": "17:57:46"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 17:56:29",
+        "salary": "",
+        "employee_id": "273",
+        "source_date": "06/18/2026",
+        "source_name": "HECTOR URIEL SALOMON",
+        "source_time": "17:56:29"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 17:56:11",
+        "salary": "",
+        "employee_id": "191",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE MANUEL MALDONADO CALZADA",
+        "source_time": "17:56:11"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 17:53:27",
+        "salary": "",
+        "employee_id": "190",
+        "source_date": "06/18/2026",
+        "source_name": "JESUS MARTIN RODRIGUEZ JIMENEZ",
+        "source_time": "17:53:27"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 16:30:21",
+        "salary": "",
+        "employee_id": "93",
+        "source_date": "06/18/2026",
+        "source_name": "GABRIEL RODRIGUEZ CARRANCO",
+        "source_time": "16:30:21"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 14:10:16",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/18/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "14:10:16"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 14:05:00",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/18/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "14:05:00"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 14:02:09",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/18/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "14:02:09"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 14:01:56",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/18/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "14:01:56"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:59:50",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/18/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "13:59:50"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:59:28",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "13:59:28"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:58:46",
+        "salary": "",
+        "employee_id": "289",
+        "source_date": "06/18/2026",
+        "source_name": "LUIS GABRIEL SALOMON",
+        "source_time": "13:58:46"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:57:56",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/18/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "13:57:56"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:57:32",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/18/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "13:57:32"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:57:16",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/18/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "13:57:16"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:54:56",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/18/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "13:54:56"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:11:40",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/18/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "13:11:40"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:10:55",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/18/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "13:10:55"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:07:44",
+        "salary": "",
+        "employee_id": "607",
+        "source_date": "06/18/2026",
+        "source_name": "ELIZABETH LOPEZ ROQUE",
+        "source_time": "13:07:44"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:02:30",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/18/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "13:02:30"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:02:25",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/18/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "13:02:25"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:01:56",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/18/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "13:01:56"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:01:24",
+        "salary": "",
+        "employee_id": "139",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE CANDIDO SALOMON ANGELES",
+        "source_time": "13:01:24"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:00:49",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "13:00:49"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 13:00:02",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/18/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "13:00:02"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 12:59:57",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/18/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "12:59:57"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 12:59:20",
+        "salary": "",
+        "employee_id": "289",
+        "source_date": "06/18/2026",
+        "source_name": "LUIS GABRIEL SALOMON",
+        "source_time": "12:59:20"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:13:42",
+        "salary": "",
+        "employee_id": "132",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE DE JESUS CIENEGA HERNANDEZ",
+        "source_time": "8:13:42"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:09:33",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/18/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "8:09:33"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:09:15",
+        "salary": "",
+        "employee_id": "239",
+        "source_date": "06/18/2026",
+        "source_name": "EDUARDO MONTES SERVIN",
+        "source_time": "8:09:15"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:08:09",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/18/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "8:08:09"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:06:16",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/18/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "8:06:16"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:06:01",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/18/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "8:06:01"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:05:38",
+        "salary": "",
+        "employee_id": "289",
+        "source_date": "06/18/2026",
+        "source_name": "LUIS GABRIEL SALOMON",
+        "source_time": "8:05:38"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:05:25",
+        "salary": "",
+        "employee_id": "273",
+        "source_date": "06/18/2026",
+        "source_name": "HECTOR URIEL SALOMON",
+        "source_time": "8:05:25"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:05:18",
+        "salary": "",
+        "employee_id": "143",
+        "source_date": "06/18/2026",
+        "source_name": "JUAN DANIEL GARCIA DIAZ",
+        "source_time": "8:05:18"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:03:13",
+        "salary": "",
+        "employee_id": "607",
+        "source_date": "06/18/2026",
+        "source_name": "ELIZABETH LOPEZ ROQUE",
+        "source_time": "8:03:13"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:03:02",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/18/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "8:03:02"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:01:38",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/18/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "8:01:38"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:01:24",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/18/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "8:01:24"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:01:20",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/18/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "8:01:20"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:01:15",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/18/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "8:01:15"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:00:57",
+        "salary": "",
+        "employee_id": "150",
+        "source_date": "06/18/2026",
+        "source_name": "JUAN ERNESTO PRADO RENDON",
+        "source_time": "8:00:57"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:00:09",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "8:00:09"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 8:00:02",
+        "salary": "",
+        "employee_id": "94",
+        "source_date": "06/18/2026",
+        "source_name": "RENE JULIAN JIMENEZ MARTINEZ",
+        "source_time": "8:00:02"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 7:59:12",
+        "salary": "",
+        "employee_id": "264",
+        "source_date": "06/18/2026",
+        "source_name": "FATIMA CORTES BRAVO",
+        "source_time": "7:59:12"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 7:58:29",
+        "salary": "",
+        "employee_id": "141",
+        "source_date": "06/18/2026",
+        "source_name": "RIGOBERTO CASTRO DIAZ",
+        "source_time": "7:58:29"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 7:56:55",
+        "salary": "",
+        "employee_id": "136",
+        "source_date": "06/18/2026",
+        "source_name": "ANTONIO RODRIGUEZ MEDINA",
+        "source_time": "7:56:55"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 7:44:40",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/18/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "7:44:40"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 7:41:49",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/18/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "7:41:49"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 7:15:22",
+        "salary": "",
+        "employee_id": "191",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE MANUEL MALDONADO CALZADA",
+        "source_time": "7:15:22"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 7:02:32",
+        "salary": "",
+        "employee_id": "144",
+        "source_date": "06/18/2026",
+        "source_name": "FRANCISCO JAVIER GUERRERO MARTINEZ",
+        "source_time": "7:02:32"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 7:01:58",
+        "salary": "",
+        "employee_id": "174",
+        "source_date": "06/18/2026",
+        "source_name": "FRANCISCO JAVIER AYALA CAPILLA",
+        "source_time": "7:01:58"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 6:10:17",
+        "salary": "",
+        "employee_id": "190",
+        "source_date": "06/18/2026",
+        "source_name": "JESUS MARTIN RODRIGUEZ JIMENEZ",
+        "source_time": "6:10:17"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 6:05:10",
+        "salary": "",
+        "employee_id": "139",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE CANDIDO SALOMON ANGELES",
+        "source_time": "6:05:10"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 5:41:09",
+        "salary": "",
+        "employee_id": "213",
+        "source_date": "06/18/2026",
+        "source_name": "JOSE LUIS PAVANA FLORES",
+        "source_time": "5:41:09"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 5:37:05",
+        "salary": "",
+        "employee_id": "93",
+        "source_date": "06/18/2026",
+        "source_name": "GABRIEL RODRIGUEZ CARRANCO",
+        "source_time": "5:37:05"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 4:42:43",
+        "salary": "",
+        "employee_id": "173",
+        "source_date": "06/18/2026",
+        "source_name": "JORGE LUIS RODRIGUEZ",
+        "source_time": "4:42:43"
+      },
+      {
+        "net": "",
+        "detail": "06/18/2026 · 4:42:31",
+        "salary": "",
+        "employee_id": "196",
+        "source_date": "06/18/2026",
+        "source_name": "IRVING GUERRERO ABUNDIS",
+        "source_time": "4:42:31"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 22:04:35",
+        "salary": "",
+        "employee_id": "213",
+        "source_date": "06/17/2026",
+        "source_name": "JOSE LUIS PAVANA FLORES",
+        "source_time": "22:04:35"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 22:01:27",
+        "salary": "",
+        "employee_id": "196",
+        "source_date": "06/17/2026",
+        "source_name": "IRVING GUERRERO ABUNDIS",
+        "source_time": "22:01:27"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 21:56:26",
+        "salary": "",
+        "employee_id": "173",
+        "source_date": "06/17/2026",
+        "source_name": "JORGE LUIS RODRIGUEZ",
+        "source_time": "21:56:26"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 21:06:54",
+        "salary": "",
+        "employee_id": "213",
+        "source_date": "06/17/2026",
+        "source_name": "JOSE LUIS PAVANA FLORES",
+        "source_time": "21:06:54"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 21:03:47",
+        "salary": "",
+        "employee_id": "173",
+        "source_date": "06/17/2026",
+        "source_name": "JORGE LUIS RODRIGUEZ",
+        "source_time": "21:03:47"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 21:03:11",
+        "salary": "",
+        "employee_id": "196",
+        "source_date": "06/17/2026",
+        "source_name": "IRVING GUERRERO ABUNDIS",
+        "source_time": "21:03:11"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 19:00:05",
+        "salary": "",
+        "employee_id": "139",
+        "source_date": "06/17/2026",
+        "source_name": "JOSE CANDIDO SALOMON ANGELES",
+        "source_time": "19:00:05"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:31:25",
+        "salary": "",
+        "employee_id": "132",
+        "source_date": "06/17/2026",
+        "source_name": "JOSE DE JESUS CIENEGA HERNANDEZ",
+        "source_time": "18:31:25"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:09:13",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/17/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "18:09:13"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:07:33",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/17/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "18:07:33"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:05:13",
+        "salary": "",
+        "employee_id": "141",
+        "source_date": "06/17/2026",
+        "source_name": "RIGOBERTO CASTRO DIAZ",
+        "source_time": "18:05:13"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:04:48",
+        "salary": "",
+        "employee_id": "173",
+        "source_date": "06/17/2026",
+        "source_name": "JORGE LUIS RODRIGUEZ",
+        "source_time": "18:04:48"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:04:02",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/17/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "18:04:02"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:03:33",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/17/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "18:03:33"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:03:25",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/17/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "18:03:25"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:03:14",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/17/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "18:03:14"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:03:06",
+        "salary": "",
+        "employee_id": "264",
+        "source_date": "06/17/2026",
+        "source_name": "FATIMA CORTES BRAVO",
+        "source_time": "18:03:06"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:02:48",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/17/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "18:02:48"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:02:31",
+        "salary": "",
+        "employee_id": "174",
+        "source_date": "06/17/2026",
+        "source_name": "FRANCISCO JAVIER AYALA CAPILLA",
+        "source_time": "18:02:31"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:02:22",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/17/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "18:02:22"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:02:10",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/17/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "18:02:10"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:01:44",
+        "salary": "",
+        "employee_id": "196",
+        "source_date": "06/17/2026",
+        "source_name": "IRVING GUERRERO ABUNDIS",
+        "source_time": "18:01:44"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:01:36",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/17/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "18:01:36"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:00:51",
+        "salary": "",
+        "employee_id": "239",
+        "source_date": "06/17/2026",
+        "source_name": "EDUARDO MONTES SERVIN",
+        "source_time": "18:00:51"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:00:44",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/17/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "18:00:44"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:00:34",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/17/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "18:00:34"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 18:00:24",
+        "salary": "",
+        "employee_id": "143",
+        "source_date": "06/17/2026",
+        "source_name": "JUAN DANIEL GARCIA DIAZ",
+        "source_time": "18:00:24"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 17:59:33",
+        "salary": "",
+        "employee_id": "217",
+        "source_date": "06/17/2026",
+        "source_name": "LUIS ANGEL CENTENO GONZALEZ",
+        "source_time": "17:59:33"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 17:59:07",
+        "salary": "",
+        "employee_id": "190",
+        "source_date": "06/17/2026",
+        "source_name": "JESUS MARTIN RODRIGUEZ JIMENEZ",
+        "source_time": "17:59:07"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 17:58:12",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/17/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "17:58:12"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 17:51:43",
+        "salary": "",
+        "employee_id": "144",
+        "source_date": "06/17/2026",
+        "source_name": "FRANCISCO JAVIER GUERRERO MARTINEZ",
+        "source_time": "17:51:43"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 15:59:29",
+        "salary": "",
+        "employee_id": "93",
+        "source_date": "06/17/2026",
+        "source_name": "GABRIEL RODRIGUEZ CARRANCO",
+        "source_time": "15:59:29"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 15:39:30",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/17/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "15:39:30"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 15:08:59",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/17/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "15:08:59"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 14:40:30",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/17/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "14:40:30"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 14:04:42",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/17/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "14:04:42"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 14:03:48",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/17/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "14:03:48"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 14:03:20",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/17/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "14:03:20"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 14:02:17",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/17/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "14:02:17"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 14:01:59",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/17/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "14:01:59"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 14:01:00",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/17/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "14:01:00"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:58:24",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/17/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "13:58:24"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:58:02",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/17/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "13:58:02"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:55:38",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/17/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "13:55:38"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:53:21",
+        "salary": "",
+        "employee_id": "136",
+        "source_date": "06/17/2026",
+        "source_name": "ANTONIO RODRIGUEZ MEDINA",
+        "source_time": "13:53:21"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:52:12",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/17/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "13:52:12"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:04:58",
+        "salary": "",
+        "employee_id": "150",
+        "source_date": "06/17/2026",
+        "source_name": "JUAN ERNESTO PRADO RENDON",
+        "source_time": "13:04:58"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:03:01",
+        "salary": "",
+        "employee_id": "264",
+        "source_date": "06/17/2026",
+        "source_name": "FATIMA CORTES BRAVO",
+        "source_time": "13:03:01"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:02:24",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/17/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "13:02:24"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:02:14",
+        "salary": "",
+        "employee_id": "607",
+        "source_date": "06/17/2026",
+        "source_name": "ELIZABETH LOPEZ ROQUE",
+        "source_time": "13:02:14"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:02:06",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/17/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "13:02:06"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:01:38",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/17/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "13:01:38"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:00:59",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/17/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "13:00:59"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:00:52",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/17/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "13:00:52"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:00:45",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/17/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "13:00:45"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:00:37",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/17/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "13:00:37"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:00:27",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/17/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "13:00:27"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 13:00:06",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/17/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "13:00:06"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 12:59:48",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/17/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "12:59:48"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:42:28",
+        "salary": "",
+        "employee_id": "239",
+        "source_date": "06/17/2026",
+        "source_name": "EDUARDO MONTES SERVIN",
+        "source_time": "8:42:28"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:17:13",
+        "salary": "",
+        "employee_id": "141",
+        "source_date": "06/17/2026",
+        "source_name": "RIGOBERTO CASTRO DIAZ",
+        "source_time": "8:17:13"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:16:32",
+        "salary": "",
+        "employee_id": "143",
+        "source_date": "06/17/2026",
+        "source_name": "JUAN DANIEL GARCIA DIAZ",
+        "source_time": "8:16:32"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:16:18",
+        "salary": "",
+        "employee_id": "273",
+        "source_date": "06/17/2026",
+        "source_name": "HECTOR URIEL SALOMON",
+        "source_time": "8:16:18"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:13:56",
+        "salary": "",
+        "employee_id": "132",
+        "source_date": "06/17/2026",
+        "source_name": "JOSE DE JESUS CIENEGA HERNANDEZ",
+        "source_time": "8:13:56"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:10:10",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/17/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "8:10:10"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:10:04",
+        "salary": "",
+        "employee_id": "607",
+        "source_date": "06/17/2026",
+        "source_name": "ELIZABETH LOPEZ ROQUE",
+        "source_time": "8:10:04"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:09:16",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/17/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "8:09:16"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:09:10",
+        "salary": "",
+        "employee_id": "150",
+        "source_date": "06/17/2026",
+        "source_name": "JUAN ERNESTO PRADO RENDON",
+        "source_time": "8:09:10"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:09:05",
+        "salary": "",
+        "employee_id": "217",
+        "source_date": "06/17/2026",
+        "source_name": "LUIS ANGEL CENTENO GONZALEZ",
+        "source_time": "8:09:05"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:07:36",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/17/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "8:07:36"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:04:52",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/17/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "8:04:52"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:03:04",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/17/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "8:03:04"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:02:45",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/17/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "8:02:45"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:02:28",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/17/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "8:02:28"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:02:18",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/17/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "8:02:18"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:01:14",
+        "salary": "",
+        "employee_id": "264",
+        "source_date": "06/17/2026",
+        "source_name": "FATIMA CORTES BRAVO",
+        "source_time": "8:01:14"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:01:00",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/17/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "8:01:00"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 8:00:52",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/17/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "8:00:52"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 7:59:23",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/17/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "7:59:23"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 7:57:45",
+        "salary": "",
+        "employee_id": "136",
+        "source_date": "06/17/2026",
+        "source_name": "ANTONIO RODRIGUEZ MEDINA",
+        "source_time": "7:57:45"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 7:51:46",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/17/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "7:51:46"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 7:30:27",
+        "salary": "",
+        "employee_id": "144",
+        "source_date": "06/17/2026",
+        "source_name": "FRANCISCO JAVIER GUERRERO MARTINEZ",
+        "source_time": "7:30:27"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 7:26:40",
+        "salary": "",
+        "employee_id": "174",
+        "source_date": "06/17/2026",
+        "source_name": "FRANCISCO JAVIER AYALA CAPILLA",
+        "source_time": "7:26:40"
+      },
+      {
+        "net": "",
+        "detail": "06/17/2026 · 7:16:16",
+        "salary": "",
+        "employee_id": "190",
+        "source_date": "06/17/2026",
+        "source_name": "JESUS MARTIN RODRIGUEZ JIMENEZ",
+        "source_time": "7:16:16"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 19:02:34",
+        "salary": "",
+        "employee_id": "139",
+        "source_date": "06/16/2026",
+        "source_name": "JOSE CANDIDO SALOMON ANGELES",
+        "source_time": "19:02:34"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:48:40",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/16/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "18:48:40"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:09:22",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/16/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "18:09:22"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:06:42",
+        "salary": "",
+        "employee_id": "264",
+        "source_date": "06/16/2026",
+        "source_name": "FATIMA CORTES BRAVO",
+        "source_time": "18:06:42"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:05:35",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/16/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "18:05:35"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:03:24",
+        "salary": "",
+        "employee_id": "141",
+        "source_date": "06/16/2026",
+        "source_name": "RIGOBERTO CASTRO DIAZ",
+        "source_time": "18:03:24"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:03:03",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/16/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "18:03:03"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:01:56",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/16/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "18:01:56"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:01:48",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/16/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "18:01:48"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:01:31",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/16/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "18:01:31"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:01:13",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/16/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "18:01:13"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:01:05",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/16/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "18:01:05"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:01:00",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/16/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "18:01:00"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:00:54",
+        "salary": "",
+        "employee_id": "239",
+        "source_date": "06/16/2026",
+        "source_name": "EDUARDO MONTES SERVIN",
+        "source_time": "18:00:54"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:00:49",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/16/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "18:00:49"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 18:00:39",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/16/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "18:00:39"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 17:59:03",
+        "salary": "",
+        "employee_id": "143",
+        "source_date": "06/16/2026",
+        "source_name": "JUAN DANIEL GARCIA DIAZ",
+        "source_time": "17:59:03"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 17:58:04",
+        "salary": "",
+        "employee_id": "289",
+        "source_date": "06/16/2026",
+        "source_name": "LUIS GABRIEL SALOMON",
+        "source_time": "17:58:04"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 17:58:01",
+        "salary": "",
+        "employee_id": "94",
+        "source_date": "06/16/2026",
+        "source_name": "RENE JULIAN JIMENEZ MARTINEZ",
+        "source_time": "17:58:01"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 17:57:50",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/16/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "17:57:50"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 17:57:35",
+        "salary": "",
+        "employee_id": "217",
+        "source_date": "06/16/2026",
+        "source_name": "LUIS ANGEL CENTENO GONZALEZ",
+        "source_time": "17:57:35"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 17:56:35",
+        "salary": "",
+        "employee_id": "273",
+        "source_date": "06/16/2026",
+        "source_name": "HECTOR URIEL SALOMON",
+        "source_time": "17:56:35"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 17:55:19",
+        "salary": "",
+        "employee_id": "191",
+        "source_date": "06/16/2026",
+        "source_name": "JOSE MANUEL MALDONADO CALZADA",
+        "source_time": "17:55:19"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 15:47:37",
+        "salary": "",
+        "employee_id": "93",
+        "source_date": "06/16/2026",
+        "source_name": "GABRIEL RODRIGUEZ CARRANCO",
+        "source_time": "15:47:37"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 14:07:12",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/16/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "14:07:12"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 14:04:48",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/16/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "14:04:48"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 14:04:45",
+        "salary": "",
+        "employee_id": "139",
+        "source_date": "06/16/2026",
+        "source_name": "JOSE CANDIDO SALOMON ANGELES",
+        "source_time": "14:04:45"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 14:04:32",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/16/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "14:04:32"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 14:04:11",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/16/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "14:04:11"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 14:03:56",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/16/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "14:03:56"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 14:03:47",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/16/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "14:03:47"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 14:02:38",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/16/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "14:02:38"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 14:02:23",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/16/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "14:02:23"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 14:00:51",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/16/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "14:00:51"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 14:00:30",
+        "salary": "",
+        "employee_id": "239",
+        "source_date": "06/16/2026",
+        "source_name": "EDUARDO MONTES SERVIN",
+        "source_time": "14:00:30"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:59:45",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/16/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "13:59:45"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:56:40",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/16/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "13:56:40"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:55:54",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/16/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "13:55:54"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:06:24",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/16/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "13:06:24"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:05:57",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/16/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "13:05:57"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:05:45",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/16/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "13:05:45"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:05:28",
+        "salary": "",
+        "employee_id": "150",
+        "source_date": "06/16/2026",
+        "source_name": "JUAN ERNESTO PRADO RENDON",
+        "source_time": "13:05:28"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:04:44",
+        "salary": "",
+        "employee_id": "139",
+        "source_date": "06/16/2026",
+        "source_name": "JOSE CANDIDO SALOMON ANGELES",
+        "source_time": "13:04:44"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:02:54",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/16/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "13:02:54"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:02:09",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/16/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "13:02:09"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:02:01",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/16/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "13:02:01"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:01:54",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/16/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "13:01:54"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:01:48",
+        "salary": "",
+        "employee_id": "607",
+        "source_date": "06/16/2026",
+        "source_name": "ELIZABETH LOPEZ ROQUE",
+        "source_time": "13:01:48"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:01:42",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/16/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "13:01:42"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:01:30",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/16/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "13:01:30"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:01:12",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/16/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "13:01:12"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 13:00:21",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/16/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "13:00:21"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 12:14:44",
+        "salary": "",
+        "employee_id": "149",
+        "source_date": "06/16/2026",
+        "source_name": "LEONARDO GABRIEL HERNANDEZ HERNANDEZ",
+        "source_time": "12:14:44"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 9:57:28",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/16/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "9:57:28"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:35:35",
+        "salary": "",
+        "employee_id": "141",
+        "source_date": "06/16/2026",
+        "source_name": "RIGOBERTO CASTRO DIAZ",
+        "source_time": "8:35:35"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:16:50",
+        "salary": "",
+        "employee_id": "273",
+        "source_date": "06/16/2026",
+        "source_name": "HECTOR URIEL SALOMON",
+        "source_time": "8:16:50"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:16:47",
+        "salary": "",
+        "employee_id": "289",
+        "source_date": "06/16/2026",
+        "source_name": "LUIS GABRIEL SALOMON",
+        "source_time": "8:16:47"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:13:42",
+        "salary": "",
+        "employee_id": "149",
+        "source_date": "06/16/2026",
+        "source_name": "LEONARDO GABRIEL HERNANDEZ HERNANDEZ",
+        "source_time": "8:13:42"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:12:35",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/16/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "8:12:35"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:12:28",
+        "salary": "",
+        "employee_id": "239",
+        "source_date": "06/16/2026",
+        "source_name": "EDUARDO MONTES SERVIN",
+        "source_time": "8:12:28"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:09:42",
+        "salary": "",
+        "employee_id": "136",
+        "source_date": "06/16/2026",
+        "source_name": "ANTONIO RODRIGUEZ MEDINA",
+        "source_time": "8:09:42"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:07:50",
+        "salary": "",
+        "employee_id": "217",
+        "source_date": "06/16/2026",
+        "source_name": "LUIS ANGEL CENTENO GONZALEZ",
+        "source_time": "8:07:50"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:05:30",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/16/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "8:05:30"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:04:21",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/16/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "8:04:21"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:03:49",
+        "salary": "",
+        "employee_id": "143",
+        "source_date": "06/16/2026",
+        "source_name": "JUAN DANIEL GARCIA DIAZ",
+        "source_time": "8:03:49"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:03:39",
+        "salary": "",
+        "employee_id": "94",
+        "source_date": "06/16/2026",
+        "source_name": "RENE JULIAN JIMENEZ MARTINEZ",
+        "source_time": "8:03:39"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:03:31",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/16/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "8:03:31"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:02:51",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/16/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "8:02:51"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:02:45",
+        "salary": "",
+        "employee_id": "607",
+        "source_date": "06/16/2026",
+        "source_name": "ELIZABETH LOPEZ ROQUE",
+        "source_time": "8:02:45"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:02:19",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/16/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "8:02:19"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:01:03",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/16/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "8:01:03"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:00:36",
+        "salary": "",
+        "employee_id": "132",
+        "source_date": "06/16/2026",
+        "source_name": "JOSE DE JESUS CIENEGA HERNANDEZ",
+        "source_time": "8:00:36"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 8:00:09",
+        "salary": "",
+        "employee_id": "264",
+        "source_date": "06/16/2026",
+        "source_name": "FATIMA CORTES BRAVO",
+        "source_time": "8:00:09"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 7:59:57",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/16/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "7:59:57"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 7:59:07",
+        "salary": "",
+        "employee_id": "150",
+        "source_date": "06/16/2026",
+        "source_name": "JUAN ERNESTO PRADO RENDON",
+        "source_time": "7:59:07"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 7:57:56",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/16/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "7:57:56"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 7:57:42",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/16/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "7:57:42"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 7:57:09",
+        "salary": "",
+        "employee_id": "285",
+        "source_date": "06/16/2026",
+        "source_name": "ERNESTO RICO MENDOZA",
+        "source_time": "7:57:09"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 7:55:24",
+        "salary": "",
+        "employee_id": "261",
+        "source_date": "06/16/2026",
+        "source_name": "MARIA GUADALUPE MONTELONGO",
+        "source_time": "7:55:24"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 7:42:17",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/16/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "7:42:17"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 7:03:52",
+        "salary": "",
+        "employee_id": "191",
+        "source_date": "06/16/2026",
+        "source_name": "JOSE MANUEL MALDONADO CALZADA",
+        "source_time": "7:03:52"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 6:59:40",
+        "salary": "",
+        "employee_id": "174",
+        "source_date": "06/16/2026",
+        "source_name": "FRANCISCO JAVIER AYALA CAPILLA",
+        "source_time": "6:59:40"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 6:56:33",
+        "salary": "",
+        "employee_id": "144",
+        "source_date": "06/16/2026",
+        "source_name": "FRANCISCO JAVIER GUERRERO MARTINEZ",
+        "source_time": "6:56:33"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 6:07:32",
+        "salary": "",
+        "employee_id": "139",
+        "source_date": "06/16/2026",
+        "source_name": "JOSE CANDIDO SALOMON ANGELES",
+        "source_time": "6:07:32"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 5:44:06",
+        "salary": "",
+        "employee_id": "93",
+        "source_date": "06/16/2026",
+        "source_name": "GABRIEL RODRIGUEZ CARRANCO",
+        "source_time": "5:44:06"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 4:53:26",
+        "salary": "",
+        "employee_id": "196",
+        "source_date": "06/16/2026",
+        "source_name": "IRVING GUERRERO ABUNDIS",
+        "source_time": "4:53:26"
+      },
+      {
+        "net": "",
+        "detail": "06/16/2026 · 4:52:35",
+        "salary": "",
+        "employee_id": "173",
+        "source_date": "06/16/2026",
+        "source_name": "JORGE LUIS RODRIGUEZ",
+        "source_time": "4:52:35"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 22:04:40",
+        "salary": "",
+        "employee_id": "213",
+        "source_date": "06/15/2026",
+        "source_name": "JOSE LUIS PAVANA FLORES",
+        "source_time": "22:04:40"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 22:02:54",
+        "salary": "",
+        "employee_id": "196",
+        "source_date": "06/15/2026",
+        "source_name": "IRVING GUERRERO ABUNDIS",
+        "source_time": "22:02:54"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 21:29:47",
+        "salary": "",
+        "employee_id": "173",
+        "source_date": "06/15/2026",
+        "source_name": "JORGE LUIS RODRIGUEZ",
+        "source_time": "21:29:47"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 21:04:28",
+        "salary": "",
+        "employee_id": "213",
+        "source_date": "06/15/2026",
+        "source_name": "JOSE LUIS PAVANA FLORES",
+        "source_time": "21:04:28"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 21:03:30",
+        "salary": "",
+        "employee_id": "173",
+        "source_date": "06/15/2026",
+        "source_name": "JORGE LUIS RODRIGUEZ",
+        "source_time": "21:03:30"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 21:03:02",
+        "salary": "",
+        "employee_id": "196",
+        "source_date": "06/15/2026",
+        "source_name": "IRVING GUERRERO ABUNDIS",
+        "source_time": "21:03:02"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 19:33:30",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/15/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "19:33:30"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:11:18",
+        "salary": "",
+        "employee_id": "264",
+        "source_date": "06/15/2026",
+        "source_name": "FATIMA CORTES BRAVO",
+        "source_time": "18:11:18"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:10:27",
+        "salary": "",
+        "employee_id": "213",
+        "source_date": "06/15/2026",
+        "source_name": "JOSE LUIS PAVANA FLORES",
+        "source_time": "18:10:27"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:06:39",
+        "salary": "",
+        "employee_id": "132",
+        "source_date": "06/15/2026",
+        "source_name": "JOSE DE JESUS CIENEGA HERNANDEZ",
+        "source_time": "18:06:39"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:04:25",
+        "salary": "",
+        "employee_id": "141",
+        "source_date": "06/15/2026",
+        "source_name": "RIGOBERTO CASTRO DIAZ",
+        "source_time": "18:04:25"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:04:12",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/15/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "18:04:12"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:04:03",
+        "salary": "",
+        "employee_id": "149",
+        "source_date": "06/15/2026",
+        "source_name": "LEONARDO GABRIEL HERNANDEZ HERNANDEZ",
+        "source_time": "18:04:03"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:02:49",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/15/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "18:02:49"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:02:22",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/15/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "18:02:22"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:01:50",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/15/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "18:01:50"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:01:41",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/15/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "18:01:41"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:01:26",
+        "salary": "",
+        "employee_id": "239",
+        "source_date": "06/15/2026",
+        "source_name": "EDUARDO MONTES SERVIN",
+        "source_time": "18:01:26"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:01:04",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/15/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "18:01:04"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:00:59",
+        "salary": "",
+        "employee_id": "196",
+        "source_date": "06/15/2026",
+        "source_name": "IRVING GUERRERO ABUNDIS",
+        "source_time": "18:00:59"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:00:54",
+        "salary": "",
+        "employee_id": "217",
+        "source_date": "06/15/2026",
+        "source_name": "LUIS ANGEL CENTENO GONZALEZ",
+        "source_time": "18:00:54"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 18:00:05",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/15/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "18:00:05"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 17:59:59",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/15/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "17:59:59"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 17:59:31",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/15/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "17:59:31"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 17:58:56",
+        "salary": "",
+        "employee_id": "94",
+        "source_date": "06/15/2026",
+        "source_name": "RENE JULIAN JIMENEZ MARTINEZ",
+        "source_time": "17:58:56"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 17:58:27",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/15/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "17:58:27"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 17:58:12",
+        "salary": "",
+        "employee_id": "174",
+        "source_date": "06/15/2026",
+        "source_name": "FRANCISCO JAVIER AYALA CAPILLA",
+        "source_time": "17:58:12"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 17:57:10",
+        "salary": "",
+        "employee_id": "191",
+        "source_date": "06/15/2026",
+        "source_name": "JOSE MANUEL MALDONADO CALZADA",
+        "source_time": "17:57:10"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 17:56:45",
+        "salary": "",
+        "employee_id": "190",
+        "source_date": "06/15/2026",
+        "source_name": "JESUS MARTIN RODRIGUEZ JIMENEZ",
+        "source_time": "17:56:45"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 15:36:30",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/15/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "15:36:30"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 14:41:22",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/15/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "14:41:22"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 14:05:20",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/15/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "14:05:20"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 14:05:08",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/15/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "14:05:08"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 14:05:03",
+        "salary": "",
+        "employee_id": "264",
+        "source_date": "06/15/2026",
+        "source_name": "FATIMA CORTES BRAVO",
+        "source_time": "14:05:03"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 14:04:28",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/15/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "14:04:28"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 14:03:43",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/15/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "14:03:43"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 14:01:53",
+        "salary": "",
+        "employee_id": "289",
+        "source_date": "06/15/2026",
+        "source_name": "LUIS GABRIEL SALOMON",
+        "source_time": "14:01:53"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 14:00:29",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/15/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "14:00:29"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 14:00:03",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/15/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "14:00:03"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:58:42",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/15/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "13:58:42"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:57:04",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/15/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "13:57:04"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:46:35",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/15/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "13:46:35"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:05:24",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/15/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "13:05:24"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:05:20",
+        "salary": "",
+        "employee_id": "264",
+        "source_date": "06/15/2026",
+        "source_name": "FATIMA CORTES BRAVO",
+        "source_time": "13:05:20"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:03:43",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/15/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "13:03:43"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:03:33",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/15/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "13:03:33"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:02:06",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/15/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "13:02:06"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:01:14",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/15/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "13:01:14"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:01:09",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/15/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "13:01:09"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:00:17",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/15/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "13:00:17"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 13:00:08",
+        "salary": "",
+        "employee_id": "607",
+        "source_date": "06/15/2026",
+        "source_name": "ELIZABETH LOPEZ ROQUE",
+        "source_time": "13:00:08"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 12:59:04",
+        "salary": "",
+        "employee_id": "289",
+        "source_date": "06/15/2026",
+        "source_name": "LUIS GABRIEL SALOMON",
+        "source_time": "12:59:04"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 12:59:01",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/15/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "12:59:01"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 12:58:57",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/15/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "12:58:57"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 10:43:53",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/15/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "10:43:53"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:15:37",
+        "salary": "",
+        "employee_id": "141",
+        "source_date": "06/15/2026",
+        "source_name": "RIGOBERTO CASTRO DIAZ",
+        "source_time": "8:15:37"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:14:28",
+        "salary": "",
+        "employee_id": "285",
+        "source_date": "06/15/2026",
+        "source_name": "ERNESTO RICO MENDOZA",
+        "source_time": "8:14:28"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:12:33",
+        "salary": "",
+        "employee_id": "239",
+        "source_date": "06/15/2026",
+        "source_name": "EDUARDO MONTES SERVIN",
+        "source_time": "8:12:33"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:11:37",
+        "salary": "",
+        "employee_id": "149",
+        "source_date": "06/15/2026",
+        "source_name": "LEONARDO GABRIEL HERNANDEZ HERNANDEZ",
+        "source_time": "8:11:37"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:10:48",
+        "salary": "",
+        "employee_id": "290",
+        "source_date": "06/15/2026",
+        "source_name": "DIANA PAVANA FLORES",
+        "source_time": "8:10:48"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:08:37",
+        "salary": "",
+        "employee_id": "143",
+        "source_date": "06/15/2026",
+        "source_name": "JUAN DANIEL GARCIA DIAZ",
+        "source_time": "8:08:37"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:06:45",
+        "salary": "",
+        "employee_id": "135",
+        "source_date": "06/15/2026",
+        "source_name": "JAVIER MARTINEZ BARRERA",
+        "source_time": "8:06:45"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:06:34",
+        "salary": "",
+        "employee_id": "153",
+        "source_date": "06/15/2026",
+        "source_name": "MARITZA LOPEZ MORENO",
+        "source_time": "8:06:34"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:06:05",
+        "salary": "",
+        "employee_id": "150",
+        "source_date": "06/15/2026",
+        "source_name": "JUAN ERNESTO PRADO RENDON",
+        "source_time": "8:06:05"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:05:21",
+        "salary": "",
+        "employee_id": "289",
+        "source_date": "06/15/2026",
+        "source_name": "LUIS GABRIEL SALOMON",
+        "source_time": "8:05:21"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:05:19",
+        "salary": "",
+        "employee_id": "273",
+        "source_date": "06/15/2026",
+        "source_name": "HECTOR URIEL SALOMON",
+        "source_time": "8:05:19"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:04:26",
+        "salary": "",
+        "employee_id": "607",
+        "source_date": "06/15/2026",
+        "source_name": "ELIZABETH LOPEZ ROQUE",
+        "source_time": "8:04:26"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:03:50",
+        "salary": "",
+        "employee_id": "138",
+        "source_date": "06/15/2026",
+        "source_name": "TOMAS RODRIGUEZ RODRIGUEZ",
+        "source_time": "8:03:50"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:03:42",
+        "salary": "",
+        "employee_id": "118",
+        "source_date": "06/15/2026",
+        "source_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+        "source_time": "8:03:42"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:03:23",
+        "salary": "",
+        "employee_id": "276",
+        "source_date": "06/15/2026",
+        "source_name": "DANIELA SARAHI PINEDA PANTOJA",
+        "source_time": "8:03:23"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:02:47",
+        "salary": "",
+        "employee_id": "234",
+        "source_date": "06/15/2026",
+        "source_name": "RIGOBERTO GONZALEZ MALAGON",
+        "source_time": "8:02:47"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:02:35",
+        "salary": "",
+        "employee_id": "136",
+        "source_date": "06/15/2026",
+        "source_name": "ANTONIO RODRIGUEZ MEDINA",
+        "source_time": "8:02:35"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:02:20",
+        "salary": "",
+        "employee_id": "8",
+        "source_date": "06/15/2026",
+        "source_name": "REBECA SOLORZANO GRANADOS",
+        "source_time": "8:02:20"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:02:12",
+        "salary": "",
+        "employee_id": "217",
+        "source_date": "06/15/2026",
+        "source_name": "LUIS ANGEL CENTENO GONZALEZ",
+        "source_time": "8:02:12"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:01:08",
+        "salary": "",
+        "employee_id": "264",
+        "source_date": "06/15/2026",
+        "source_name": "FATIMA CORTES BRAVO",
+        "source_time": "8:01:08"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 8:01:03",
+        "salary": "",
+        "employee_id": "287",
+        "source_date": "06/15/2026",
+        "source_name": "JONATHAN DANIEL ABUNDIS PEREZ",
+        "source_time": "8:01:03"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 7:59:36",
+        "salary": "",
+        "employee_id": "94",
+        "source_date": "06/15/2026",
+        "source_name": "RENE JULIAN JIMENEZ MARTINEZ",
+        "source_time": "7:59:36"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 7:57:50",
+        "salary": "",
+        "employee_id": "268",
+        "source_date": "06/15/2026",
+        "source_name": "MARICRUZ GARCIA YAÑEZ",
+        "source_time": "7:57:50"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 7:57:17",
+        "salary": "",
+        "employee_id": "132",
+        "source_date": "06/15/2026",
+        "source_name": "JOSE DE JESUS CIENEGA HERNANDEZ",
+        "source_time": "7:57:17"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 7:56:19",
+        "salary": "",
+        "employee_id": "280",
+        "source_date": "06/15/2026",
+        "source_name": "JOSE OSCAR MARTINEZ PALMA",
+        "source_time": "7:56:19"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 7:44:55",
+        "salary": "",
+        "employee_id": "275",
+        "source_date": "06/15/2026",
+        "source_name": "ESTEBAN GARCIA MEDINA",
+        "source_time": "7:44:55"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 7:08:38",
+        "salary": "",
+        "employee_id": "144",
+        "source_date": "06/15/2026",
+        "source_name": "FRANCISCO JAVIER GUERRERO MARTINEZ",
+        "source_time": "7:08:38"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 7:07:13",
+        "salary": "",
+        "employee_id": "174",
+        "source_date": "06/15/2026",
+        "source_name": "FRANCISCO JAVIER AYALA CAPILLA",
+        "source_time": "7:07:13"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 6:29:46",
+        "salary": "",
+        "employee_id": "190",
+        "source_date": "06/15/2026",
+        "source_name": "JESUS MARTIN RODRIGUEZ JIMENEZ",
+        "source_time": "6:29:46"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 6:05:12",
+        "salary": "",
+        "employee_id": "93",
+        "source_date": "06/15/2026",
+        "source_name": "GABRIEL RODRIGUEZ CARRANCO",
+        "source_time": "6:05:12"
+      },
+      {
+        "net": "",
+        "detail": "06/15/2026 · 5:59:14",
+        "salary": "",
+        "employee_id": "139",
+        "source_date": "06/15/2026",
+        "source_name": "JOSE CANDIDO SALOMON ANGELES",
+        "source_time": "5:59:14"
+      },
+      {
+        "net": "",
+        "detail": "06/14/2026 · 7:58:54",
+        "salary": "",
+        "employee_id": "139",
+        "source_date": "06/14/2026",
+        "source_name": "JOSE CANDIDO SALOMON ANGELES",
+        "source_time": "7:58:54"
+      },
+      {
+        "net": "",
+        "detail": "06/13/2026 · 8:41:04",
+        "salary": "",
+        "employee_id": "174",
+        "source_date": "06/13/2026",
+        "source_name": "FRANCISCO JAVIER AYALA CAPILLA",
+        "source_time": "8:41:04"
+      },
+      {
+        "net": "",
+        "detail": "06/13/2026 · 7:08:41",
+        "salary": "",
+        "employee_id": "174",
+        "source_date": "06/13/2026",
+        "source_name": "FRANCISCO JAVIER AYALA CAPILLA",
+        "source_time": "7:08:41"
+      }
+    ],
+    "created_at": "2026-07-01T19:10:27.943522+00:00",
+    "updated_at": "2026-07-01T19:10:27.943522+00:00"
+  },
+  {
+    "id": "contpaq_1782933033125639",
+    "source": "contpaq",
+    "file_name": "Hoja CONTPAQ.xlsx",
+    "imported_at": "2026-07-01T13:10:33.125656+00:00",
+    "valid_rows": 65,
+    "rejected_rows": 2,
+    "period_label": "Periodo 26 al 26 Semanal del 19/06/2026 al 25/06/2026 · Hora: 12:24:18:750",
+    "issues": [],
+    "preview_rows": [
+      {
+        "name": "CRUZ CRUZ JOSE LUIS",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "employee_id": "2"
+      },
+      {
+        "name": "SOLORZANO GRANADOS REBECA",
+        "detail": "Sueldo 1260.1600000000001 · Neto 1575.2",
+        "employee_id": "8"
+      },
+      {
+        "name": "RODRIGUEZ ABOYTES JUAN",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "employee_id": "12"
+      },
+      {
+        "name": "CONTRERAS RODRIGUEZ JULIAN",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "employee_id": "78"
+      },
+      {
+        "name": "MORALES PEREZ JOSE DE JESUS",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "employee_id": "84"
+      },
+      {
+        "name": "ROBLES RAMIREZ ISRAEL",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "employee_id": "85"
+      }
+    ],
+    "unique_employee_ids": [
+      "2",
+      "8",
+      "12",
+      "78",
+      "84",
+      "85",
+      "92",
+      "93",
+      "94",
+      "104",
+      "114",
+      "115",
+      "118",
+      "120",
+      "121",
+      "132",
+      "135",
+      "136",
+      "137",
+      "138",
+      "139",
+      "141",
+      "143",
+      "144",
+      "149",
+      "150",
+      "153",
+      "157",
+      "173",
+      "174",
+      "179",
+      "190",
+      "191",
+      "195",
+      "196",
+      "197",
+      "211",
+      "212",
+      "213",
+      "214",
+      "217",
+      "223",
+      "226",
+      "234",
+      "239",
+      "244",
+      "252",
+      "255",
+      "259",
+      "261",
+      "262",
+      "264",
+      "265",
+      "266",
+      "268",
+      "273",
+      "275",
+      "276",
+      "280",
+      "283",
+      "285",
+      "286",
+      "287",
+      "288",
+      "289"
+    ],
+    "entries": [
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "2",
+        "source_date": "",
+        "source_name": "CRUZ CRUZ JOSE LUIS",
+        "source_time": ""
+      },
+      {
+        "net": "1575.2",
+        "detail": "Sueldo 1260.1600000000001 · Neto 1575.2",
+        "salary": "1260.1600000000001",
+        "employee_id": "8",
+        "source_date": "",
+        "source_name": "SOLORZANO GRANADOS REBECA",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "12",
+        "source_date": "",
+        "source_name": "RODRIGUEZ ABOYTES JUAN",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "78",
+        "source_date": "",
+        "source_name": "CONTRERAS RODRIGUEZ JULIAN",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "84",
+        "source_date": "",
+        "source_name": "MORALES PEREZ JOSE DE JESUS",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "85",
+        "source_date": "",
+        "source_name": "ROBLES RAMIREZ ISRAEL",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "92",
+        "source_date": "",
+        "source_name": "SANDOVAL MORA EMILIO JOSE",
+        "source_time": ""
+      },
+      {
+        "net": "630.20000000000005",
+        "detail": "Sueldo 315.04000000000002 · Neto 630.20000000000005",
+        "salary": "315.04000000000002",
+        "employee_id": "93",
+        "source_date": "",
+        "source_name": "RODRIGUEZ CARRANCO GABRIEL",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "94",
+        "source_date": "",
+        "source_name": "JIMENEZ MARTINEZ RENE JULIAN",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "104",
+        "source_date": "",
+        "source_name": "MUÑIZ CARDENAS FERNANDO",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "114",
+        "source_date": "",
+        "source_name": "MIRANDA CORNEJO JUAN ANTONIO",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "115",
+        "source_date": "",
+        "source_name": "NORIEGA RAMIREZ RODOLFO",
+        "source_time": ""
+      },
+      {
+        "net": "1705.4",
+        "detail": "Sueldo 1390.24 · Neto 1705.4",
+        "salary": "1390.24",
+        "employee_id": "118",
+        "source_date": "",
+        "source_name": "ABUNDIS CORNEJO MIGUEL ANGEL",
+        "source_time": ""
+      },
+      {
+        "net": "1956.4",
+        "detail": "Sueldo 1890.24 · Neto 1956.4",
+        "salary": "1890.24",
+        "employee_id": "120",
+        "source_date": "",
+        "source_name": "RIVERA HERNANDEZ CELSO",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "121",
+        "source_date": "",
+        "source_name": "NOYOLA ELIZALDE MIGUEL ANGEL",
+        "source_time": ""
+      },
+      {
+        "net": "1750.2",
+        "detail": "Sueldo 1890.24 · Neto 1750.2",
+        "salary": "1890.24",
+        "employee_id": "132",
+        "source_date": "",
+        "source_name": "CIENEGA HERNANDEZ JOSE JESUS",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "135",
+        "source_date": "",
+        "source_name": "MARTINEZ BARRERA JAVIER",
+        "source_time": ""
+      },
+      {
+        "net": "4155.2",
+        "detail": "Sueldo 3525.22 · Neto 4155.2",
+        "salary": "3525.22",
+        "employee_id": "136",
+        "source_date": "",
+        "source_name": "RODRIGUEZ MEDINA ANTONIO",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "137",
+        "source_date": "",
+        "source_name": "RODRIGUEZ MEDINA JESUS",
+        "source_time": ""
+      },
+      {
+        "net": "1989.4",
+        "detail": "Sueldo 1890.24 · Neto 1989.4",
+        "salary": "1890.24",
+        "employee_id": "138",
+        "source_date": "",
+        "source_name": "RODRIGUEZ RODRIGUEZ TOMAS",
+        "source_time": ""
+      },
+      {
+        "net": "1942",
+        "detail": "Sueldo 1890.24 · Neto 1942",
+        "salary": "1890.24",
+        "employee_id": "139",
+        "source_date": "",
+        "source_name": "SALOMON ANGELES JOSE CANDIDO",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "141",
+        "source_date": "",
+        "source_name": "CASTRO DIAZ RIGOBERTO",
+        "source_time": ""
+      },
+      {
+        "net": "1555.6",
+        "detail": "Sueldo 1732.72 · Neto 1555.6",
+        "salary": "1732.72",
+        "employee_id": "143",
+        "source_date": "",
+        "source_name": "GARCIA DIAZ JUAN DANIEL",
+        "source_time": ""
+      },
+      {
+        "net": "1586",
+        "detail": "Sueldo 1575.2 · Neto 1586",
+        "salary": "1575.2",
+        "employee_id": "144",
+        "source_date": "",
+        "source_name": "GUERRERO MARTINEZ FRANCISCO JAVIER",
+        "source_time": ""
+      },
+      {
+        "net": "1837.8",
+        "detail": "Sueldo 1575.2 · Neto 1837.8",
+        "salary": "1575.2",
+        "employee_id": "149",
+        "source_date": "",
+        "source_name": "HERNANDEZ HERNANDEZ LEONARDO GABRIEL",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "150",
+        "source_date": "",
+        "source_name": "PRADO RENDON JUAN ERNESTO",
+        "source_time": ""
+      },
+      {
+        "net": "1890.2",
+        "detail": "Sueldo 1575.2 · Neto 1890.2",
+        "salary": "1575.2",
+        "employee_id": "153",
+        "source_date": "",
+        "source_name": "LOPEZ MORENO MARITSA",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "157",
+        "source_date": "",
+        "source_name": "LOPEZ PEREZ JOSE ANGEL",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "173",
+        "source_date": "",
+        "source_name": "RODRIGUEZ MARTINEZ JORGE LUIS",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "174",
+        "source_date": "",
+        "source_name": "AYALA CAPILLA FRANCISCO JAVIER",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "179",
+        "source_date": "",
+        "source_name": "ZAMORA MORALES OMAR GUADALUPE",
+        "source_time": ""
+      },
+      {
+        "net": "2021.6",
+        "detail": "Sueldo 1417.68 · Neto 2021.6",
+        "salary": "1417.68",
+        "employee_id": "190",
+        "source_date": "",
+        "source_name": "RODRIGUEZ JIMENEZ JESUS MARTIN",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "191",
+        "source_date": "",
+        "source_name": "MALDONADO CALZADA JOSE MANUEL",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "195",
+        "source_date": "",
+        "source_name": "GARCIA DE LA ROSA ANDRES",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "196",
+        "source_date": "",
+        "source_name": "GUERRERO ABUNDIS IRVING",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "197",
+        "source_date": "",
+        "source_name": "MARTINEZ GOMEZ ILIANA GUADALUPE",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "211",
+        "source_date": "",
+        "source_name": "MUÑOZ RAMIREZ MARIA DEL CARMEN",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "212",
+        "source_date": "",
+        "source_name": "RODRIGUEZ PATIÑO JOSE GUADALUPE",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "213",
+        "source_date": "",
+        "source_name": "PAVANA FLORES JOSE LUIS",
+        "source_time": ""
+      },
+      {
+        "net": "2005.4",
+        "detail": "Sueldo 1690.24 · Neto 2005.4",
+        "salary": "1690.24",
+        "employee_id": "214",
+        "source_date": "",
+        "source_name": "JAUREGUI VERDE GUADALUPE",
+        "source_time": ""
+      },
+      {
+        "net": "1951.6",
+        "detail": "Sueldo 1890.24 · Neto 1951.6",
+        "salary": "1890.24",
+        "employee_id": "217",
+        "source_date": "",
+        "source_name": "CENTENO GONZALEZ LUIS ANGEL",
+        "source_time": ""
+      },
+      {
+        "net": "2005.2",
+        "detail": "Sueldo 1790.24 · Neto 2005.2",
+        "salary": "1790.24",
+        "employee_id": "223",
+        "source_date": "",
+        "source_name": "RAMIREZ CAMPOS CRUZ ANGEL",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "226",
+        "source_date": "",
+        "source_name": "RODRIGUEZ PACHECO FEDERICO",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "234",
+        "source_date": "",
+        "source_name": "GONZALEZ MALAGON RIGOBERTO",
+        "source_time": ""
+      },
+      {
+        "net": "2166.8000000000002",
+        "detail": "Sueldo 1857.42 · Neto 2166.8000000000002",
+        "salary": "1857.42",
+        "employee_id": "239",
+        "source_date": "",
+        "source_name": "MONTES SERVIN EDUARDO",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "244",
+        "source_date": "",
+        "source_name": "CAMPOS RAMIREZ CRISTIAN",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "252",
+        "source_date": "",
+        "source_name": "PAVANA SAGRERO JUAN MANUEL",
+        "source_time": ""
+      },
+      {
+        "net": "1698.2",
+        "detail": "Sueldo 1890.24 · Neto 1698.2",
+        "salary": "1890.24",
+        "employee_id": "255",
+        "source_date": "",
+        "source_name": "HUERTA ROJAS JOSE FEDERICO",
+        "source_time": ""
+      },
+      {
+        "net": "1102.8",
+        "detail": "Sueldo 945.12 · Neto 1102.8",
+        "salary": "945.12",
+        "employee_id": "259",
+        "source_date": "",
+        "source_name": "ALBA NORIEGA BRANDON ARTURO",
+        "source_time": ""
+      },
+      {
+        "net": "2055.4",
+        "detail": "Sueldo 1740.24 · Neto 2055.4",
+        "salary": "1740.24",
+        "employee_id": "261",
+        "source_date": "",
+        "source_name": "HERNANDEZ MONTELONGO MARIA GUADALUPE",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "262",
+        "source_date": "",
+        "source_name": "MANCERA OLVERA JUAN DANIEL",
+        "source_time": ""
+      },
+      {
+        "net": "1837.8",
+        "detail": "Sueldo 1575.2 · Neto 1837.8",
+        "salary": "1575.2",
+        "employee_id": "264",
+        "source_date": "",
+        "source_name": "CORTES BRAVO FATIMA",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "265",
+        "source_date": "",
+        "source_name": "CARMONA RAMIREZ MARIA FATIMA",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "266",
+        "source_date": "",
+        "source_name": "AMEZCUA SALINAS JOSE MARIA",
+        "source_time": ""
+      },
+      {
+        "net": "2178.4",
+        "detail": "Sueldo 1867.27 · Neto 2178.4",
+        "salary": "1867.27",
+        "employee_id": "268",
+        "source_date": "",
+        "source_name": "GARCIA YAÑEZ MARICRUZ",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "273",
+        "source_date": "",
+        "source_name": "SALOMON CISNEROS HECTOR URIEL",
+        "source_time": ""
+      },
+      {
+        "net": "2486.6",
+        "detail": "Sueldo 3000 · Neto 2486.6",
+        "salary": "3000",
+        "employee_id": "275",
+        "source_date": "",
+        "source_name": "MEDINA GARCIA ESTEBAN",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "276",
+        "source_date": "",
+        "source_name": "PINEDA PANTOJA DANIELA SARAHI",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "280",
+        "source_date": "",
+        "source_name": "MARTINEZ PALMA JOSE OSCAR",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "283",
+        "source_date": "",
+        "source_name": "GONZALEZ TREJO JESUS ALEJANDRO",
+        "source_time": ""
+      },
+      {
+        "net": "2205.4",
+        "detail": "Sueldo 1890.24 · Neto 2205.4",
+        "salary": "1890.24",
+        "employee_id": "285",
+        "source_date": "",
+        "source_name": "RICO MENDOZA ERNESTO",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "286",
+        "source_date": "",
+        "source_name": "ABUNDIS MARTINEZ CARLOS GIOVANNI",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "287",
+        "source_date": "",
+        "source_name": "ABUNDIS PEREZ JONATHAN DANIEL",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "288",
+        "source_date": "",
+        "source_name": "RAMIREZ HERNANDEZ ULISES",
+        "source_time": ""
+      },
+      {
+        "net": "2205.1999999999998",
+        "detail": "Sueldo 1890.24 · Neto 2205.1999999999998",
+        "salary": "1890.24",
+        "employee_id": "289",
+        "source_date": "",
+        "source_name": "SALOMON CISNEROS LUIS GABRIEL",
+        "source_time": ""
+      }
+    ],
+    "created_at": "2026-07-01T19:10:33.244859+00:00",
+    "updated_at": "2026-07-01T19:10:33.244859+00:00"
+  }
+]

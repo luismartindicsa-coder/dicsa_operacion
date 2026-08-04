@@ -1,0 +1,192 @@
+[
+  {
+    "id": "88c788cd-06c8-43a9-b429-aba0c440f2f4",
+    "code": "CARTON",
+    "name": "CARTON",
+    "is_active": true,
+    "sort_order": 10,
+    "notes": "Base general para compras y aperturas de carton",
+    "created_at": "2026-03-13T19:39:38.720229+00:00",
+    "updated_at": "2026-03-13T19:39:38.720229+00:00"
+  },
+  {
+    "id": "4c7a25df-991f-4443-9269-4e853df6fed3",
+    "code": "CHATARRA",
+    "name": "CHATARRA",
+    "is_active": true,
+    "sort_order": 20,
+    "notes": "Base general para compras y aperturas de chatarra",
+    "created_at": "2026-03-13T19:39:38.720229+00:00",
+    "updated_at": "2026-03-13T19:39:38.720229+00:00"
+  },
+  {
+    "id": "97e156d5-3719-4083-885c-e6a25af94015",
+    "code": "PAPEL",
+    "name": "PAPEL",
+    "is_active": true,
+    "sort_order": 60,
+    "notes": "Base general para compras y aperturas de papel",
+    "created_at": "2026-03-13T19:39:38.720229+00:00",
+    "updated_at": "2026-04-02T16:54:51.466439+00:00"
+  },
+  {
+    "id": "a3b39add-83a8-4b9e-92db-242b2b852a40",
+    "code": "METAL",
+    "name": "METAL",
+    "is_active": true,
+    "sort_order": 30,
+    "notes": "Base general para compras y aperturas de metal",
+    "created_at": "2026-03-13T19:39:38.720229+00:00",
+    "updated_at": "2026-04-02T16:54:51.605624+00:00"
+  },
+  {
+    "id": "ecc6f380-5996-43ba-87b1-d751882974d8",
+    "code": "MADERA",
+    "name": "MADERA",
+    "is_active": true,
+    "sort_order": 50,
+    "notes": "Base general para compras y aperturas de madera",
+    "created_at": "2026-03-13T19:39:38.720229+00:00",
+    "updated_at": "2026-04-02T16:54:51.894121+00:00"
+  },
+  {
+    "id": "6a15cf8a-9064-49a4-8795-946591fee553",
+    "code": "PLASTICO",
+    "name": "PLASTICO",
+    "is_active": true,
+    "sort_order": 40,
+    "notes": "Base general para compras y aperturas de plastico",
+    "created_at": "2026-03-13T19:39:38.720229+00:00",
+    "updated_at": "2026-04-15T19:40:18.769498+00:00"
+  },
+  {
+    "id": "ed5a219e-fda7-440a-b5ce-35dec6e45fef",
+    "code": "MADERA_GRANEL",
+    "name": "MADERA GRANEL",
+    "is_active": false,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-03-23T15:48:35.45895+00:00",
+    "updated_at": "2026-07-08T19:20:03.38401+00:00"
+  },
+  {
+    "id": "ece0924a-d0b6-47f3-85af-426f6dc0a247",
+    "code": "TARIMA_DE_PLASTICO",
+    "name": "TARIMA DE PLASTICO",
+    "is_active": false,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-05-13T15:47:49.562342+00:00",
+    "updated_at": "2026-07-08T19:20:03.38401+00:00"
+  },
+  {
+    "id": "dfeddfc5-9d13-4d37-9889-153602b3beb1",
+    "code": "GARRAFA_GRANDE",
+    "name": "GARRAFA GRANDE",
+    "is_active": false,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-05-14T14:25:52.473069+00:00",
+    "updated_at": "2026-07-08T19:20:03.38401+00:00"
+  },
+  {
+    "id": "67c20d60-07b6-4972-8159-17858a55fd64",
+    "code": "GARRAFA_CHICA",
+    "name": "GARRAFA CHICA",
+    "is_active": false,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-05-14T14:28:18.587033+00:00",
+    "updated_at": "2026-07-08T19:20:03.38401+00:00"
+  },
+  {
+    "id": "097a63c8-b7fd-4daa-b7e3-1c3249647607",
+    "code": "POLIFON",
+    "name": "POLIFON",
+    "is_active": false,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-06-05T15:41:23.745469+00:00",
+    "updated_at": "2026-07-08T19:20:03.38401+00:00"
+  },
+  {
+    "id": "3994294a-695e-4a66-8d1c-9ffc46b7e487",
+    "code": "PLASTICO_DURO",
+    "name": "PLASTICO DURO",
+    "is_active": false,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-07-01T16:41:51.079326+00:00",
+    "updated_at": "2026-07-08T19:20:03.38401+00:00"
+  },
+  {
+    "id": "8ea437ed-eaf3-4f10-991a-02aa19a9eb5a",
+    "code": "REJAS",
+    "name": "REJAS",
+    "is_active": false,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-07-07T18:08:47.344114+00:00",
+    "updated_at": "2026-07-08T19:20:03.38401+00:00"
+  },
+  {
+    "id": "5f11bcd9-0712-4b59-a088-6cc731043cf4",
+    "code": "CABLE",
+    "name": "CABLE",
+    "is_active": false,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-07-07T18:08:53.322013+00:00",
+    "updated_at": "2026-07-08T19:20:03.38401+00:00"
+  },
+  {
+    "id": "1899648f-96fa-48ce-9c68-0ed2fd4aec8e",
+    "code": "VIDRIO",
+    "name": "VIDRIO",
+    "is_active": true,
+    "sort_order": 100,
+    "notes": "Creado por reparación controlada 2026-07-08 para separar vidrio como general propio.",
+    "created_at": "2026-07-09T00:31:55.592174+00:00",
+    "updated_at": "2026-07-09T00:31:55.592174+00:00"
+  },
+  {
+    "id": "ac47f337-bb87-402d-9836-edf019e8a934",
+    "code": "CAJAS",
+    "name": "CAJAS",
+    "is_active": true,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-07-27T16:37:31.848991+00:00",
+    "updated_at": "2026-07-27T16:37:31.848991+00:00"
+  },
+  {
+    "id": "66989b3f-5b28-421e-913b-734241cbadac",
+    "code": "LE_A",
+    "name": "LEÑA",
+    "is_active": true,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-07-29T15:39:46.411864+00:00",
+    "updated_at": "2026-07-29T15:39:46.411864+00:00"
+  },
+  {
+    "id": "cf0f43fe-03fc-45d5-924c-331ed2b8d509",
+    "code": "BOLSA",
+    "name": "BOLSA",
+    "is_active": true,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-07-30T16:42:46.25125+00:00",
+    "updated_at": "2026-07-30T16:42:46.25125+00:00"
+  },
+  {
+    "id": "ace2c3c4-7187-4ff1-8e93-22e0275862f5",
+    "code": "CONTENEDOR",
+    "name": "CONTENEDOR",
+    "is_active": true,
+    "sort_order": 100,
+    "notes": null,
+    "created_at": "2026-07-30T22:47:13.623604+00:00",
+    "updated_at": "2026-07-30T22:47:13.623604+00:00"
+  }
+]

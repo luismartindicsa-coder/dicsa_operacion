@@ -1,0 +1,112 @@
+[
+  {
+    "id": "1779992075315562",
+    "title": "Cobro Cheque Servin - 7399",
+    "due_date": "2026-06-02T00:00:00+00:00",
+    "source": "DIRECCION",
+    "is_done": true,
+    "detail": null,
+    "is_system_generated": false,
+    "created_at": "2026-05-28T18:15:13.53125+00:00",
+    "updated_at": "2026-06-18T20:31:22.508063+00:00"
+  },
+  {
+    "id": "1777915003503252",
+    "title": "Cambiar Cheque Servin - 1881",
+    "due_date": "2026-05-19T00:00:00+00:00",
+    "source": "DIRECCION",
+    "is_done": true,
+    "detail": null,
+    "is_system_generated": false,
+    "created_at": "2026-05-04T17:17:05.103459+00:00",
+    "updated_at": "2026-06-18T20:31:22.508063+00:00"
+  },
+  {
+    "id": "1777914924986481",
+    "title": "Cambiar Cheque Servin",
+    "due_date": "2026-05-14T00:00:00+00:00",
+    "source": "DIRECCION",
+    "is_done": true,
+    "detail": null,
+    "is_system_generated": false,
+    "created_at": "2026-05-04T17:17:05.103459+00:00",
+    "updated_at": "2026-06-18T20:31:22.508063+00:00"
+  },
+  {
+    "id": "1777914917519470",
+    "title": "Cambiar Cheque Servin",
+    "due_date": "2026-05-13T00:00:00+00:00",
+    "source": "DIRECCION",
+    "is_done": true,
+    "detail": null,
+    "is_system_generated": false,
+    "created_at": "2026-05-04T17:17:05.103459+00:00",
+    "updated_at": "2026-06-18T20:31:22.508063+00:00"
+  },
+  {
+    "id": "1777914971519931",
+    "title": "Cambiar Cheque de Nomina",
+    "due_date": "2026-05-08T00:00:00+00:00",
+    "source": "DIRECCION",
+    "is_done": true,
+    "detail": null,
+    "is_system_generated": false,
+    "created_at": "2026-05-04T17:17:05.103459+00:00",
+    "updated_at": "2026-06-18T20:31:22.508063+00:00"
+  },
+  {
+    "id": "1777914900652994",
+    "title": "Cobrar Cheque Servin",
+    "due_date": "2026-05-08T00:00:00+00:00",
+    "source": "DIRECCION",
+    "is_done": true,
+    "detail": null,
+    "is_system_generated": false,
+    "created_at": "2026-05-04T17:17:05.103459+00:00",
+    "updated_at": "2026-06-18T20:31:22.508063+00:00"
+  },
+  {
+    "id": "1777914873369999",
+    "title": "Cambiar Cheques El Palomar",
+    "due_date": "2026-05-04T00:00:00+00:00",
+    "source": "DIRECCION",
+    "is_done": true,
+    "detail": null,
+    "is_system_generated": false,
+    "created_at": "2026-05-04T17:17:05.103459+00:00",
+    "updated_at": "2026-06-18T20:31:22.508063+00:00"
+  },
+  {
+    "id": "1777416725311831",
+    "title": "SOLICITAR LIBERACION DE CHEQUE DE SERVIN",
+    "due_date": "2026-04-29T00:00:00+00:00",
+    "source": "VENTAS",
+    "is_done": true,
+    "detail": null,
+    "is_system_generated": false,
+    "created_at": "2026-04-28T22:52:10.87549+00:00",
+    "updated_at": "2026-06-18T20:31:22.508063+00:00"
+  },
+  {
+    "id": "1777404621080391",
+    "title": "Familiarización con nuevo programa",
+    "due_date": "2026-04-28T00:00:00+00:00",
+    "source": "DIRECCION",
+    "is_done": true,
+    "detail": null,
+    "is_system_generated": false,
+    "created_at": "2026-04-28T19:30:28.212612+00:00",
+    "updated_at": "2026-06-18T20:31:22.508063+00:00"
+  },
+  {
+    "id": "1779992108432533",
+    "title": "Cobro Cheque Servin - 6826",
+    "due_date": "2026-06-03T00:00:00+00:00",
+    "source": "DIRECCION",
+    "is_done": true,
+    "detail": null,
+    "is_system_generated": false,
+    "created_at": "2026-05-28T18:15:13.53125+00:00",
+    "updated_at": "2026-06-18T20:31:22.508063+00:00"
+  }
+]

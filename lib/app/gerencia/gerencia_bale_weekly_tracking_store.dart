@@ -288,10 +288,15 @@ class GerenciaBaleWeeklyTrackingStore {
   static DateTime? _cachedBaleTypesAt;
   static Future<List<GerenciaBaleTypeRecord>>? _baleTypesLoadInFlight;
 
+  static DateTime currentWeekStartDate() => _weekStartMonday(DateTime.now());
+
+  static DateTime normalizeWeekStartDate(DateTime weekDate) =>
+      _weekStartMonday(weekDate);
+
   static Future<GerenciaBaleWeeklyTrackingBundle> loadCurrentWeek({
     bool forceRefresh = false,
   }) async {
-    final weekStartDate = _weekStartMonday(DateTime.now());
+    final weekStartDate = currentWeekStartDate();
     return loadWeek(weekStartDate, forceRefresh: forceRefresh);
   }
 

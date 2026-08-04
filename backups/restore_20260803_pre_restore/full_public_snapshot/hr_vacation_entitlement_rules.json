@@ -1,0 +1,123 @@
+[
+  {
+    "rule_key": "1",
+    "sort_order": 1,
+    "min_years": 1,
+    "max_years": 1,
+    "days_entitled": 12,
+    "legal_basis": "LFT Art. 76",
+    "active": true,
+    "created_at": "2026-07-06T17:40:15.564067+00:00",
+    "updated_at": "2026-07-06T17:40:15.564067+00:00"
+  },
+  {
+    "rule_key": "2",
+    "sort_order": 2,
+    "min_years": 2,
+    "max_years": 2,
+    "days_entitled": 14,
+    "legal_basis": "LFT Art. 76",
+    "active": true,
+    "created_at": "2026-07-06T17:40:15.564067+00:00",
+    "updated_at": "2026-07-06T17:40:15.564067+00:00"
+  },
+  {
+    "rule_key": "3",
+    "sort_order": 3,
+    "min_years": 3,
+    "max_years": 3,
+    "days_entitled": 16,
+    "legal_basis": "LFT Art. 76",
+    "active": true,
+    "created_at": "2026-07-06T17:40:15.564067+00:00",
+    "updated_at": "2026-07-06T17:40:15.564067+00:00"
+  },
+  {
+    "rule_key": "4",
+    "sort_order": 4,
+    "min_years": 4,
+    "max_years": 4,
+    "days_entitled": 18,
+    "legal_basis": "LFT Art. 76",
+    "active": true,
+    "created_at": "2026-07-06T17:40:15.564067+00:00",
+    "updated_at": "2026-07-06T17:40:15.564067+00:00"
+  },
+  {
+    "rule_key": "5",
+    "sort_order": 5,
+    "min_years": 5,
+    "max_years": 5,
+    "days_entitled": 20,
+    "legal_basis": "LFT Art. 76",
+    "active": true,
+    "created_at": "2026-07-06T17:40:15.564067+00:00",
+    "updated_at": "2026-07-06T17:40:15.564067+00:00"
+  },
+  {
+    "rule_key": "6_10",
+    "sort_order": 6,
+    "min_years": 6,
+    "max_years": 10,
+    "days_entitled": 22,
+    "legal_basis": "LFT Art. 76",
+    "active": true,
+    "created_at": "2026-07-06T17:40:15.564067+00:00",
+    "updated_at": "2026-07-06T17:40:15.564067+00:00"
+  },
+  {
+    "rule_key": "11_15",
+    "sort_order": 7,
+    "min_years": 11,
+    "max_years": 15,
+    "days_entitled": 24,
+    "legal_basis": "LFT Art. 76",
+    "active": true,
+    "created_at": "2026-07-06T17:40:15.564067+00:00",
+    "updated_at": "2026-07-06T17:40:15.564067+00:00"
+  },
+  {
+    "rule_key": "16_20",
+    "sort_order": 8,
+    "min_years": 16,
+    "max_years": 20,
+    "days_entitled": 26,
+    "legal_basis": "LFT Art. 76",
+    "active": true,
+    "created_at": "2026-07-06T17:40:15.564067+00:00",
+    "updated_at": "2026-07-06T17:40:15.564067+00:00"
+  },
+  {
+    "rule_key": "21_25",
+    "sort_order": 9,
+    "min_years": 21,
+    "max_years": 25,
+    "days_entitled": 28,
+    "legal_basis": "LFT Art. 76",
+    "active": true,
+    "created_at": "2026-07-06T17:40:15.564067+00:00",
+    "updated_at": "2026-07-06T17:40:15.564067+00:00"
+  },
+  {
+    "rule_key": "26_30",
+    "sort_order": 10,
+    "min_years": 26,
+    "max_years": 30,
+    "days_entitled": 30,
+    "legal_basis": "LFT Art. 76",
+    "active": true,
+    "created_at": "2026-07-06T17:40:15.564067+00:00",
+    "updated_at": "2026-07-06T17:40:15.564067+00:00"
+  },
+  {
+    "rule_key": "31_35",
+    "sort_order": 11,
+    "min_years": 31,
+    "max_years": 35,
+    "days_entitled": 32,
+    "legal_basis": "LFT Art. 76",
+    "active": true,
+    "created_at": "2026-07-06T17:40:15.564067+00:00",
+    "updated_at": "2026-07-06T17:40:15.564067+00:00"
+  }
+]

@@ -1,0 +1,19 @@
+{
+  "generatedAt": "2026-08-03T16:22:06.217512",
+  "totalCount": 106,
+  "totalAmount": 7833743.04,
+  "highConfidenceCount": 99,
+  "highConfidenceAmount": 7462862.69,
+  "mediumConfidenceCount": 7,
+  "mediumConfidenceAmount": 370880.35,
+  "countByType": {
+    "cheque_canjeado_palomar": 61,
+    "factura_pagada_por_banco": 38,
+    "factura_con_folio_en_observaciones": 7
+  },
+  "amountByType": {
+    "cheque_canjeado_palomar": 4743409.9,
+    "factura_pagada_por_banco": 2719452.79,
+    "factura_con_folio_en_observaciones": 370880.35
+  }
+}
