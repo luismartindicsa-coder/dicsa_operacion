@@ -3013,7 +3013,9 @@ class _ServicesPageState extends State<ServicesPage>
       'fixed_service_id': null,
       'status': _draft.status,
       'client_id': _draft.clientId,
-      'material_id': _draft.materialId,
+      // services sigue viviendo con una FK legacy distinta al catálogo
+      // comercial moderno; aquí guardamos la referencia operativa por texto.
+      'material_id': null,
       'driver_employee_id': _draft.driverEmployeeId,
       'vehicle_id': _draft.vehicleId,
       'notes': _draft.notes.trim().isEmpty ? null : _draft.notes.trim(),
@@ -6050,7 +6052,8 @@ class _ServiceDataRowState extends State<_ServiceDataRow> {
           : null,
       'status': _status,
       'client_id': _clientId,
-      'material_id': _materialId,
+      // services sigue usando una FK legacy distinta al catálogo comercial.
+      'material_id': null,
       'driver_employee_id': _driverId,
       'vehicle_id': _vehicleId,
       'notes': _notes.text.trim().isEmpty ? null : _notes.text.trim(),

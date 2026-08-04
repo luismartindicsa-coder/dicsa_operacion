@@ -324,7 +324,8 @@ class LogisticsFixedServicesStore {
         'fixed_service_id': fixedId,
         'client_id': record.siteId,
         'client_name': record.siteName,
-        'material_id': record.materialId,
+        // services mantiene una FK legacy distinta al catálogo comercial.
+        'material_id': null,
         'material_type': record.materialName,
         'driver_employee_id': record.defaultDriverEmployeeId,
         'vehicle_id': record.defaultVehicleId,

@@ -18,6 +18,7 @@ import '../direction/direction_maintenance_page.dart';
 import '../direction/direction_menudeo_analysis_page.dart';
 import '../direction/direction_operations_repository.dart';
 import '../direction/direction_purchase_orders_page.dart';
+import '../direction/direction_shipments_page.dart';
 import '../direction/direction_theme.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
 import '../finanzas/finanzas_due_alerts_store.dart';
@@ -323,6 +324,17 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     );
   }
 
+  Future<void> _openDirectionShipments() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const DirectionShipmentsPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AreaThemeScope(
@@ -392,6 +404,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       directionExpanded: _directionExpanded,
       areasExpanded: _areasExpanded,
       onOpenGeneralDashboard: () async {},
+      onOpenDirectionShipments: _openDirectionShipments,
       onOpenDirectionCashWorkspace: _openDirectionCashWorkspace,
       onOpenDirectionCashCatalog: _openDirectionCashCatalog,
       onOpenDirectionMenudeoAnalysis: _openDirectionMenudeoAnalysis,
@@ -428,6 +441,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
             onOpenTradeAnalysis: _openDirectionTradeAnalysis,
             onOpenPurchaseOrders: _openDirectionPurchaseOrders,
             onOpenMaintenance: _openDirectionMaintenance,
+            onOpenShipments: _openDirectionShipments,
             onOpenHumanResources: _openHumanResourcesDashboard,
             onOpenGerencia: _openGerenciaDashboard,
             onOpenCommercial: _openCommercialDashboard,
@@ -486,6 +500,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
   final Future<void> Function() onOpenTradeAnalysis;
   final Future<void> Function() onOpenPurchaseOrders;
   final Future<void> Function() onOpenMaintenance;
+  final Future<void> Function() onOpenShipments;
   final Future<void> Function() onOpenHumanResources;
   final Future<void> Function() onOpenGerencia;
   final Future<void> Function() onOpenCommercial;
@@ -500,6 +515,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
     required this.onOpenTradeAnalysis,
     required this.onOpenPurchaseOrders,
     required this.onOpenMaintenance,
+    required this.onOpenShipments,
     required this.onOpenHumanResources,
     required this.onOpenGerencia,
     required this.onOpenCommercial,
@@ -647,6 +663,17 @@ class _DirectionDashboardCanvas extends StatelessWidget {
                   child: _DirectionGerenciaDashboardSummary(
                     onOpenGerencia: onOpenGerencia,
                   ),
+                ),
+              ),
+              SizedBox(
+                width: 420,
+                child: _DirectionAnalysisEntryCard(
+                  title: 'Embarques',
+                  subtitle:
+                      'Planeación semanal de embarques con conteo de piso, proyección histórica y alertas por compactadora.',
+                  badge: 'Dirección',
+                  icon: Icons.local_shipping_rounded,
+                  onTap: onOpenShipments,
                 ),
               ),
               SizedBox(
@@ -6000,6 +6027,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final VoidCallback? onToggleDirectionExpanded;
   final VoidCallback? onToggleAreasExpanded;
   final Future<void> Function()? onOpenGeneralDashboard;
+  final Future<void> Function()? onOpenDirectionShipments;
   final Future<void> Function()? onOpenDirectionCashWorkspace;
   final Future<void> Function()? onOpenDirectionCashCatalog;
   final Future<void> Function()? onOpenDirectionMenudeoAnalysis;
@@ -6021,6 +6049,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onToggleDirectionExpanded,
     this.onToggleAreasExpanded,
     this.onOpenGeneralDashboard,
+    this.onOpenDirectionShipments,
     this.onOpenDirectionCashWorkspace,
     this.onOpenDirectionCashCatalog,
     this.onOpenDirectionMenudeoAnalysis,
@@ -6095,6 +6124,13 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                       subtitle: 'Superficie ejecutiva principal',
                       current: true,
                       onTap: onOpenGeneralDashboard,
+                    ),
+                    const SizedBox(height: 8),
+                    _MenuActionItem(
+                      icon: Icons.local_shipping_rounded,
+                      title: 'Embarques',
+                      subtitle: 'Planeación semanal y semáforos',
+                      onTap: onOpenDirectionShipments,
                     ),
                     const SizedBox(height: 8),
                     _MenuActionItem(
