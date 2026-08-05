@@ -4130,6 +4130,11 @@ class _ServicesPageState extends State<ServicesPage>
 
   Future<void> _openFixedServicesManager() async {
     if (_loadingCats) return;
+    final today = DateUtils.dateOnly(DateTime.now());
+    final initialScheduleDate =
+        _logisticsPlanningView == _LogisticsPlanningView.planned
+        ? today.add(const Duration(days: 1))
+        : today;
     final changed = await showDialog<bool>(
       context: context,
       barrierColor: Colors.black.withValues(alpha: 0.42),
@@ -4138,6 +4143,10 @@ class _ServicesPageState extends State<ServicesPage>
         materials: _materials,
         drivers: _drivers,
         vehicles: _vehicles,
+        initialScheduleDate: initialScheduleDate,
+        onScheduledRowsChanged: () async {
+          await _loadRows(showLoader: false, onlyApplyIfChanged: false);
+        },
       ),
     );
     if (!mounted || changed != true) return;
@@ -7447,12 +7456,16 @@ class _FixedServicesManagerDialog extends StatefulWidget {
   final List<_Opt> materials;
   final List<_Opt> drivers;
   final List<_Opt> vehicles;
+  final DateTime initialScheduleDate;
+  final Future<void> Function()? onScheduledRowsChanged;
 
   const _FixedServicesManagerDialog({
     required this.clients,
     required this.materials,
     required this.drivers,
     required this.vehicles,
+    required this.initialScheduleDate,
+    this.onScheduledRowsChanged,
   });
 
   @override
@@ -7467,13 +7480,12 @@ class _FixedServicesManagerDialogState
   bool _working = false;
   bool _changedRows = false;
   List<LogisticsFixedServiceRecord> _records = <LogisticsFixedServiceRecord>[];
-  DateTime _targetDate = DateUtils.dateOnly(
-    DateTime.now().add(const Duration(days: 1)),
-  );
+  late DateTime _targetDate;
 
   @override
   void initState() {
     super.initState();
+    _targetDate = DateUtils.dateOnly(widget.initialScheduleDate);
     unawaited(_loadRecords());
   }
 
@@ -7627,8 +7639,10 @@ class _FixedServicesManagerDialogState
       if (!mounted) return;
       if (result.inserted > 0) {
         _changedRows = true;
+        await widget.onScheduledRowsChanged?.call();
+        if (!mounted) return;
       }
-      _toast(_scheduleSummary(result));
+      _toast(_scheduleSummary(result, _targetDate));
     } catch (e) {
       if (!mounted) return;
       _toast('No se pudo alimentar Control Diario con los fijos: $e');
@@ -7639,10 +7653,15 @@ class _FixedServicesManagerDialogState
     }
   }
 
-  String _scheduleSummary(LogisticsFixedServiceScheduleResult result) {
+  String _scheduleSummary(
+    LogisticsFixedServiceScheduleResult result,
+    DateTime targetDate,
+  ) {
     final parts = <String>[];
     if (result.inserted > 0) {
-      parts.add('${result.inserted} agendado(s)');
+      parts.add(
+        '${result.inserted} agendado(s) para ${_fmtDateLabel(targetDate)}',
+      );
     }
     if (result.skippedExisting > 0) {
       parts.add('${result.skippedExisting} ya existían');
@@ -7654,7 +7673,7 @@ class _FixedServicesManagerDialogState
       parts.add('${result.skippedInactive} están pausados');
     }
     if (parts.isEmpty) {
-      return 'No hubo servicios fijos aplicables para esa fecha.';
+      return 'No hubo servicios fijos aplicables para ${_fmtDateLabel(targetDate)}.';
     }
     return parts.join(' · ');
   }

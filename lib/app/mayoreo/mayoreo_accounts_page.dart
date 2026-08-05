@@ -524,7 +524,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     return null;
   }
 
-  Future<void> _persistRowsToSupabase(
+  Future<bool> _persistRowsToSupabase(
     List<_MayoreoAccountRow> rows,
     String signature,
   ) async {
@@ -552,37 +552,48 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
             .inFilter('id', deletedIds);
       }
       _lastPersistedRowsSignature = signature;
+      return true;
     } on PostgrestException catch (e) {
       _toast('No se pudo guardar Cuentas Mayoreo: ${e.message}');
       await _loadAccounts();
+      return false;
     } catch (_) {
       _toast(
         'No se pudo guardar Cuentas Mayoreo. Se restauró el estado remoto.',
       );
       await _loadAccounts();
+      return false;
     }
   }
 
   void _persistState() {
+    unawaited(_persistStateAndWait());
+  }
+
+  Future<bool> _persistStateAndWait() {
     final snapshot = _rows.map((row) => row.copyWith()).toList(growable: false);
     final signature = _rowsSignature(snapshot);
     if (signature == _lastQueuedRowsSignature &&
         (_pendingPersistCount > 0 || _persistingRows)) {
-      return;
+      return _persistRowsQueue.then(
+        (_) => signature == _lastPersistedRowsSignature,
+      );
     }
     if (signature == _lastPersistedRowsSignature &&
         _pendingPersistCount == 0 &&
         !_persistingRows) {
       _lastQueuedRowsSignature = signature;
-      return;
+      return Future<bool>.value(true);
     }
     _lastQueuedRowsSignature = signature;
+    final completer = Completer<bool>();
     _pendingPersistCount += 1;
     _persistRowsQueue = _persistRowsQueue.catchError((_) {}).then((_) async {
       _pendingPersistCount = (_pendingPersistCount - 1).clamp(0, 1 << 20);
       _persistingRows = true;
       try {
-        await _persistRowsToSupabase(snapshot, signature);
+        final success = await _persistRowsToSupabase(snapshot, signature);
+        if (!completer.isCompleted) completer.complete(success);
       } finally {
         _persistingRows = false;
         if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
@@ -590,7 +601,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
         }
       }
     });
-    unawaited(_persistRowsQueue);
+    return completer.future;
   }
 
   double _pendingContributionForRow(_MayoreoAccountRow row) {
@@ -1118,10 +1129,10 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     setState(() => _extendSelectionTo(rows[targetIndex!].id, rows));
   }
 
-  void _markRowIdsForReview(
+  Future<void> _markRowIdsForReview(
     Set<String> rowIds,
     List<_MayoreoAccountRow> visibleRows,
-  ) {
+  ) async {
     if (rowIds.isEmpty) return;
     setState(() {
       _rows = _rows
@@ -1135,12 +1146,12 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
         _selectedRowId = visibleRows.first.id;
       }
     });
-    _persistState();
+    await _persistStateAndWait();
   }
 
   Future<void> _openDetailDialog(_MayoreoAccountRow row) async {
-    final result = await _runWithRefreshPause(
-      () => showDialog<_MayoreoAccountRow>(
+    await _runWithRefreshPause(() async {
+      await showDialog<void>(
         context: context,
         barrierDismissible: true,
         builder: (dialogContext) => Theme(
@@ -1148,18 +1159,21 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
           child: _AccountDetailDialog(
             row: row,
             linkedBankMovement: _findLinkedBankMovement(row.id),
+            onPersist: (result) async {
+              if (!mounted) return false;
+              setState(() {
+                _rows = _rows
+                    .map((item) => item.id == result.id ? result : item)
+                    .toList(growable: false);
+                _selectedRowId = result.id;
+              });
+              return _persistStateAndWait();
+            },
           ),
         ),
-      ),
-    );
-    if (result == null) return;
-    setState(() {
-      _rows = _rows
-          .map((item) => item.id == result.id ? result : item)
-          .toList(growable: false);
-      _selectedRowId = result.id;
+      );
+      return null;
     });
-    _persistState();
   }
 
   Future<void> _handleMenuAction(
@@ -1180,7 +1194,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
               )
               .toList(growable: false);
         });
-        _persistState();
+        await _persistStateAndWait();
         return;
     }
   }
@@ -1247,7 +1261,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     );
     if (action != null) {
       if (action == _AccountsMenuAction.markReview && appliesToSelection) {
-        _markRowIdsForReview(_selectedRowIds, visibleRows);
+        await _markRowIdsForReview(_selectedRowIds, visibleRows);
       } else {
         await _handleMenuAction(row, action);
       }
@@ -1257,18 +1271,12 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
   Future<void> _exportCsv() async {
     if (_exportingCsv) return;
     final filteredRowsSnapshot = List<_MayoreoAccountRow>.from(_filteredRows);
-    final selectedIdsSnapshot = Set<String>.from(_selectedRowIds);
-    final selectedRowIdSnapshot = _selectedRowId;
     setState(() => _exportingCsv = true);
     try {
       final stamp = DateTime.now().toIso8601String().replaceAll(':', '-');
-      final rows = _rowsForExportSelection(
-        sourceRows: filteredRowsSnapshot,
-        selectedIds: selectedIdsSnapshot,
-        selectedRowId: selectedRowIdSnapshot,
-      );
+      final rows = filteredRowsSnapshot;
       if (rows.isEmpty) {
-        _toast('No hay cuentas seleccionadas para exportar');
+        _toast('No hay cuentas para exportar');
         return;
       }
       final csv = StringBuffer()
@@ -1329,7 +1337,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     }
   }
 
-  List<_MayoreoAccountRow> _rowsForExportSelection({
+  List<_MayoreoAccountRow> _rowsForPdfSelection({
     List<_MayoreoAccountRow>? sourceRows,
     Set<String>? selectedIds,
     String? selectedRowId,
@@ -1360,7 +1368,7 @@ class _MayoreoAccountsPageState extends State<MayoreoAccountsPage>
     final selectedRowIdSnapshot = _selectedRowId;
     setState(() => _exportingReportPdf = true);
     try {
-      final rows = _rowsForExportSelection(
+      final rows = _rowsForPdfSelection(
         sourceRows: filteredRowsSnapshot,
         selectedIds: selectedIdsSnapshot,
         selectedRowId: selectedRowIdSnapshot,
@@ -3428,10 +3436,12 @@ class _AccountsStatusChip extends StatelessWidget {
 class _AccountDetailDialog extends StatefulWidget {
   final _MayoreoAccountRow row;
   final FinanzasBankMovementRecord? linkedBankMovement;
+  final Future<bool> Function(_MayoreoAccountRow row) onPersist;
 
   const _AccountDetailDialog({
     required this.row,
     required this.linkedBankMovement,
+    required this.onPersist,
   });
 
   @override
@@ -3446,6 +3456,7 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
   late DateTime? _documentDate;
   late DateTime? _estimatedPaymentDate;
   late DateTime? _settlementDate;
+  bool _saving = false;
 
   @override
   void initState() {
@@ -3498,18 +3509,26 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
       final confirm = await _showFinancialExceptionConfirmDialog(context);
       if (!confirm) return;
     }
-    if (!mounted) return;
-    Navigator.of(context).pop(
-      widget.row.copyWith(
-        documentNumber: documentNumber,
-        documentDate: _documentDate,
-        estimatedPaymentDate: _estimatedPaymentDate,
-        settlementDate: _settlementDate,
-        status: normalizedStatus,
-        paidAmount: effectivePaidAmount,
-        financialNotes: _notesC.text.trim(),
-      ),
+    if (_saving || !mounted) return;
+    final updatedRow = widget.row.copyWith(
+      documentNumber: documentNumber,
+      documentDate: _documentDate,
+      estimatedPaymentDate: _estimatedPaymentDate,
+      settlementDate: _settlementDate,
+      status: normalizedStatus,
+      paidAmount: effectivePaidAmount,
+      financialNotes: _notesC.text.trim(),
     );
+    setState(() => _saving = true);
+    try {
+      final saved = await widget.onPersist(updatedRow);
+      if (!mounted || !saved) return;
+      Navigator.of(context).pop();
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
   }
 
   @override
@@ -3562,7 +3581,8 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed:
+                        _saving ? null : () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded),
                   ),
                 ],
@@ -3820,16 +3840,23 @@ class _AccountDetailDialogState extends State<_AccountDetailDialog> {
                 children: [
                   OutlinedButton.icon(
                     style: _mayoreoSecondaryButtonStyle(),
-                    onPressed: () => Navigator.of(context).pop(),
+                    onPressed:
+                        _saving ? null : () => Navigator.of(context).pop(),
                     icon: const Icon(Icons.close_rounded),
                     label: const Text('Cancelar'),
                   ),
                   const SizedBox(width: 10),
                   FilledButton.icon(
                     style: _mayoreoPrimaryButtonStyle(),
-                    onPressed: _save,
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text('Guardar cuenta'),
+                    onPressed: _saving ? null : () => unawaited(_save()),
+                    icon: _saving
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.save_outlined),
+                    label: Text(_saving ? 'Guardando...' : 'Guardar cuenta'),
                   ),
                 ],
               ),

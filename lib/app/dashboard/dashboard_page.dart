@@ -2624,6 +2624,34 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
         'source_kind': 'commercial_material',
         'commercial_material_code': 'CAPLE',
       },
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'MIXTO',
+      },
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'PESADO',
+      },
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'PLACA_Y_ESTRUCTURA_LARGA',
+      },
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'PLACA_Y_ESTRUCTURA_CORTA',
+      },
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'RETORNO_INDUSTRIAL',
+      },
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'RETORNO_INDUSTRIAL_ALTO_RES',
+      },
+      {
+        'source_kind': 'commercial_material',
+        'commercial_material_code': 'REBABA',
+      },
     ];
     return [
       for (var i = 0; i < defaults.length; i++)
@@ -2657,6 +2685,33 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
   String _tileLabelForOperationalMaterial(String material) {
     final label = _materialUiLabel(material);
     return _isBaleOperationalMaterial(material) ? label : '$label en patio';
+  }
+
+  String _tileLabelForCommercialMaterial({
+    required String code,
+    required String fallbackName,
+  }) {
+    switch (code.trim().toUpperCase()) {
+      case 'MIXTO':
+        return 'Mixto';
+      case 'PESADO':
+        return 'Pesado';
+      case 'PLACA_Y_ESTRUCTURA_LARGA':
+      case 'PLACA_LARGA':
+        return 'Placa larga';
+      case 'PLACA_Y_ESTRUCTURA_CORTA':
+      case 'PLACA_CORTA':
+        return 'Placa corta';
+      case 'RETORNO_INDUSTRIAL':
+        return 'Retorno industrial';
+      case 'RETORNO_INDUSTRIAL_ALTO_RES':
+      case 'RETORNO_INDUSTRIAL_ALTO_RESIDUAL':
+        return 'Retorno industrial alto residual';
+      case 'REBABA':
+        return 'Rebaba';
+      default:
+        return fallbackName;
+    }
   }
 
   Future<void> _reload({bool showLoader = false}) async {
@@ -3084,7 +3139,10 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
             _isBaleOperationalMaterial(inventoryMaterial) ||
             _isBaleCommercialMaterialCode(code);
         return buildManualTile(
-          label: option?.name.isNotEmpty == true ? option!.name : code,
+          label: _tileLabelForCommercialMaterial(
+            code: code,
+            fallbackName: option?.name.isNotEmpty == true ? option!.name : code,
+          ),
           isBale: isBale,
           color: _tileColorForMaterial(option?.inventoryMaterial),
         );

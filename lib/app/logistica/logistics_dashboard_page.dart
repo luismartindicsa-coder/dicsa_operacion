@@ -7,6 +7,7 @@ import '../shared/ui_contract_core/theme/glass_styles.dart';
 import 'logistics_area_chrome.dart';
 import 'logistics_catalog_page.dart';
 import 'logistics_control_daily_page.dart';
+import 'logistics_diesel_page.dart';
 import 'logistics_theme.dart';
 
 class LogisticsDashboardPage extends StatelessWidget {
@@ -116,6 +117,16 @@ class LogisticsDashboardPage extends StatelessWidget {
       );
     }
 
+    Future<void> openDiesel() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const LogisticsDieselPage(),
+          duration: const Duration(milliseconds: 420),
+          reverseDuration: const Duration(milliseconds: 360),
+        ),
+      );
+    }
+
     Future<void> openIncidents() async {
       _showLogisticsPhaseSnack(
         context,
@@ -166,6 +177,12 @@ class LogisticsDashboardPage extends StatelessWidget {
             onTap: openCatalogs,
           ),
           DashboardNavAction(
+            title: kLogisticsNavDieselLabel,
+            subtitle: 'Compras, solicitudes y saldo por unidad',
+            icon: Icons.local_gas_station_rounded,
+            onTap: openDiesel,
+          ),
+          DashboardNavAction(
             title: kLogisticsNavSavingsLabel,
             subtitle: 'Rutas, zonas y oportunidades de optimización',
             icon: Icons.insights_outlined,
@@ -178,6 +195,7 @@ class LogisticsDashboardPage extends StatelessWidget {
               onOpenControlDiario: openControlDiario,
               onOpenUnits: openUnits,
               onOpenCatalogs: openCatalogs,
+              onOpenDiesel: openDiesel,
               onOpenIncidents: openIncidents,
               onOpenSavings: openSavings,
             ),
@@ -197,6 +215,7 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
   final Future<void> Function() onOpenControlDiario;
   final Future<void> Function() onOpenUnits;
   final Future<void> Function() onOpenCatalogs;
+  final Future<void> Function() onOpenDiesel;
   final Future<void> Function() onOpenIncidents;
   final Future<void> Function() onOpenSavings;
 
@@ -205,6 +224,7 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
     required this.onOpenControlDiario,
     required this.onOpenUnits,
     required this.onOpenCatalogs,
+    required this.onOpenDiesel,
     required this.onOpenIncidents,
     required this.onOpenSavings,
   });
@@ -249,6 +269,17 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
             outcome:
                 'Evita que Logística nazca con reglas libres o dependiente de memoria.',
             onTap: onOpenCatalogs,
+          ),
+          const SizedBox(height: 12),
+          _LogisticsModuleCard(
+            icon: Icons.local_gas_station_rounded,
+            title: 'Consumo de Diesel',
+            badge: 'Combustible',
+            subtitle:
+                'Fecha, operador, unidad, litros comprados, litros solicitados y saldo operativo.',
+            outcome:
+                'Hace visible el consumo diario para empezar a medir ahorro real por combustible.',
+            onTap: onOpenDiesel,
           ),
           const SizedBox(height: 12),
           _LogisticsModuleCard(
@@ -309,6 +340,17 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
                 outcome:
                     'Evita que Logística nazca con reglas libres o dependiente de memoria.',
                 onTap: onOpenCatalogs,
+              ),
+              _LogisticsModuleCard(
+                width: (width - 24) / 3,
+                icon: Icons.local_gas_station_rounded,
+                title: 'Consumo de Diesel',
+                badge: 'Combustible',
+                subtitle:
+                    'Fecha, operador, unidad, litros comprados, litros solicitados y saldo operativo.',
+                outcome:
+                    'Hace visible el consumo diario para empezar a medir ahorro real por combustible.',
+                onTap: onOpenDiesel,
               ),
               _LogisticsModuleCard(
                 width: (width - 24) / 3,

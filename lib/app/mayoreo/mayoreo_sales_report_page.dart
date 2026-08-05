@@ -302,7 +302,9 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
     return changed ? healed : rows;
   }
 
-  Future<void> _persistRowsToSupabase(List<_MayoreoSalesReportRow> rows) async {
+  Future<bool> _persistRowsToSupabase(
+    List<_MayoreoSalesReportRow> rows,
+  ) async {
     try {
       final healedRows = _healRowsAgainstCurrentCatalog(rows);
       if (!identical(healedRows, rows) && mounted) {
@@ -326,7 +328,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
                 : 'Hay reportes con materiales eliminados del catalogo Mayoreo: $invalidTickets.',
           );
           await _loadRemoteRows();
-          return;
+          return false;
         }
       }
       if (rows.isNotEmpty) {
@@ -354,37 +356,44 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
             .inFilter('id', deletedIds);
       }
       _lastPersistedRowsSignature = _rowsSignature(healedRows);
+      return true;
     } on PostgrestException catch (e) {
       _toast('No se pudo guardar Ventas Mayoreo: ${e.message}');
       await _loadRemoteRows();
+      return false;
     } catch (_) {
       _toast(
         'No se pudo guardar Ventas Mayoreo. Se restauró el estado remoto.',
       );
       await _loadRemoteRows();
+      return false;
     }
   }
 
-  void _persistRows() {
+  Future<bool> _persistRowsAndWait() {
     final snapshot = _rows.map((row) => row.copyWith()).toList(growable: false);
     final signature = _rowsSignature(snapshot);
     if (signature == _lastQueuedRowsSignature &&
         (_pendingPersistCount > 0 || _persistingRows)) {
-      return;
+      return _persistRowsQueue.then(
+        (_) => signature == _lastPersistedRowsSignature,
+      );
     }
     if (signature == _lastPersistedRowsSignature &&
         _pendingPersistCount == 0 &&
         !_persistingRows) {
       _lastQueuedRowsSignature = signature;
-      return;
+      return Future<bool>.value(true);
     }
     _lastQueuedRowsSignature = signature;
+    final completer = Completer<bool>();
     _pendingPersistCount += 1;
     _persistRowsQueue = _persistRowsQueue.catchError((_) {}).then((_) async {
       _pendingPersistCount = (_pendingPersistCount - 1).clamp(0, 1 << 20);
       _persistingRows = true;
       try {
-        await _persistRowsToSupabase(snapshot);
+        final success = await _persistRowsToSupabase(snapshot);
+        if (!completer.isCompleted) completer.complete(success);
       } finally {
         _persistingRows = false;
         if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
@@ -392,7 +401,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
         }
       }
     });
-    unawaited(_persistRowsQueue);
+    return completer.future;
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -1394,8 +1403,8 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
   }
 
   Future<void> _openNewReportDialog() async {
-    final draft = await _runWithRefreshPause(
-      () => showDialog<_MayoreoSalesReportDraft>(
+    await _runWithRefreshPause(() async {
+      await showDialog<void>(
         context: context,
         barrierDismissible: true,
         builder: (_) => _SalesReportDialog(
@@ -1403,43 +1412,46 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
           materials: _materials,
           prices: _prices,
           priceLookup: _currentCatalogPrice,
+          onPersist: (draft) async {
+            if (!mounted) return false;
+            final row = _MayoreoSalesReportRow(
+              id: 'sale-report-${DateTime.now().microsecondsSinceEpoch}',
+              ticket: draft.ticket,
+              date: draft.date,
+              clientId: draft.clientId,
+              clientName: _clientName(draft.clientId),
+              remision: draft.remision,
+              materialId: draft.materialId,
+              materialName: _materialName(draft.materialId),
+              exitWeight: draft.exitWeight,
+              priceSnapshot: draft.priceSnapshot,
+              approvedWeight: draft.approvedWeight,
+              approvedPrice: draft.approvedPrice,
+              approvedAmount: draft.approvedAmount,
+              operationType: draft.operationType,
+              observations: draft.observations,
+            );
+            setState(() {
+              _rows = [row, ..._rows];
+              _selectedRowId = row.id;
+              _selectedRowIds
+                ..clear()
+                ..add(row.id);
+              _selectionAnchorRowId = row.id;
+              _currentPage = 0;
+            });
+            _persistState();
+            return _persistRowsAndWait();
+          },
         ),
-      ),
-    );
-    if (draft == null) return;
-    final row = _MayoreoSalesReportRow(
-      id: 'sale-report-${DateTime.now().microsecondsSinceEpoch}',
-      ticket: draft.ticket,
-      date: draft.date,
-      clientId: draft.clientId,
-      clientName: _clientName(draft.clientId),
-      remision: draft.remision,
-      materialId: draft.materialId,
-      materialName: _materialName(draft.materialId),
-      exitWeight: draft.exitWeight,
-      priceSnapshot: draft.priceSnapshot,
-      approvedWeight: draft.approvedWeight,
-      approvedPrice: draft.approvedPrice,
-      approvedAmount: draft.approvedAmount,
-      operationType: draft.operationType,
-      observations: draft.observations,
-    );
-    setState(() {
-      _rows = [row, ..._rows];
-      _selectedRowId = row.id;
-      _selectedRowIds
-        ..clear()
-        ..add(row.id);
-      _selectionAnchorRowId = row.id;
-      _currentPage = 0;
+      );
+      return null;
     });
-    _persistState();
-    _persistRows();
   }
 
   Future<void> _openEditDialog(_MayoreoSalesReportRow row) async {
-    final draft = await _runWithRefreshPause(
-      () => showDialog<_MayoreoSalesReportDraft>(
+    await _runWithRefreshPause(() async {
+      await showDialog<void>(
         context: context,
         barrierDismissible: true,
         builder: (_) => _SalesReportDialog(
@@ -1448,38 +1460,41 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
           materials: _materials,
           prices: _prices,
           priceLookup: _currentCatalogPrice,
-        ),
-      ),
-    );
-    if (draft == null) return;
-    setState(() {
-      _rows = _rows
-          .map(
-            (item) => item.id == row.id
-                ? item.copyWith(
-                    ticket: draft.ticket,
-                    date: draft.date,
-                    clientId: draft.clientId,
-                    clientName: _clientName(draft.clientId),
-                    remision: draft.remision,
-                    materialId: draft.materialId,
-                    materialName: _materialName(draft.materialId),
-                    exitWeight: draft.exitWeight,
-                    priceSnapshot: draft.priceSnapshot,
-                    operationType: draft.operationType,
-                    observations: draft.observations,
+          onPersist: (draft) async {
+            if (!mounted) return false;
+            setState(() {
+              _rows = _rows
+                  .map(
+                    (item) => item.id == row.id
+                        ? item.copyWith(
+                            ticket: draft.ticket,
+                            date: draft.date,
+                            clientId: draft.clientId,
+                            clientName: _clientName(draft.clientId),
+                            remision: draft.remision,
+                            materialId: draft.materialId,
+                            materialName: _materialName(draft.materialId),
+                            exitWeight: draft.exitWeight,
+                            priceSnapshot: draft.priceSnapshot,
+                            operationType: draft.operationType,
+                            observations: draft.observations,
+                          )
+                        : item,
                   )
-                : item,
-          )
-          .toList(growable: false);
-      _selectedRowId = row.id;
-      _selectedRowIds
-        ..clear()
-        ..add(row.id);
-      _selectionAnchorRowId = row.id;
+                  .toList(growable: false);
+              _selectedRowId = row.id;
+              _selectedRowIds
+                ..clear()
+                ..add(row.id);
+              _selectionAnchorRowId = row.id;
+            });
+            _persistState();
+            return _persistRowsAndWait();
+          },
+        ),
+      );
+      return null;
     });
-    _persistState();
-    _persistRows();
   }
 
   Future<void> _openRelateDialog(_MayoreoSalesReportRow row) async {
@@ -1509,7 +1524,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
               _selectionAnchorRowId = row.id;
             });
             _persistState();
-            _persistRows();
+            return _persistRowsAndWait();
           },
         ),
       ),
@@ -1623,7 +1638,7 @@ class _MayoreoSalesReportPageState extends State<MayoreoSalesReportPage>
       _selectionAnchorRowId = _selectedRowId;
     });
     _persistState();
-    _persistRows();
+    await _persistRowsAndWait();
   }
 
   Future<void> _handleRowMenuAction(
@@ -3839,6 +3854,7 @@ class _SalesReportDialog extends StatefulWidget {
   final List<_MayoreoSalesMaterial> materials;
   final List<_MayoreoSalesCatalogPrice> prices;
   final double? Function(String clientId, String materialId) priceLookup;
+  final Future<bool> Function(_MayoreoSalesReportDraft draft) onPersist;
 
   const _SalesReportDialog({
     this.initial,
@@ -3846,6 +3862,7 @@ class _SalesReportDialog extends StatefulWidget {
     required this.materials,
     required this.prices,
     required this.priceLookup,
+    required this.onPersist,
   });
 
   @override
@@ -3863,6 +3880,7 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
   String? _materialId;
   late _MayoreoReportOperationType _operationType;
   late final VoidCallback _recomputeApproximateAmount;
+  bool _saving = false;
 
   bool get _isEditing => widget.initial != null;
 
@@ -4006,7 +4024,7 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
     });
   }
 
-  void _save() {
+  Future<void> _save() async {
     final clientId = _clientId;
     final materialId = _materialId;
     final exitWeight = _parseDouble(_exitWeightC.text);
@@ -4026,22 +4044,31 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
       );
       return;
     }
-    Navigator.of(context).pop(
-      _MayoreoSalesReportDraft(
-        ticket: _ticketC.text.trim(),
-        date: _date,
-        clientId: clientId,
-        remision: _remisionC.text.trim(),
-        materialId: materialId,
-        exitWeight: exitWeight,
-        priceSnapshot: price,
-        approvedWeight: widget.initial?.approvedWeight,
-        approvedPrice: widget.initial?.approvedPrice,
-        approvedAmount: widget.initial?.approvedAmount ?? 0,
-        operationType: _operationType,
-        observations: _observationsC.text.trim(),
-      ),
+    if (_saving) return;
+    final draft = _MayoreoSalesReportDraft(
+      ticket: _ticketC.text.trim(),
+      date: _date,
+      clientId: clientId,
+      remision: _remisionC.text.trim(),
+      materialId: materialId,
+      exitWeight: exitWeight,
+      priceSnapshot: price,
+      approvedWeight: widget.initial?.approvedWeight,
+      approvedPrice: widget.initial?.approvedPrice,
+      approvedAmount: widget.initial?.approvedAmount ?? 0,
+      operationType: _operationType,
+      observations: _observationsC.text.trim(),
     );
+    setState(() => _saving = true);
+    try {
+      final saved = await widget.onPersist(draft);
+      if (!mounted || !saved) return;
+      Navigator.of(context).pop();
+    } finally {
+      if (mounted) {
+        setState(() => _saving = false);
+      }
+    }
   }
 
   @override
@@ -4085,7 +4112,8 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
                     ),
                     const Spacer(),
                     IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed:
+                          _saving ? null : () => Navigator.of(context).pop(),
                       icon: const Icon(Icons.close_rounded),
                     ),
                   ],
@@ -4267,16 +4295,25 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
                   children: [
                     OutlinedButton(
                       style: _mayoreoSecondaryButtonStyle(),
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed:
+                          _saving ? null : () => Navigator.of(context).pop(),
                       child: const Text('Cancelar'),
                     ),
                     const SizedBox(width: 10),
                     FilledButton.icon(
                       style: _mayoreoPrimaryButtonStyle(),
-                      onPressed: _save,
-                      icon: const Icon(Icons.save_rounded),
+                      onPressed: _saving ? null : () => unawaited(_save()),
+                      icon: _saving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.save_rounded),
                       label: Text(
-                        _isEditing ? 'Guardar cambios' : 'Crear reporte',
+                        _saving
+                            ? 'Guardando...'
+                            : (_isEditing ? 'Guardar cambios' : 'Crear reporte'),
                       ),
                     ),
                   ],
@@ -4292,7 +4329,7 @@ class _SalesReportDialogState extends State<_SalesReportDialog> {
 
 class _RelationVoucherDialog extends StatefulWidget {
   final _MayoreoSalesReportRow row;
-  final Future<void> Function(_MayoreoRelationResult result) onPersist;
+  final Future<bool> Function(_MayoreoRelationResult result) onPersist;
 
   const _RelationVoucherDialog({required this.row, required this.onPersist});
 
@@ -4353,14 +4390,14 @@ class _RelationVoucherDialogState extends State<_RelationVoucherDialog> {
     if (_saving) return;
     setState(() => _saving = true);
     try {
-      await widget.onPersist(
+      final saved = await widget.onPersist(
         _MayoreoRelationResult(
           approvedWeight: approvedWeight,
           approvedPrice: approvedPrice,
           approvedAmount: approvedAmount,
         ),
       );
-      if (!mounted) return;
+      if (!mounted || !saved) return;
       setState(() => _savedRelation = true);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(

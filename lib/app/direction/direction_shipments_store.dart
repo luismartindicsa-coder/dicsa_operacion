@@ -670,35 +670,73 @@ class DirectionShipmentsStore {
   }
 
   static Future<_FloorCountLoad> _loadFloorCounts() async {
-    final rows = await _supa
-        .from('dashboard_yard_manual_counts')
-        .select(
-          'source_kind,material,commercial_material_code,count_units,weight_kg,'
-          'counted_at,updated_at',
-        )
-        .inFilter('source_kind', const [
-          'commercial_material',
-          'operational_material',
-        ]);
+    final responses = await Future.wait<dynamic>([
+      _supa
+          .from('dashboard_yard_manual_counts')
+          .select(
+            'source_kind,material,commercial_material_code,count_units,weight_kg,'
+            'counted_at,updated_at',
+          )
+          .inFilter('source_kind', const [
+            'commercial_material',
+            'operational_material',
+          ]),
+      _supa
+          .from('material_commercial_catalog_v2')
+          .select('code,general_material:general_material_id(code)')
+          .eq('is_active', true),
+    ]);
+
+    final rows = responses[0] as List<dynamic>;
+    final catalogRows = (responses[1] as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+    final generalMaterialByCommercial = <String, String>{};
+    for (final row in catalogRows) {
+      final commercialCode = _normalizePlanningMaterialCode(
+        row['code']?.toString(),
+      );
+      final generalCode = _normalizePlanningMaterialCode(
+        ((row['general_material'] as Map?) ?? const <String, dynamic>{})['code']
+            ?.toString(),
+      );
+      if (commercialCode == null || generalCode == null) continue;
+      generalMaterialByCommercial[commercialCode] = generalCode;
+    }
 
     final countsByMaterial = <String, int>{};
     DateTime? latestUpdatedAt;
-    for (final row in (rows as List<dynamic>).cast<Map<String, dynamic>>()) {
+    for (final row in rows.cast<Map<String, dynamic>>()) {
       final sourceKind = (row['source_kind'] ?? '').toString().trim();
       String? materialCode;
       int quantity = 0;
       if (sourceKind == 'commercial_material') {
-        materialCode = _normalizePlanningMaterialCode(
+        final commercialCode = _normalizePlanningMaterialCode(
           row['commercial_material_code']?.toString(),
         );
-        final option = materialCode == null
+        final option = commercialCode == null
             ? null
-            : directionShipmentMaterialByCode(materialCode);
-        if (option == null ||
-            option.scope != DirectionShipmentMaterialScope.commercial) {
-          continue;
+            : directionShipmentMaterialByCode(commercialCode);
+        if (option != null &&
+            option.scope == DirectionShipmentMaterialScope.commercial) {
+          materialCode = option.code;
+          quantity = ((row['count_units'] as num?) ?? 0).toInt();
+        } else {
+          final generalCode =
+              generalMaterialByCommercial[commercialCode] ??
+              (option?.scope == DirectionShipmentMaterialScope.general
+                  ? option?.code
+                  : null);
+          final generalOption = generalCode == null
+              ? null
+              : directionShipmentMaterialByCode(generalCode);
+          if (generalOption == null ||
+              generalOption.scope != DirectionShipmentMaterialScope.general) {
+            continue;
+          }
+          materialCode = generalOption.code;
+          final weightKg = (row['weight_kg'] as num?)?.toDouble() ?? 0;
+          quantity = weightKg.round();
         }
-        quantity = ((row['count_units'] as num?) ?? 0).toInt();
       } else if (sourceKind == 'operational_material') {
         materialCode = _normalizePlanningMaterialCode(
           row['material']?.toString(),
@@ -1097,7 +1135,7 @@ class DirectionShipmentsStore {
       final expectedFuture = expectedDays
           .where(
             (day) =>
-                day.date.isAfter(today) && !day.date.isAfter(plan.shipDate),
+                !day.date.isBefore(today) && !day.date.isAfter(plan.shipDate),
           )
           .fold<int>(
             0,

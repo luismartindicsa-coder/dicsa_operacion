@@ -9,6 +9,7 @@ import '../shared/page_routes.dart';
 import 'logistics_area_chrome.dart';
 import 'logistics_catalog_page.dart';
 import 'logistics_dashboard_page.dart';
+import 'logistics_diesel_page.dart';
 
 class LogisticsControlDailyPage extends StatefulWidget {
   const LogisticsControlDailyPage({super.key});
@@ -68,6 +69,17 @@ class _LogisticsControlDailyPageState extends State<LogisticsControlDailyPage> {
     );
   }
 
+  Future<void> _openDiesel() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const LogisticsDieselPage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   void _showPhaseSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
@@ -88,6 +100,9 @@ class _LogisticsControlDailyPageState extends State<LogisticsControlDailyPage> {
         return;
       case kLogisticsNavCatalogsLabel:
         unawaited(_openCatalogs());
+        return;
+      case kLogisticsNavDieselLabel:
+        unawaited(_openDiesel());
         return;
       case kLogisticsNavIncidentsLabel:
         _showPhaseSnack(

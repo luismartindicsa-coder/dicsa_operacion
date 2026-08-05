@@ -1,0 +1,21 @@
+{
+  "generatedAt": "2026-08-05T13:49:08.229595",
+  "tables": [
+    {
+      "table": "mayoreo_accounts",
+      "baselineCount": 285,
+      "currentCount": 285,
+      "upsertCount": 285,
+      "deleteCount": 0,
+      "keyField": "full-row"
+    },
+    {
+      "table": "mayoreo_sales_reports",
+      "baselineCount": 285,
+      "currentCount": 285,
+      "upsertCount": 285,
+      "deleteCount": 0,
+      "keyField": "full-row"
+    }
+  ]
+}
