@@ -339,7 +339,20 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     });
   }
 
-  Future<void> _persistCatalogSnapshot() async {
+  void _setPersistingCatalogSnapshot(bool value) {
+    if (_persistingCatalogSnapshot == value) return;
+    if (mounted) {
+      setState(() => _persistingCatalogSnapshot = value);
+    } else {
+      _persistingCatalogSnapshot = value;
+    }
+  }
+
+  void _showSaveInProgressToast() {
+    _toast('Espera a que termine el guardado actual');
+  }
+
+  Future<bool> _persistCatalogSnapshot() async {
     final snapshot = ComprasCatalogSnapshot(
       companies: _companies
           .map(
@@ -384,8 +397,9 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
           .toList(growable: false),
     );
     try {
-      _persistingCatalogSnapshot = true;
+      _setPersistingCatalogSnapshot(true);
       await ComprasDataStore.saveCatalogSnapshot(snapshot);
+      return true;
     } catch (e) {
       final code = e is PostgrestException ? e.code?.toString() : null;
       final details = e is PostgrestException ? e.details?.toString() : null;
@@ -402,16 +416,17 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         _toast('No se pudo guardar Catálogo Compras. $detail');
         await _loadCatalogSnapshot();
       }
+      return false;
     } finally {
-      _persistingCatalogSnapshot = false;
+      _setPersistingCatalogSnapshot(false);
       if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
         unawaited(_refreshCatalogIfIdle(force: true));
       }
     }
   }
 
-  Future<void> _persistCompaniesOnly() async {
-    final companies = _companies
+  Future<bool> _persistCompaniesOnly([List<_MayoreoCompany>? companies]) async {
+    final companyRows = (companies ?? _companies)
         .map(
           (row) => ComprasCatalogProviderRecord(
             id: row.id,
@@ -424,8 +439,9 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         )
         .toList(growable: false);
     try {
-      _persistingCatalogSnapshot = true;
-      await ComprasDataStore.saveCompanyRecords(companies);
+      _setPersistingCatalogSnapshot(true);
+      await ComprasDataStore.saveCompanyRecords(companyRows);
+      return true;
     } catch (e) {
       final code = e is PostgrestException ? e.code?.toString() : null;
       final details = e is PostgrestException ? e.details?.toString() : null;
@@ -442,16 +458,19 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         _toast('No se pudo guardar Proveedores. $detail');
         await _loadCatalogSnapshot();
       }
+      return false;
     } finally {
-      _persistingCatalogSnapshot = false;
+      _setPersistingCatalogSnapshot(false);
       if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
         unawaited(_refreshCatalogIfIdle(force: true));
       }
     }
   }
 
-  Future<void> _persistMaterialsOnly() async {
-    final materials = _materials
+  Future<bool> _persistMaterialsOnly([
+    List<_MayoreoMaterial>? materials,
+  ]) async {
+    final materialRows = (materials ?? _materials)
         .map(
           (row) => ComprasCatalogMaterialRecord(
             id: row.id,
@@ -468,8 +487,9 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         )
         .toList(growable: false);
     try {
-      _persistingCatalogSnapshot = true;
-      await ComprasDataStore.saveMaterialRecords(materials);
+      _setPersistingCatalogSnapshot(true);
+      await ComprasDataStore.saveMaterialRecords(materialRows);
+      return true;
     } catch (e) {
       final code = e is PostgrestException ? e.code?.toString() : null;
       final details = e is PostgrestException ? e.details?.toString() : null;
@@ -486,16 +506,17 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         _toast('No se pudo guardar Materiales. $detail');
         await _loadCatalogSnapshot();
       }
+      return false;
     } finally {
-      _persistingCatalogSnapshot = false;
+      _setPersistingCatalogSnapshot(false);
       if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
         unawaited(_refreshCatalogIfIdle(force: true));
       }
     }
   }
 
-  Future<void> _persistPricesOnly() async {
-    final prices = _prices
+  Future<bool> _persistPricesOnly([List<_MayoreoPrice>? prices]) async {
+    final priceRows = (prices ?? _prices)
         .map(
           (row) => ComprasCatalogPriceRecord(
             id: row.id,
@@ -509,8 +530,9 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         )
         .toList(growable: false);
     try {
-      _persistingCatalogSnapshot = true;
-      await ComprasDataStore.savePriceRecords(prices);
+      _setPersistingCatalogSnapshot(true);
+      await ComprasDataStore.savePriceRecords(priceRows);
+      return true;
     } catch (e) {
       final code = e is PostgrestException ? e.code?.toString() : null;
       final details = e is PostgrestException ? e.details?.toString() : null;
@@ -527,18 +549,21 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         _toast('No se pudo guardar Precios. $detail');
         await _loadCatalogSnapshot();
       }
+      return false;
     } finally {
-      _persistingCatalogSnapshot = false;
+      _setPersistingCatalogSnapshot(false);
       if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
         unawaited(_refreshCatalogIfIdle(force: true));
       }
     }
   }
 
-  Future<void> _deleteCompaniesRemote(List<String> ids) async {
+  Future<bool> _deleteCompaniesRemote(List<String> ids) async {
+    if (ids.isEmpty) return true;
     try {
-      _persistingCatalogSnapshot = true;
+      _setPersistingCatalogSnapshot(true);
       await ComprasDataStore.deleteCompanyRecords(ids);
+      return true;
     } catch (e) {
       final code = e is PostgrestException ? e.code?.toString() : null;
       final details = e is PostgrestException ? e.details?.toString() : null;
@@ -555,18 +580,21 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         _toast('No se pudo eliminar Proveedores. $detail');
         await _loadCatalogSnapshot();
       }
+      return false;
     } finally {
-      _persistingCatalogSnapshot = false;
+      _setPersistingCatalogSnapshot(false);
       if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
         unawaited(_refreshCatalogIfIdle(force: true));
       }
     }
   }
 
-  Future<void> _deleteMaterialsRemote(List<String> ids) async {
+  Future<bool> _deleteMaterialsRemote(List<String> ids) async {
+    if (ids.isEmpty) return true;
     try {
-      _persistingCatalogSnapshot = true;
+      _setPersistingCatalogSnapshot(true);
       await ComprasDataStore.deleteMaterialRecords(ids);
+      return true;
     } catch (e) {
       final code = e is PostgrestException ? e.code?.toString() : null;
       final details = e is PostgrestException ? e.details?.toString() : null;
@@ -583,18 +611,21 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         _toast('No se pudo eliminar Materiales. $detail');
         await _loadCatalogSnapshot();
       }
+      return false;
     } finally {
-      _persistingCatalogSnapshot = false;
+      _setPersistingCatalogSnapshot(false);
       if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
         unawaited(_refreshCatalogIfIdle(force: true));
       }
     }
   }
 
-  Future<void> _deletePricesRemote(List<String> ids) async {
+  Future<bool> _deletePricesRemote(List<String> ids) async {
+    if (ids.isEmpty) return true;
     try {
-      _persistingCatalogSnapshot = true;
+      _setPersistingCatalogSnapshot(true);
       await ComprasDataStore.deletePriceRecords(ids);
+      return true;
     } catch (e) {
       final code = e is PostgrestException ? e.code?.toString() : null;
       final details = e is PostgrestException ? e.details?.toString() : null;
@@ -611,8 +642,9 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
         _toast('No se pudo eliminar Precios. $detail');
         await _loadCatalogSnapshot();
       }
+      return false;
     } finally {
-      _persistingCatalogSnapshot = false;
+      _setPersistingCatalogSnapshot(false);
       if (_refreshQueued && !_shouldDeferBackgroundRefresh) {
         unawaited(_refreshCatalogIfIdle(force: true));
       }
@@ -863,7 +895,13 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     _priceNotesC.clear();
   }
 
-  void _saveCompany() {
+  void _saveCompany() => unawaited(_saveCompanyAsync());
+
+  Future<void> _saveCompanyAsync() async {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
     final name = _normalizeName(_companyNameC.text);
     final code = _codeFromName(name);
     final contact = _normalizeName(_companyContactC.text);
@@ -871,23 +909,31 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _toast('El nombre de la empresa es obligatorio');
       return;
     }
+    final company = _MayoreoCompany(
+      id: 'co_${DateTime.now().microsecondsSinceEpoch}',
+      code: code,
+      name: name,
+      contact: contact,
+      notes: _companyNotesC.text.trim(),
+    );
+    final nextCompanies = [company, ..._companies];
+    final saved = await _persistCompaniesOnly(nextCompanies);
+    if (!saved || !mounted) return;
     setState(() {
-      final company = _MayoreoCompany(
-        id: 'co_${DateTime.now().microsecondsSinceEpoch}',
-        code: code,
-        name: name,
-        contact: contact,
-        notes: _companyNotesC.text.trim(),
-      );
-      _companies = [company, ..._companies];
+      _companies = nextCompanies;
       _selectedRowKey = 'co:${company.id}';
       _resetCompanyDraft();
     });
-    unawaited(_persistCompaniesOnly());
     _companyNameFocus.requestFocus();
   }
 
-  void _saveMaterial() {
+  void _saveMaterial() => unawaited(_saveMaterialAsync());
+
+  Future<void> _saveMaterialAsync() async {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
     final name = _normalizeName(_materialNameC.text);
     final code = _codeFromName(name);
     if (name.isEmpty) {
@@ -898,29 +944,37 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       _toast('Selecciona el material general de relación');
       return;
     }
+    final material = _MayoreoMaterial(
+      id: 'ma_${DateTime.now().microsecondsSinceEpoch}',
+      code: code,
+      level: _materialLevel,
+      name: name,
+      unit: 'KG',
+      category: _materialFamily,
+      family: _materialLevel == 'GENERAL' ? null : _materialFamily,
+      generalMaterialId: _materialLevel == 'GENERAL'
+          ? null
+          : _materialGeneralMaterialId,
+      notes: _materialNotesC.text.trim(),
+    );
+    final nextMaterials = [material, ..._materials];
+    final saved = await _persistMaterialsOnly(nextMaterials);
+    if (!saved || !mounted) return;
     setState(() {
-      final material = _MayoreoMaterial(
-        id: 'ma_${DateTime.now().microsecondsSinceEpoch}',
-        code: code,
-        level: _materialLevel,
-        name: name,
-        unit: 'KG',
-        category: _materialFamily,
-        family: _materialLevel == 'GENERAL' ? null : _materialFamily,
-        generalMaterialId: _materialLevel == 'GENERAL'
-            ? null
-            : _materialGeneralMaterialId,
-        notes: _materialNotesC.text.trim(),
-      );
-      _materials = [material, ..._materials];
+      _materials = nextMaterials;
       _selectedRowKey = 'ma:${material.id}';
       _resetMaterialDraft();
     });
-    unawaited(_persistMaterialsOnly());
     _materialNameFocus.requestFocus();
   }
 
-  void _savePrice() {
+  void _savePrice() => unawaited(_savePriceAsync());
+
+  Future<void> _savePriceAsync() async {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
     final companyId = _priceCompanyId;
     final materialId = _priceMaterialId;
     final amount = double.tryParse(_priceAmountC.text.replaceAll(',', ''));
@@ -932,35 +986,44 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
       companyId: companyId,
       materialId: materialId,
     );
+    late final List<_MayoreoPrice> nextPrices;
+    late final String selectedRowKey;
+    if (existing != null) {
+      final updated = existing.copyWith(
+        amount: amount,
+        notes: _priceNotesC.text.trim(),
+        active: true,
+        updatedAt: DateTime.now(),
+      );
+      nextPrices = [
+        updated,
+        for (final item in _prices)
+          if (item.id != existing.id) item,
+      ];
+      selectedRowKey = 'pr:${updated.id}';
+    } else {
+      final price = _MayoreoPrice(
+        id: 'pr_${DateTime.now().microsecondsSinceEpoch}',
+        companyId: companyId,
+        materialId: materialId,
+        amount: amount,
+        notes: _priceNotesC.text.trim(),
+        updatedAt: DateTime.now(),
+      );
+      nextPrices = [price, ..._prices];
+      selectedRowKey = 'pr:${price.id}';
+    }
+    if (_hasDuplicatePriceAssignments(nextPrices)) {
+      _toast('Ya existe un precio para ese proveedor y material');
+      return;
+    }
+    final saved = await _persistPricesOnly(nextPrices);
+    if (!saved || !mounted) return;
     setState(() {
-      if (existing != null) {
-        final updated = existing.copyWith(
-          amount: amount,
-          notes: _priceNotesC.text.trim(),
-          active: true,
-          updatedAt: DateTime.now(),
-        );
-        _prices = [
-          updated,
-          for (final item in _prices)
-            if (item.id != existing.id) item,
-        ];
-        _selectedRowKey = 'pr:${updated.id}';
-      } else {
-        final price = _MayoreoPrice(
-          id: 'pr_${DateTime.now().microsecondsSinceEpoch}',
-          companyId: companyId,
-          materialId: materialId,
-          amount: amount,
-          notes: _priceNotesC.text.trim(),
-          updatedAt: DateTime.now(),
-        );
-        _prices = [price, ..._prices];
-        _selectedRowKey = 'pr:${price.id}';
-      }
+      _prices = nextPrices;
+      _selectedRowKey = selectedRowKey;
       _resetPriceDraft();
     });
-    unawaited(_persistPricesOnly());
     if (existing != null) {
       _toast('Se actualizó el precio existente para ese proveedor y material');
     }
@@ -1456,114 +1519,166 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     });
   }
 
-  void _toggleCompanyActive(_MayoreoCompany row) {
-    setState(() {
-      _companies = _companies
-          .map(
-            (item) =>
-                item.id == row.id ? item.copyWith(active: !item.active) : item,
-          )
-          .toList(growable: false);
-    });
-    unawaited(_persistCompaniesOnly());
+  void _toggleCompanyActive(_MayoreoCompany row) =>
+      unawaited(_toggleCompanyActiveAsync(row));
+
+  Future<void> _toggleCompanyActiveAsync(_MayoreoCompany row) async {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
+    final nextCompanies = _companies
+        .map(
+          (item) =>
+              item.id == row.id ? item.copyWith(active: !item.active) : item,
+        )
+        .toList(growable: false);
+    final saved = await _persistCompaniesOnly(nextCompanies);
+    if (!saved || !mounted) return;
+    setState(() => _companies = nextCompanies);
   }
 
-  void _toggleMaterialActive(_MayoreoMaterial row) {
-    setState(() {
-      _materials = _materials
-          .map(
-            (item) =>
-                item.id == row.id ? item.copyWith(active: !item.active) : item,
-          )
-          .toList(growable: false);
-    });
-    unawaited(_persistMaterialsOnly());
+  void _toggleMaterialActive(_MayoreoMaterial row) =>
+      unawaited(_toggleMaterialActiveAsync(row));
+
+  Future<void> _toggleMaterialActiveAsync(_MayoreoMaterial row) async {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
+    final nextMaterials = _materials
+        .map(
+          (item) =>
+              item.id == row.id ? item.copyWith(active: !item.active) : item,
+        )
+        .toList(growable: false);
+    final saved = await _persistMaterialsOnly(nextMaterials);
+    if (!saved || !mounted) return;
+    setState(() => _materials = nextMaterials);
   }
 
-  void _togglePriceActive(_MayoreoPrice row) {
-    setState(() {
-      _prices = _prices
-          .map(
-            (item) =>
-                item.id == row.id ? item.copyWith(active: !item.active) : item,
-          )
-          .toList(growable: false);
-    });
-    unawaited(_persistPricesOnly());
+  void _togglePriceActive(_MayoreoPrice row) =>
+      unawaited(_togglePriceActiveAsync(row));
+
+  Future<void> _togglePriceActiveAsync(_MayoreoPrice row) async {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
+    final nextPrices = _prices
+        .map(
+          (item) =>
+              item.id == row.id ? item.copyWith(active: !item.active) : item,
+        )
+        .toList(growable: false);
+    final saved = await _persistPricesOnly(nextPrices);
+    if (!saved || !mounted) return;
+    setState(() => _prices = nextPrices);
   }
 
-  void _toggleSelectedActive() {
+  void _toggleSelectedActive() => unawaited(_toggleSelectedActiveAsync());
+
+  Future<void> _toggleSelectedActiveAsync() async {
     if (_bulkSelectedRowKeys.isEmpty) return;
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
     final keys = Set<String>.from(_bulkSelectedRowKeys);
-    setState(() {
-      switch (_activeTabIndex) {
-        case 0:
-          _companies = _companies
-              .map(
-                (row) => keys.contains('co:${row.id}')
-                    ? row.copyWith(active: !row.active)
-                    : row,
-              )
-              .toList(growable: false);
-          break;
-        case 1:
-          _materials = _materials
-              .map(
-                (row) => keys.contains('ma:${row.id}')
-                    ? row.copyWith(active: !row.active)
-                    : row,
-              )
-              .toList(growable: false);
-          break;
-        default:
-          _prices = _prices
-              .map(
-                (row) => keys.contains('pr:${row.id}')
-                    ? row.copyWith(active: !row.active)
-                    : row,
-              )
-              .toList(growable: false);
-      }
-    });
-    if (_activeTabIndex == 1) {
-      unawaited(_persistMaterialsOnly());
-    } else {
-      unawaited(_persistPricesOnly());
+    switch (_activeTabIndex) {
+      case 0:
+        final nextCompanies = _companies
+            .map(
+              (row) => keys.contains('co:${row.id}')
+                  ? row.copyWith(active: !row.active)
+                  : row,
+            )
+            .toList(growable: false);
+        final saved = await _persistCompaniesOnly(nextCompanies);
+        if (!saved || !mounted) return;
+        setState(() => _companies = nextCompanies);
+        return;
+      case 1:
+        final nextMaterials = _materials
+            .map(
+              (row) => keys.contains('ma:${row.id}')
+                  ? row.copyWith(active: !row.active)
+                  : row,
+            )
+            .toList(growable: false);
+        final saved = await _persistMaterialsOnly(nextMaterials);
+        if (!saved || !mounted) return;
+        setState(() => _materials = nextMaterials);
+        return;
+      default:
+        final nextPrices = _prices
+            .map(
+              (row) => keys.contains('pr:${row.id}')
+                  ? row.copyWith(active: !row.active)
+                  : row,
+            )
+            .toList(growable: false);
+        final saved = await _persistPricesOnly(nextPrices);
+        if (!saved || !mounted) return;
+        setState(() => _prices = nextPrices);
     }
   }
 
-  void _deleteCompany(_MayoreoCompany row) {
+  void _deleteCompany(_MayoreoCompany row) =>
+      unawaited(_deleteCompanyAsync(row));
+
+  Future<void> _deleteCompanyAsync(_MayoreoCompany row) async {
     final inUse = _prices.any((price) => price.companyId == row.id);
     if (inUse) {
       _toast('No puedes eliminar una empresa con precios activos');
       return;
     }
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
+    final saved = await _deleteCompaniesRemote(<String>[row.id]);
+    if (!saved || !mounted) return;
     setState(() {
       _companies = _companies.where((item) => item.id != row.id).toList();
       _removeSelectionKey('co:${row.id}');
     });
-    unawaited(_deleteCompaniesRemote(<String>[row.id]));
   }
 
-  void _deleteMaterial(_MayoreoMaterial row) {
+  void _deleteMaterial(_MayoreoMaterial row) =>
+      unawaited(_deleteMaterialAsync(row));
+
+  Future<void> _deleteMaterialAsync(_MayoreoMaterial row) async {
     final inUse = _prices.any((price) => price.materialId == row.id);
     if (inUse) {
       _toast('No puedes eliminar un material con precios activos');
       return;
     }
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
+    final saved = await _deleteMaterialsRemote(<String>[row.id]);
+    if (!saved || !mounted) return;
     setState(() {
       _materials = _materials.where((item) => item.id != row.id).toList();
       _removeSelectionKey('ma:${row.id}');
     });
-    unawaited(_deleteMaterialsRemote(<String>[row.id]));
   }
 
-  void _deletePrice(_MayoreoPrice row) {
+  void _deletePrice(_MayoreoPrice row) => unawaited(_deletePriceAsync(row));
+
+  Future<void> _deletePriceAsync(_MayoreoPrice row) async {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
+    final saved = await _deletePricesRemote(<String>[row.id]);
+    if (!saved || !mounted) return;
     setState(() {
       _prices = _prices.where((item) => item.id != row.id).toList();
       _removeSelectionKey('pr:${row.id}');
     });
-    unawaited(_deletePricesRemote(<String>[row.id]));
   }
 
   List<String> _currentRowKeys() {
@@ -1932,6 +2047,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
   }
 
   void _startInlineEdit(String rowKey) {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
     setState(() {
       _cancelActiveDraft();
       _multiEditMode = false;
@@ -1948,6 +2067,10 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
 
   void _startMultiEdit() {
     if (!mounted || _selectedCount <= 1) return;
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
     setState(() {
       _editingRowKey = null;
       _multiEditMode = true;
@@ -1974,17 +2097,7 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     _focusGridRows();
   }
 
-  void _saveActiveMultiEdit() {
-    for (final rowKey in _currentSelectionKeys()) {
-      if (_activeTabIndex == 0) {
-        _companyEditRowKeys[rowKey]?.currentState?.submitFromParent();
-      } else if (_activeTabIndex == 1) {
-        _materialEditRowKeys[rowKey]?.currentState?.submitFromParent();
-      } else {
-        _priceEditRowKeys[rowKey]?.currentState?.submitFromParent();
-      }
-    }
-  }
+  void _saveActiveMultiEdit() => unawaited(_saveActiveMultiEditAsync());
 
   void _startEditSelection() {
     final rowKey = _selectedRowKey;
@@ -1992,81 +2105,59 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     _startInlineEdit(rowKey);
   }
 
-  void _saveCompanyInline(_MayoreoCompany row, Map<String, dynamic> payload) {
+  _MayoreoCompany? _updatedCompanyFromPayload(
+    _MayoreoCompany row,
+    Map<String, dynamic> payload,
+  ) {
     final name = _normalizeName((payload['name'] ?? '').toString());
     if (name.isEmpty) {
       _toast('El nombre de la empresa es obligatorio');
-      return;
+      return null;
     }
-    setState(() {
-      _companies = _companies
-          .map(
-            (item) => item.id == row.id
-                ? item.copyWith(
-                    name: name,
-                    code: _codeFromName(name),
-                    contact: _normalizeName(
-                      (payload['contact'] ?? '').toString(),
-                    ),
-                    notes: (payload['notes'] ?? '').toString().trim(),
-                    active: (payload['is_active'] ?? item.active) == true,
-                  )
-                : item,
-          )
-          .toList(growable: false);
-      _editingRowKey = null;
-      _setSingleSelection('co:${row.id}');
-    });
-    unawaited(_persistCompaniesOnly());
-    _focusGridRows();
+    return row.copyWith(
+      name: name,
+      code: _codeFromName(name),
+      contact: _normalizeName((payload['contact'] ?? '').toString()),
+      notes: (payload['notes'] ?? '').toString().trim(),
+      active: (payload['is_active'] ?? row.active) == true,
+    );
   }
 
-  void _saveMaterialInline(_MayoreoMaterial row, Map<String, dynamic> payload) {
+  _MayoreoMaterial? _updatedMaterialFromPayload(
+    _MayoreoMaterial row,
+    Map<String, dynamic> payload,
+  ) {
     final name = _normalizeName((payload['name'] ?? '').toString());
     if (name.isEmpty) {
       _toast('El nombre del material es obligatorio');
-      return;
+      return null;
     }
     final level = (payload['level'] ?? row.level).toString();
     final generalMaterialId = payload['generalMaterialId']?.toString();
     if (level == 'COMERCIAL' &&
         (generalMaterialId == null || generalMaterialId.isEmpty)) {
       _toast('Selecciona el material general de relación');
-      return;
+      return null;
     }
-    setState(() {
-      _materials = _materials
-          .map(
-            (item) => item.id == row.id
-                ? item.copyWith(
-                    level: level,
-                    name: name,
-                    code: _codeFromName(name),
-                    category: (payload['family'] ?? row.family ?? row.category)
-                        .toString(),
-                    family: level == 'GENERAL'
-                        ? null
-                        : (payload['family'] ?? row.family ?? row.category)
-                              .toString(),
-                    generalMaterialId: level == 'GENERAL'
-                        ? null
-                        : generalMaterialId,
-                    clearFamily: level == 'GENERAL',
-                    clearGeneralMaterialId: level == 'GENERAL',
-                    notes: (payload['notes'] ?? '').toString().trim(),
-                    active: (payload['is_active'] ?? item.active) == true,
-                  )
-                : item,
-          )
-          .toList(growable: false);
-      _editingRowKey = null;
-      _setSingleSelection('ma:${row.id}');
-    });
-    unawaited(_persistMaterialsOnly());
-    _focusGridRows();
+    final family = (payload['family'] ?? row.family ?? row.category).toString();
+    return row.copyWith(
+      level: level,
+      name: name,
+      code: _codeFromName(name),
+      category: family,
+      family: level == 'GENERAL' ? null : family,
+      generalMaterialId: level == 'GENERAL' ? null : generalMaterialId,
+      clearFamily: level == 'GENERAL',
+      clearGeneralMaterialId: level == 'GENERAL',
+      notes: (payload['notes'] ?? '').toString().trim(),
+      active: (payload['is_active'] ?? row.active) == true,
+    );
   }
 
-  void _savePriceInline(_MayoreoPrice row, Map<String, dynamic> payload) {
+  _MayoreoPrice? _updatedPriceFromPayload(
+    _MayoreoPrice row,
+    Map<String, dynamic> payload,
+  ) {
     final amount = double.tryParse(
       (payload['amount'] ?? '').toString().replaceAll(',', ''),
     );
@@ -2074,36 +2165,110 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     final materialId = payload['materialId']?.toString();
     if (companyId == null || materialId == null || amount == null) {
       _toast('Proveedor, material y precio son obligatorios');
-      return;
+      return null;
     }
-    final existing = _findPriceByCompanyMaterial(
+    return row.copyWith(
       companyId: companyId,
       materialId: materialId,
-      excludingId: row.id,
+      amount: amount,
+      notes: (payload['notes'] ?? '').toString().trim(),
+      active: (payload['is_active'] ?? row.active) == true,
+      updatedAt: DateTime.now(),
     );
-    if (existing != null) {
+  }
+
+  bool _hasDuplicatePriceAssignments(List<_MayoreoPrice> prices) {
+    final seen = <String>{};
+    for (final row in prices) {
+      final key = '${row.companyId}|${row.materialId}';
+      if (!seen.add(key)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  void _saveCompanyInline(_MayoreoCompany row, Map<String, dynamic> payload) =>
+      unawaited(_saveCompanyInlineAsync(row, payload));
+
+  Future<void> _saveCompanyInlineAsync(
+    _MayoreoCompany row,
+    Map<String, dynamic> payload,
+  ) async {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
+    final updated = _updatedCompanyFromPayload(row, payload);
+    if (updated == null) return;
+    final nextCompanies = _companies
+        .map((item) => item.id == row.id ? updated : item)
+        .toList(growable: false);
+    final saved = await _persistCompaniesOnly(nextCompanies);
+    if (!saved || !mounted) return;
+    setState(() {
+      _companies = nextCompanies;
+      _editingRowKey = null;
+      _setSingleSelection('co:${row.id}');
+    });
+    _focusGridRows();
+  }
+
+  void _saveMaterialInline(
+    _MayoreoMaterial row,
+    Map<String, dynamic> payload,
+  ) => unawaited(_saveMaterialInlineAsync(row, payload));
+
+  Future<void> _saveMaterialInlineAsync(
+    _MayoreoMaterial row,
+    Map<String, dynamic> payload,
+  ) async {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
+    final updated = _updatedMaterialFromPayload(row, payload);
+    if (updated == null) return;
+    final nextMaterials = _materials
+        .map((item) => item.id == row.id ? updated : item)
+        .toList(growable: false);
+    final saved = await _persistMaterialsOnly(nextMaterials);
+    if (!saved || !mounted) return;
+    setState(() {
+      _materials = nextMaterials;
+      _editingRowKey = null;
+      _setSingleSelection('ma:${row.id}');
+    });
+    _focusGridRows();
+  }
+
+  void _savePriceInline(_MayoreoPrice row, Map<String, dynamic> payload) =>
+      unawaited(_savePriceInlineAsync(row, payload));
+
+  Future<void> _savePriceInlineAsync(
+    _MayoreoPrice row,
+    Map<String, dynamic> payload,
+  ) async {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
+    final updated = _updatedPriceFromPayload(row, payload);
+    if (updated == null) return;
+    final nextPrices = _prices
+        .map((item) => item.id == row.id ? updated : item)
+        .toList(growable: false);
+    if (_hasDuplicatePriceAssignments(nextPrices)) {
       _toast('Ya existe un precio para ese proveedor y material');
       return;
     }
+    final saved = await _persistPricesOnly(nextPrices);
+    if (!saved || !mounted) return;
     setState(() {
-      _prices = _prices
-          .map(
-            (item) => item.id == row.id
-                ? item.copyWith(
-                    companyId: companyId,
-                    materialId: materialId,
-                    amount: amount,
-                    notes: (payload['notes'] ?? '').toString().trim(),
-                    active: (payload['is_active'] ?? item.active) == true,
-                    updatedAt: DateTime.now(),
-                  )
-                : item,
-          )
-          .toList(growable: false);
+      _prices = nextPrices;
       _editingRowKey = null;
       _setSingleSelection('pr:${row.id}');
     });
-    unawaited(_persistPricesOnly());
     _focusGridRows();
   }
 
@@ -2122,82 +2287,206 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
     return null;
   }
 
-  void _deleteSelectedRows() {
+  Future<void> _saveActiveMultiEditAsync() async {
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
+    final selectionKeys = _currentSelectionKeys();
+    if (selectionKeys.isEmpty) return;
+    switch (_activeTabIndex) {
+      case 0:
+        final payloads = <String, Map<String, dynamic>>{};
+        for (final rowKey in selectionKeys) {
+          final payload = _companyEditRowKeys[rowKey]?.currentState
+              ?.snapshotPayload();
+          if (payload != null) {
+            payloads[rowKey.substring(3)] = payload;
+          }
+        }
+        if (payloads.isEmpty) return;
+        final nextCompanies = <_MayoreoCompany>[];
+        for (final row in _companies) {
+          final payload = payloads[row.id];
+          if (payload == null) {
+            nextCompanies.add(row);
+            continue;
+          }
+          final updated = _updatedCompanyFromPayload(row, payload);
+          if (updated == null) return;
+          nextCompanies.add(updated);
+        }
+        final saved = await _persistCompaniesOnly(nextCompanies);
+        if (!saved || !mounted) return;
+        setState(() {
+          _companies = nextCompanies;
+          _editingRowKey = null;
+          _multiEditMode = false;
+        });
+        break;
+      case 1:
+        final payloads = <String, Map<String, dynamic>>{};
+        for (final rowKey in selectionKeys) {
+          final payload = _materialEditRowKeys[rowKey]?.currentState
+              ?.snapshotPayload();
+          if (payload != null) {
+            payloads[rowKey.substring(3)] = payload;
+          }
+        }
+        if (payloads.isEmpty) return;
+        final nextMaterials = <_MayoreoMaterial>[];
+        for (final row in _materials) {
+          final payload = payloads[row.id];
+          if (payload == null) {
+            nextMaterials.add(row);
+            continue;
+          }
+          final updated = _updatedMaterialFromPayload(row, payload);
+          if (updated == null) return;
+          nextMaterials.add(updated);
+        }
+        final saved = await _persistMaterialsOnly(nextMaterials);
+        if (!saved || !mounted) return;
+        setState(() {
+          _materials = nextMaterials;
+          _editingRowKey = null;
+          _multiEditMode = false;
+        });
+        break;
+      default:
+        final payloads = <String, Map<String, dynamic>>{};
+        for (final rowKey in selectionKeys) {
+          final payload = _priceEditRowKeys[rowKey]?.currentState
+              ?.snapshotPayload();
+          if (payload != null) {
+            payloads[rowKey.substring(3)] = payload;
+          }
+        }
+        if (payloads.isEmpty) return;
+        final nextPrices = <_MayoreoPrice>[];
+        for (final row in _prices) {
+          final payload = payloads[row.id];
+          if (payload == null) {
+            nextPrices.add(row);
+            continue;
+          }
+          final updated = _updatedPriceFromPayload(row, payload);
+          if (updated == null) return;
+          nextPrices.add(updated);
+        }
+        if (_hasDuplicatePriceAssignments(nextPrices)) {
+          _toast('Ya existe un precio para ese proveedor y material');
+          return;
+        }
+        final saved = await _persistPricesOnly(nextPrices);
+        if (!saved || !mounted) return;
+        setState(() {
+          _prices = nextPrices;
+          _editingRowKey = null;
+          _multiEditMode = false;
+        });
+        break;
+    }
+    _focusGridRows();
+  }
+
+  void _deleteSelectedRows() => unawaited(_deleteSelectedRowsAsync());
+
+  Future<void> _deleteSelectedRowsAsync() async {
     if (_bulkSelectedRowKeys.isEmpty) return;
+    if (_persistingCatalogSnapshot) {
+      _showSaveInProgressToast();
+      return;
+    }
     final keys = Set<String>.from(_bulkSelectedRowKeys);
     final deletedCompanyIds = <String>[];
     final deletedMaterialIds = <String>[];
     final deletedPriceIds = <String>[];
+    List<_MayoreoCompany>? nextCompanies;
+    List<_MayoreoMaterial>? nextMaterials;
+    List<_MayoreoPrice>? nextPrices;
+    String? blockedMessage;
+    switch (_activeTabIndex) {
+      case 0:
+        final blocked = _prices
+            .map((row) => 'co:${row.companyId}')
+            .where(keys.contains)
+            .toSet();
+        deletedCompanyIds.addAll(
+          _companies
+              .where(
+                (row) =>
+                    keys.contains('co:${row.id}') &&
+                    !blocked.contains('co:${row.id}'),
+              )
+              .map((row) => row.id),
+        );
+        nextCompanies = _companies
+            .where(
+              (row) =>
+                  !keys.contains('co:${row.id}') ||
+                  blocked.contains('co:${row.id}'),
+            )
+            .toList(growable: false);
+        if (blocked.isNotEmpty) {
+          blockedMessage = 'Se omitieron empresas con precios activos';
+        }
+        break;
+      case 1:
+        final blocked = _prices
+            .map((row) => 'ma:${row.materialId}')
+            .where(keys.contains)
+            .toSet();
+        deletedMaterialIds.addAll(
+          _materials
+              .where(
+                (row) =>
+                    keys.contains('ma:${row.id}') &&
+                    !blocked.contains('ma:${row.id}'),
+              )
+              .map((row) => row.id),
+        );
+        nextMaterials = _materials
+            .where(
+              (row) =>
+                  !keys.contains('ma:${row.id}') ||
+                  blocked.contains('ma:${row.id}'),
+            )
+            .toList(growable: false);
+        if (blocked.isNotEmpty) {
+          blockedMessage = 'Se omitieron materiales con precios activos';
+        }
+        break;
+      default:
+        deletedPriceIds.addAll(
+          _prices
+              .where((row) => keys.contains('pr:${row.id}'))
+              .map((row) => row.id),
+        );
+        nextPrices = _prices
+            .where((row) => !keys.contains('pr:${row.id}'))
+            .toList(growable: false);
+    }
+    final saved = switch (_activeTabIndex) {
+      0 => await _deleteCompaniesRemote(deletedCompanyIds),
+      1 => await _deleteMaterialsRemote(deletedMaterialIds),
+      _ => await _deletePricesRemote(deletedPriceIds),
+    };
+    if (!saved || !mounted) return;
     setState(() {
-      switch (_activeTabIndex) {
-        case 0:
-          final blocked = _prices
-              .map((row) => 'co:${row.companyId}')
-              .where(keys.contains)
-              .toSet();
-          deletedCompanyIds.addAll(
-            _companies
-                .where(
-                  (row) =>
-                      keys.contains('co:${row.id}') &&
-                      !blocked.contains('co:${row.id}'),
-                )
-                .map((row) => row.id),
-          );
-          _companies = _companies
-              .where(
-                (row) =>
-                    !keys.contains('co:${row.id}') ||
-                    blocked.contains('co:${row.id}'),
-              )
-              .toList(growable: false);
-          if (blocked.isNotEmpty) {
-            _toast('Se omitieron empresas con precios activos');
-          }
-          break;
-        case 1:
-          final blocked = _prices
-              .map((row) => 'ma:${row.materialId}')
-              .where(keys.contains)
-              .toSet();
-          deletedMaterialIds.addAll(
-            _materials
-                .where(
-                  (row) =>
-                      keys.contains('ma:${row.id}') &&
-                      !blocked.contains('ma:${row.id}'),
-                )
-                .map((row) => row.id),
-          );
-          _materials = _materials
-              .where(
-                (row) =>
-                    !keys.contains('ma:${row.id}') ||
-                    blocked.contains('ma:${row.id}'),
-              )
-              .toList(growable: false);
-          if (blocked.isNotEmpty) {
-            _toast('Se omitieron materiales con precios activos');
-          }
-          break;
-        default:
-          deletedPriceIds.addAll(
-            _prices
-                .where((row) => keys.contains('pr:${row.id}'))
-                .map((row) => row.id),
-          );
-          _prices = _prices
-              .where((row) => !keys.contains('pr:${row.id}'))
-              .toList(growable: false);
+      if (nextCompanies != null) {
+        _companies = nextCompanies;
+      }
+      if (nextMaterials != null) {
+        _materials = nextMaterials;
+      }
+      if (nextPrices != null) {
+        _prices = nextPrices;
       }
       _clearSelection();
     });
-    if (_activeTabIndex == 0) {
-      unawaited(_deleteCompaniesRemote(deletedCompanyIds));
-    } else if (_activeTabIndex == 1) {
-      unawaited(_deleteMaterialsRemote(deletedMaterialIds));
-    } else {
-      unawaited(_deletePricesRemote(deletedPriceIds));
+    if (blockedMessage != null) {
+      _toast(blockedMessage);
     }
   }
 
@@ -2542,46 +2831,65 @@ class _ComprasCatalogPageState extends State<ComprasCatalogPage>
                             });
                           });
                         }
-                        return Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                        return Stack(
                           children: [
-                            Padding(
-                              padding: const EdgeInsets.fromLTRB(2, 2, 2, 10),
-                              child: InventoryGridTopBar(
-                                data: _buildTopBarData(),
-                              ),
-                            ),
-                            const SizedBox(height: 12),
-                            AppFolderTabs(
-                              controller: controller,
-                              maxWidth: 760,
-                              showBottomRail: false,
-                              items: const [
-                                AppFolderTabItem(
-                                  label: 'Proveedores',
-                                  icon: Icons.business_rounded,
-                                ),
-                                AppFolderTabItem(
-                                  label: 'Materiales',
-                                  icon: Icons.inventory_2_rounded,
-                                ),
-                                AppFolderTabItem(
-                                  label: 'Precios',
-                                  icon: Icons.price_change_rounded,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 12),
-                            Expanded(
-                              child: TabBarView(
-                                controller: controller,
+                            AbsorbPointer(
+                              absorbing: _persistingCatalogSnapshot,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  _buildCompaniesTab(),
-                                  _buildMaterialsTab(),
-                                  _buildPricesTab(),
+                                  Padding(
+                                    padding: const EdgeInsets.fromLTRB(
+                                      2,
+                                      2,
+                                      2,
+                                      10,
+                                    ),
+                                    child: InventoryGridTopBar(
+                                      data: _buildTopBarData(),
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  AppFolderTabs(
+                                    controller: controller,
+                                    maxWidth: 760,
+                                    showBottomRail: false,
+                                    items: const [
+                                      AppFolderTabItem(
+                                        label: 'Proveedores',
+                                        icon: Icons.business_rounded,
+                                      ),
+                                      AppFolderTabItem(
+                                        label: 'Materiales',
+                                        icon: Icons.inventory_2_rounded,
+                                      ),
+                                      AppFolderTabItem(
+                                        label: 'Precios',
+                                        icon: Icons.price_change_rounded,
+                                      ),
+                                    ],
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Expanded(
+                                    child: TabBarView(
+                                      controller: controller,
+                                      children: [
+                                        _buildCompaniesTab(),
+                                        _buildMaterialsTab(),
+                                        _buildPricesTab(),
+                                      ],
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
+                            if (_persistingCatalogSnapshot)
+                              const Positioned(
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                child: LinearProgressIndicator(minHeight: 3),
+                              ),
                           ],
                         );
                       },
@@ -3984,12 +4292,16 @@ class _CompanyInlineEditRowState extends State<_CompanyInlineEditRow> {
   }
 
   void _submit() {
-    widget.onSave({
+    widget.onSave(snapshotPayload());
+  }
+
+  Map<String, dynamic> snapshotPayload() {
+    return {
       'name': _nameC.text,
       'contact': _contactC.text,
       'notes': _notesC.text,
       'is_active': _isActive,
-    });
+    };
   }
 
   void submitFromParent() => _submit();
@@ -4160,14 +4472,18 @@ class _MaterialInlineEditRowState extends State<_MaterialInlineEditRow> {
   }
 
   void _submit() {
-    widget.onSave({
+    widget.onSave(snapshotPayload());
+  }
+
+  Map<String, dynamic> snapshotPayload() {
+    return {
       'level': _level,
       'name': _nameC.text,
       'family': _family,
       'generalMaterialId': _generalMaterialId,
       'notes': _notesC.text,
       'is_active': _isActive,
-    });
+    };
   }
 
   void submitFromParent() => _submit();
@@ -4391,13 +4707,17 @@ class _PriceInlineEditRowState extends State<_PriceInlineEditRow> {
   }
 
   void _submit() {
-    widget.onSave({
+    widget.onSave(snapshotPayload());
+  }
+
+  Map<String, dynamic> snapshotPayload() {
+    return {
       'companyId': _companyId,
       'materialId': _materialId,
       'amount': _amountC.text,
       'notes': _notesC.text,
       'is_active': _isActive,
-    });
+    };
   }
 
   void submitFromParent() => _submit();
