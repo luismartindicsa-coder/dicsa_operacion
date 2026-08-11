@@ -15,6 +15,22 @@ const String kLogisticsNavDieselLabel = 'Consumo de Diesel';
 const String kLogisticsNavSavingsLabel = 'Ahorro y Planeación';
 const String kLogisticsNavDirectionDashboardLabel = 'Dashboard Dirección';
 
+Future<T?> showLogisticsContractDialog<T>({
+  required BuildContext context,
+  required WidgetBuilder builder,
+  bool barrierDismissible = true,
+  Color? barrierColor,
+  bool useRootNavigator = true,
+}) {
+  return showDialog<T>(
+    context: context,
+    barrierDismissible: barrierDismissible,
+    barrierColor: barrierColor ?? Colors.black.withValues(alpha: 0.28),
+    useRootNavigator: useRootNavigator,
+    builder: builder,
+  );
+}
+
 class LogisticsAreaNavEntry {
   final IconData icon;
   final String title;

@@ -300,6 +300,7 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
   final palette = ServicesVisualPalette.of(context);
   return showDialog<_DateFilterDialogResult>(
     context: context,
+    barrierDismissible: true,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       DateTime displayMonth = defaultDatePickerOpenMonth(
@@ -688,6 +689,7 @@ Future<DateTime?> _showGlassDatePickerDialog(
 
   return showDialog<DateTime>(
     context: context,
+    barrierDismissible: true,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       return StatefulBuilder(
@@ -1050,6 +1052,7 @@ Future<bool?> _showGlassConfirmDialog(
   final palette = ServicesVisualPalette.of(context);
   return showDialog<bool>(
     context: context,
+    barrierDismissible: true,
     barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) => ContractConfirmDialogKeyHandler(
       onCancel: () => Navigator.pop(dialogContext, false),
@@ -2154,6 +2157,8 @@ class _ServicesPageState extends State<ServicesPage>
 
     final result = await showDialog<_FilterDialogResult>(
       context: context,
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (dialogContext) {
         final localSelected = <String>{...initialSelected};
         String localSearch = '';
@@ -3039,6 +3044,7 @@ class _ServicesPageState extends State<ServicesPage>
     final detail = missing.join(', ');
     await showDialog<void>(
       context: context,
+      barrierDismissible: true,
       barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (dialogContext) => Dialog(
         backgroundColor: Colors.transparent,
@@ -4137,7 +4143,8 @@ class _ServicesPageState extends State<ServicesPage>
         : today;
     final changed = await showDialog<bool>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.42),
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (dialogContext) => _FixedServicesManagerDialog(
         clients: _clients,
         materials: _materials,
@@ -7539,7 +7546,8 @@ class _FixedServicesManagerDialogState
   Future<void> _openEditor({LogisticsFixedServiceRecord? record}) async {
     final result = await showDialog<LogisticsFixedServiceRecord>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.44),
+      barrierDismissible: true,
+      barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (dialogContext) => _FixedServiceEditorDialog(
         record: record,
         clients: widget.clients,

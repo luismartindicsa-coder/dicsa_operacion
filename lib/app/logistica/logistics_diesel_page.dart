@@ -407,6 +407,8 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
   double get _draftPurchased => _tryParseDouble(_purchasedController.text) ?? 0;
   double get _draftRequested => _tryParseDouble(_requestedController.text) ?? 0;
   double get _draftBalance => _draftPurchased - _draftRequested;
+  bool get _draftAllowsPurchaseWithoutAssignment =>
+      _draftPurchased > 0 && _draftRequested == 0;
 
   double get _totalPurchased =>
       _entries.fold(0.0, (sum, row) => sum + row.litersPurchased);
@@ -704,22 +706,30 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     final vehicleLabel = _labelOf(_vehicles, vehicleId) ?? '';
     final purchased = _tryParseDouble(_purchasedController.text);
     final requested = _tryParseDouble(_requestedController.text);
+    final purchasedValue = purchased ?? 0;
+    final requestedValue = requested ?? 0;
+    final allowsPurchaseWithoutAssignment =
+        purchasedValue > 0 && requestedValue == 0;
 
     final missing = <String>[];
-    if (operatorId == null || operatorName.isEmpty) missing.add('Operador');
-    if (vehicleId == null || vehicleLabel.isEmpty) {
+    if (!allowsPurchaseWithoutAssignment &&
+        (operatorId == null || operatorName.isEmpty)) {
+      missing.add('Operador');
+    }
+    if (!allowsPurchaseWithoutAssignment &&
+        (vehicleId == null || vehicleLabel.isEmpty)) {
       missing.add('Unidad o Vehículo');
     }
     if (purchased == null) missing.add('Litros Comprados');
-    if (requested == null) missing.add('Litros Solicitados');
+    if (requested == null && purchasedValue <= 0) {
+      missing.add('Litros Solicitados');
+    }
 
     if (missing.isNotEmpty) {
       _showPhaseSnack('Completa primero: ${missing.join(', ')}.');
       return;
     }
 
-    final purchasedValue = purchased!;
-    final requestedValue = requested!;
     if (purchasedValue < 0 || requestedValue < 0) {
       _showPhaseSnack('Los litros no pueden ser negativos.');
       return;
@@ -774,7 +784,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
       context,
       title: 'Eliminar registro',
       content:
-          'Se eliminará el registro de ${record.operatorName} del ${_fmtUiDate(record.entryDate)}.',
+          'Se eliminará el registro de ${_dieselDeleteSubjectLabel(record)} del ${_fmtUiDate(record.entryDate)}.',
       confirmText: 'Eliminar',
     );
     if (!mounted || ok != true) return;
@@ -871,9 +881,8 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
       _showPhaseSnack('No hay valores disponibles para filtrar $label.');
       return;
     }
-    final result = await showDialog<GridFilterState>(
+    final result = await showLogisticsContractDialog<GridFilterState>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.28),
       builder: (_) => GridFilterDialog(
         title: 'Filtro: $label',
         initialState: GridFilterState(options: options),
@@ -952,9 +961,9 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
       case 'fecha':
         return _fmtUiDate(row.entryDate);
       case 'operador':
-        return row.operatorName.trim();
+        return _dieselOperatorDisplayLabel(row);
       case 'unidad':
-        return row.vehicleLabel.trim();
+        return _dieselVehicleDisplayLabel(row);
       case 'comprados':
         return _fmtLiters(row.litersPurchased);
       case 'solicitados':
@@ -1378,8 +1387,8 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
       buffer.writeln(
         [
           _csvCell(_fmtUiDate(row.entryDate)),
-          _csvCell(row.operatorName),
-          _csvCell(row.vehicleLabel),
+          _csvCell(_dieselOperatorDisplayLabel(row)),
+          _csvCell(_dieselVehicleDisplayLabel(row)),
           _csvCell(_fmtLiters(row.litersPurchased)),
           _csvCell(_fmtLiters(row.litersRequested)),
           _csvCell(_fmtLiters(row.balanceLiters)),
@@ -1814,7 +1823,11 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
                       1,
                       _buildInlinePickerCell(
                         width: layout.operatorWidth,
-                        label: _labelOf(_operators, _draftOperatorId) ?? '—',
+                        label:
+                            _labelOf(_operators, _draftOperatorId) ??
+                            (_draftAllowsPurchaseWithoutAssignment
+                                ? 'Opcional'
+                                : '—'),
                         onTap: _saving ? null : _pickDraftOperator,
                         onTapStart: () => _setActiveInsertColumn(1),
                       ),
@@ -1824,7 +1837,11 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
                       2,
                       _buildInlinePickerCell(
                         width: layout.vehicleWidth,
-                        label: _labelOf(_vehicles, _draftVehicleId) ?? '—',
+                        label:
+                            _labelOf(_vehicles, _draftVehicleId) ??
+                            (_draftAllowsPurchaseWithoutAssignment
+                                ? 'Opcional'
+                                : '—'),
                         onTap: _saving ? null : _pickDraftVehicle,
                         onTapStart: () => _setActiveInsertColumn(2),
                       ),
@@ -2550,11 +2567,11 @@ class _DieselDataRowState extends State<_DieselDataRow> {
                           layout.dateWidth,
                         ),
                         _DieselValueCell(
-                          widget.record.operatorName,
+                          _dieselOperatorDisplayLabel(widget.record),
                           layout.operatorWidth,
                         ),
                         _DieselValueCell(
-                          widget.record.vehicleLabel,
+                          _dieselVehicleDisplayLabel(widget.record),
                           layout.vehicleWidth,
                         ),
                         _DieselValueCell(
@@ -2987,9 +3004,8 @@ Future<bool?> _showGlassConfirmDialog(
   required String confirmText,
 }) {
   final palette = ServicesVisualPalette.of(context);
-  return showDialog<bool>(
+  return showLogisticsContractDialog<bool>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) => ContractConfirmDialogKeyHandler(
       onCancel: () => Navigator.pop(dialogContext, false),
       onConfirm: () => Navigator.pop(dialogContext, true),
@@ -3075,9 +3091,8 @@ Future<_DateFilterDialogResult?> _showDateRangeFilterDialog(
   DateTimeRange? initialRange,
 }) {
   final palette = ServicesVisualPalette.of(context);
-  return showDialog<_DateFilterDialogResult>(
+  return showLogisticsContractDialog<_DateFilterDialogResult>(
     context: context,
-    barrierColor: Colors.black.withValues(alpha: 0.28),
     builder: (dialogContext) {
       DateTime displayMonth = initialRange?.start ?? bounds.start;
       DateTime? start = initialRange?.start;
@@ -3460,6 +3475,42 @@ String _fmtUiDate(DateTime value) {
 
 String _fmtLiters(double value) {
   return value.toStringAsFixed(2);
+}
+
+bool _isDieselOpeningPurchaseRecord(LogisticsDieselConsumptionRecord row) {
+  return row.operatorName.trim().isEmpty &&
+      row.vehicleLabel.trim().isEmpty &&
+      row.litersPurchased > 0 &&
+      row.litersRequested == 0;
+}
+
+String _dieselOperatorDisplayLabel(LogisticsDieselConsumptionRecord row) {
+  final label = row.operatorName.trim();
+  if (label.isNotEmpty) return label;
+  if (_isDieselOpeningPurchaseRecord(row)) {
+    return 'Saldo inicial';
+  }
+  return '—';
+}
+
+String _dieselVehicleDisplayLabel(LogisticsDieselConsumptionRecord row) {
+  final label = row.vehicleLabel.trim();
+  if (label.isNotEmpty) return label;
+  if (_isDieselOpeningPurchaseRecord(row)) {
+    return 'Sin unidad';
+  }
+  return '—';
+}
+
+String _dieselDeleteSubjectLabel(LogisticsDieselConsumptionRecord row) {
+  if (_isDieselOpeningPurchaseRecord(row)) {
+    return 'saldo inicial';
+  }
+  final operator = row.operatorName.trim();
+  if (operator.isNotEmpty) return operator;
+  final vehicle = row.vehicleLabel.trim();
+  if (vehicle.isNotEmpty) return vehicle;
+  return 'registro';
 }
 
 String _formatLitersInput(double value) {

@@ -66,9 +66,9 @@ class LogisticsDieselConsumptionRecord {
     if (id != null && id!.trim().isNotEmpty) 'id': id,
     'entry_date': _fmtDbDate(entryDate),
     'operator_employee_id': operatorEmployeeId,
-    'operator_name': operatorName.trim(),
+    'operator_name': operatorName.trim().isEmpty ? null : operatorName.trim(),
     'vehicle_id': vehicleId,
-    'vehicle_label': vehicleLabel.trim(),
+    'vehicle_label': vehicleLabel.trim().isEmpty ? null : vehicleLabel.trim(),
     'liters_purchased': litersPurchased,
     'liters_requested': litersRequested,
   };
