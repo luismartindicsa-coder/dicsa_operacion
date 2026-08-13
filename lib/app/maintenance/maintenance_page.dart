@@ -17,6 +17,8 @@ import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../direction/direction_operations_repository.dart';
+import '../gerencia/gerencia_dashboard_page.dart';
+import '../gerencia/gerencia_operational_viewer_side_menu.dart';
 import '../maintenance/maintenance_ot_purchase_link_service.dart';
 import '../maintenance/maintenance_statuses.dart';
 import '../maintenance/purchase_orders_page.dart';
@@ -156,6 +158,138 @@ List<String> _normalizeMaintenanceNames(Iterable<String> values) {
   return normalized;
 }
 
+String _normalizeMaintenanceToken(String value) {
+  const accents = <String, String>{
+    'Á': 'A',
+    'À': 'A',
+    'Ä': 'A',
+    'Â': 'A',
+    'á': 'A',
+    'à': 'A',
+    'ä': 'A',
+    'â': 'A',
+    'É': 'E',
+    'È': 'E',
+    'Ë': 'E',
+    'Ê': 'E',
+    'é': 'E',
+    'è': 'E',
+    'ë': 'E',
+    'ê': 'E',
+    'Í': 'I',
+    'Ì': 'I',
+    'Ï': 'I',
+    'Î': 'I',
+    'í': 'I',
+    'ì': 'I',
+    'ï': 'I',
+    'î': 'I',
+    'Ó': 'O',
+    'Ò': 'O',
+    'Ö': 'O',
+    'Ô': 'O',
+    'ó': 'O',
+    'ò': 'O',
+    'ö': 'O',
+    'ô': 'O',
+    'Ú': 'U',
+    'Ù': 'U',
+    'Ü': 'U',
+    'Û': 'U',
+    'ú': 'U',
+    'ù': 'U',
+    'ü': 'U',
+    'û': 'U',
+    'Ñ': 'N',
+    'ñ': 'N',
+  };
+  final buffer = StringBuffer();
+  for (final rune in value.runes) {
+    final char = String.fromCharCode(rune);
+    buffer.write(accents[char] ?? char);
+  }
+  return buffer.toString().toUpperCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+}
+
+String _maintenanceCategoryFromSpecialtySelection(String value) {
+  final trimmed = value.trim();
+  if (trimmed.isEmpty) return 'otros';
+  final normalizedEnum = _normEnum(trimmed);
+  if (_kCategoryLabel.containsKey(normalizedEnum)) return normalizedEnum;
+
+  final token = _normalizeMaintenanceToken(trimmed);
+  bool containsAny(Iterable<String> patterns) =>
+      patterns.any((pattern) => token.contains(pattern));
+
+  if (containsAny(['NEUMAT'])) return 'neumatica';
+  if (containsAny([
+    'HIDRAUL',
+    'PLOMER',
+    'BOMBA',
+    'MANGUERA',
+    'AIRE ACONDICIONADO',
+    'AIRES',
+  ])) {
+    return 'hidraulica';
+  }
+  if (containsAny([
+    'CAMARA',
+    'CAMARAS',
+    'SISTEMAS DE SEGURIDAD',
+    'COMPUTACION',
+    'INTERNET',
+    'ELECTRON',
+  ])) {
+    return 'electronica';
+  }
+  if (containsAny(['ELECTRIC', 'SUBESTACION', 'TRANSFORMADOR'])) {
+    return 'electrica';
+  }
+  if (containsAny([
+    'MECANIC',
+    'AUTOMOTRIZ',
+    'LLANTA',
+    'TALACH',
+    'ACEITE',
+    'MUELLE',
+    'GRUA',
+    'HOJALAT',
+    'PINTUR',
+    'TAPIC',
+    'SOLDAD',
+    'MAQUINAD',
+    'MOTOR',
+    'SERVICIO DE UNIDADES',
+    'ESTRUCTUR',
+    'FABRICACION DE MAQUINARIA',
+    'REFACCION',
+    'REPARACION',
+    'SELLO',
+  ])) {
+    return 'mecanica';
+  }
+  return 'otros';
+}
+
+String? _maintenanceCategorySnapshotForSelection(String value) {
+  final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+  if (normalized.isEmpty) return null;
+  return _kCategoryLabel.containsKey(_normEnum(normalized)) ? null : normalized;
+}
+
+String _maintenanceSpecialtyDisplayValue({
+  required dynamic category,
+  required dynamic categorySnapshot,
+}) {
+  final snapshot = (categorySnapshot ?? '').toString().trim().replaceAll(
+    RegExp(r'\s+'),
+    ' ',
+  );
+  if (snapshot.isNotEmpty) return snapshot;
+  final categoryValue = (category ?? '').toString();
+  return _kCategoryLabel[_normEnum(categoryValue)] ?? categoryValue;
+}
+
 bool _isMissingMaintenanceDirectoryTaxonomyError(PostgrestException error) {
   final message = error.message.toLowerCase();
   return message.contains('operation_directory_areas') ||
@@ -166,6 +300,22 @@ bool _isMissingOperationDirectoryContactsForMaintenanceError(
   PostgrestException error,
 ) {
   return error.message.toLowerCase().contains('operation_directory_contacts');
+}
+
+bool _isMissingMaintenanceCategorySnapshotColumnError(
+  PostgrestException error,
+) {
+  final message = [
+    error.code,
+    error.message,
+    error.details,
+    error.hint,
+  ].whereType<String>().join(' ').toLowerCase();
+  return message.contains('category_snapshot') &&
+      (message.contains('column') ||
+          message.contains('schema cache') ||
+          message.contains('42703') ||
+          message.contains('pgrst'));
 }
 
 String _normEnum(dynamic value) =>
@@ -181,8 +331,13 @@ enum _MaintenanceWorkspace { orders, reports, alerts }
 
 class MaintenancePage extends StatefulWidget {
   final String? initialOrderId;
+  final bool viewerMode;
 
-  const MaintenancePage({super.key, this.initialOrderId});
+  const MaintenancePage({
+    super.key,
+    this.initialOrderId,
+    this.viewerMode = false,
+  });
 
   @override
   State<MaintenancePage> createState() => _MaintenancePageState();
@@ -209,6 +364,7 @@ class _MaintenancePageState extends State<MaintenancePage>
   bool _autoReloading = false;
   bool _pendingAutoReload = false;
   bool _purchaseOrderLinksAvailable = true;
+  bool _maintenanceCategorySnapshotColumnAvailable = true;
   bool _suspendAutosave = false;
   bool _autosavePending = false;
   DateTime? _lastBackgroundRefreshAt;
@@ -259,7 +415,11 @@ class _MaintenancePageState extends State<MaintenancePage>
   String _priority = 'media';
   String _type = 'correctivo';
   String _category = 'otros';
+  String? _categorySnapshot;
+  String _selectedSpecialty = 'otros';
   String _impact = 'sin_impacto';
+
+  bool get _isViewerMode => widget.viewerMode;
 
   List<Map<String, dynamic>> _tasks = <Map<String, dynamic>>[];
   List<Map<String, dynamic>> _materials = <Map<String, dynamic>>[];
@@ -597,12 +757,74 @@ class _MaintenancePageState extends State<MaintenancePage>
     return _normalizeMaintenanceNames(<String>[
       ..._kCategoryLabel.keys,
       ..._directorySpecialtyOptions,
-      _category,
+      _selectedSpecialty,
     ]);
   }
 
   String _maintenanceSpecialtyLabel(String value) {
     return _kCategoryLabel[value] ?? value;
+  }
+
+  void _applySelectedSpecialty(String value) {
+    final normalized = value.trim().replaceAll(RegExp(r'\s+'), ' ');
+    final effective = normalized.isEmpty ? 'otros' : normalized;
+    _selectedSpecialty = effective;
+    _category = _maintenanceCategoryFromSpecialtySelection(effective);
+    _categorySnapshot = _maintenanceCategorySnapshotForSelection(effective);
+  }
+
+  String _specialtySelectionFromOrder(Map<String, dynamic> order) {
+    final snapshot = (order['category_snapshot'] ?? '')
+        .toString()
+        .trim()
+        .replaceAll(RegExp(r'\s+'), ' ');
+    if (snapshot.isNotEmpty) return snapshot;
+    final category = (order['category'] ?? 'otros').toString().trim();
+    return category.isEmpty ? 'otros' : category;
+  }
+
+  Map<String, dynamic> _buildEditableOrderPayload({
+    required double estTotal,
+    required double realTotal,
+    bool includeCategorySnapshot = true,
+  }) {
+    final payload = <String, dynamic>{
+      'area_label': _areaC.text.trim(),
+      'equipment_id': _selectedVehicleId,
+      'equipment_label': _equipmentC.text.trim(),
+      'equipment_serial': _serialC.text.trim(),
+      'requester_name': _requesterC.text.trim(),
+      'mechanic_name': _mechanicNameC.text.trim().isEmpty
+          ? null
+          : _mechanicNameC.text.trim(),
+      'mechanic_contact': _mechanicContactC.text.trim().isEmpty
+          ? null
+          : _mechanicContactC.text.trim(),
+      'priority': _priority,
+      'type': _type,
+      'category': _category,
+      'impact': _impact,
+      'problem_description': _descriptionC.text.trim(),
+      'diagnosis': _diagnosisC.text.trim().isEmpty
+          ? null
+          : _diagnosisC.text.trim(),
+      'work_summary': _summaryC.text.trim().isEmpty
+          ? null
+          : _summaryC.text.trim(),
+      'assigned_to_name': _assignedToC.text.trim().isEmpty
+          ? null
+          : _assignedToC.text.trim(),
+      'assigned_at': _assignedToC.text.trim().isEmpty
+          ? null
+          : DateTime.now().toIso8601String(),
+      'cost_estimated_total': estTotal,
+      'cost_actual_total': realTotal,
+    };
+    if (includeCategorySnapshot &&
+        _maintenanceCategorySnapshotColumnAvailable) {
+      payload['category_snapshot'] = _categorySnapshot;
+    }
+    return payload;
   }
 
   String _selectedDirectoryContactDisplayValue() {
@@ -875,6 +1097,10 @@ class _MaintenancePageState extends State<MaintenancePage>
       ..['priority'] = _normEnum(row['priority'])
       ..['type'] = _normEnum(row['type'])
       ..['category'] = _normEnum(row['category'])
+      ..['category_snapshot'] = (row['category_snapshot'] ?? '')
+          .toString()
+          .trim()
+          .replaceAll(RegExp(r'\s+'), ' ')
       ..['impact'] = _normEnum(row['impact'])
       ..['provider_type'] = _normEnum(row['provider_type']);
     _tasks = (tasks as List).map((e) => Map<String, dynamic>.from(e)).toList();
@@ -924,7 +1150,7 @@ class _MaintenancePageState extends State<MaintenancePage>
 
       _priority = (order['priority'] ?? 'media').toString();
       _type = (order['type'] ?? 'correctivo').toString();
-      _category = (order['category'] ?? 'otros').toString();
+      _applySelectedSpecialty(_specialtySelectionFromOrder(order));
       _impact = (order['impact'] ?? 'sin_impacto').toString();
 
       _selectedVehicleId = (order['equipment_id'] ?? '').toString().trim();
@@ -961,7 +1187,7 @@ class _MaintenancePageState extends State<MaintenancePage>
       _assignedToC.clear();
       _priority = 'media';
       _type = 'correctivo';
-      _category = 'otros';
+      _applySelectedSpecialty('otros');
       _impact = 'sin_impacto';
       _selectedVehicleId = null;
       _tasks = <Map<String, dynamic>>[];
@@ -1040,6 +1266,8 @@ class _MaintenancePageState extends State<MaintenancePage>
       'priority': _priority,
       'type': _type,
       'category': _category,
+      'category_snapshot': _categorySnapshot,
+      'selected_specialty': _selectedSpecialty,
       'impact': _impact,
       'problem_description': _descriptionC.text.trim(),
       'diagnosis': _diagnosisC.text.trim(),
@@ -1190,6 +1418,12 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   List<MapEntry<String, String>> _orderContextActions() {
+    if (_isViewerMode) {
+      return const <MapEntry<String, String>>[
+        MapEntry('pdf', 'DESCARGAR PDF'),
+        MapEntry('evidence', 'EVIDENCIAS'),
+      ];
+    }
     if (_isAccountingRestrictedMaintenanceUser) {
       return const <MapEntry<String, String>>[
         MapEntry('save', 'GUARDAR MATERIALES'),
@@ -1350,49 +1584,41 @@ class _MaintenancePageState extends State<MaintenancePage>
         0,
         (sum, row) => sum + (_toDouble(row['cost_actual']) ?? 0),
       );
+      final editablePayload = _buildEditableOrderPayload(
+        estTotal: estTotal,
+        realTotal: realTotal,
+      );
 
-      await _supa
-          .from('maintenance_orders')
-          .update(
-            _isAccountingRestrictedMaintenanceUser
-                ? <String, dynamic>{
-                    'cost_estimated_total': estTotal,
-                    'cost_actual_total': realTotal,
-                  }
-                : <String, dynamic>{
-                    'area_label': _areaC.text.trim(),
-                    'equipment_id': _selectedVehicleId,
-                    'equipment_label': _equipmentC.text.trim(),
-                    'equipment_serial': _serialC.text.trim(),
-                    'requester_name': _requesterC.text.trim(),
-                    'mechanic_name': _mechanicNameC.text.trim().isEmpty
-                        ? null
-                        : _mechanicNameC.text.trim(),
-                    'mechanic_contact': _mechanicContactC.text.trim().isEmpty
-                        ? null
-                        : _mechanicContactC.text.trim(),
-                    'priority': _priority,
-                    'type': _type,
-                    'category': _category,
-                    'impact': _impact,
-                    'problem_description': _descriptionC.text.trim(),
-                    'diagnosis': _diagnosisC.text.trim().isEmpty
-                        ? null
-                        : _diagnosisC.text.trim(),
-                    'work_summary': _summaryC.text.trim().isEmpty
-                        ? null
-                        : _summaryC.text.trim(),
-                    'assigned_to_name': _assignedToC.text.trim().isEmpty
-                        ? null
-                        : _assignedToC.text.trim(),
-                    'assigned_at': _assignedToC.text.trim().isEmpty
-                        ? null
-                        : DateTime.now().toIso8601String(),
-                    'cost_estimated_total': estTotal,
-                    'cost_actual_total': realTotal,
-                  },
-          )
-          .eq('id', orderId);
+      try {
+        await _supa
+            .from('maintenance_orders')
+            .update(
+              _isAccountingRestrictedMaintenanceUser
+                  ? <String, dynamic>{
+                      'cost_estimated_total': estTotal,
+                      'cost_actual_total': realTotal,
+                    }
+                  : editablePayload,
+            )
+            .eq('id', orderId);
+      } on PostgrestException catch (e) {
+        if (_isAccountingRestrictedMaintenanceUser ||
+            !_maintenanceCategorySnapshotColumnAvailable ||
+            !_isMissingMaintenanceCategorySnapshotColumnError(e)) {
+          rethrow;
+        }
+        _maintenanceCategorySnapshotColumnAvailable = false;
+        await _supa
+            .from('maintenance_orders')
+            .update(
+              _buildEditableOrderPayload(
+                estTotal: estTotal,
+                realTotal: realTotal,
+                includeCategorySnapshot: false,
+              ),
+            )
+            .eq('id', orderId);
+      }
 
       await _replaceChildRows(
         orderId,
@@ -1413,33 +1639,11 @@ class _MaintenancePageState extends State<MaintenancePage>
                 }
               : {
                   ...?_selectedOrder,
-                  'area_label': _areaC.text.trim(),
-                  'equipment_id': _selectedVehicleId,
-                  'equipment_label': _equipmentC.text.trim(),
-                  'equipment_serial': _serialC.text.trim(),
-                  'requester_name': _requesterC.text.trim(),
-                  'mechanic_name': _mechanicNameC.text.trim().isEmpty
-                      ? null
-                      : _mechanicNameC.text.trim(),
-                  'mechanic_contact': _mechanicContactC.text.trim().isEmpty
-                      ? null
-                      : _mechanicContactC.text.trim(),
-                  'priority': _priority,
-                  'type': _type,
-                  'category': _category,
-                  'impact': _impact,
-                  'problem_description': _descriptionC.text.trim(),
-                  'diagnosis': _diagnosisC.text.trim().isEmpty
-                      ? null
-                      : _diagnosisC.text.trim(),
-                  'work_summary': _summaryC.text.trim().isEmpty
-                      ? null
-                      : _summaryC.text.trim(),
-                  'assigned_to_name': _assignedToC.text.trim().isEmpty
-                      ? null
-                      : _assignedToC.text.trim(),
-                  'cost_estimated_total': estTotal,
-                  'cost_actual_total': realTotal,
+                  ..._buildEditableOrderPayload(
+                    estTotal: estTotal,
+                    realTotal: realTotal,
+                  ),
+                  'category_snapshot': _categorySnapshot,
                 };
         });
       }
@@ -1777,6 +1981,10 @@ class _MaintenancePageState extends State<MaintenancePage>
       _selectedOrderId = orderId;
       await _loadOrderDetails(orderId);
     }
+    if (_isViewerMode && action != 'pdf' && action != 'evidence') {
+      _toast('Gerencia solo puede visualizar Órdenes de Trabajo.');
+      return;
+    }
     switch (action) {
       case 'save':
         await _saveCurrentOrder();
@@ -1884,7 +2092,7 @@ class _MaintenancePageState extends State<MaintenancePage>
             _pdfSection('CLASIFICACION', [
               'Tipo: ${_kTypeLabel[(order['type'] ?? '').toString()] ?? order['type']}',
               'Prioridad: ${_kPriorityLabel[(order['priority'] ?? '').toString()] ?? order['priority']}',
-              'Especialidad: ${_kCategoryLabel[(order['category'] ?? '').toString()] ?? order['category']}',
+              'Especialidad: ${_maintenanceSpecialtyDisplayValue(category: order['category'], categorySnapshot: order['category_snapshot'])}',
               'Impacto: ${_kImpactLabel[(order['impact'] ?? '').toString()] ?? order['impact']}',
             ]),
             _pdfSection('DESCRIPCION DEL PROBLEMA', [
@@ -2916,18 +3124,20 @@ class _MaintenancePageState extends State<MaintenancePage>
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: FilledButton.icon(
-                    onPressed: () async {
-                      Navigator.pop(dialogContext);
-                      await _addEvidence(orderId);
-                    },
-                    icon: const Icon(Icons.add_a_photo_rounded),
-                    label: const Text('Agregar evidencia'),
+                if (!_isViewerMode) ...[
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: FilledButton.icon(
+                      onPressed: () async {
+                        Navigator.pop(dialogContext);
+                        await _addEvidence(orderId);
+                      },
+                      icon: const Icon(Icons.add_a_photo_rounded),
+                      label: const Text('Agregar evidencia'),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                ],
                 Flexible(
                   child: _evidences.isEmpty
                       ? const Center(child: Text('Sin evidencias'))
@@ -4061,7 +4271,18 @@ class _MaintenancePageState extends State<MaintenancePage>
     await signOutAndRouteToLogin(context);
   }
 
+  Future<void> _returnToGerenciaDashboard() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(page: const GerenciaDashboardPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _goToDashboard() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       appPageRoute(page: const DashboardPage(instantOpen: true)),
@@ -4069,6 +4290,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _goToGeneralDashboard() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     final profile = await AuthAccess.resolveCurrentProfile();
     if (!AuthAccess.canAccessGeneralDashboard(profile)) return;
     if (!mounted) return;
@@ -4078,6 +4303,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _goToEntriesAndOutputs() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -4085,6 +4314,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _goToProduction() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -4092,6 +4325,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _goToInventory() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -4099,6 +4336,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _goToServices() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -4106,6 +4347,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _goToWeighings() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -4114,12 +4359,22 @@ class _MaintenancePageState extends State<MaintenancePage>
 
   Future<void> _goToPurchaseOrders() async {
     if (!mounted) return;
+    if (_isViewerMode) {
+      Navigator.of(context).pushReplacement(
+        appPageRoute(page: const PurchaseOrdersPage(viewerMode: true)),
+      );
+      return;
+    }
     Navigator.of(
       context,
     ).pushReplacement(appPageRoute(page: const PurchaseOrdersPage()));
   }
 
   Future<void> _goToOperationDirectory() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -4127,6 +4382,10 @@ class _MaintenancePageState extends State<MaintenancePage>
   }
 
   Future<void> _goToWarehouse() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -4136,8 +4395,19 @@ class _MaintenancePageState extends State<MaintenancePage>
   @override
   Widget build(BuildContext context) {
     return ServicesShell(
-      headerTitle: 'Mantenimiento',
+      headerTitle: _isViewerMode
+          ? 'Mantenimiento · Visualizador'
+          : 'Mantenimiento',
       activeOverlayModule: ServicesOverlayNavModule.mantenimiento,
+      customSideMenuBuilder: _isViewerMode
+          ? (context, closeMenu) => GerenciaOperationalViewerSideMenu(
+              closeMenu: closeMenu,
+              currentDestination:
+                  GerenciaOperationalViewerMenuDestination.maintenance,
+              onGoToGerenciaDashboard: _returnToGerenciaDashboard,
+              onGoToPurchaseOrders: _goToPurchaseOrders,
+            )
+          : null,
       onHeaderGuide: _showOtFlowGuide,
       headerGuideLabel: 'Flujo OT',
       onLogout: _logout,
@@ -4205,11 +4475,15 @@ class _MaintenancePageState extends State<MaintenancePage>
                     FilledButton.icon(
                       style: _maintenanceActionFilledButtonStyle(),
                       onPressed:
-                          _creating || _isAccountingRestrictedMaintenanceUser
+                          _isViewerMode ||
+                              _creating ||
+                              _isAccountingRestrictedMaintenanceUser
                           ? null
                           : _createOrder,
                       icon: const Icon(Icons.add_box_rounded),
-                      label: const Text('Nueva OT'),
+                      label: Text(
+                        _isViewerMode ? 'Modo visualizador' : 'Nueva OT',
+                      ),
                     ),
                     OutlinedButton.icon(
                       style: _maintenanceActionOutlinedButtonStyle(),
@@ -4245,6 +4519,16 @@ class _MaintenancePageState extends State<MaintenancePage>
                   if (_isAccountingRestrictedMaintenanceUser)
                     const Text(
                       'Contabilidad: solo materiales y costos',
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: Color(0xFF8A5A00),
+                      ),
+                    ),
+                  if (_isViewerMode)
+                    const Text(
+                      'Gerencia: solo consulta OT y Compras OT',
                       textAlign: TextAlign.right,
                       style: TextStyle(
                         fontSize: 11,
@@ -7838,6 +8122,8 @@ class _MaintenancePageState extends State<MaintenancePage>
     double? height,
   }) {
     final lockedForAccounting = _isSectionLockedForAccounting(title);
+    final lockedForViewer = _isViewerMode;
+    final locked = lockedForAccounting || lockedForViewer;
     final content = height == null
         ? child
         : SizedBox(
@@ -7862,7 +8148,7 @@ class _MaintenancePageState extends State<MaintenancePage>
               Text(title, style: const TextStyle(fontWeight: FontWeight.w900)),
             ],
           ),
-          if (lockedForAccounting) ...[
+          if (locked) ...[
             const SizedBox(height: 8),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -7871,9 +8157,11 @@ class _MaintenancePageState extends State<MaintenancePage>
                 borderRadius: BorderRadius.circular(10),
                 border: Border.all(color: const Color(0xFFE9CA6B)),
               ),
-              child: const Text(
-                'Solo lectura para contabilidad. Esta sección la mantiene Operación.',
-                style: TextStyle(
+              child: Text(
+                lockedForViewer
+                    ? 'Solo lectura para Gerencia. Esta sección se consulta desde Operación.'
+                    : 'Solo lectura para contabilidad. Esta sección la mantiene Operación.',
+                style: const TextStyle(
                   fontSize: 11,
                   fontWeight: FontWeight.w700,
                   color: Color(0xFF7A5A00),
@@ -7883,13 +8171,10 @@ class _MaintenancePageState extends State<MaintenancePage>
           ],
           const SizedBox(height: 8),
           ExcludeFocus(
-            excluding: lockedForAccounting,
-            child: AbsorbPointer(
-              absorbing: lockedForAccounting,
-              child: Opacity(
-                opacity: lockedForAccounting ? 0.74 : 1,
-                child: content,
-              ),
+            excluding: locked,
+            child: IgnorePointer(
+              ignoring: locked,
+              child: Opacity(opacity: locked ? 0.74 : 1, child: content),
             ),
           ),
         ],
@@ -8206,7 +8491,7 @@ class _MaintenancePageState extends State<MaintenancePage>
         _classificationRow(
           'Especialidad',
           DropdownButtonFormField<String>(
-            initialValue: _category,
+            initialValue: _selectedSpecialty,
             isExpanded: true,
             menuMaxHeight: 360,
             borderRadius: BorderRadius.circular(12),
@@ -8221,7 +8506,7 @@ class _MaintenancePageState extends State<MaintenancePage>
                 .toList(),
             onChanged: (v) {
               if (v == null) return;
-              setState(() => _category = v);
+              setState(() => _applySelectedSpecialty(v));
               _scheduleAutosave();
             },
             decoration: _maintenanceInputDecoration(),

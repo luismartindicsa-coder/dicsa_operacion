@@ -10,6 +10,8 @@ import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
+import '../gerencia/gerencia_dashboard_page.dart';
+import '../gerencia/gerencia_operational_viewer_side_menu.dart';
 import '../services/inventory_page.dart';
 import '../services/operation_directory_page.dart';
 import '../services/services_page.dart';
@@ -75,8 +77,13 @@ const double _kPoActionsColW = 172;
 
 class PurchaseOrdersPage extends StatefulWidget {
   final String? initialOrderId;
+  final bool viewerMode;
 
-  const PurchaseOrdersPage({super.key, this.initialOrderId});
+  const PurchaseOrdersPage({
+    super.key,
+    this.initialOrderId,
+    this.viewerMode = false,
+  });
 
   @override
   State<PurchaseOrdersPage> createState() => _PurchaseOrdersPageState();
@@ -124,6 +131,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   Timer? _marqueeAutoScrollTimer;
   double _marqueeAutoScrollVelocity = 0;
 
+  bool get _isViewerMode => widget.viewerMode;
   bool get _isDirection => AuthAccess.isDirectionRole(_profile);
 
   @override
@@ -823,6 +831,7 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   }
 
   bool _canDeleteOrder(Map<String, dynamic> order) {
+    if (_isViewerMode) return false;
     final status = (order['status'] ?? 'draft').toString();
     return status == 'draft' || status == 'rejected';
   }
@@ -1053,10 +1062,18 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   }
 
   Future<void> _createOrder() async {
+    if (_isViewerMode) {
+      _toast('Gerencia solo puede visualizar Compras OT.');
+      return;
+    }
     await _showOrderDialog();
   }
 
   Future<void> _openOrderPrimaryAction(Map<String, dynamic> order) async {
+    if (_isViewerMode) {
+      await _showOrderSummary(order);
+      return;
+    }
     final status = (order['status'] ?? '').toString();
     if ((status == 'authorized' || status == 'purchased') &&
         !_canEditOrderOtLink(order)) {
@@ -1465,6 +1482,57 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     if (orderId == null || orderId.isEmpty) return;
     _selectOrder(orderId, requestFocus: true, ensureVisible: false);
 
+    if (_isViewerMode) {
+      final overlay = Overlay.of(context).context.findRenderObject();
+      RelativeRect position = const RelativeRect.fromLTRB(0, 0, 0, 0);
+      if (globalPosition != null && overlay is RenderBox) {
+        position = RelativeRect.fromRect(
+          Rect.fromLTWH(globalPosition.dx, globalPosition.dy, 0, 0),
+          Offset.zero & overlay.size,
+        );
+      } else if (anchorContext != null && overlay is RenderBox) {
+        final box = anchorContext.findRenderObject();
+        if (box is RenderBox) {
+          final origin = box.localToGlobal(Offset.zero, ancestor: overlay);
+          position = RelativeRect.fromRect(
+            Rect.fromLTWH(
+              origin.dx,
+              origin.dy + box.size.height,
+              box.size.width,
+              0,
+            ),
+            Offset.zero & overlay.size,
+          );
+        }
+      }
+      final action = await showMenu<String>(
+        context: context,
+        position: position,
+        color: const Color(0xFFF6FBF9),
+        elevation: 8,
+        shadowColor: Colors.black.withValues(alpha: 0.12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.72)),
+        ),
+        items: const [
+          PopupMenuItem<String>(
+            value: 'summary',
+            child: _PurchaseOrderActionMenuLabel(
+              icon: Icons.visibility_rounded,
+              title: 'Ver resumen',
+              subtitle: 'Consultar datos y renglones de la orden',
+            ),
+          ),
+        ],
+      );
+      if (!mounted) return;
+      if (action == 'summary') {
+        await _showOrderSummary(order);
+      }
+      return;
+    }
+
     final status = (order['status'] ?? 'draft').toString();
     final canEditOtLink = _canEditOrderOtLink(order);
     final canEdit = status != 'authorized' && status != 'purchased';
@@ -1739,9 +1807,20 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
     );
   }
 
+  Future<void> _returnToGerenciaDashboard() async {
+    if (!mounted) return;
+    Navigator.of(context).pushReplacement(
+      appPageRoute(page: const GerenciaDashboardPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _logout() => signOutAndRouteToLogin(context);
 
   Future<void> _goToDashboard() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -1749,6 +1828,10 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   }
 
   Future<void> _goToGeneralDashboard() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -1756,6 +1839,10 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   }
 
   Future<void> _goToEntriesAndOutputs() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -1763,6 +1850,10 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   }
 
   Future<void> _goToProduction() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -1770,6 +1861,10 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   }
 
   Future<void> _goToInventory() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -1777,6 +1872,10 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   }
 
   Future<void> _goToServices() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -1784,6 +1883,10 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   }
 
   Future<void> _goToWeighings() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -1792,12 +1895,22 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
 
   Future<void> _goToMaintenance() async {
     if (!mounted) return;
+    if (_isViewerMode) {
+      Navigator.of(context).pushReplacement(
+        appPageRoute(page: const MaintenancePage(viewerMode: true)),
+      );
+      return;
+    }
     Navigator.of(
       context,
     ).pushReplacement(appPageRoute(page: const MaintenancePage()));
   }
 
   Future<void> _goToWarehouse() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -1805,6 +1918,10 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   }
 
   Future<void> _goToOperationDirectory() async {
+    if (_isViewerMode) {
+      await _returnToGerenciaDashboard();
+      return;
+    }
     if (!mounted) return;
     Navigator.of(
       context,
@@ -2082,11 +2199,16 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                   children: [
                     FilledButton.icon(
                       style: _purchaseOrdersActionFilledButtonStyle(),
-                      onPressed: _saving || !_purchaseOrdersSchemaReady
+                      onPressed:
+                          _isViewerMode ||
+                              _saving ||
+                              !_purchaseOrdersSchemaReady
                           ? null
                           : _createOrder,
                       icon: const Icon(Icons.add_box_rounded),
-                      label: const Text('Nueva orden'),
+                      label: Text(
+                        _isViewerMode ? 'Modo visualizador' : 'Nueva orden',
+                      ),
                     ),
                     OutlinedButton.icon(
                       style: _purchaseOrdersActionOutlinedButtonStyle(),
@@ -2121,20 +2243,24 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
                       color: Color(0xFF2A4B49),
                     ),
                   ),
-                  const Text(
-                    'Tab recorre toolbar y filtros · Enter/Space abre el control enfocado',
+                  Text(
+                    _isViewerMode
+                        ? 'Visualizador de Gerencia · Solo consulta'
+                        : 'Tab recorre toolbar y filtros · Enter/Space abre el control enfocado',
                     textAlign: TextAlign.right,
-                    style: TextStyle(
+                    style: const TextStyle(
                       fontSize: 11,
                       fontWeight: FontWeight.w600,
                       color: Color(0xFF5A7287),
                     ),
                   ),
                   if (selectedFolio.isNotEmpty)
-                    const Text(
-                      'Enter/F2 edita · Space abre acciones · Delete elimina borrador',
+                    Text(
+                      _isViewerMode
+                          ? 'Enter/F2 abre resumen · Space abre acciones'
+                          : 'Enter/F2 edita · Space abre acciones · Delete elimina borrador',
                       textAlign: TextAlign.right,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: Color(0xFF5A7287),
@@ -2186,8 +2312,17 @@ class _PurchaseOrdersPageState extends State<PurchaseOrdersPage> {
   @override
   Widget build(BuildContext context) {
     return ServicesShell(
-      headerTitle: 'Compras OT',
+      headerTitle: _isViewerMode ? 'Compras OT · Visualizador' : 'Compras OT',
       activeOverlayModule: ServicesOverlayNavModule.comprasOt,
+      customSideMenuBuilder: _isViewerMode
+          ? (context, closeMenu) => GerenciaOperationalViewerSideMenu(
+              closeMenu: closeMenu,
+              currentDestination:
+                  GerenciaOperationalViewerMenuDestination.purchaseOrders,
+              onGoToGerenciaDashboard: _returnToGerenciaDashboard,
+              onGoToMaintenance: _goToMaintenance,
+            )
+          : null,
       onLogout: _logout,
       onGoToGeneralDashboard: _goToGeneralDashboard,
       onGoToOperacion: _goToDashboard,

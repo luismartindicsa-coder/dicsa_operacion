@@ -300,6 +300,51 @@ class FinanzasSupplierAgreementRecord {
     required this.updatedAt,
   });
 
+  FinanzasSupplierAgreementRecord copyWith({
+    String? id,
+    String? providerId,
+    String? providerNameSnapshot,
+    String? targetCompany,
+    String? targetBranch,
+    DateTime? startDate,
+    String? agreementType,
+    String? frequency,
+    double? installmentAmount,
+    int? installmentCount,
+    int? invoicesPerPeriod,
+    int? scheduledInvoiceCount,
+    double? totalAmount,
+    double? remainingAmount,
+    DateTime? nextDueDate,
+    String? status,
+    String? notes,
+    DateTime? createdAt,
+    DateTime? updatedAt,
+  }) {
+    return FinanzasSupplierAgreementRecord(
+      id: id ?? this.id,
+      providerId: providerId ?? this.providerId,
+      providerNameSnapshot: providerNameSnapshot ?? this.providerNameSnapshot,
+      targetCompany: targetCompany ?? this.targetCompany,
+      targetBranch: targetBranch ?? this.targetBranch,
+      startDate: startDate ?? this.startDate,
+      agreementType: agreementType ?? this.agreementType,
+      frequency: frequency ?? this.frequency,
+      installmentAmount: installmentAmount ?? this.installmentAmount,
+      installmentCount: installmentCount ?? this.installmentCount,
+      invoicesPerPeriod: invoicesPerPeriod ?? this.invoicesPerPeriod,
+      scheduledInvoiceCount:
+          scheduledInvoiceCount ?? this.scheduledInvoiceCount,
+      totalAmount: totalAmount ?? this.totalAmount,
+      remainingAmount: remainingAmount ?? this.remainingAmount,
+      nextDueDate: nextDueDate ?? this.nextDueDate,
+      status: status ?? this.status,
+      notes: notes ?? this.notes,
+      createdAt: createdAt ?? this.createdAt,
+      updatedAt: updatedAt ?? this.updatedAt,
+    );
+  }
+
   Map<String, dynamic> toUpsertJson() => <String, dynamic>{
     'id': id,
     'provider_id': providerId,
@@ -810,8 +855,15 @@ class FinanzasProviderAccountsStore {
     List<FinanzasSupplierAgreementInvoiceRecord> invoiceLinks =
         const <FinanzasSupplierAgreementInvoiceRecord>[],
   }) async {
+    final resolvedProviderId = await _ensureProviderExistsInFinanzasCatalog(
+      providerId: agreement.providerId,
+      providerNameSnapshot: agreement.providerNameSnapshot,
+    );
+    final resolvedAgreement = agreement.copyWith(
+      providerId: resolvedProviderId,
+    );
     await Supabase.instance.client.from(_kFinSupplierAgreementsTable).upsert(
-      <Map<String, dynamic>>[agreement.toUpsertJson()],
+      <Map<String, dynamic>>[resolvedAgreement.toUpsertJson()],
       onConflict: 'id',
     );
     if (installments.isEmpty) return;
@@ -833,8 +885,15 @@ class FinanzasProviderAccountsStore {
   static Future<void> saveAgreement(
     FinanzasSupplierAgreementRecord agreement,
   ) async {
+    final resolvedProviderId = await _ensureProviderExistsInFinanzasCatalog(
+      providerId: agreement.providerId,
+      providerNameSnapshot: agreement.providerNameSnapshot,
+    );
+    final resolvedAgreement = agreement.copyWith(
+      providerId: resolvedProviderId,
+    );
     await Supabase.instance.client.from(_kFinSupplierAgreementsTable).upsert(
-      <Map<String, dynamic>>[agreement.toUpsertJson()],
+      <Map<String, dynamic>>[resolvedAgreement.toUpsertJson()],
       onConflict: 'id',
     );
   }

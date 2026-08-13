@@ -1343,6 +1343,31 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
     }
   }
 
+  Future<bool> _activateExistingDriverByName(String normalized) async {
+    try {
+      final updated = await supa
+          .from('employees')
+          .update({
+            'full_name': normalized,
+            'is_driver': true,
+            'is_active': true,
+          })
+          .eq('full_name', normalized)
+          .select('id');
+      if ((updated as List).isEmpty) {
+        _toast('No se encontró el chofer duplicado para reactivarlo');
+        return false;
+      }
+      _changed = true;
+      _toast('Chofer reactivado');
+      await _loadData();
+      return true;
+    } on PostgrestException catch (e) {
+      _toast('No se pudo reactivar chofer: ${e.message}');
+      return false;
+    }
+  }
+
   Future<bool> _reactivateVehicle(Map<String, dynamic> row) async {
     final id = row['id']?.toString();
     if (id == null) return false;
@@ -1664,7 +1689,19 @@ class _ServicesCatalogPageState extends State<ServicesCatalogPage> {
       _toast('Chofer agregado');
       await _loadData();
     } on PostgrestException catch (e) {
-      _toast('No se pudo agregar chofer: ${e.message}');
+      final msg = e.message.toLowerCase();
+      final isDuplicate =
+          msg.contains('duplicate key') || msg.contains('unique constraint');
+      if (isDuplicate) {
+        final reactivated = await _activateExistingDriverByName(normalized);
+        if (reactivated) {
+          if (clearInput) _driverNameC.clear();
+        } else {
+          _toast('No se pudo reactivar el chofer duplicado');
+        }
+      } else {
+        _toast('No se pudo agregar chofer: ${e.message}');
+      }
     } finally {
       if (mounted) setState(() => _savingDriver = false);
     }

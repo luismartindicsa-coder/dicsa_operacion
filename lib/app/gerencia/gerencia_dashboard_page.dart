@@ -3,6 +3,10 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../dashboard/general_dashboard_page.dart';
+import '../logistica/logistics_dashboard_page.dart';
+import '../maintenance/maintenance_page.dart';
+import '../maintenance/purchase_orders_page.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
 import '../shared/production_daily_summary_widget.dart';
@@ -258,6 +262,26 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
     await _load();
   }
 
+  Future<void> _openMaintenanceViewer() async {
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const MaintenancePage(viewerMode: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
+  Future<void> _openPurchaseOrdersViewer() async {
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const PurchaseOrdersPage(viewerMode: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return EmptyAreaDashboardPage(
@@ -279,6 +303,7 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
           ),
         ],
         workspaceBuilder: (context, config, width) => _GerenciaWorkspace(
+          width: width,
           loading: _loading,
           loadingHistory: _loadingHistory,
           bundle: _bundle,
@@ -289,6 +314,8 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
           onOpenCurrentWeek: _openCurrentWeek,
           onOpenNextWeek: _openNextWeek,
           onOpenWeeklyTracking: _openWeeklyTracking,
+          onOpenMaintenanceViewer: _openMaintenanceViewer,
+          onOpenPurchaseOrdersViewer: _openPurchaseOrdersViewer,
         ),
       ),
     );
@@ -311,6 +338,7 @@ Widget _buildGerenciaSidePanel(
 }
 
 class _GerenciaWorkspace extends StatelessWidget {
+  final double width;
   final bool loading;
   final bool loadingHistory;
   final GerenciaBaleWeeklyTrackingBundle? bundle;
@@ -321,8 +349,11 @@ class _GerenciaWorkspace extends StatelessWidget {
   final Future<void> Function() onOpenCurrentWeek;
   final Future<void> Function() onOpenNextWeek;
   final Future<void> Function() onOpenWeeklyTracking;
+  final Future<void> Function() onOpenMaintenanceViewer;
+  final Future<void> Function() onOpenPurchaseOrdersViewer;
 
   const _GerenciaWorkspace({
+    required this.width,
     required this.loading,
     required this.loadingHistory,
     required this.bundle,
@@ -333,6 +364,8 @@ class _GerenciaWorkspace extends StatelessWidget {
     required this.onOpenCurrentWeek,
     required this.onOpenNextWeek,
     required this.onOpenWeeklyTracking,
+    required this.onOpenMaintenanceViewer,
+    required this.onOpenPurchaseOrdersViewer,
   });
 
   @override
@@ -455,6 +488,30 @@ class _GerenciaWorkspace extends StatelessWidget {
               )
             else
               const _DashboardWeekContextCard(),
+          ],
+          if (!loading) ...[
+            const SizedBox(height: 18),
+            const _DashboardSectionHeading(
+              title: 'Flujo Material Operativo de Dirección',
+              subtitle:
+                  'Entradas y salidas consolidadas del frente operativo para lectura ejecutiva.',
+            ),
+            const SizedBox(height: 12),
+            const DirectionOperationalMaterialFlowWidget(),
+            const SizedBox(height: 18),
+            const _DashboardSectionHeading(
+              title: 'Widgets de Logística',
+              subtitle:
+                  'Resumen de viajes, control diario, combustibles y número de viajes para lectura de Gerencia.',
+            ),
+            const SizedBox(height: 12),
+            const LogisticsManagementExecutiveSection(),
+            const SizedBox(height: 18),
+            _OperationsViewerAccessSection(
+              width: width,
+              onOpenMaintenanceViewer: onOpenMaintenanceViewer,
+              onOpenPurchaseOrdersViewer: onOpenPurchaseOrdersViewer,
+            ),
           ],
           if (!loading && bundle != null) ...[
             const SizedBox(height: 18),
@@ -807,6 +864,194 @@ class _HistoricLane extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _DashboardSectionHeading extends StatelessWidget {
+  final String title;
+  final String subtitle;
+
+  const _DashboardSectionHeading({required this.title, required this.subtitle});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: Colors.white,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          subtitle,
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: Color(0xCCFFE4E8),
+            height: 1.4,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _OperationsViewerAccessSection extends StatelessWidget {
+  final double width;
+  final Future<void> Function() onOpenMaintenanceViewer;
+  final Future<void> Function() onOpenPurchaseOrdersViewer;
+
+  const _OperationsViewerAccessSection({
+    required this.width,
+    required this.onOpenMaintenanceViewer,
+    required this.onOpenPurchaseOrdersViewer,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final compact = width < 980;
+    final cards = <Widget>[
+      _OperationsViewerAccessCard(
+        icon: Icons.build_circle_outlined,
+        title: 'Órdenes de Trabajo',
+        subtitle: 'Visualizador de Operaciones',
+        body:
+            'Seguimiento ejecutivo de OT sin acceso al resto de los módulos operativos.',
+        accent: const Color(0xFFFF9FA7),
+        ctaLabel: 'Abrir OT',
+        onTap: onOpenMaintenanceViewer,
+      ),
+      _OperationsViewerAccessCard(
+        icon: Icons.shopping_cart_checkout_rounded,
+        title: 'Órdenes de Compra',
+        subtitle: 'Visualizador de Operaciones',
+        body:
+            'Seguimiento ejecutivo de Compras OT sin autorizar, rechazar ni abrir otras superficies de Operación.',
+        accent: const Color(0xFFFFC07A),
+        ctaLabel: 'Abrir Compras OT',
+        onTap: onOpenPurchaseOrdersViewer,
+      ),
+    ];
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const _DashboardSectionHeading(
+          title: 'Accesos de Operaciones',
+          subtitle:
+              'Gerencia solo puede abrir estas dos páginas en modo visualizador.',
+        ),
+        const SizedBox(height: 12),
+        if (compact)
+          Column(children: [cards[0], const SizedBox(height: 12), cards[1]])
+        else
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(child: cards[0]),
+              const SizedBox(width: 12),
+              Expanded(child: cards[1]),
+            ],
+          ),
+      ],
+    );
+  }
+}
+
+class _OperationsViewerAccessCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String subtitle;
+  final String body;
+  final Color accent;
+  final String ctaLabel;
+  final Future<void> Function() onTap;
+
+  const _OperationsViewerAccessCard({
+    required this.icon,
+    required this.title,
+    required this.subtitle,
+    required this.body,
+    required this.accent,
+    required this.ctaLabel,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.04),
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: accent.withValues(alpha: 0.28)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: accent.withValues(alpha: 0.14),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: accent.withValues(alpha: 0.26)),
+                ),
+                child: Icon(icon, color: accent),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 3),
+                    Text(
+                      subtitle,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                        color: accent,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Text(
+            body,
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+              color: Color(0xCCFFE4E8),
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          FilledButton.icon(
+            style: contractSecondaryButtonStyle(context),
+            onPressed: onTap,
+            icon: const Icon(Icons.arrow_forward_rounded),
+            label: Text(ctaLabel),
+          ),
+        ],
+      ),
     );
   }
 }

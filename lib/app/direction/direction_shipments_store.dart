@@ -118,6 +118,31 @@ const List<DirectionShipmentMaterialOption> kDirectionShipmentMaterials =
       ),
     ];
 
+const List<String> _kPriorityShipmentClients = <String>[
+  'El Palomar',
+  'San Pablo',
+  'San Luis',
+  'Queretana',
+  'Bio Papel',
+  'Majose',
+  'Ricardo Mendieta',
+];
+
+const Map<String, List<String>> _kPriorityShipmentClientAliases =
+    <String, List<String>>{
+      'El Palomar': <String>['EL PALOMAR', 'CUENTA EL PALOMAR'],
+      'San Pablo': <String>['SAN PABLO'],
+      'San Luis': <String>['SAN LUIS'],
+      'Queretana': <String>[
+        'QUERETANA',
+        'QUERETANIA',
+        'DESPERDICIOS QUERETANA',
+      ],
+      'Bio Papel': <String>['BIO PAPEL', 'BIOPAPEL'],
+      'Majose': <String>['MAJOSE'],
+      'Ricardo Mendieta': <String>['RICARDO MENDIETA', 'MENDIETA'],
+    };
+
 enum DirectionShipmentRisk {
   good,
   tight,
@@ -292,16 +317,22 @@ class DirectionCompactorMaintenanceAlert {
 class DirectionProductionExpectationDay {
   final DateTime date;
   final Map<String, int> expectedByMaterial;
+  final Map<String, int> dayShiftExpectedByMaterial;
   final Map<String, int> lossByMaterial;
 
   const DirectionProductionExpectationDay({
     required this.date,
     required this.expectedByMaterial,
+    required this.dayShiftExpectedByMaterial,
     required this.lossByMaterial,
   });
 
   int expectedForMaterial(String materialCode) {
     return expectedByMaterial[materialCode] ?? 0;
+  }
+
+  int dayShiftExpectedForMaterial(String materialCode) {
+    return dayShiftExpectedByMaterial[materialCode] ?? 0;
   }
 
   int lossForMaterial(String materialCode) {
@@ -365,11 +396,54 @@ class DirectionShipmentPlanProjection {
   int get priorCommittedUnits => priorCommittedQuantity;
 }
 
+class DirectionSuggestedShipmentRecord {
+  final DateTime suggestedDate;
+  final String clientName;
+  final String materialCode;
+  final DirectionShipmentMaterialScope materialScope;
+  final DirectionShipmentQuantityUnit quantityUnit;
+  final int suggestedQuantity;
+  final int projectedAvailableBeforeQuantity;
+  final int projectedRemainingAfterQuantity;
+  final int expectedFutureQuantity;
+  final int currentFloorQuantity;
+  final int remainingGerenciaTargetQuantity;
+  final int historicalAverageQuantity;
+  final int historicalShipmentCount;
+  final DateTime? lastShipmentDate;
+  final DirectionShipmentRisk risk;
+  final String gerenciaBaleTypeKey;
+  final String explanation;
+  final bool noteMatched;
+
+  const DirectionSuggestedShipmentRecord({
+    required this.suggestedDate,
+    required this.clientName,
+    required this.materialCode,
+    required this.materialScope,
+    required this.quantityUnit,
+    required this.suggestedQuantity,
+    required this.projectedAvailableBeforeQuantity,
+    required this.projectedRemainingAfterQuantity,
+    required this.expectedFutureQuantity,
+    required this.currentFloorQuantity,
+    required this.remainingGerenciaTargetQuantity,
+    required this.historicalAverageQuantity,
+    required this.historicalShipmentCount,
+    required this.lastShipmentDate,
+    required this.risk,
+    required this.gerenciaBaleTypeKey,
+    required this.explanation,
+    required this.noteMatched,
+  });
+}
+
 class DirectionShipmentPlanningBundle {
   final DateTime weekStartDate;
   final DateTime weekEndDate;
   final List<DirectionShipmentPlanRecord> shipments;
   final List<DirectionShipmentPlanProjection> projections;
+  final List<DirectionSuggestedShipmentRecord> suggestedShipments;
   final Map<String, int> floorCountByMaterial;
   final DateTime? floorCountUpdatedAt;
   final List<DirectionProductionExpectationDay> expectedDays;
@@ -382,6 +456,7 @@ class DirectionShipmentPlanningBundle {
     required this.weekEndDate,
     required this.shipments,
     required this.projections,
+    required this.suggestedShipments,
     required this.floorCountByMaterial,
     required this.floorCountUpdatedAt,
     required this.expectedDays,
@@ -457,6 +532,11 @@ class DirectionShipmentsStore {
         _loadFloorCounts(),
         _loadProductionEvents(historyStart, weekEnd),
         _loadMaintenanceAlerts(weekStart),
+        _loadGerenciaShipmentTargets(weekStart),
+        _loadShipmentHistory(
+          weekStart.subtract(const Duration(days: 112)),
+          weekEnd,
+        ),
       ]);
 
       final shipments = results[0] as List<DirectionShipmentPlanRecord>;
@@ -466,17 +546,26 @@ class DirectionShipmentsStore {
       final events = results[3] as List<_ProductionEvent>;
       final maintenanceAlerts =
           results[4] as List<DirectionCompactorMaintenanceAlert>;
+      final gerenciaTargets = results[5] as List<_GerenciaShipmentTargetLine>;
+      final shipmentHistory = results[6] as List<_ShipmentHistoryEvent>;
 
       final quantityByDateMaterial = _buildQuantityByDateMaterial(events);
+      final quantityByDateMaterialShift = _buildQuantityByDateMaterialShift(
+        events,
+      );
       final quantityByDateMaterialMachine = _buildQuantityByDateMaterialMachine(
         events,
       );
+      final quantityByDateMaterialMachineShift =
+          _buildQuantityByDateMaterialMachineShift(events);
       final expectedDays = _buildExpectedDays(
         weekStart: weekStart,
         weekEnd: weekEnd,
         impacts: impacts,
         quantityByDateMaterial: quantityByDateMaterial,
+        quantityByDateMaterialShift: quantityByDateMaterialShift,
         quantityByDateMaterialMachine: quantityByDateMaterialMachine,
+        quantityByDateMaterialMachineShift: quantityByDateMaterialMachineShift,
       );
       final impactSummaries = _buildImpactSummaries(
         weekStart: weekStart,
@@ -501,12 +590,22 @@ class DirectionShipmentsStore {
         floorCounts: floorData.countsByMaterial,
         expectedDays: expectedDays,
       );
+      final suggestedShipments = _buildSuggestedShipments(
+        weekStart: weekStart,
+        weekEnd: weekEnd,
+        shipments: shipments,
+        floorCounts: floorData.countsByMaterial,
+        expectedDays: expectedDays,
+        gerenciaTargets: gerenciaTargets,
+        shipmentHistory: shipmentHistory,
+      );
 
       return DirectionShipmentPlanningBundle(
         weekStartDate: weekStart,
         weekEndDate: weekEnd,
         shipments: shipments,
         projections: projections,
+        suggestedShipments: suggestedShipments,
         floorCountByMaterial: floorData.countsByMaterial,
         floorCountUpdatedAt: floorData.latestUpdatedAt,
         expectedDays: expectedDays,
@@ -669,6 +768,30 @@ class DirectionShipmentsStore {
         .toList(growable: false);
   }
 
+  static Future<List<_GerenciaShipmentTargetLine>> _loadGerenciaShipmentTargets(
+    DateTime weekStart,
+  ) async {
+    final planRow = await _supa
+        .from('gerencia_bale_weekly_plans')
+        .select('id')
+        .eq('week_start_date', _fmtDate(weekStart))
+        .maybeSingle();
+    if (planRow == null) {
+      return const <_GerenciaShipmentTargetLine>[];
+    }
+    final lineRows = await _supa
+        .from('gerencia_bale_weekly_plan_lines')
+        .select('bale_type_key,sort_order,shipment_target_bales,notes')
+        .eq('plan_id', planRow['id'].toString())
+        .order('sort_order', ascending: true)
+        .order('bale_type_key', ascending: true);
+    return (lineRows as List<dynamic>)
+        .cast<Map<String, dynamic>>()
+        .map(_GerenciaShipmentTargetLine.fromRow)
+        .where((line) => line.shipmentTargetBales > 0)
+        .toList(growable: false);
+  }
+
   static Future<_FloorCountLoad> _loadFloorCounts() async {
     final responses = await Future.wait<dynamic>([
       _supa
@@ -775,6 +898,58 @@ class DirectionShipmentsStore {
     );
   }
 
+  static Future<List<_ShipmentHistoryEvent>> _loadShipmentHistory(
+    DateTime historyStart,
+    DateTime weekEnd,
+  ) async {
+    final rows = await fetchAllSupabaseRows(
+      (from, to) => _supa
+          .from('inventory_movements_v2')
+          .select(
+            'op_date,unit_count,counterparty,'
+            'commercial_material:commercial_material_id(code)',
+          )
+          .eq('flow', 'OUT')
+          .eq('inventory_level', 'COMMERCIAL')
+          .gte('op_date', _fmtDate(historyStart))
+          .lte('op_date', _fmtDate(weekEnd))
+          .order('op_date', ascending: true)
+          .range(from, to),
+    );
+
+    final history = <_ShipmentHistoryEvent>[];
+    for (final row in rows) {
+      final quantity = ((row['unit_count'] as num?) ?? 0).toInt();
+      if (quantity <= 0) continue;
+      final clientName = _canonicalPriorityClientName(
+        row['counterparty']?.toString(),
+      );
+      if (clientName == null) continue;
+      final commercial = (row['commercial_material'] as Map?)
+          ?.cast<String, dynamic>();
+      final materialCode = _normalizePlanningMaterialCode(
+        commercial?['code']?.toString(),
+      );
+      final option = materialCode == null
+          ? null
+          : directionShipmentMaterialByCode(materialCode);
+      final baleTypeKey = materialCode == null
+          ? null
+          : _gerenciaBaleTypeKeyForMaterial(materialCode);
+      if (option == null || !option.isPacked || baleTypeKey == null) continue;
+      history.add(
+        _ShipmentHistoryEvent(
+          date: _parseDate(row['op_date']),
+          clientName: clientName,
+          materialCode: option.code,
+          baleTypeKey: baleTypeKey,
+          quantity: quantity,
+        ),
+      );
+    }
+    return history;
+  }
+
   static Future<List<_ProductionEvent>> _loadProductionEvents(
     DateTime historyStart,
     DateTime weekEnd,
@@ -787,7 +962,7 @@ class DirectionShipmentsStore {
             'commercial_material:commercial_material_id('
             'code,general_material:general_material_id(code)'
             '),'
-            'run:run_id(op_date,notes,source_general_material:source_general_material_id(code))',
+            'run:run_id(op_date,shift,notes,source_general_material:source_general_material_id(code))',
           )
           .gte('run.op_date', _fmtDate(historyStart))
           .lte('run.op_date', _fmtDate(weekEnd))
@@ -815,6 +990,7 @@ class DirectionShipmentsStore {
       final outputUnits = ((row['output_unit_count'] as num?) ?? 0).toInt();
       final outputKg = ((row['output_weight_kg'] as num?) ?? 0).toDouble();
       final machineKey = _compactadoraKeyFromText(notes);
+      final shiftKey = _normalizeShiftKey(run['shift']?.toString());
 
       final commercialOption = commercialCode == null
           ? null
@@ -828,6 +1004,7 @@ class DirectionShipmentsStore {
             date: opDate,
             materialCode: commercialOption.code,
             quantity: outputUnits,
+            shiftKey: shiftKey,
             compactadoraKey: machineKey,
           ),
         );
@@ -845,6 +1022,7 @@ class DirectionShipmentsStore {
             date: opDate,
             materialCode: generalOption.code,
             quantity: outputKg.round(),
+            shiftKey: shiftKey,
             compactadoraKey: machineKey,
           ),
         );
@@ -858,7 +1036,7 @@ class DirectionShipmentsStore {
     final legacyRows = await fetchAllSupabaseRows(
       (from, to) => _supa
           .from('production_runs')
-          .select('op_date,bale_material,bale_count,notes')
+          .select('op_date,shift,bale_material,bale_count,notes')
           .gte('op_date', _fmtDate(historyStart))
           .lte('op_date', _fmtDate(weekEnd))
           .order('op_date', ascending: true)
@@ -883,6 +1061,7 @@ class DirectionShipmentsStore {
           date: _parseDate(row['op_date']),
           materialCode: option.code,
           quantity: count,
+          shiftKey: _normalizeShiftKey(row['shift']?.toString()),
           compactadoraKey: _compactadoraKeyFromText(row['notes']?.toString()),
         ),
       );
@@ -940,7 +1119,11 @@ class DirectionShipmentsStore {
     required List<DirectionProductionCapacityImpactRecord> impacts,
     required Map<DateTime, Map<String, int>> quantityByDateMaterial,
     required Map<DateTime, Map<String, Map<String, int>>>
+    quantityByDateMaterialShift,
+    required Map<DateTime, Map<String, Map<String, int>>>
     quantityByDateMaterialMachine,
+    required Map<DateTime, Map<String, Map<String, Map<String, int>>>>
+    quantityByDateMaterialMachineShift,
   }) {
     final days = <DirectionProductionExpectationDay>[];
     for (
@@ -953,6 +1136,7 @@ class DirectionShipmentsStore {
           day.subtract(Duration(days: 7 * offset)),
       ];
       final expectedByMaterial = <String, int>{};
+      final dayShiftExpectedByMaterial = <String, int>{};
       final lossByMaterial = <String, int>{};
       final c1Percent = _impactPercentForMachineOnDate(
         impacts: impacts,
@@ -971,12 +1155,31 @@ class DirectionShipmentsStore {
               .map((date) => quantityByDateMaterial[date]?[material.code] ?? 0)
               .toList(growable: false),
         );
+        final dayBase = _averageQuantity(
+          historyDates
+              .map(
+                (date) =>
+                    quantityByDateMaterialShift[date]?[material.code]?['DAY'] ??
+                    0,
+              )
+              .toList(growable: false),
+        );
         final c1Base = _averageQuantity(
           historyDates
               .map(
                 (date) =>
                     quantityByDateMaterialMachine[date]?[material
                         .code]?['c1'] ??
+                    0,
+              )
+              .toList(growable: false),
+        );
+        final c1DayBase = _averageQuantity(
+          historyDates
+              .map(
+                (date) =>
+                    quantityByDateMaterialMachineShift[date]?[material
+                        .code]?['c1']?['DAY'] ??
                     0,
               )
               .toList(growable: false),
@@ -991,9 +1194,28 @@ class DirectionShipmentsStore {
               )
               .toList(growable: false),
         );
+        final c2DayBase = _averageQuantity(
+          historyDates
+              .map(
+                (date) =>
+                    quantityByDateMaterialMachineShift[date]?[material
+                        .code]?['c2']?['DAY'] ??
+                    0,
+              )
+              .toList(growable: false),
+        );
         final loss =
             _applyPercent(c1Base, c1Percent) + _applyPercent(c2Base, c2Percent);
-        expectedByMaterial[material.code] = math.max(0, base - loss);
+        final dayLoss =
+            _applyPercent(c1DayBase, c1Percent) +
+            _applyPercent(c2DayBase, c2Percent);
+        final expectedTotal = math.max(0, base - loss);
+        final expectedDay = math.min(
+          expectedTotal,
+          math.max(0, dayBase - dayLoss),
+        );
+        expectedByMaterial[material.code] = expectedTotal;
+        dayShiftExpectedByMaterial[material.code] = expectedDay;
         if (loss > 0) {
           lossByMaterial[material.code] = loss;
         }
@@ -1003,6 +1225,9 @@ class DirectionShipmentsStore {
         DirectionProductionExpectationDay(
           date: day,
           expectedByMaterial: Map<String, int>.unmodifiable(expectedByMaterial),
+          dayShiftExpectedByMaterial: Map<String, int>.unmodifiable(
+            dayShiftExpectedByMaterial,
+          ),
           lossByMaterial: Map<String, int>.unmodifiable(lossByMaterial),
         ),
       );
@@ -1139,7 +1364,13 @@ class DirectionShipmentsStore {
           )
           .fold<int>(
             0,
-            (sum, day) => sum + day.expectedForMaterial(materialCode),
+            (sum, day) =>
+                sum +
+                _expectedShipmentUsableQuantityForDay(
+                  day: day,
+                  materialCode: materialCode,
+                  shipDate: plan.shipDate,
+                ),
           );
       final projectedBefore = baseFloor + expectedFuture - priorCommitted;
       final projectedAfter = projectedBefore - plan.plannedQuantity;
@@ -1162,6 +1393,172 @@ class DirectionShipmentsStore {
           priorCommitted + plan.plannedQuantity;
     }
     return projections;
+  }
+
+  static List<DirectionSuggestedShipmentRecord> _buildSuggestedShipments({
+    required DateTime weekStart,
+    required DateTime weekEnd,
+    required List<DirectionShipmentPlanRecord> shipments,
+    required Map<String, int> floorCounts,
+    required List<DirectionProductionExpectationDay> expectedDays,
+    required List<_GerenciaShipmentTargetLine> gerenciaTargets,
+    required List<_ShipmentHistoryEvent> shipmentHistory,
+  }) {
+    final today = _dateOnly(DateTime.now());
+    if (weekEnd.isBefore(today) || gerenciaTargets.isEmpty) {
+      return const <DirectionSuggestedShipmentRecord>[];
+    }
+
+    final candidateDates = <DateTime>[
+      for (
+        var day = today.isAfter(weekStart) ? today : weekStart;
+        !day.isAfter(weekEnd);
+        day = day.add(const Duration(days: 1))
+      )
+        day,
+    ];
+    if (candidateDates.isEmpty) {
+      return const <DirectionSuggestedShipmentRecord>[];
+    }
+
+    final actualByType = <String, int>{};
+    for (final event in shipmentHistory) {
+      if (event.date.isBefore(weekStart) || event.date.isAfter(weekEnd)) {
+        continue;
+      }
+      actualByType.update(
+        event.baleTypeKey,
+        (value) => value + event.quantity,
+        ifAbsent: () => event.quantity,
+      );
+    }
+
+    final activeShipments = shipments
+        .where((plan) => plan.isActive)
+        .toList(growable: false);
+    final plannedByType = <String, int>{};
+    for (final plan in activeShipments) {
+      final baleTypeKey = _gerenciaBaleTypeKeyForMaterial(plan.materialCode);
+      if (baleTypeKey == null) continue;
+      plannedByType.update(
+        baleTypeKey,
+        (value) => value + plan.plannedQuantity,
+        ifAbsent: () => plan.plannedQuantity,
+      );
+    }
+
+    final materialStats = _buildShipmentHistoryStatsByMaterial(shipmentHistory);
+    final typeStats = _buildShipmentHistoryStatsByType(shipmentHistory);
+    final suggestions = <DirectionSuggestedShipmentRecord>[];
+
+    for (final target in gerenciaTargets) {
+      var remainingTarget = math.max(
+        0,
+        target.shipmentTargetBales -
+            (actualByType[target.baleTypeKey] ?? 0) -
+            (plannedByType[target.baleTypeKey] ?? 0),
+      );
+      if (remainingTarget <= 0) continue;
+      final materialChoices = _candidateMaterialsForGerenciaType(
+        target.baleTypeKey,
+      );
+      if (materialChoices.isEmpty) continue;
+
+      final candidates = _buildSuggestionCandidates(
+        baleTypeKey: target.baleTypeKey,
+        targetNotes: target.notes,
+        materialChoices: materialChoices,
+        floorCounts: floorCounts,
+        expectedDays: expectedDays,
+        materialStats: materialStats,
+        typeStats: typeStats,
+      );
+      if (candidates.isEmpty) continue;
+
+      for (var pass = 0; pass < 2 && remainingTarget > 0; pass++) {
+        for (final candidate in candidates) {
+          if (remainingTarget <= 0 || suggestions.length >= 8) {
+            break;
+          }
+          final desiredQuantity = _desiredSuggestedBaleQuantity(
+            remainingTarget: remainingTarget,
+            historicalAverageQuantity: candidate.historicalAverageQuantity,
+          );
+          final dateFit = _selectSuggestionDateFit(
+            materialCode: candidate.materialCode,
+            quantityUnit: DirectionShipmentQuantityUnit.bales,
+            desiredQuantity: desiredQuantity,
+            candidateDates: candidateDates,
+            floorCounts: floorCounts,
+            expectedDays: expectedDays,
+            activeShipments: activeShipments,
+            acceptedSuggestions: suggestions,
+          );
+          if (dateFit == null) continue;
+          final suggestedQuantity = math.min(
+            remainingTarget,
+            dateFit.maxRecommendedQuantity > 0
+                ? math.min(desiredQuantity, dateFit.maxRecommendedQuantity)
+                : math.min(desiredQuantity, dateFit.maxPossibleQuantity),
+          );
+          if (suggestedQuantity < 8) continue;
+          final projectedAfter =
+              dateFit.projectedAvailableBeforeQuantity - suggestedQuantity;
+          final risk = _riskForSuggestedQuantity(
+            materialCode: candidate.materialCode,
+            quantityUnit: DirectionShipmentQuantityUnit.bales,
+            plannedQuantity: suggestedQuantity,
+            shipDate: dateFit.date,
+            projectedAfter: projectedAfter,
+            floorCounts: floorCounts,
+          );
+          suggestions.add(
+            DirectionSuggestedShipmentRecord(
+              suggestedDate: dateFit.date,
+              clientName: candidate.clientName,
+              materialCode: candidate.materialCode,
+              materialScope: DirectionShipmentMaterialScope.commercial,
+              quantityUnit: DirectionShipmentQuantityUnit.bales,
+              suggestedQuantity: suggestedQuantity,
+              projectedAvailableBeforeQuantity:
+                  dateFit.projectedAvailableBeforeQuantity,
+              projectedRemainingAfterQuantity: projectedAfter,
+              expectedFutureQuantity: dateFit.expectedFutureQuantity,
+              currentFloorQuantity: floorCounts[candidate.materialCode] ?? 0,
+              remainingGerenciaTargetQuantity: remainingTarget,
+              historicalAverageQuantity: candidate.historicalAverageQuantity,
+              historicalShipmentCount: candidate.historicalShipmentCount,
+              lastShipmentDate: candidate.lastShipmentDate,
+              risk: risk,
+              gerenciaBaleTypeKey: target.baleTypeKey,
+              explanation: _buildSuggestionExplanation(
+                targetBaleTypeKey: target.baleTypeKey,
+                noteMatched: candidate.noteMatched,
+                historicalShipmentCount: candidate.historicalShipmentCount,
+                expectedFutureQuantity: dateFit.expectedFutureQuantity,
+                projectedBeforeQuantity:
+                    dateFit.projectedAvailableBeforeQuantity,
+              ),
+              noteMatched: candidate.noteMatched,
+            ),
+          );
+          remainingTarget -= suggestedQuantity;
+        }
+      }
+    }
+
+    suggestions.sort((a, b) {
+      final dateCompare = a.suggestedDate.compareTo(b.suggestedDate);
+      if (dateCompare != 0) return dateCompare;
+      final clientCompare = _priorityClientRank(
+        a.clientName,
+      ).compareTo(_priorityClientRank(b.clientName));
+      if (clientCompare != 0) return clientCompare;
+      return _materialSortOrder(
+        a.materialCode,
+      ).compareTo(_materialSortOrder(b.materialCode));
+    });
+    return suggestions;
   }
 
   static Map<String, List<DirectionProductionCapacityImpactRecord>>
@@ -1209,17 +1606,115 @@ class _FloorCountLoad {
   });
 }
 
+class _GerenciaShipmentTargetLine {
+  final String baleTypeKey;
+  final int sortOrder;
+  final int shipmentTargetBales;
+  final String notes;
+
+  const _GerenciaShipmentTargetLine({
+    required this.baleTypeKey,
+    required this.sortOrder,
+    required this.shipmentTargetBales,
+    required this.notes,
+  });
+
+  factory _GerenciaShipmentTargetLine.fromRow(Map<String, dynamic> row) {
+    return _GerenciaShipmentTargetLine(
+      baleTypeKey: (row['bale_type_key'] ?? '').toString().trim(),
+      sortOrder: (row['sort_order'] as num?)?.toInt() ?? 100,
+      shipmentTargetBales: (row['shipment_target_bales'] as num?)?.toInt() ?? 0,
+      notes: (row['notes'] ?? '').toString().trim(),
+    );
+  }
+}
+
 class _ProductionEvent {
   final DateTime date;
   final String materialCode;
   final int quantity;
+  final String shiftKey;
   final String? compactadoraKey;
 
   const _ProductionEvent({
     required this.date,
     required this.materialCode,
     required this.quantity,
+    required this.shiftKey,
     required this.compactadoraKey,
+  });
+}
+
+class _ShipmentHistoryEvent {
+  final DateTime date;
+  final String clientName;
+  final String materialCode;
+  final String baleTypeKey;
+  final int quantity;
+
+  const _ShipmentHistoryEvent({
+    required this.date,
+    required this.clientName,
+    required this.materialCode,
+    required this.baleTypeKey,
+    required this.quantity,
+  });
+}
+
+class _ShipmentHistoryStats {
+  final String clientName;
+  final String key;
+  final int shipmentCount;
+  final int totalQuantity;
+  final DateTime? lastShipmentDate;
+  final Map<int, int> weekdayCounts;
+
+  const _ShipmentHistoryStats({
+    required this.clientName,
+    required this.key,
+    required this.shipmentCount,
+    required this.totalQuantity,
+    required this.lastShipmentDate,
+    required this.weekdayCounts,
+  });
+
+  int get averageQuantity =>
+      shipmentCount <= 0 ? 0 : (totalQuantity / shipmentCount).round();
+}
+
+class _SuggestionCandidate {
+  final String clientName;
+  final String materialCode;
+  final int historicalAverageQuantity;
+  final int historicalShipmentCount;
+  final DateTime? lastShipmentDate;
+  final bool noteMatched;
+  final double score;
+
+  const _SuggestionCandidate({
+    required this.clientName,
+    required this.materialCode,
+    required this.historicalAverageQuantity,
+    required this.historicalShipmentCount,
+    required this.lastShipmentDate,
+    required this.noteMatched,
+    required this.score,
+  });
+}
+
+class _SuggestionDateFit {
+  final DateTime date;
+  final int projectedAvailableBeforeQuantity;
+  final int expectedFutureQuantity;
+  final int maxRecommendedQuantity;
+  final int maxPossibleQuantity;
+
+  const _SuggestionDateFit({
+    required this.date,
+    required this.projectedAvailableBeforeQuantity,
+    required this.expectedFutureQuantity,
+    required this.maxRecommendedQuantity,
+    required this.maxPossibleQuantity,
   });
 }
 
@@ -1275,25 +1770,14 @@ DirectionShipmentRisk _riskForPlan({
   required int projectedAfter,
   required Map<String, int> floorCounts,
 }) {
-  final today = _dateOnly(DateTime.now());
-  if (!floorCounts.containsKey(plan.materialCode)) {
-    return DirectionShipmentRisk.unknown;
-  }
-  if (plan.shipDate.isBefore(today)) {
-    return projectedAfter < 0
-        ? DirectionShipmentRisk.atRisk
-        : DirectionShipmentRisk.overdue;
-  }
-  if (projectedAfter < 0) {
-    return DirectionShipmentRisk.atRisk;
-  }
-  final margin = plan.quantityUnit == DirectionShipmentQuantityUnit.kilograms
-      ? math.max(250, (plan.plannedQuantity * 0.12).round())
-      : math.max(5, (plan.plannedQuantity * 0.15).round());
-  if (projectedAfter < margin) {
-    return DirectionShipmentRisk.tight;
-  }
-  return DirectionShipmentRisk.good;
+  return _riskForSuggestedQuantity(
+    materialCode: plan.materialCode,
+    quantityUnit: plan.quantityUnit,
+    plannedQuantity: plan.plannedQuantity,
+    shipDate: plan.shipDate,
+    projectedAfter: projectedAfter,
+    floorCounts: floorCounts,
+  );
 }
 
 int _impactPercentForMachineOnDate({
@@ -1327,6 +1811,28 @@ Map<DateTime, Map<String, int>> _buildQuantityByDateMaterial(
   return byDate;
 }
 
+Map<DateTime, Map<String, Map<String, int>>> _buildQuantityByDateMaterialShift(
+  List<_ProductionEvent> events,
+) {
+  final byDate = <DateTime, Map<String, Map<String, int>>>{};
+  for (final event in events) {
+    final dateBucket = byDate.putIfAbsent(
+      event.date,
+      () => <String, Map<String, int>>{},
+    );
+    final materialBucket = dateBucket.putIfAbsent(
+      event.materialCode,
+      () => <String, int>{},
+    );
+    materialBucket.update(
+      event.shiftKey,
+      (value) => value + event.quantity,
+      ifAbsent: () => event.quantity,
+    );
+  }
+  return byDate;
+}
+
 Map<DateTime, Map<String, Map<String, int>>>
 _buildQuantityByDateMaterialMachine(List<_ProductionEvent> events) {
   final byDate = <DateTime, Map<String, Map<String, int>>>{};
@@ -1344,6 +1850,35 @@ _buildQuantityByDateMaterialMachine(List<_ProductionEvent> events) {
     for (final entry in shares.entries) {
       materialBucket.update(
         entry.key,
+        (value) => value + entry.value,
+        ifAbsent: () => entry.value,
+      );
+    }
+  }
+  return byDate;
+}
+
+Map<DateTime, Map<String, Map<String, Map<String, int>>>>
+_buildQuantityByDateMaterialMachineShift(List<_ProductionEvent> events) {
+  final byDate = <DateTime, Map<String, Map<String, Map<String, int>>>>{};
+  for (final event in events) {
+    final shares = _machineSharesForEvent(event);
+    if (shares.isEmpty) continue;
+    final dateBucket = byDate.putIfAbsent(
+      event.date,
+      () => <String, Map<String, Map<String, int>>>{},
+    );
+    final materialBucket = dateBucket.putIfAbsent(
+      event.materialCode,
+      () => <String, Map<String, int>>{},
+    );
+    for (final entry in shares.entries) {
+      final machineBucket = materialBucket.putIfAbsent(
+        entry.key,
+        () => <String, int>{},
+      );
+      machineBucket.update(
+        event.shiftKey,
         (value) => value + entry.value,
         ifAbsent: () => entry.value,
       );
@@ -1376,6 +1911,422 @@ int _averageQuantity(List<int> values) {
 int _applyPercent(int value, int percent) {
   if (value <= 0 || percent <= 0) return 0;
   return ((value * percent) / 100).round();
+}
+
+int _expectedShipmentUsableQuantityForDay({
+  required DirectionProductionExpectationDay day,
+  required String materialCode,
+  required DateTime shipDate,
+}) {
+  return day.date == shipDate
+      ? day.dayShiftExpectedForMaterial(materialCode)
+      : day.expectedForMaterial(materialCode);
+}
+
+Map<String, _ShipmentHistoryStats> _buildShipmentHistoryStatsByMaterial(
+  List<_ShipmentHistoryEvent> history,
+) {
+  final totals = <String, int>{};
+  final counts = <String, int>{};
+  final lastDates = <String, DateTime>{};
+  final weekdayCounts = <String, Map<int, int>>{};
+  final clientNames = <String, String>{};
+  for (final event in history) {
+    final key = '${event.clientName}|${event.materialCode}';
+    totals.update(
+      key,
+      (value) => value + event.quantity,
+      ifAbsent: () => event.quantity,
+    );
+    counts.update(key, (value) => value + 1, ifAbsent: () => 1);
+    clientNames[key] = event.clientName;
+    final lastDate = lastDates[key];
+    if (lastDate == null || event.date.isAfter(lastDate)) {
+      lastDates[key] = event.date;
+    }
+    final weekdayBucket = weekdayCounts.putIfAbsent(key, () => <int, int>{});
+    weekdayBucket.update(
+      event.date.weekday,
+      (value) => value + 1,
+      ifAbsent: () => 1,
+    );
+  }
+  return {
+    for (final key in counts.keys)
+      key: _ShipmentHistoryStats(
+        clientName: clientNames[key] ?? '',
+        key: key,
+        shipmentCount: counts[key] ?? 0,
+        totalQuantity: totals[key] ?? 0,
+        lastShipmentDate: lastDates[key],
+        weekdayCounts: Map<int, int>.unmodifiable(
+          weekdayCounts[key] ?? const {},
+        ),
+      ),
+  };
+}
+
+Map<String, _ShipmentHistoryStats> _buildShipmentHistoryStatsByType(
+  List<_ShipmentHistoryEvent> history,
+) {
+  final totals = <String, int>{};
+  final counts = <String, int>{};
+  final lastDates = <String, DateTime>{};
+  final weekdayCounts = <String, Map<int, int>>{};
+  final clientNames = <String, String>{};
+  for (final event in history) {
+    final key = '${event.clientName}|${event.baleTypeKey}';
+    totals.update(
+      key,
+      (value) => value + event.quantity,
+      ifAbsent: () => event.quantity,
+    );
+    counts.update(key, (value) => value + 1, ifAbsent: () => 1);
+    clientNames[key] = event.clientName;
+    final lastDate = lastDates[key];
+    if (lastDate == null || event.date.isAfter(lastDate)) {
+      lastDates[key] = event.date;
+    }
+    final weekdayBucket = weekdayCounts.putIfAbsent(key, () => <int, int>{});
+    weekdayBucket.update(
+      event.date.weekday,
+      (value) => value + 1,
+      ifAbsent: () => 1,
+    );
+  }
+  return {
+    for (final key in counts.keys)
+      key: _ShipmentHistoryStats(
+        clientName: clientNames[key] ?? '',
+        key: key,
+        shipmentCount: counts[key] ?? 0,
+        totalQuantity: totals[key] ?? 0,
+        lastShipmentDate: lastDates[key],
+        weekdayCounts: Map<int, int>.unmodifiable(
+          weekdayCounts[key] ?? const {},
+        ),
+      ),
+  };
+}
+
+List<_SuggestionCandidate> _buildSuggestionCandidates({
+  required String baleTypeKey,
+  required String targetNotes,
+  required List<String> materialChoices,
+  required Map<String, int> floorCounts,
+  required List<DirectionProductionExpectationDay> expectedDays,
+  required Map<String, _ShipmentHistoryStats> materialStats,
+  required Map<String, _ShipmentHistoryStats> typeStats,
+}) {
+  final candidates = <_SuggestionCandidate>[];
+  for (final clientName in _kPriorityShipmentClients) {
+    final noteMatched = _notesMentionClient(targetNotes, clientName);
+    _SuggestionCandidate? bestCandidate;
+    for (final materialCode in materialChoices) {
+      final directStats = materialStats['$clientName|$materialCode'];
+      final familyStats = typeStats['$clientName|$baleTypeKey'];
+      if (directStats == null && familyStats == null && !noteMatched) {
+        continue;
+      }
+      final projectedAtWeekEnd = _expectedFutureQuantityThroughDate(
+        expectedDays: expectedDays,
+        materialCode: materialCode,
+        shipDate: expectedDays.isEmpty
+            ? _dateOnly(DateTime.now())
+            : expectedDays.last.date,
+      );
+      final historyCount =
+          directStats?.shipmentCount ?? familyStats?.shipmentCount ?? 0;
+      final historyAverage =
+          directStats?.averageQuantity ?? familyStats?.averageQuantity ?? 0;
+      final lastShipmentDate =
+          directStats?.lastShipmentDate ?? familyStats?.lastShipmentDate;
+      final availability =
+          (floorCounts[materialCode] ?? 0) + projectedAtWeekEnd;
+      final score =
+          (_kPriorityShipmentClients.length - _priorityClientRank(clientName)) *
+              100 +
+          (noteMatched ? 40 : 0) +
+          (historyCount * 6) +
+          historyAverage +
+          availability;
+      final candidate = _SuggestionCandidate(
+        clientName: clientName,
+        materialCode: materialCode,
+        historicalAverageQuantity: historyAverage,
+        historicalShipmentCount: historyCount,
+        lastShipmentDate: lastShipmentDate,
+        noteMatched: noteMatched,
+        score: score.toDouble(),
+      );
+      if (bestCandidate == null || candidate.score > bestCandidate.score) {
+        bestCandidate = candidate;
+      }
+    }
+    if (bestCandidate != null) {
+      candidates.add(bestCandidate);
+    }
+  }
+  candidates.sort((a, b) {
+    final clientCompare = _priorityClientRank(
+      a.clientName,
+    ).compareTo(_priorityClientRank(b.clientName));
+    if (clientCompare != 0) return clientCompare;
+    return b.score.compareTo(a.score);
+  });
+  return candidates;
+}
+
+_SuggestionDateFit? _selectSuggestionDateFit({
+  required String materialCode,
+  required DirectionShipmentQuantityUnit quantityUnit,
+  required int desiredQuantity,
+  required List<DateTime> candidateDates,
+  required Map<String, int> floorCounts,
+  required List<DirectionProductionExpectationDay> expectedDays,
+  required List<DirectionShipmentPlanRecord> activeShipments,
+  required List<DirectionSuggestedShipmentRecord> acceptedSuggestions,
+}) {
+  _SuggestionDateFit? bestFit;
+  for (final date in candidateDates) {
+    final priorCommitted = _committedQuantityThroughDate(
+      materialCode: materialCode,
+      shipDate: date,
+      activeShipments: activeShipments,
+      acceptedSuggestions: acceptedSuggestions,
+    );
+    final expectedFuture = _expectedFutureQuantityThroughDate(
+      expectedDays: expectedDays,
+      materialCode: materialCode,
+      shipDate: date,
+    );
+    final projectedBefore =
+        (floorCounts[materialCode] ?? 0) + expectedFuture - priorCommitted;
+    final maxPossible = math.max(0, projectedBefore);
+    final safetyMargin = quantityUnit == DirectionShipmentQuantityUnit.kilograms
+        ? 250
+        : 5;
+    final maxRecommended = math.max(0, projectedBefore - safetyMargin);
+    final fit = _SuggestionDateFit(
+      date: date,
+      projectedAvailableBeforeQuantity: projectedBefore,
+      expectedFutureQuantity: expectedFuture,
+      maxRecommendedQuantity: maxRecommended,
+      maxPossibleQuantity: maxPossible,
+    );
+    if (maxRecommended >= desiredQuantity) {
+      return fit;
+    }
+    if (bestFit == null ||
+        fit.maxRecommendedQuantity > bestFit.maxRecommendedQuantity ||
+        (fit.maxRecommendedQuantity == bestFit.maxRecommendedQuantity &&
+            fit.maxPossibleQuantity > bestFit.maxPossibleQuantity) ||
+        (fit.maxRecommendedQuantity == bestFit.maxRecommendedQuantity &&
+            fit.maxPossibleQuantity == bestFit.maxPossibleQuantity &&
+            fit.date.isBefore(bestFit.date))) {
+      bestFit = fit;
+    }
+  }
+  if (bestFit == null || bestFit.maxPossibleQuantity <= 0) {
+    return null;
+  }
+  return bestFit;
+}
+
+int _committedQuantityThroughDate({
+  required String materialCode,
+  required DateTime shipDate,
+  required List<DirectionShipmentPlanRecord> activeShipments,
+  required List<DirectionSuggestedShipmentRecord> acceptedSuggestions,
+}) {
+  var committed = 0;
+  for (final plan in activeShipments) {
+    if (plan.materialCode != materialCode || plan.shipDate.isAfter(shipDate)) {
+      continue;
+    }
+    committed += plan.plannedQuantity;
+  }
+  for (final suggestion in acceptedSuggestions) {
+    if (suggestion.materialCode != materialCode ||
+        suggestion.suggestedDate.isAfter(shipDate)) {
+      continue;
+    }
+    committed += suggestion.suggestedQuantity;
+  }
+  return committed;
+}
+
+int _expectedFutureQuantityThroughDate({
+  required List<DirectionProductionExpectationDay> expectedDays,
+  required String materialCode,
+  required DateTime shipDate,
+}) {
+  final today = _dateOnly(DateTime.now());
+  return expectedDays
+      .where((day) => !day.date.isBefore(today) && !day.date.isAfter(shipDate))
+      .fold<int>(
+        0,
+        (sum, day) =>
+            sum +
+            _expectedShipmentUsableQuantityForDay(
+              day: day,
+              materialCode: materialCode,
+              shipDate: shipDate,
+            ),
+      );
+}
+
+int _desiredSuggestedBaleQuantity({
+  required int remainingTarget,
+  required int historicalAverageQuantity,
+}) {
+  if (remainingTarget <= 0) return 0;
+  if (historicalAverageQuantity > 0) {
+    return math.max(8, math.min(remainingTarget, historicalAverageQuantity));
+  }
+  if (remainingTarget >= 34) return 36;
+  if (remainingTarget >= 17) return 18;
+  return math.max(8, remainingTarget);
+}
+
+DirectionShipmentRisk _riskForSuggestedQuantity({
+  required String materialCode,
+  required DirectionShipmentQuantityUnit quantityUnit,
+  required int plannedQuantity,
+  required DateTime shipDate,
+  required int projectedAfter,
+  required Map<String, int> floorCounts,
+}) {
+  final today = _dateOnly(DateTime.now());
+  if (!floorCounts.containsKey(materialCode)) {
+    return DirectionShipmentRisk.unknown;
+  }
+  if (shipDate.isBefore(today)) {
+    return projectedAfter < 0
+        ? DirectionShipmentRisk.atRisk
+        : DirectionShipmentRisk.overdue;
+  }
+  if (projectedAfter < 0) {
+    return DirectionShipmentRisk.atRisk;
+  }
+  final margin = quantityUnit == DirectionShipmentQuantityUnit.kilograms
+      ? math.max(250, (plannedQuantity * 0.12).round())
+      : math.max(5, (plannedQuantity * 0.15).round());
+  if (projectedAfter < margin) {
+    return DirectionShipmentRisk.tight;
+  }
+  return DirectionShipmentRisk.good;
+}
+
+List<String> _candidateMaterialsForGerenciaType(String baleTypeKey) {
+  switch (baleTypeKey.trim().toLowerCase()) {
+    case 'limpio':
+      return const <String>['PACA_LIMPIA'];
+    case 'americano':
+      return const <String>['PACA_AMERICANA'];
+    case 'revuelto':
+      return const <String>['PACA_NACIONAL', 'PACA_BASURA'];
+    default:
+      return const <String>[];
+  }
+}
+
+String _buildSuggestionExplanation({
+  required String targetBaleTypeKey,
+  required bool noteMatched,
+  required int historicalShipmentCount,
+  required int expectedFutureQuantity,
+  required int projectedBeforeQuantity,
+}) {
+  final parts = <String>[
+    'Meta ${_gerenciaBaleTypeLabel(targetBaleTypeKey)} pendiente',
+    'proyección ${projectedBeforeQuantity.toString()} pacas',
+  ];
+  if (expectedFutureQuantity > 0) {
+    parts.add('+${expectedFutureQuantity.toString()} pacas futuras');
+  }
+  if (historicalShipmentCount > 0) {
+    parts.add('$historicalShipmentCount salidas históricas');
+  }
+  if (noteMatched) {
+    parts.add('mencionado en nota de Gerencia');
+  }
+  return parts.join(' · ');
+}
+
+String _gerenciaBaleTypeLabel(String baleTypeKey) {
+  switch (baleTypeKey.trim().toLowerCase()) {
+    case 'limpio':
+      return 'Limpio';
+    case 'americano':
+      return 'Americano';
+    case 'revuelto':
+      return 'Revuelto';
+    default:
+      return baleTypeKey;
+  }
+}
+
+String? _gerenciaBaleTypeKeyForMaterial(String materialCode) {
+  switch (_normalizePlanningMaterialCode(materialCode)) {
+    case 'PACA_LIMPIA':
+      return 'limpio';
+    case 'PACA_AMERICANA':
+      return 'americano';
+    case 'PACA_NACIONAL':
+    case 'PACA_BASURA':
+      return 'revuelto';
+    default:
+      return null;
+  }
+}
+
+int _priorityClientRank(String clientName) {
+  final normalized = _canonicalPriorityClientName(clientName) ?? clientName;
+  final index = _kPriorityShipmentClients.indexOf(normalized);
+  return index == -1 ? _kPriorityShipmentClients.length + 1 : index;
+}
+
+bool _notesMentionClient(String notes, String clientName) {
+  final normalizedNotes = _normalizeSearchText(notes);
+  if (normalizedNotes.isEmpty) return false;
+  final aliases = _kPriorityShipmentClientAliases[clientName] ?? <String>[];
+  return aliases.any(
+    (alias) => normalizedNotes.contains(_normalizeSearchText(alias)),
+  );
+}
+
+String? _canonicalPriorityClientName(String? rawClientName) {
+  final normalized = _normalizeSearchText(rawClientName);
+  if (normalized.isEmpty) return null;
+  for (final entry in _kPriorityShipmentClientAliases.entries) {
+    for (final alias in entry.value) {
+      if (normalized.contains(_normalizeSearchText(alias))) {
+        return entry.key;
+      }
+    }
+  }
+  return null;
+}
+
+String _normalizeSearchText(String? raw) {
+  final upper = (raw ?? '').trim().toUpperCase();
+  if (upper.isEmpty) return '';
+  return upper
+      .replaceAll('Á', 'A')
+      .replaceAll('É', 'E')
+      .replaceAll('Í', 'I')
+      .replaceAll('Ó', 'O')
+      .replaceAll('Ú', 'U')
+      .replaceAll('Ü', 'U')
+      .replaceAll('Ñ', 'N')
+      .replaceAll(RegExp(r'[^A-Z0-9]+'), ' ')
+      .replaceAll(RegExp(r'\s+'), ' ')
+      .trim();
+}
+
+String _normalizeShiftKey(String? rawShift) {
+  return (rawShift ?? '').trim().toUpperCase() == 'NIGHT' ? 'NIGHT' : 'DAY';
 }
 
 bool _mentionsCompactor(String text) {

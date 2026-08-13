@@ -1,17 +1,28 @@
 {
   "summary": {
-    "finanzas_companies": 127,
-    "compras_companies": 42,
-    "ventas_companies": 31,
-    "supplier_invoices": 110,
-    "bank_movements": 13,
-    "issues": 6,
+    "finanzas_companies": 177,
+    "compras_companies": 47,
+    "ventas_companies": 34,
+    "supplier_invoices": 351,
+    "bank_movements": 399,
+    "issues": 35,
     "issues_by_type": {
+      "BANK_AMBIGUOUS_ALIAS": 16,
       "CROSS_SOURCE_ALIAS": 4,
-      "INVOICE_AMBIGUOUS_ALIAS": 2
+      "DIRECTO_SHADOWS_EXTERNAL": 6,
+      "FIN_SOURCE_WITHOUT_COMPRAS_MATCH": 4,
+      "INVOICE_AMBIGUOUS_ALIAS": 5
     }
   },
   "issues": [
+    {
+      "issue_type": "DIRECTO_SHADOWS_EXTERNAL",
+      "severity": "medium",
+      "scope": "Finanzas",
+      "company_name": "DESPERDICIOS QUERETANA PATIO-MICHEL",
+      "details": "Empresa DIRECTO en Finanzas comparte nombre con empresa externa; revisar si debe consolidarse.",
+      "refs": "co_1785443736030589"
+    },
     {
       "issue_type": "CROSS_SOURCE_ALIAS",
       "severity": "high",
@@ -19,6 +30,14 @@
       "company_name": "FERNANDO RUBIO",
       "details": "El mismo nombre existe en Compras Mayoreo y Ventas Mayoreo; requiere criterio canónico en Finanzas.",
       "refs": "compras=cp_import_fernando_rubio | ventas=co_seed_fernando_rubio"
+    },
+    {
+      "issue_type": "DIRECTO_SHADOWS_EXTERNAL",
+      "severity": "medium",
+      "scope": "Finanzas",
+      "company_name": "FERNANDO RUBIO",
+      "details": "Empresa DIRECTO en Finanzas comparte nombre con empresa externa; revisar si debe consolidarse.",
+      "refs": "ventas_co_seed_fernando_rubio"
     },
     {
       "issue_type": "CROSS_SOURCE_ALIAS",
@@ -29,12 +48,68 @@
       "refs": "compras=cp_import_ks | ventas=co_seed_ks"
     },
     {
+      "issue_type": "DIRECTO_SHADOWS_EXTERNAL",
+      "severity": "medium",
+      "scope": "Finanzas",
+      "company_name": "KS",
+      "details": "Empresa DIRECTO en Finanzas comparte nombre con empresa externa; revisar si debe consolidarse.",
+      "refs": "ventas_co_seed_ks"
+    },
+    {
+      "issue_type": "FIN_SOURCE_WITHOUT_COMPRAS_MATCH",
+      "severity": "high",
+      "scope": "Finanzas",
+      "company_name": "LONAS EL MAGUEY",
+      "details": "Empresa marcada como COMPRAS en Finanzas pero ya no existe en Compras Mayoreo por nombre.",
+      "refs": "fc_1786113528347408"
+    },
+    {
+      "issue_type": "FIN_SOURCE_WITHOUT_COMPRAS_MATCH",
+      "severity": "high",
+      "scope": "Finanzas",
+      "company_name": "MARICRUZ QUIROGA ACOSTA",
+      "details": "Empresa marcada como COMPRAS en Finanzas pero ya no existe en Compras Mayoreo por nombre.",
+      "refs": "fc_1783018592222769"
+    },
+    {
+      "issue_type": "FIN_SOURCE_WITHOUT_COMPRAS_MATCH",
+      "severity": "high",
+      "scope": "Finanzas",
+      "company_name": "MULTILLANTAS NIETO",
+      "details": "Empresa marcada como COMPRAS en Finanzas pero ya no existe en Compras Mayoreo por nombre.",
+      "refs": "fc_1785359273143299"
+    },
+    {
+      "issue_type": "DIRECTO_SHADOWS_EXTERNAL",
+      "severity": "medium",
+      "scope": "Finanzas",
+      "company_name": "PLASTICOS DE INGENIERIA MEXICANOS",
+      "details": "Empresa DIRECTO en Finanzas comparte nombre con empresa externa; revisar si debe consolidarse.",
+      "refs": "fc_import_plasticos_de_ingenieria_mexicanos"
+    },
+    {
+      "issue_type": "FIN_SOURCE_WITHOUT_COMPRAS_MATCH",
+      "severity": "high",
+      "scope": "Finanzas",
+      "company_name": "RANULFO JUAN NICOLAS",
+      "details": "Empresa marcada como COMPRAS en Finanzas pero ya no existe en Compras Mayoreo por nombre.",
+      "refs": "fc_1786139157075434"
+    },
+    {
       "issue_type": "CROSS_SOURCE_ALIAS",
       "severity": "high",
       "scope": "Compras Mayoreo + Ventas Mayoreo",
       "company_name": "RICARDO GARCIA MENDIETA",
       "details": "El mismo nombre existe en Compras Mayoreo y Ventas Mayoreo; requiere criterio canónico en Finanzas.",
       "refs": "compras=cp_import_ricardo_garcia_mendieta | ventas=co_seed_ricardo_garcia_mendieta"
+    },
+    {
+      "issue_type": "DIRECTO_SHADOWS_EXTERNAL",
+      "severity": "medium",
+      "scope": "Finanzas",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "Empresa DIRECTO en Finanzas comparte nombre con empresa externa; revisar si debe consolidarse.",
+      "refs": "ventas_co_seed_ricardo_garcia_mendieta"
     },
     {
       "issue_type": "CROSS_SOURCE_ALIAS",
@@ -45,12 +120,12 @@
       "refs": "compras=cp_import_yorozu | ventas=co_seed_yorozu"
     },
     {
-      "issue_type": "INVOICE_AMBIGUOUS_ALIAS",
+      "issue_type": "DIRECTO_SHADOWS_EXTERNAL",
       "severity": "medium",
-      "scope": "Facturas proveedor",
-      "company_name": "KS",
-      "details": "La factura usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el provider_id canónico sea el correcto.",
-      "refs": "invoice=fin-invoice-1781549977982706,provider_id=ventas_co_seed_ks,source=VENTAS"
+      "scope": "Finanzas",
+      "company_name": "YOROZU",
+      "details": "Empresa DIRECTO en Finanzas comparte nombre con empresa externa; revisar si debe consolidarse.",
+      "refs": "ventas_co_seed_yorozu"
     },
     {
       "issue_type": "INVOICE_AMBIGUOUS_ALIAS",
@@ -58,7 +133,167 @@
       "scope": "Facturas proveedor",
       "company_name": "KS",
       "details": "La factura usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el provider_id canónico sea el correcto.",
-      "refs": "invoice=fin-invoice-1781550497764029,provider_id=ventas_co_seed_ks,source=VENTAS"
+      "refs": "invoice=fin-invoice-1785536486847086,provider_id=ventas_co_seed_ks,source=DIRECTO"
+    },
+    {
+      "issue_type": "INVOICE_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Facturas proveedor",
+      "company_name": "KS",
+      "details": "La factura usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el provider_id canónico sea el correcto.",
+      "refs": "invoice=fin-invoice-1783954223208807,provider_id=ventas_co_seed_ks,source=DIRECTO"
+    },
+    {
+      "issue_type": "INVOICE_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Facturas proveedor",
+      "company_name": "KS",
+      "details": "La factura usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el provider_id canónico sea el correcto.",
+      "refs": "invoice=fin-invoice-1781549977982706,provider_id=ventas_co_seed_ks,source=DIRECTO"
+    },
+    {
+      "issue_type": "INVOICE_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Facturas proveedor",
+      "company_name": "KS",
+      "details": "La factura usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el provider_id canónico sea el correcto.",
+      "refs": "invoice=fin-invoice-1781550497764029,provider_id=ventas_co_seed_ks,source=DIRECTO"
+    },
+    {
+      "issue_type": "INVOICE_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Facturas proveedor",
+      "company_name": "KS",
+      "details": "La factura usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el provider_id canónico sea el correcto.",
+      "refs": "invoice=fin-invoice-1781731288275364,provider_id=ventas_co_seed_ks,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "KS",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1786060262073310,counterparty_id=ventas_co_seed_ks,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1786114453531027,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1786032129302128,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1785521344573772,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1785192522165231,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1784763506068788,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "KS",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1784332078175888,counterparty_id=ventas_co_seed_ks,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1784658320613288,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1784071362130516,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1783984057786238,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1783984194281848,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1783621111597167,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1782936258701710,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1782924529022978,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "RICARDO GARCIA MENDIETA",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1782677489157211,counterparty_id=ventas_co_seed_ricardo_garcia_mendieta,source=DIRECTO"
+    },
+    {
+      "issue_type": "BANK_AMBIGUOUS_ALIAS",
+      "severity": "medium",
+      "scope": "Cuentas bancarias",
+      "company_name": "KS",
+      "details": "El movimiento usa un nombre que existe en Compras Mayoreo y Ventas Mayoreo; revisar que el counterparty_company_id canónico sea el correcto.",
+      "refs": "movement=fin-bank-mov-1782345868882822,counterparty_id=ventas_co_seed_ks,source=DIRECTO"
     }
   ]
 }

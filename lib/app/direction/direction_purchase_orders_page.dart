@@ -20,8 +20,13 @@ String _fmtDirectionPurchaseMoney(num value) => formatMoney(value);
 
 class DirectionPurchaseOrdersPage extends StatefulWidget {
   final bool instantOpen;
+  final bool viewerMode;
 
-  const DirectionPurchaseOrdersPage({super.key, this.instantOpen = false});
+  const DirectionPurchaseOrdersPage({
+    super.key,
+    this.instantOpen = false,
+    this.viewerMode = false,
+  });
 
   @override
   State<DirectionPurchaseOrdersPage> createState() =>
@@ -104,6 +109,10 @@ class _DirectionPurchaseOrdersPageState
 
   Future<void> _openDashboard() async {
     if (!mounted) return;
+    if (widget.viewerMode) {
+      Navigator.of(context).pop();
+      return;
+    }
     await Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const GeneralDashboardPage(instantOpen: true),
@@ -115,13 +124,19 @@ class _DirectionPurchaseOrdersPageState
 
   Future<void> _openMaintenanceFollowup() async {
     if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const DirectionMaintenancePage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
+    final route = appPageRoute(
+      page: DirectionMaintenancePage(
+        instantOpen: true,
+        viewerMode: widget.viewerMode,
       ),
+      duration: const Duration(milliseconds: 300),
+      reverseDuration: const Duration(milliseconds: 220),
     );
+    if (widget.viewerMode) {
+      await Navigator.of(context).pushReplacement(route);
+      return;
+    }
+    await Navigator.of(context).push(route);
   }
 
   Future<void> _openVault() async {
@@ -147,7 +162,7 @@ class _DirectionPurchaseOrdersPageState
   }
 
   Future<void> _openFullPurchaseOrders() async {
-    if (!mounted) return;
+    if (widget.viewerMode || !mounted) return;
     await Navigator.of(context).push(
       appPageRoute(
         page: const PurchaseOrdersPage(),
@@ -159,6 +174,7 @@ class _DirectionPurchaseOrdersPageState
 
   Future<void> _openPurchaseOrder(DirectionPurchasePendingItem item) async {
     if (!mounted) return;
+    if (widget.viewerMode) return;
     await Navigator.of(context).push(
       appPageRoute(
         page: PurchaseOrdersPage(initialOrderId: item.id),
@@ -169,7 +185,7 @@ class _DirectionPurchaseOrdersPageState
   }
 
   Future<void> _authorize(DirectionPurchasePendingItem item) async {
-    if (_runningAction) return;
+    if (widget.viewerMode || _runningAction) return;
     final user = Supabase.instance.client.auth.currentUser;
     setState(() => _runningAction = true);
     try {
@@ -188,6 +204,7 @@ class _DirectionPurchaseOrdersPageState
   }
 
   Future<void> _reject(DirectionPurchasePendingItem item) async {
+    if (widget.viewerMode) return;
     final comment = await _showCommentDialog();
     if (comment == null) return;
     setState(() => _runningAction = true);
@@ -295,7 +312,9 @@ class _DirectionPurchaseOrdersPageState
           ),
           centerBuilder: (_, contentAnim) => DirectionHeaderBrand(
             contentAnim: contentAnim,
-            title: 'Compras OT Dirección',
+            title: widget.viewerMode
+                ? 'Compras OT Gerencia'
+                : 'Compras OT Dirección',
           ),
           trailingBuilder: (_, _) => Row(
             mainAxisSize: MainAxisSize.min,
@@ -308,7 +327,7 @@ class _DirectionPurchaseOrdersPageState
               ),
               const SizedBox(width: 10),
               DirectionHeaderButton(
-                label: 'Dashboard',
+                label: widget.viewerMode ? 'Gerencia' : 'Dashboard',
                 icon: Icons.space_dashboard_rounded,
                 onTap: _openDashboard,
               ),
@@ -400,19 +419,23 @@ class _DirectionPurchaseOrdersPageState
               children: [
                 Expanded(
                   child: Text(
-                    'Dirección puede autorizar o rechazar compras desde esta vista para acelerar el flujo ejecutivo.',
+                    widget.viewerMode
+                        ? 'Vista de solo lectura para Gerencia. Aquí puedes seguir compras OT sin autorizar, rechazar ni abrir otros módulos de Operación.'
+                        : 'Dirección puede autorizar o rechazar compras desde esta vista para acelerar el flujo ejecutivo.',
                     style: const TextStyle(
                       color: kDirectionMutedText,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                OutlinedButton.icon(
-                  onPressed: _openFullPurchaseOrders,
-                  icon: const Icon(Icons.open_in_new_rounded),
-                  label: const Text('Abrir Compras OT'),
-                ),
+                if (!widget.viewerMode) ...[
+                  const SizedBox(width: 10),
+                  OutlinedButton.icon(
+                    onPressed: _openFullPurchaseOrders,
+                    icon: const Icon(Icons.open_in_new_rounded),
+                    label: const Text('Abrir Compras OT'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -424,6 +447,7 @@ class _DirectionPurchaseOrdersPageState
               final listCard = _DirectionPurchasePendingListCard(
                 items: summary.pendingItems,
                 runningAction: _runningAction,
+                viewerMode: widget.viewerMode,
                 onOpenOrder: _openPurchaseOrder,
                 onAuthorize: _authorize,
                 onReject: _reject,
@@ -463,35 +487,45 @@ class _DirectionPurchaseOrdersPageState
           child: DirectionModuleMenuPanel(
             entries: [
               DirectionModuleMenuEntry(
-                icon: Icons.space_dashboard_rounded,
-                title: 'Dashboard Dirección',
-                subtitle: 'Resumen ejecutivo principal',
+                icon: widget.viewerMode
+                    ? Icons.keyboard_return_rounded
+                    : Icons.space_dashboard_rounded,
+                title: widget.viewerMode
+                    ? 'Volver a Gerencia'
+                    : 'Dashboard Dirección',
+                subtitle: widget.viewerMode
+                    ? 'Cerrar visualizador ejecutivo'
+                    : 'Resumen ejecutivo principal',
                 onTap: _openDashboard,
               ),
               const DirectionModuleMenuEntry(
                 icon: Icons.shopping_cart_checkout_rounded,
                 title: 'Compras OT',
-                subtitle: 'Autorización y rechazo rápido',
+                subtitle: 'Seguimiento ejecutivo de compras',
                 current: true,
               ),
               DirectionModuleMenuEntry(
                 icon: Icons.build_circle_outlined,
                 title: 'Mantenimiento OT',
-                subtitle: 'Seguimiento y alertas',
+                subtitle: widget.viewerMode
+                    ? 'Seguimiento ejecutivo de OT'
+                    : 'Seguimiento y alertas',
                 onTap: _openMaintenanceFollowup,
               ),
-              DirectionModuleMenuEntry(
-                icon: Icons.account_balance_wallet_outlined,
-                title: 'Bóveda',
-                subtitle: 'Entradas y salidas de Dirección',
-                onTap: _openVault,
-              ),
-              DirectionModuleMenuEntry(
-                icon: Icons.storefront_rounded,
-                title: 'Análisis Menudeo',
-                subtitle: 'Mercado, efectivo y operación',
-                onTap: _openMenudeoAnalysis,
-              ),
+              if (!widget.viewerMode) ...[
+                DirectionModuleMenuEntry(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Bóveda',
+                  subtitle: 'Entradas y salidas de Dirección',
+                  onTap: _openVault,
+                ),
+                DirectionModuleMenuEntry(
+                  icon: Icons.storefront_rounded,
+                  title: 'Análisis Menudeo',
+                  subtitle: 'Mercado, efectivo y operación',
+                  onTap: _openMenudeoAnalysis,
+                ),
+              ],
             ],
           ),
         ),
@@ -658,6 +692,7 @@ class _DirectionImmediateAttentionBanner extends StatelessWidget {
 class _DirectionPurchasePendingListCard extends StatelessWidget {
   final List<DirectionPurchasePendingItem> items;
   final bool runningAction;
+  final bool viewerMode;
   final Future<void> Function(DirectionPurchasePendingItem item) onOpenOrder;
   final Future<void> Function(DirectionPurchasePendingItem item) onAuthorize;
   final Future<void> Function(DirectionPurchasePendingItem item) onReject;
@@ -665,6 +700,7 @@ class _DirectionPurchasePendingListCard extends StatelessWidget {
   const _DirectionPurchasePendingListCard({
     required this.items,
     required this.runningAction,
+    required this.viewerMode,
     required this.onOpenOrder,
     required this.onAuthorize,
     required this.onReject,
@@ -795,31 +831,67 @@ class _DirectionPurchasePendingListCard extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      OutlinedButton.icon(
-                        onPressed: runningAction
-                            ? null
-                            : () => onOpenOrder(item),
-                        icon: const Icon(Icons.open_in_new_rounded),
-                        label: const Text('Abrir orden'),
+                  if (viewerMode)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
                       ),
-                      FilledButton.icon(
-                        onPressed: runningAction
-                            ? null
-                            : () => onAuthorize(item),
-                        icon: const Icon(Icons.verified_rounded),
-                        label: const Text('Autorizar'),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.12),
+                        ),
                       ),
-                      OutlinedButton.icon(
-                        onPressed: runningAction ? null : () => onReject(item),
-                        icon: const Icon(Icons.cancel_outlined),
-                        label: const Text('Rechazar'),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.visibility_rounded,
+                            size: 18,
+                            color: kDirectionSurfaceText,
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Modo visualizador activo para Gerencia.',
+                              style: TextStyle(
+                                color: kDirectionSurfaceText,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    )
+                  else
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        OutlinedButton.icon(
+                          onPressed: runningAction
+                              ? null
+                              : () => onOpenOrder(item),
+                          icon: const Icon(Icons.open_in_new_rounded),
+                          label: const Text('Abrir orden'),
+                        ),
+                        FilledButton.icon(
+                          onPressed: runningAction
+                              ? null
+                              : () => onAuthorize(item),
+                          icon: const Icon(Icons.verified_rounded),
+                          label: const Text('Autorizar'),
+                        ),
+                        OutlinedButton.icon(
+                          onPressed: runningAction
+                              ? null
+                              : () => onReject(item),
+                          icon: const Icon(Icons.cancel_outlined),
+                          label: const Text('Rechazar'),
+                        ),
+                      ],
+                    ),
                 ],
               ),
             );

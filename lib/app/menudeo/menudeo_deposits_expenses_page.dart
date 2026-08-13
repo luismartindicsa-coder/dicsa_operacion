@@ -734,12 +734,22 @@ class _MenudeoDepositsExpensesPageState
   Future<void> _loadVouchers() async {
     if (mounted) setState(() => _loadingRows = true);
     try {
-      final voucherRows = await _supa
-          .from('vw_men_cash_vouchers_grid')
-          .select('*')
-          .order('voucher_date', ascending: false)
-          .order('folio_sort', ascending: true)
-          .order('folio', ascending: true);
+      const voucherPageSize = 1000;
+      final vouchers = <Map<String, dynamic>>[];
+      var voucherOffset = 0;
+      while (true) {
+        final voucherPage = await _supa
+            .from('vw_men_cash_vouchers_grid')
+            .select('*')
+            .order('voucher_date', ascending: false)
+            .order('folio_sort', ascending: true)
+            .order('folio', ascending: true)
+            .range(voucherOffset, voucherOffset + voucherPageSize - 1);
+        final batch = (voucherPage as List).cast<Map<String, dynamic>>();
+        vouchers.addAll(batch);
+        if (batch.length < voucherPageSize) break;
+        voucherOffset += voucherPageSize;
+      }
 
       final pendingExpenseRows = await _supa
           .from('men_cash_cut_checks')
@@ -747,7 +757,6 @@ class _MenudeoDepositsExpensesPageState
           .eq('is_verified', false)
           .eq('source_type', 'expense_voucher');
 
-      final vouchers = (voucherRows as List).cast<Map<String, dynamic>>();
       final pendingExpenseIds = (pendingExpenseRows as List)
           .cast<Map<String, dynamic>>()
           .map((row) => (row['source_id'] ?? '').toString())
@@ -1686,13 +1695,16 @@ class _MenudeoDepositsExpensesPageState
           );
         }
       }
+      final cashCutPayload = openCashCutId == null
+          ? null
+          : <String, dynamic>{'cash_cut_id': openCashCutId};
       final payload = <String, dynamic>{
         'voucher_date': _uiDateToIso(record.date),
         'folio': record.folio,
         'voucher_type': record.type == _VoucherType.deposit
             ? 'deposit'
             : 'expense',
-        if (openCashCutId != null) 'cash_cut_id': openCashCutId,
+        ...?cashCutPayload,
         'person_catalog_id': record.personCatalogId,
         'person_label': record.person,
         'person_label_snapshot': record.person,

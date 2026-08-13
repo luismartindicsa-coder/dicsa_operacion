@@ -20,6 +20,7 @@ import 'logistics_container_store.dart';
 import 'logistics_control_daily_page.dart';
 import 'logistics_dashboard_page.dart';
 import 'logistics_diesel_page.dart';
+import 'logistics_gasoline_page.dart';
 import 'logistics_geocoding_service.dart';
 import 'logistics_resource_profile_store.dart';
 import 'logistics_theme.dart';
@@ -473,6 +474,17 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
     );
   }
 
+  Future<void> _openGasoline() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const LogisticsGasolinePage(),
+        duration: const Duration(milliseconds: 420),
+        reverseDuration: const Duration(milliseconds: 360),
+      ),
+    );
+  }
+
   void _showPhaseSnack(String message) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(content: Text(message), behavior: SnackBarBehavior.floating),
@@ -491,6 +503,9 @@ class _LogisticsCatalogPageState extends State<LogisticsCatalogPage> {
         return;
       case kLogisticsNavDieselLabel:
         unawaited(_openDiesel());
+        return;
+      case kLogisticsNavGasolineLabel:
+        unawaited(_openGasoline());
         return;
       case kLogisticsNavFleetStatusLabel:
         _showPhaseSnack(

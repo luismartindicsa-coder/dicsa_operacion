@@ -1,0 +1,134 @@
+[
+  {
+    "id": "sale-report-1786121199097918",
+    "ticket": "595",
+    "client_name_snapshot": "RICARDO GARCIA MENDIETA",
+    "status": "pendienteCheque",
+    "approved_amount": 93794.0,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  },
+  {
+    "id": "sale-report-1785967318299829",
+    "ticket": "582",
+    "client_name_snapshot": "RICARDO GARCIA MENDIETA",
+    "status": "pendienteCheque",
+    "approved_amount": 22586.0,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  },
+  {
+    "id": "sale-report-1786121547241640",
+    "ticket": "5870",
+    "client_name_snapshot": "RICARDO GARCIA MENDIETA",
+    "status": "pendienteCheque",
+    "approved_amount": 93230.5,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  },
+  {
+    "id": "sale-report-1785340709603371",
+    "ticket": "549",
+    "client_name_snapshot": "SERVIN",
+    "status": "pendienteCheque",
+    "approved_amount": 2862.5,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  },
+  {
+    "id": "sale-report-1785340570388617",
+    "ticket": "547",
+    "client_name_snapshot": "SERVIN",
+    "status": "pendienteCheque",
+    "approved_amount": 27000.0,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  },
+  {
+    "id": "sale-report-1785340460188336",
+    "ticket": "550",
+    "client_name_snapshot": "SERVIN",
+    "status": "pendienteCheque",
+    "approved_amount": 57.0,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  },
+  {
+    "id": "sale-report-1785340346091574",
+    "ticket": "550",
+    "client_name_snapshot": "SERVIN",
+    "status": "pendienteCheque",
+    "approved_amount": 4880.5,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  },
+  {
+    "id": "sale-report-1785340078716333",
+    "ticket": "551",
+    "client_name_snapshot": "SERVIN",
+    "status": "pendienteCheque",
+    "approved_amount": 4800.0,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  },
+  {
+    "id": "sale-report-1785340174780235",
+    "ticket": "550",
+    "client_name_snapshot": "SERVIN",
+    "status": "pendienteCheque",
+    "approved_amount": 3591.0,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  },
+  {
+    "id": "sale-report-1785340241364229",
+    "ticket": "550",
+    "client_name_snapshot": "SERVIN",
+    "status": "pendienteCheque",
+    "approved_amount": 13704.0,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  },
+  {
+    "id": "sale-report-1785346191439623",
+    "ticket": "545",
+    "client_name_snapshot": "SERVIN",
+    "status": "pendienteCheque",
+    "approved_amount": 33600.0,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  },
+  {
+    "id": "sale-report-1785340798227503",
+    "ticket": "548",
+    "client_name_snapshot": "SERVIN",
+    "status": "pendienteCheque",
+    "approved_amount": 1317.5,
+    "paid_amount": 0.0,
+    "document_number": "",
+    "document_date": null,
+    "settlement_date": null
+  }
+]

@@ -24,47 +24,43 @@ import 'logistics_area_chrome.dart';
 import 'logistics_catalog_page.dart';
 import 'logistics_control_daily_page.dart';
 import 'logistics_dashboard_page.dart';
-import 'logistics_gasoline_page.dart';
-import 'logistics_diesel_store.dart';
+import 'logistics_diesel_page.dart';
+import 'logistics_gasoline_store.dart';
 import 'logistics_theme.dart';
 
-const double _kDieselDateColW = 108;
-const double _kDieselOperatorColW = 228;
-const double _kDieselVehicleColW = 170;
-const double _kDieselPurchasedColW = 150;
-const double _kDieselRequestedColW = 150;
-const double _kDieselBalanceColW = 142;
-const double _kDieselActionsGapW = 10;
-const double _kDieselActionsW = 114;
-const Color _kDieselFocusBlue = Color(0xFF0B72FF);
-const double _kDieselTableContentW =
-    _kDieselDateColW +
-    _kDieselOperatorColW +
-    _kDieselVehicleColW +
-    _kDieselPurchasedColW +
-    _kDieselRequestedColW +
-    _kDieselBalanceColW +
-    _kDieselActionsGapW +
-    _kDieselActionsW;
+const double _kGasolineDateColW = 108;
+const double _kGasolineOperatorColW = 220;
+const double _kGasolineVehicleColW = 176;
+const double _kGasolineLitersColW = 150;
+const double _kGasolineCommentColW = 340;
+const double _kGasolineActionsGapW = 10;
+const double _kGasolineActionsW = 114;
+const Color _kGasolineFocusBlue = Color(0xFF0B72FF);
+const double _kGasolineTableContentW =
+    _kGasolineDateColW +
+    _kGasolineOperatorColW +
+    _kGasolineVehicleColW +
+    _kGasolineLitersColW +
+    _kGasolineCommentColW +
+    _kGasolineActionsGapW +
+    _kGasolineActionsW;
 
-class _DieselGridLayout {
+class _GasolineGridLayout {
   final double dateWidth;
   final double operatorWidth;
   final double vehicleWidth;
-  final double purchasedWidth;
-  final double requestedWidth;
-  final double balanceWidth;
+  final double litersWidth;
+  final double commentWidth;
   final double actionsGapWidth;
   final double actionsWidth;
   final double scale;
 
-  const _DieselGridLayout({
+  const _GasolineGridLayout({
     required this.dateWidth,
     required this.operatorWidth,
     required this.vehicleWidth,
-    required this.purchasedWidth,
-    required this.requestedWidth,
-    required this.balanceWidth,
+    required this.litersWidth,
+    required this.commentWidth,
     required this.actionsGapWidth,
     required this.actionsWidth,
     required this.scale,
@@ -74,100 +70,89 @@ class _DieselGridLayout {
       dateWidth +
       operatorWidth +
       vehicleWidth +
-      purchasedWidth +
-      requestedWidth +
-      balanceWidth +
+      litersWidth +
+      commentWidth +
       actionsGapWidth +
       actionsWidth;
 }
 
-_DieselGridLayout _resolveDieselGridLayout(double availableWidth) {
+_GasolineGridLayout _resolveGasolineGridLayout(double availableWidth) {
   if (!availableWidth.isFinite || availableWidth <= 0) {
-    return const _DieselGridLayout(
-      dateWidth: _kDieselDateColW,
-      operatorWidth: _kDieselOperatorColW,
-      vehicleWidth: _kDieselVehicleColW,
-      purchasedWidth: _kDieselPurchasedColW,
-      requestedWidth: _kDieselRequestedColW,
-      balanceWidth: _kDieselBalanceColW,
-      actionsGapWidth: _kDieselActionsGapW,
-      actionsWidth: _kDieselActionsW,
+    return const _GasolineGridLayout(
+      dateWidth: _kGasolineDateColW,
+      operatorWidth: _kGasolineOperatorColW,
+      vehicleWidth: _kGasolineVehicleColW,
+      litersWidth: _kGasolineLitersColW,
+      commentWidth: _kGasolineCommentColW,
+      actionsGapWidth: _kGasolineActionsGapW,
+      actionsWidth: _kGasolineActionsW,
       scale: 1,
     );
   }
 
-  final scale = math.min(1.0, availableWidth / _kDieselTableContentW);
-  final scaledDate = _kDieselDateColW * scale;
-  final scaledOperator = _kDieselOperatorColW * scale;
-  final scaledVehicle = _kDieselVehicleColW * scale;
-  final scaledPurchased = _kDieselPurchasedColW * scale;
-  final scaledRequested = _kDieselRequestedColW * scale;
-  final scaledBalance = _kDieselBalanceColW * scale;
-  final scaledActionsGap = _kDieselActionsGapW * scale;
-  final scaledActions = _kDieselActionsW * scale;
+  final scale = math.min(1.0, availableWidth / _kGasolineTableContentW);
+  final scaledDate = _kGasolineDateColW * scale;
+  final scaledOperator = _kGasolineOperatorColW * scale;
+  final scaledVehicle = _kGasolineVehicleColW * scale;
+  final scaledLiters = _kGasolineLitersColW * scale;
+  final scaledComment = _kGasolineCommentColW * scale;
+  final scaledActionsGap = _kGasolineActionsGapW * scale;
+  final scaledActions = _kGasolineActionsW * scale;
 
   if (scale < 1) {
-    return _DieselGridLayout(
+    return _GasolineGridLayout(
       dateWidth: scaledDate,
       operatorWidth: scaledOperator,
       vehicleWidth: scaledVehicle,
-      purchasedWidth: scaledPurchased,
-      requestedWidth: scaledRequested,
-      balanceWidth: scaledBalance,
+      litersWidth: scaledLiters,
+      commentWidth: scaledComment,
       actionsGapWidth: scaledActionsGap,
       actionsWidth: scaledActions,
       scale: scale,
     );
   }
 
-  final extraWidth = availableWidth - _kDieselTableContentW;
+  final extraWidth = availableWidth - _kGasolineTableContentW;
   const dateWeight = 0.45;
-  const operatorWeight = 2.1;
+  const operatorWeight = 2.0;
   const vehicleWeight = 1.6;
-  const purchasedWeight = 1.0;
-  const requestedWeight = 1.0;
-  const balanceWeight = 0.85;
+  const litersWeight = 1.0;
+  const commentWeight = 2.9;
   const totalWeight =
       dateWeight +
       operatorWeight +
       vehicleWeight +
-      purchasedWeight +
-      requestedWeight +
-      balanceWeight;
+      litersWeight +
+      commentWeight;
 
   double share(double weight) => extraWidth * (weight / totalWeight);
 
-  return _DieselGridLayout(
+  return _GasolineGridLayout(
     dateWidth: scaledDate + share(dateWeight),
     operatorWidth: scaledOperator + share(operatorWeight),
     vehicleWidth: scaledVehicle + share(vehicleWeight),
-    purchasedWidth: scaledPurchased + share(purchasedWeight),
-    requestedWidth: scaledRequested + share(requestedWeight),
-    balanceWidth: scaledBalance + share(balanceWeight),
+    litersWidth: scaledLiters + share(litersWeight),
+    commentWidth: scaledComment + share(commentWeight),
     actionsGapWidth: scaledActionsGap,
     actionsWidth: scaledActions,
     scale: scale,
   );
 }
 
-class LogisticsDieselPage extends StatefulWidget {
-  const LogisticsDieselPage({super.key});
+class LogisticsGasolinePage extends StatefulWidget {
+  const LogisticsGasolinePage({super.key});
 
   @override
-  State<LogisticsDieselPage> createState() => _LogisticsDieselPageState();
+  State<LogisticsGasolinePage> createState() => _LogisticsGasolinePageState();
 }
 
-class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
-  final TextEditingController _purchasedController = TextEditingController();
-  final TextEditingController _requestedController = TextEditingController();
-  final FocusNode _insertFocusNode = FocusNode(debugLabel: 'diesel_insert');
-  final FocusNode _rowsFocusNode = FocusNode(debugLabel: 'diesel_rows');
-  final FocusNode _purchasedFocusNode = FocusNode(
-    debugLabel: 'diesel_purchased',
-  );
-  final FocusNode _requestedFocusNode = FocusNode(
-    debugLabel: 'diesel_requested',
-  );
+class _LogisticsGasolinePageState extends State<LogisticsGasolinePage> {
+  final TextEditingController _litersController = TextEditingController();
+  final TextEditingController _notesController = TextEditingController();
+  final FocusNode _insertFocusNode = FocusNode(debugLabel: 'gasoline_insert');
+  final FocusNode _rowsFocusNode = FocusNode(debugLabel: 'gasoline_rows');
+  final FocusNode _litersFocusNode = FocusNode(debugLabel: 'gasoline_liters');
+  final FocusNode _notesFocusNode = FocusNode(debugLabel: 'gasoline_notes');
   final ScrollController _rowsScrollController = ScrollController();
   final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
 
@@ -178,8 +163,8 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
   bool _bulkDeleting = false;
   String? _loadError;
 
-  List<LogisticsDieselConsumptionRecord> _entries =
-      <LogisticsDieselConsumptionRecord>[];
+  List<LogisticsGasolineControlRecord> _entries =
+      <LogisticsGasolineControlRecord>[];
   List<_DieselOption> _operators = <_DieselOption>[];
   List<_DieselOption> _vehicles = <_DieselOption>[];
 
@@ -188,7 +173,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
   final Map<String, DateTimeRange> _columnDateRangeFilters =
       <String, DateTimeRange>{};
 
-  LogisticsDieselConsumptionRecord? _editingRecord;
+  LogisticsGasolineControlRecord? _editingRecord;
   String? _primarySelectedId;
   DateTime _draftDate = DateUtils.dateOnly(DateTime.now());
   String? _draftOperatorId;
@@ -201,32 +186,32 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
   @override
   void initState() {
     super.initState();
-    _purchasedFocusNode.addListener(_handleInlineFieldFocusChange);
-    _requestedFocusNode.addListener(_handleInlineFieldFocusChange);
+    _litersFocusNode.addListener(_handleInlineFieldFocusChange);
+    _notesFocusNode.addListener(_handleInlineFieldFocusChange);
     unawaited(_bootstrap());
   }
 
   @override
   void dispose() {
-    _purchasedFocusNode.removeListener(_handleInlineFieldFocusChange);
-    _requestedFocusNode.removeListener(_handleInlineFieldFocusChange);
-    _purchasedController.dispose();
-    _requestedController.dispose();
+    _litersFocusNode.removeListener(_handleInlineFieldFocusChange);
+    _notesFocusNode.removeListener(_handleInlineFieldFocusChange);
+    _litersController.dispose();
+    _notesController.dispose();
     _insertFocusNode.dispose();
     _rowsFocusNode.dispose();
-    _purchasedFocusNode.dispose();
-    _requestedFocusNode.dispose();
+    _litersFocusNode.dispose();
+    _notesFocusNode.dispose();
     _rowsScrollController.dispose();
     super.dispose();
   }
 
   void _handleInlineFieldFocusChange() {
     if (!mounted) return;
-    if (_purchasedFocusNode.hasFocus) {
+    if (_litersFocusNode.hasFocus) {
       setState(() => _activeInsertColumn = 3);
       return;
     }
-    if (_requestedFocusNode.hasFocus) {
+    if (_notesFocusNode.hasFocus) {
       setState(() => _activeInsertColumn = 4);
     }
   }
@@ -248,7 +233,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _loadError = 'No se pudo abrir Consumo de Diesel: $error';
+        _loadError = 'No se pudo abrir Control de Gasolina: $error';
       });
     }
   }
@@ -274,7 +259,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
   }
 
   Future<void> _loadEntries() async {
-    final rows = await LogisticsDieselConsumptionStore.loadEntries();
+    final rows = await LogisticsGasolineControlStore.loadEntries();
     if (!mounted) return;
     setState(() {
       _entries = rows;
@@ -351,22 +336,22 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     );
   }
 
-  Future<void> _openDirectionDashboard() async {
+  Future<void> _openDiesel() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       appPageRoute(
-        page: const GeneralDashboardPage(instantOpen: true),
+        page: const LogisticsDieselPage(),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
     );
   }
 
-  Future<void> _openGasoline() async {
+  Future<void> _openDirectionDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       appPageRoute(
-        page: const LogisticsGasolinePage(),
+        page: const GeneralDashboardPage(instantOpen: true),
         duration: const Duration(milliseconds: 420),
         reverseDuration: const Duration(milliseconds: 360),
       ),
@@ -391,9 +376,9 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
         unawaited(_openCatalogs());
         return;
       case kLogisticsNavDieselLabel:
+        unawaited(_openDiesel());
         return;
       case kLogisticsNavGasolineLabel:
-        unawaited(_openGasoline());
         return;
       case kLogisticsNavFleetStatusLabel:
         _showPhaseSnack(
@@ -416,60 +401,11 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     }
   }
 
-  double get _draftPurchased => _tryParseDouble(_purchasedController.text) ?? 0;
-  double get _draftRequested => _tryParseDouble(_requestedController.text) ?? 0;
-  double get _draftBalance => _draftPurchased - _draftRequested;
-  bool get _draftAllowsPurchaseWithoutAssignment =>
-      _draftPurchased > 0 && _draftRequested == 0;
+  double get _totalLoaded =>
+      _entries.fold(0.0, (sum, row) => sum + row.litersLoaded);
 
-  double get _totalPurchased =>
-      _entries.fold(0.0, (sum, row) => sum + row.litersPurchased);
-
-  double get _totalRequested =>
-      _entries.fold(0.0, (sum, row) => sum + row.litersRequested);
-
-  LogisticsDieselConsumptionRecord? get _latestEntry =>
-      _entries.isEmpty ? null : _entries.first;
-
-  double get _currentBalance => _latestEntry?.balanceLiters ?? 0;
-
-  _DieselTankStatus get _tankStatus {
-    final balance = _currentBalance;
-    if (balance > 600) {
-      return const _DieselTankStatus(
-        label: 'Suficiente',
-        helper: 'Arriba de 600 L disponibles',
-        icon: Icons.check_circle_rounded,
-        topColor: Color(0xFFE4F3E6),
-        bottomColor: Color(0xFFCBE8CF),
-        borderColor: Color(0xFF98C99F),
-        textColor: Color(0xFF1F6A33),
-      );
-    }
-    if (balance >= 300) {
-      return const _DieselTankStatus(
-        label: 'Solicitar',
-        helper: 'Entre 300 L y 600 L',
-        icon: Icons.warning_amber_rounded,
-        topColor: Color(0xFFF8F0D8),
-        bottomColor: Color(0xFFF0E0A6),
-        borderColor: Color(0xFFD8C06B),
-        textColor: Color(0xFF886100),
-      );
-    }
-    return const _DieselTankStatus(
-      label: 'Crítico',
-      helper: 'Abajo de 300 L',
-      icon: Icons.error_rounded,
-      topColor: Color(0xFFF6DFDD),
-      bottomColor: Color(0xFFEAC0BC),
-      borderColor: Color(0xFFD39892),
-      textColor: Color(0xFF8C2922),
-    );
-  }
-
-  List<LogisticsDieselConsumptionRecord> get _filteredEntries {
-    Iterable<LogisticsDieselConsumptionRecord> rows = _entries;
+  List<LogisticsGasolineControlRecord> get _filteredEntries {
+    Iterable<LogisticsGasolineControlRecord> rows = _entries;
     final dateRange = _columnDateRangeFilters['fecha'];
     if (dateRange != null) {
       final start = DateUtils.dateOnly(dateRange.start);
@@ -489,12 +425,12 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     return rows.toList(growable: false);
   }
 
-  List<LogisticsDieselConsumptionRecord> get _visibleEntries {
+  List<LogisticsGasolineControlRecord> get _visibleEntries {
     final filtered = _filteredEntries;
-    if (filtered.isEmpty) return const <LogisticsDieselConsumptionRecord>[];
+    if (filtered.isEmpty) return const <LogisticsGasolineControlRecord>[];
     final start = _currentPage * _pageSize;
     if (start >= filtered.length) {
-      return const <LogisticsDieselConsumptionRecord>[];
+      return const <LogisticsGasolineControlRecord>[];
     }
     final end = math.min(start + _pageSize, filtered.length);
     return filtered.sublist(start, end);
@@ -508,22 +444,16 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
 
   int get _selectedCount => _selectedIds.length;
 
-  List<LogisticsDieselConsumptionRecord> get _selectedEntries {
+  List<LogisticsGasolineControlRecord> get _selectedEntries {
     return _entries
         .where((row) => row.id != null && _selectedIds.contains(row.id))
         .toList(growable: false);
   }
 
-  double get _selectedPurchasedSum =>
-      _selectedEntries.fold(0.0, (sum, row) => sum + row.litersPurchased);
+  double get _selectedLoadedSum =>
+      _selectedEntries.fold(0.0, (sum, row) => sum + row.litersLoaded);
 
-  double get _selectedRequestedSum =>
-      _selectedEntries.fold(0.0, (sum, row) => sum + row.litersRequested);
-
-  double get _selectedBalanceSum =>
-      _selectedEntries.fold(0.0, (sum, row) => sum + row.balanceLiters);
-
-  LogisticsDieselConsumptionRecord? _findEntryById(String? id) {
+  LogisticsGasolineControlRecord? _findEntryById(String? id) {
     if (id == null || id.trim().isEmpty) return null;
     for (final row in _entries) {
       if (row.id == id) return row;
@@ -531,38 +461,38 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     return null;
   }
 
-  bool get _isPurchasedCaretAtStart {
-    final selection = _purchasedController.selection;
-    return _purchasedFocusNode.hasFocus &&
+  bool get _isLitersCaretAtStart {
+    final selection = _litersController.selection;
+    return _litersFocusNode.hasFocus &&
         selection.isValid &&
         selection.isCollapsed &&
         selection.baseOffset == 0 &&
         selection.extentOffset == 0;
   }
 
-  bool get _isPurchasedCaretAtEnd {
-    final selection = _purchasedController.selection;
-    final end = _purchasedController.text.length;
-    return _purchasedFocusNode.hasFocus &&
+  bool get _isLitersCaretAtEnd {
+    final selection = _litersController.selection;
+    final end = _litersController.text.length;
+    return _litersFocusNode.hasFocus &&
         selection.isValid &&
         selection.isCollapsed &&
         selection.baseOffset == end &&
         selection.extentOffset == end;
   }
 
-  bool get _isRequestedCaretAtStart {
-    final selection = _requestedController.selection;
-    return _requestedFocusNode.hasFocus &&
+  bool get _isNotesCaretAtStart {
+    final selection = _notesController.selection;
+    return _notesFocusNode.hasFocus &&
         selection.isValid &&
         selection.isCollapsed &&
         selection.baseOffset == 0 &&
         selection.extentOffset == 0;
   }
 
-  bool get _isRequestedCaretAtEnd {
-    final selection = _requestedController.selection;
-    final end = _requestedController.text.length;
-    return _requestedFocusNode.hasFocus &&
+  bool get _isNotesCaretAtEnd {
+    final selection = _notesController.selection;
+    final end = _notesController.text.length;
+    return _notesFocusNode.hasFocus &&
         selection.isValid &&
         selection.isCollapsed &&
         selection.baseOffset == end &&
@@ -664,15 +594,15 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     setState(() => _draftVehicleId = selected);
   }
 
-  void _startEditing(LogisticsDieselConsumptionRecord record) {
+  void _startEditing(LogisticsGasolineControlRecord record) {
     setState(() {
       _editingRecord = record;
       _draftDate = DateUtils.dateOnly(record.entryDate);
       _draftOperatorId = record.operatorEmployeeId;
       _draftVehicleId = record.vehicleId;
       _activeInsertColumn = 0;
-      _purchasedController.text = _formatLitersInput(record.litersPurchased);
-      _requestedController.text = _formatLitersInput(record.litersRequested);
+      _litersController.text = _formatLitersInput(record.litersLoaded);
+      _notesController.text = record.notes;
       if (record.id != null) {
         _selectedIds
           ..clear()
@@ -693,8 +623,8 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
       _draftOperatorId = null;
       _draftVehicleId = null;
       _activeInsertColumn = 0;
-      _purchasedController.clear();
-      _requestedController.clear();
+      _litersController.clear();
+      _notesController.clear();
     });
   }
 
@@ -703,53 +633,44 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     final vehicleId = _draftVehicleId;
     final operatorName = _labelOf(_operators, operatorId) ?? '';
     final vehicleLabel = _labelOf(_vehicles, vehicleId) ?? '';
-    final purchased = _tryParseDouble(_purchasedController.text);
-    final requested = _tryParseDouble(_requestedController.text);
-    final purchasedValue = purchased ?? 0;
-    final requestedValue = requested ?? 0;
-    final allowsPurchaseWithoutAssignment =
-        purchasedValue > 0 && requestedValue == 0;
+    final liters = _tryParseDouble(_litersController.text);
+    final litersValue = liters ?? 0;
+    final notes = _notesController.text.trim();
 
     final missing = <String>[];
-    if (!allowsPurchaseWithoutAssignment &&
-        (operatorId == null || operatorName.isEmpty)) {
+    if (operatorId == null || operatorName.isEmpty) {
       missing.add('Operador');
     }
-    if (!allowsPurchaseWithoutAssignment &&
-        (vehicleId == null || vehicleLabel.isEmpty)) {
+    if (vehicleId == null || vehicleLabel.isEmpty) {
       missing.add('Unidad o Vehículo');
     }
-    if (purchased == null) missing.add('Litros Comprados');
-    if (requested == null && purchasedValue <= 0) {
-      missing.add('Litros Solicitados');
-    }
+    if (liters == null) missing.add('Litros Cargados');
 
     if (missing.isNotEmpty) {
       _showPhaseSnack('Completa primero: ${missing.join(', ')}.');
       return;
     }
 
-    if (purchasedValue < 0 || requestedValue < 0) {
+    if (litersValue < 0) {
       _showPhaseSnack('Los litros no pueden ser negativos.');
       return;
     }
 
     setState(() => _saving = true);
     try {
-      final record = LogisticsDieselConsumptionRecord(
+      final record = LogisticsGasolineControlRecord(
         id: _editingRecord?.id,
         entryDate: _draftDate,
         operatorEmployeeId: operatorId,
         operatorName: operatorName,
         vehicleId: vehicleId,
         vehicleLabel: vehicleLabel,
-        litersPurchased: purchasedValue,
-        litersRequested: requestedValue,
-        balanceLiters: purchasedValue - requestedValue,
+        litersLoaded: litersValue,
+        notes: notes,
         createdAt: _editingRecord?.createdAt,
         updatedAt: _editingRecord?.updatedAt,
       );
-      final saved = await LogisticsDieselConsumptionStore.saveEntry(record);
+      final saved = await LogisticsGasolineControlStore.saveEntry(record);
       await _loadEntries();
       if (!mounted) return;
       setState(() {
@@ -762,8 +683,8 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
       });
       _showPhaseSnack(
         _editingRecord == null
-            ? 'Registro de diesel guardado.'
-            : 'Registro de diesel actualizado.',
+            ? 'Carga de gasolina guardada.'
+            : 'Carga de gasolina actualizada.',
       );
       _resetDraft();
       _insertFocusNode.requestFocus();
@@ -777,19 +698,19 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     }
   }
 
-  Future<void> _deleteEntry(LogisticsDieselConsumptionRecord record) async {
+  Future<void> _deleteEntry(LogisticsGasolineControlRecord record) async {
     if (record.id == null) return;
     final ok = await _showGlassConfirmDialog(
       context,
       title: 'Eliminar registro',
       content:
-          'Se eliminará el registro de ${_dieselDeleteSubjectLabel(record)} del ${_fmtUiDate(record.entryDate)}.',
+          'Se eliminará la carga de ${record.vehicleLabel} del ${_fmtUiDate(record.entryDate)}.',
       confirmText: 'Eliminar',
     );
     if (!mounted || ok != true) return;
 
     try {
-      await LogisticsDieselConsumptionStore.deleteEntry(record.id!);
+      await LogisticsGasolineControlStore.deleteEntry(record.id!);
       await _loadEntries();
       if (!mounted) return;
       setState(() {
@@ -818,7 +739,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
       context,
       title: 'Eliminar registros',
       content:
-          '¿Seguro que deseas eliminar ${_fmtCountInt(ids.length)} registro(s) de diesel?',
+          '¿Seguro que deseas eliminar ${_fmtCountInt(ids.length)} carga(s) de gasolina?',
       confirmText: 'Eliminar',
     );
     if (!mounted || ok != true) return;
@@ -826,7 +747,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     setState(() => _bulkDeleting = true);
     try {
       await Future.wait<void>(
-        ids.map((id) => LogisticsDieselConsumptionStore.deleteEntry(id)),
+        ids.map((id) => LogisticsGasolineControlStore.deleteEntry(id)),
       );
       await _loadEntries();
       if (!mounted) return;
@@ -947,35 +868,31 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
   }
 
   bool _isNumericFilterColumn(String columnId) {
-    return columnId == 'comprados' ||
-        columnId == 'solicitados' ||
-        columnId == 'saldo';
+    return columnId == 'litros';
   }
 
   String _columnFilterValue(
-    LogisticsDieselConsumptionRecord row,
+    LogisticsGasolineControlRecord row,
     String columnId,
   ) {
     switch (columnId) {
       case 'fecha':
         return _fmtUiDate(row.entryDate);
       case 'operador':
-        return _dieselOperatorDisplayLabel(row);
+        return row.operatorName;
       case 'unidad':
-        return _dieselVehicleDisplayLabel(row);
-      case 'comprados':
-        return _fmtLiters(row.litersPurchased);
-      case 'solicitados':
-        return _fmtLiters(row.litersRequested);
-      case 'saldo':
-        return _fmtLiters(row.balanceLiters);
+        return row.vehicleLabel;
+      case 'litros':
+        return _fmtLiters(row.litersLoaded);
+      case 'comentario':
+        return row.notes;
       default:
         return '';
     }
   }
 
   String _columnFilterLabel(
-    LogisticsDieselConsumptionRecord row,
+    LogisticsGasolineControlRecord row,
     String columnId,
   ) {
     final value = _columnFilterValue(row, columnId);
@@ -1013,7 +930,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
 
   void _setActiveInsertColumn(int column, {bool requestFocus = true}) {
     setState(() {
-      _activeInsertColumn = ((column % 7) + 7) % 7;
+      _activeInsertColumn = ((column % 6) + 6) % 6;
       _primarySelectedId = null;
       _selectedIds.clear();
     });
@@ -1021,11 +938,11 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         if (_activeInsertColumn == 3) {
-          _focusPurchasedField();
+          _focusLitersField();
           return;
         }
         if (_activeInsertColumn == 4) {
-          _focusRequestedField();
+          _focusNotesField();
           return;
         }
         FocusManager.instance.primaryFocus?.unfocus();
@@ -1038,22 +955,22 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     _setActiveInsertColumn(_activeInsertColumn + delta);
   }
 
-  void _focusPurchasedField() {
+  void _focusLitersField() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _purchasedFocusNode.requestFocus();
-      _purchasedController.selection = TextSelection.collapsed(
-        offset: _purchasedController.text.length,
+      _litersFocusNode.requestFocus();
+      _litersController.selection = TextSelection.collapsed(
+        offset: _litersController.text.length,
       );
     });
   }
 
-  void _focusRequestedField() {
+  void _focusNotesField() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _requestedFocusNode.requestFocus();
-      _requestedController.selection = TextSelection.collapsed(
-        offset: _requestedController.text.length,
+      _notesFocusNode.requestFocus();
+      _notesController.selection = TextSelection.collapsed(
+        offset: _notesController.text.length,
       );
     });
   }
@@ -1066,11 +983,11 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       if (_activeInsertColumn == 3) {
-        _focusPurchasedField();
+        _focusLitersField();
         return;
       }
       if (_activeInsertColumn == 4) {
-        _focusRequestedField();
+        _focusNotesField();
         return;
       }
       FocusManager.instance.primaryFocus?.unfocus();
@@ -1217,12 +1134,12 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
         await _pickDraftVehicle();
         return;
       case 3:
-        _focusPurchasedField();
+        _focusLitersField();
         return;
       case 4:
-        _focusRequestedField();
+        _focusNotesField();
         return;
-      case 6:
+      case 5:
         await _saveDraft();
         return;
       default:
@@ -1243,10 +1160,10 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
           _draftVehicleId = null;
           break;
         case 3:
-          _purchasedController.clear();
+          _litersController.clear();
           break;
         case 4:
-          _requestedController.clear();
+          _notesController.clear();
           break;
         default:
           break;
@@ -1287,7 +1204,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     unawaited(_deleteEntry(selected));
   }
 
-  void _handleRowTap(LogisticsDieselConsumptionRecord record) {
+  void _handleRowTap(LogisticsGasolineControlRecord record) {
     final id = record.id;
     if (id == null) return;
     _selectRow(id, additive: _isAdditiveSelectionPressed(), focusTable: true);
@@ -1386,9 +1303,9 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     try {
       final content = _buildCsvContent(rows);
       final saved = await saveCsvFile(
-        fileName: 'consumo_diesel_${_fmtCompactDate(DateTime.now())}.csv',
+        fileName: 'control_gasolina_${_fmtCompactDate(DateTime.now())}.csv',
         content: content,
-        dialogTitle: 'Guardar CSV de consumo de diesel',
+        dialogTitle: 'Guardar CSV de control de gasolina',
       );
       if (!mounted) return;
       if (saved == null) {
@@ -1406,20 +1323,17 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     }
   }
 
-  String _buildCsvContent(List<LogisticsDieselConsumptionRecord> rows) {
+  String _buildCsvContent(List<LogisticsGasolineControlRecord> rows) {
     final buffer = StringBuffer()
-      ..writeln(
-        'Fecha,Operador,Unidad o Vehiculo,Litros Comprados,Litros Solicitados,Saldo',
-      );
+      ..writeln('Fecha,Operador,Unidad o Vehiculo,Litros Cargados,Comentario');
     for (final row in rows) {
       buffer.writeln(
         [
           _csvCell(_fmtUiDate(row.entryDate)),
-          _csvCell(_dieselOperatorDisplayLabel(row)),
-          _csvCell(_dieselVehicleDisplayLabel(row)),
-          _csvCell(_fmtLiters(row.litersPurchased)),
-          _csvCell(_fmtLiters(row.litersRequested)),
-          _csvCell(_fmtLiters(row.balanceLiters)),
+          _csvCell(row.operatorName),
+          _csvCell(row.vehicleLabel),
+          _csvCell(_fmtLiters(row.litersLoaded)),
+          _csvCell(row.notes),
         ].join(','),
       );
     }
@@ -1483,8 +1397,8 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
         ),
         Text(
           _selectedCount > 0
-              ? 'Comprados: ${_fmtLiters(_selectedPurchasedSum)} L · Solicitados: ${_fmtLiters(_selectedRequestedSum)} L · Saldo: ${_fmtLiters(_selectedBalanceSum)} L'
-              : 'Visibles: ${_fmtCountInt(_filteredEntries.length)} · Comprados: ${_fmtLiters(_totalPurchased)} L · Solicitados: ${_fmtLiters(_totalRequested)} L · Saldo actual: ${_fmtLiters(_currentBalance)} L',
+              ? 'Litros seleccionados: ${_fmtLiters(_selectedLoadedSum)} L'
+              : 'Visibles: ${_fmtCountInt(_filteredEntries.length)} · Litros cargados: ${_fmtLiters(_totalLoaded)} L',
           textAlign: TextAlign.right,
           style: TextStyle(
             fontSize: 11,
@@ -1543,7 +1457,6 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
   }
 
   Widget _buildSummaryStrip() {
-    final status = _tankStatus;
     return Padding(
       padding: const EdgeInsets.fromLTRB(6, 0, 6, 0),
       child: LayoutBuilder(
@@ -1551,11 +1464,9 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
           final compact = constraints.maxWidth < 820;
           final cards = <Widget>[
             _DieselStatusCard(
-              title: 'Saldo actual',
-              value: '${_fmtLiters(_currentBalance)} L',
-              helper: _latestEntry == null
-                  ? 'Sin lectura vigente todavía'
-                  : 'Última lectura registrada: ${_fmtUiDate(_latestEntry!.entryDate)}',
+              title: 'Litros visibles',
+              value: '${_fmtLiters(_totalLoaded)} L',
+              helper: 'Suma del filtro actual de cargas directas en gasolinera',
               icon: Icons.local_gas_station_rounded,
               topColor: const Color(0xFFE7ECF2),
               bottomColor: const Color(0xFFD8E0EA),
@@ -1563,14 +1474,15 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
               textColor: kLogisticsSilverTextPrimary,
             ),
             _DieselStatusCard(
-              title: 'Estatus del tanque',
-              value: status.label,
-              helper: status.helper,
-              icon: status.icon,
-              topColor: status.topColor,
-              bottomColor: status.bottomColor,
-              borderColor: status.borderColor,
-              textColor: status.textColor,
+              title: 'Cargas registradas',
+              value: _fmtCountInt(_filteredEntries.length),
+              helper:
+                  'Cada fila representa una carga real hecha fuera del tanque interno',
+              icon: Icons.receipt_long_rounded,
+              topColor: const Color(0xFFF1F4F7),
+              bottomColor: const Color(0xFFE0E5EB),
+              borderColor: const Color(0xFFBEC7D0),
+              textColor: kLogisticsSilverTextPrimary,
             ),
           ];
 
@@ -1732,7 +1644,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     Widget insertCellFrame(int columnIndex, Widget child) {
       final active = _activeInsertColumn == columnIndex;
       return Padding(
-        padding: EdgeInsets.only(right: columnIndex == 6 ? 0 : 8),
+        padding: EdgeInsets.only(right: columnIndex == 5 ? 0 : 8),
         child: DecoratedBox(
           position: DecorationPosition.background,
           decoration: BoxDecoration(
@@ -1747,7 +1659,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
               borderRadius: BorderRadius.circular(16),
               border: Border.all(
                 color: active
-                    ? _kDieselFocusBlue.withValues(alpha: 0.78)
+                    ? _kGasolineFocusBlue.withValues(alpha: 0.78)
                     : Colors.transparent,
                 width: active ? 1.2 : 1,
               ),
@@ -1775,16 +1687,16 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
             return KeyEventResult.handled;
           }
           if (key == LogicalKeyboardKey.arrowLeft &&
-              ((_purchasedFocusNode.hasFocus && _isPurchasedCaretAtStart) ||
-                  (_requestedFocusNode.hasFocus && _isRequestedCaretAtStart))) {
+              ((_litersFocusNode.hasFocus && _isLitersCaretAtStart) ||
+                  (_notesFocusNode.hasFocus && _isNotesCaretAtStart))) {
             FocusManager.instance.primaryFocus?.unfocus();
             _moveInsertColumn(-1);
             _insertFocusNode.requestFocus();
             return KeyEventResult.handled;
           }
           if (key == LogicalKeyboardKey.arrowRight &&
-              ((_purchasedFocusNode.hasFocus && _isPurchasedCaretAtEnd) ||
-                  (_requestedFocusNode.hasFocus && _isRequestedCaretAtEnd))) {
+              ((_litersFocusNode.hasFocus && _isLitersCaretAtEnd) ||
+                  (_notesFocusNode.hasFocus && _isNotesCaretAtEnd))) {
             FocusManager.instance.primaryFocus?.unfocus();
             _moveInsertColumn(1);
             _insertFocusNode.requestFocus();
@@ -1854,7 +1766,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
         ),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final layout = _resolveDieselGridLayout(constraints.maxWidth);
+            final layout = _resolveGasolineGridLayout(constraints.maxWidth);
             return SizedBox(
               width: constraints.maxWidth,
               child: FittedBox(
@@ -1868,11 +1780,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
                       1,
                       _buildInlinePickerCell(
                         width: layout.operatorWidth,
-                        label:
-                            _labelOf(_operators, _draftOperatorId) ??
-                            (_draftAllowsPurchaseWithoutAssignment
-                                ? 'Opcional'
-                                : '—'),
+                        label: _labelOf(_operators, _draftOperatorId) ?? '—',
                         onTap: _saving ? null : _pickDraftOperator,
                         onTapStart: () => _setActiveInsertColumn(1),
                       ),
@@ -1881,11 +1789,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
                       2,
                       _buildInlinePickerCell(
                         width: layout.vehicleWidth,
-                        label:
-                            _labelOf(_vehicles, _draftVehicleId) ??
-                            (_draftAllowsPurchaseWithoutAssignment
-                                ? 'Opcional'
-                                : '—'),
+                        label: _labelOf(_vehicles, _draftVehicleId) ?? '—',
                         onTap: _saving ? null : _pickDraftVehicle,
                         onTapStart: () => _setActiveInsertColumn(2),
                       ),
@@ -1893,9 +1797,9 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
                     insertCellFrame(
                       3,
                       _buildInlineNumberCell(
-                        width: layout.purchasedWidth,
-                        controller: _purchasedController,
-                        focusNode: _purchasedFocusNode,
+                        width: layout.litersWidth,
+                        controller: _litersController,
+                        focusNode: _litersFocusNode,
                         hintText: '0.00',
                         onTapStart: () =>
                             _setActiveInsertColumn(3, requestFocus: false),
@@ -1903,26 +1807,18 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
                     ),
                     insertCellFrame(
                       4,
-                      _buildInlineNumberCell(
-                        width: layout.requestedWidth,
-                        controller: _requestedController,
-                        focusNode: _requestedFocusNode,
-                        hintText: '0.00',
+                      _buildInlineTextCell(
+                        width: layout.commentWidth,
+                        controller: _notesController,
+                        focusNode: _notesFocusNode,
+                        hintText: 'Comentario opcional',
                         onTapStart: () =>
                             _setActiveInsertColumn(4, requestFocus: false),
                       ),
                     ),
-                    insertCellFrame(
-                      5,
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onTapDown: (_) => _setActiveInsertColumn(5),
-                        child: _buildInlineBalanceCell(layout.balanceWidth),
-                      ),
-                    ),
                     SizedBox(width: layout.actionsGapWidth),
                     insertCellFrame(
-                      6,
+                      5,
                       AnchoredActionSlot(
                         width: layout.actionsWidth,
                         trailingWidth: math.min(
@@ -1947,7 +1843,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
                             : const SizedBox.shrink(),
                         trailing: GestureDetector(
                           behavior: HitTestBehavior.opaque,
-                          onTapDown: (_) => _setActiveInsertColumn(6),
+                          onTapDown: (_) => _setActiveInsertColumn(5),
                           child: _InsertActionButton(
                             saving: _saving,
                             editing: editing,
@@ -2125,44 +2021,38 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     );
   }
 
-  Widget _buildInlineBalanceCell(double width) {
+  Widget _buildInlineTextCell({
+    required double width,
+    required TextEditingController controller,
+    required FocusNode focusNode,
+    required String hintText,
+    required VoidCallback onTapStart,
+  }) {
     final palette = ServicesVisualPalette.of(context);
-    final negative = _draftBalance < 0;
     return SizedBox(
       width: width,
-      child: InputDecorator(
-        decoration: _glassFieldDecoration(context).copyWith(
-          filled: true,
-          fillColor: negative
-              ? const Color(0xFFF0E3E0)
-              : Colors.white.withValues(alpha: 0.72),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(
-              color: negative ? const Color(0xFFD3B4AF) : palette.borderStrong,
-              width: 1,
-            ),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(12),
-            borderSide: BorderSide(
-              color: negative ? const Color(0xFFD3B4AF) : palette.borderStrong,
-              width: 1,
-            ),
+      child: TextField(
+        controller: controller,
+        focusNode: focusNode,
+        enabled: !_saving,
+        onChanged: (_) => setState(() {}),
+        onTap: onTapStart,
+        onSubmitted: (_) => _saveDraft(),
+        textAlign: TextAlign.left,
+        style: TextStyle(
+          fontSize: 13.4,
+          fontWeight: FontWeight.w700,
+          color: palette.textPrimary,
+        ),
+        decoration: _glassFieldDecoration(context, hintText: hintText).copyWith(
+          fillColor: Colors.white.withValues(alpha: 0.88),
+          hintStyle: TextStyle(
+            color: palette.textMuted,
+            fontWeight: FontWeight.w700,
           ),
           contentPadding: const EdgeInsets.symmetric(
             horizontal: 12,
             vertical: 10,
-          ),
-        ),
-        child: Text(
-          '${_fmtLiters(_draftBalance)} L',
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontSize: 13.4,
-            fontWeight: FontWeight.w900,
-            color: negative ? const Color(0xFF7B3E37) : palette.textPrimary,
           ),
         ),
       ),
@@ -2176,7 +2066,7 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
     if (_loadError != null && _entries.isEmpty) {
       return _buildMessageState(
         icon: Icons.error_outline_rounded,
-        title: 'No se pudo cargar Consumo de Diesel',
+        title: 'No se pudo cargar Control de Gasolina',
         helper: _loadError!,
         action: OutlinedButton(
           style: _actionOutlinedButtonStyle(context),
@@ -2194,10 +2084,10 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
             : Icons.local_gas_station_rounded,
         title: filtered
             ? 'No hay registros con el filtro actual'
-            : 'Todavía no hay registros de diesel',
+            : 'Todavía no hay cargas de gasolina',
         helper: filtered
             ? 'Ajusta o limpia los filtros para recuperar la lectura completa.'
-            : 'Empieza capturando fecha, operador, unidad, litros comprados y litros solicitados en la fila superior.',
+            : 'Empieza capturando fecha, operador, unidad, litros cargados y comentario en la fila superior.',
         action: filtered
             ? OutlinedButton(
                 style: _actionOutlinedButtonStyle(context),
@@ -2355,10 +2245,10 @@ class _LogisticsDieselPageState extends State<LogisticsDieselPage> {
       child: AreaThemeScope(
         tokens: logisticsAreaTokens,
         child: ServicesShell(
-          headerTitle: 'Consumo de Diesel',
-          servicesNavLabel: kLogisticsNavDieselLabel,
+          headerTitle: 'Control de Gasolina',
+          servicesNavLabel: kLogisticsNavGasolineLabel,
           customSideMenuBuilder: (context, closeMenu) => LogisticsAreaSidePanel(
-            currentLabel: kLogisticsNavDieselLabel,
+            currentLabel: kLogisticsNavGasolineLabel,
             canReturnToDirection: _canReturnToDirection,
             onNavigate: (label) {
               closeMenu();
@@ -2422,7 +2312,7 @@ class _DieselHeaderRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final layout = _resolveDieselGridLayout(constraints.maxWidth);
+          final layout = _resolveGasolineGridLayout(constraints.maxWidth);
           return SizedBox(
             width: constraints.maxWidth,
             child: FittedBox(
@@ -2453,27 +2343,18 @@ class _DieselHeaderRow extends StatelessWidget {
                     onFilter: () => onOpenFilter('unidad', 'UNIDAD / VEHÍCULO'),
                   ),
                   _DieselHeaderCell(
-                    label: 'LITROS COMPRADOS',
-                    width: layout.purchasedWidth,
+                    label: 'LITROS CARGADOS',
+                    width: layout.litersWidth,
                     style: textStyle,
-                    active: hasActiveFilter('comprados'),
-                    onFilter: () =>
-                        onOpenFilter('comprados', 'LITROS COMPRADOS'),
+                    active: hasActiveFilter('litros'),
+                    onFilter: () => onOpenFilter('litros', 'LITROS CARGADOS'),
                   ),
                   _DieselHeaderCell(
-                    label: 'LITROS SOLICITADOS',
-                    width: layout.requestedWidth,
+                    label: 'COMENTARIO',
+                    width: layout.commentWidth,
                     style: textStyle,
-                    active: hasActiveFilter('solicitados'),
-                    onFilter: () =>
-                        onOpenFilter('solicitados', 'LITROS SOLICITADOS'),
-                  ),
-                  _DieselHeaderCell(
-                    label: 'SALDO',
-                    width: layout.balanceWidth,
-                    style: textStyle,
-                    active: hasActiveFilter('saldo'),
-                    onFilter: () => onOpenFilter('saldo', 'SALDO'),
+                    active: hasActiveFilter('comentario'),
+                    onFilter: () => onOpenFilter('comentario', 'COMENTARIO'),
                   ),
                   SizedBox(width: layout.actionsGapWidth),
                   SizedBox(width: layout.actionsWidth),
@@ -2547,7 +2428,7 @@ class _DieselHeaderCell extends StatelessWidget {
 }
 
 class _DieselDataRow extends StatefulWidget {
-  final LogisticsDieselConsumptionRecord record;
+  final LogisticsGasolineControlRecord record;
   final bool selected;
   final VoidCallback onTap;
   final VoidCallback onEdit;
@@ -2574,7 +2455,6 @@ class _DieselDataRowState extends State<_DieselDataRow> {
   @override
   Widget build(BuildContext context) {
     final palette = ServicesVisualPalette.of(context);
-    final negative = widget.record.balanceLiters < 0;
     final rowBg = widget.selected
         ? palette.selectedRowFill
         : _hovering
@@ -2602,7 +2482,7 @@ class _DieselDataRowState extends State<_DieselDataRow> {
               borderRadius: BorderRadius.circular(18),
               border: Border.all(
                 color: widget.selected
-                    ? _kDieselFocusBlue.withValues(alpha: 0.34)
+                    ? _kGasolineFocusBlue.withValues(alpha: 0.34)
                     : palette.borderStrong,
               ),
               boxShadow: [
@@ -2615,7 +2495,7 @@ class _DieselDataRowState extends State<_DieselDataRow> {
             ),
             child: LayoutBuilder(
               builder: (context, constraints) {
-                final layout = _resolveDieselGridLayout(constraints.maxWidth);
+                final layout = _resolveGasolineGridLayout(constraints.maxWidth);
                 return SizedBox(
                   width: constraints.maxWidth,
                   child: FittedBox(
@@ -2629,53 +2509,22 @@ class _DieselDataRowState extends State<_DieselDataRow> {
                           layout.dateWidth,
                         ),
                         _DieselValueCell(
-                          _dieselOperatorDisplayLabel(widget.record),
+                          widget.record.operatorName,
                           layout.operatorWidth,
                         ),
                         _DieselValueCell(
-                          _dieselVehicleDisplayLabel(widget.record),
+                          widget.record.vehicleLabel,
                           layout.vehicleWidth,
                         ),
                         _DieselValueCell(
-                          '${_fmtLiters(widget.record.litersPurchased)} L',
-                          layout.purchasedWidth,
+                          '${_fmtLiters(widget.record.litersLoaded)} L',
+                          layout.litersWidth,
                         ),
                         _DieselValueCell(
-                          '${_fmtLiters(widget.record.litersRequested)} L',
-                          layout.requestedWidth,
-                        ),
-                        SizedBox(
-                          width: layout.balanceWidth,
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 12,
-                                vertical: 6,
-                              ),
-                              decoration: BoxDecoration(
-                                color: negative
-                                    ? const Color(0xFFF0E3E0)
-                                    : palette.surfaceInteractive,
-                                borderRadius: BorderRadius.circular(999),
-                                border: Border.all(
-                                  color: negative
-                                      ? const Color(0xFFD3B4AF)
-                                      : palette.borderStrong,
-                                ),
-                              ),
-                              child: Text(
-                                '${_fmtLiters(widget.record.balanceLiters)} L',
-                                style: TextStyle(
-                                  fontSize: 12.4,
-                                  fontWeight: FontWeight.w800,
-                                  color: negative
-                                      ? const Color(0xFF7B3E37)
-                                      : palette.textPrimary,
-                                ),
-                              ),
-                            ),
-                          ),
+                          widget.record.notes.trim().isEmpty
+                              ? '—'
+                              : widget.record.notes.trim(),
+                          layout.commentWidth,
                         ),
                         SizedBox(width: layout.actionsGapWidth),
                         SizedBox(
@@ -2759,26 +2608,6 @@ class _DieselValueCell extends StatelessWidget {
       ),
     );
   }
-}
-
-class _DieselTankStatus {
-  final String label;
-  final String helper;
-  final IconData icon;
-  final Color topColor;
-  final Color bottomColor;
-  final Color borderColor;
-  final Color textColor;
-
-  const _DieselTankStatus({
-    required this.label,
-    required this.helper,
-    required this.icon,
-    required this.topColor,
-    required this.bottomColor,
-    required this.borderColor,
-    required this.textColor,
-  });
 }
 
 class _DieselStatusCard extends StatelessWidget {
@@ -2990,7 +2819,7 @@ InputDecoration _glassFieldDecoration(
     border: border,
     enabledBorder: border,
     focusedBorder: border.copyWith(
-      borderSide: BorderSide(color: _kDieselFocusBlue, width: 1.35),
+      borderSide: BorderSide(color: _kGasolineFocusBlue, width: 1.35),
     ),
   );
 }
@@ -3537,42 +3366,6 @@ String _fmtUiDate(DateTime value) {
 
 String _fmtLiters(double value) {
   return value.toStringAsFixed(2);
-}
-
-bool _isDieselOpeningPurchaseRecord(LogisticsDieselConsumptionRecord row) {
-  return row.operatorName.trim().isEmpty &&
-      row.vehicleLabel.trim().isEmpty &&
-      row.litersPurchased > 0 &&
-      row.litersRequested == 0;
-}
-
-String _dieselOperatorDisplayLabel(LogisticsDieselConsumptionRecord row) {
-  final label = row.operatorName.trim();
-  if (label.isNotEmpty) return label;
-  if (_isDieselOpeningPurchaseRecord(row)) {
-    return 'Saldo inicial';
-  }
-  return '—';
-}
-
-String _dieselVehicleDisplayLabel(LogisticsDieselConsumptionRecord row) {
-  final label = row.vehicleLabel.trim();
-  if (label.isNotEmpty) return label;
-  if (_isDieselOpeningPurchaseRecord(row)) {
-    return 'Sin unidad';
-  }
-  return '—';
-}
-
-String _dieselDeleteSubjectLabel(LogisticsDieselConsumptionRecord row) {
-  if (_isDieselOpeningPurchaseRecord(row)) {
-    return 'saldo inicial';
-  }
-  final operator = row.operatorName.trim();
-  if (operator.isNotEmpty) return operator;
-  final vehicle = row.vehicleLabel.trim();
-  if (vehicle.isNotEmpty) return vehicle;
-  return 'registro';
 }
 
 String _formatLitersInput(double value) {

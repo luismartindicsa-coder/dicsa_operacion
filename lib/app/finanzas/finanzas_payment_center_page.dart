@@ -4,55 +4,272 @@ import 'package:flutter/material.dart';
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../compras/compras_dashboard_page.dart';
-import '../compras/compras_tickets_store.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
+import '../shared/utils/date_picker_defaults.dart';
 import 'finanzas_bank_accounts_page.dart';
-import 'finanzas_bank_accounts_store.dart';
 import 'finanzas_catalog_page.dart';
-import 'finanzas_company_identity.dart';
 import 'finanzas_company_directory_page.dart';
-import 'finanzas_company_directory_store.dart';
 import 'finanzas_dashboard_page.dart';
-import 'finanzas_financial_rules.dart';
 import 'finanzas_fixed_payments_page.dart';
-import 'finanzas_fixed_payments_store.dart';
+import 'finanzas_payment_center_budget_engine.dart';
+import 'finanzas_payment_center_budget_loader.dart';
+import 'finanzas_payment_center_budget_models.dart';
+import 'finanzas_payment_center_reserves_store.dart';
 import 'finanzas_payment_learning_store.dart';
 import 'finanzas_provider_accounts_page.dart';
-import 'finanzas_provider_accounts_store.dart';
 import 'finanzas_theme.dart';
 
-enum _PaymentCenterTab {
-  obligatorio('Obligatorio'),
-  urgente('Urgente'),
-  recomendado('Recomendado'),
-  postergable('Postergable');
-
-  final String label;
-  const _PaymentCenterTab(this.label);
-}
-
-enum _PaymentExecutionDecision {
-  pagarCompleto('Pagar completo'),
-  abonar('Abonar'),
-  esperar('Esperar');
-
-  final String label;
-  const _PaymentExecutionDecision(this.label);
-}
-
 enum _PaymentCenterMode {
-  operacion('Operación'),
-  // Conservado para reactivarlo después sin rearmar la capa de aprendizaje.
-  // ignore: unused_field
+  presupuesto('Presupuesto'),
+  pendientes('Pendientes'),
+  reservas('Reservas protegidas'),
   aprendizaje('Aprendizaje');
 
   final String label;
   const _PaymentCenterMode(this.label);
+}
+
+ThemeData _paymentCenterContractTheme(BuildContext context) {
+  final base = Theme.of(context);
+  final tokens = AreaThemeScope.of(context);
+  final colorScheme = base.colorScheme.copyWith(
+    primary: tokens.primaryStrong,
+    secondary: tokens.primary,
+    surface: tokens.surfaceTint,
+    onSurface: tokens.onGlass,
+  );
+  final border = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(18),
+    borderSide: BorderSide(color: tokens.border.withValues(alpha: 0.42)),
+  );
+  return base.copyWith(
+    colorScheme: colorScheme,
+    scaffoldBackgroundColor: Colors.transparent,
+    splashColor: tokens.primaryStrong.withValues(alpha: 0.12),
+    highlightColor: tokens.primaryStrong.withValues(alpha: 0.08),
+    hoverColor: tokens.primarySoft.withValues(alpha: 0.12),
+    focusColor: tokens.primarySoft.withValues(alpha: 0.16),
+    dividerColor: tokens.border.withValues(alpha: 0.24),
+    iconTheme: IconThemeData(color: tokens.primaryStrong),
+    textButtonTheme: TextButtonThemeData(
+      style: _paymentCenterTextButtonStyle(context),
+    ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: _paymentCenterOutlinedButtonStyle(context),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: _paymentCenterFilledButtonStyle(context),
+    ),
+    inputDecorationTheme: InputDecorationTheme(
+      filled: true,
+      fillColor: tokens.fieldSurface,
+      hintStyle: TextStyle(color: tokens.onGlass.withValues(alpha: 0.62)),
+      labelStyle: TextStyle(
+        color: tokens.badgeText,
+        fontWeight: FontWeight.w700,
+      ),
+      enabledBorder: border,
+      focusedBorder: border.copyWith(
+        borderSide: BorderSide(color: tokens.primaryStrong, width: 1.4),
+      ),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    ),
+    chipTheme: base.chipTheme.copyWith(
+      backgroundColor: tokens.badgeBackground.withValues(alpha: 0.82),
+      selectedColor: tokens.primaryStrong.withValues(alpha: 0.18),
+      disabledColor: tokens.badgeBackground.withValues(alpha: 0.42),
+      side: BorderSide(color: tokens.border.withValues(alpha: 0.38)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      labelStyle: TextStyle(
+        color: tokens.badgeText,
+        fontWeight: FontWeight.w800,
+      ),
+      secondaryLabelStyle: TextStyle(
+        color: tokens.primaryStrong,
+        fontWeight: FontWeight.w900,
+      ),
+      checkmarkColor: tokens.primaryStrong,
+    ),
+  );
+}
+
+ThemeData _paymentCenterOverlayTheme(BuildContext context) {
+  final base = _paymentCenterContractTheme(context);
+  final tokens = AreaThemeScope.of(context);
+  return base.copyWith(
+    colorScheme: base.colorScheme.copyWith(
+      primary: tokens.primaryStrong,
+      onPrimary: tokens.onGlass,
+      secondary: tokens.primarySoft,
+      onSecondary: tokens.onGlass,
+      surface: kFinanzasDialogSurface,
+      onSurface: tokens.onGlass,
+    ),
+    dialogTheme: const DialogThemeData(backgroundColor: kFinanzasDialogSurface),
+    textTheme: base.textTheme
+        .apply(bodyColor: tokens.onGlass, displayColor: tokens.onGlass)
+        .copyWith(
+          bodySmall: TextStyle(
+            color: kFinanzasMutedInk.withValues(alpha: 0.92),
+          ),
+          bodyMedium: TextStyle(color: tokens.onGlass),
+          bodyLarge: TextStyle(color: tokens.onGlass),
+          titleMedium: TextStyle(
+            color: tokens.onGlass,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
+    primaryTextTheme: base.primaryTextTheme.apply(
+      bodyColor: tokens.onGlass,
+      displayColor: tokens.onGlass,
+    ),
+    textSelectionTheme: TextSelectionThemeData(
+      cursorColor: tokens.primaryStrong,
+      selectionColor: tokens.primaryStrong.withValues(alpha: 0.24),
+      selectionHandleColor: tokens.primaryStrong,
+    ),
+    listTileTheme: ListTileThemeData(
+      iconColor: tokens.primaryStrong,
+      textColor: tokens.onGlass,
+      tileColor: Colors.transparent,
+    ),
+    switchTheme: SwitchThemeData(
+      thumbColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return tokens.onGlass;
+        }
+        return kFinanzasMutedInk.withValues(alpha: 0.92);
+      }),
+      trackColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return tokens.primaryStrong.withValues(alpha: 0.92);
+        }
+        return tokens.badgeBackground.withValues(alpha: 0.94);
+      }),
+      trackOutlineColor: WidgetStateProperty.all(
+        tokens.border.withValues(alpha: 0.42),
+      ),
+    ),
+    datePickerTheme: DatePickerThemeData(
+      backgroundColor: kFinanzasDialogSurface,
+      surfaceTintColor: Colors.transparent,
+      headerBackgroundColor: Color.alphaBlend(
+        tokens.primaryStrong.withValues(alpha: 0.08),
+        kFinanzasDialogSurface,
+      ),
+      headerForegroundColor: tokens.onGlass,
+      weekdayStyle: TextStyle(
+        color: kFinanzasMutedInk.withValues(alpha: 0.92),
+        fontWeight: FontWeight.w700,
+      ),
+      dayForegroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.disabled)) {
+          return kFinanzasMutedInk.withValues(alpha: 0.38);
+        }
+        return tokens.onGlass;
+      }),
+      dayBackgroundColor: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return tokens.primaryStrong;
+        }
+        return Colors.transparent;
+      }),
+      todayForegroundColor: WidgetStateProperty.all(tokens.primarySoft),
+      cancelButtonStyle: _paymentCenterTextButtonStyle(
+        context,
+        tone: tokens.primarySoft,
+      ),
+      confirmButtonStyle: _paymentCenterTextButtonStyle(
+        context,
+        tone: tokens.primaryStrong,
+      ),
+    ),
+  );
+}
+
+InputDecoration _paymentCenterOverlayFieldDecoration(
+  BuildContext context, {
+  required String labelText,
+  String? hintText,
+}) {
+  final tokens = AreaThemeScope.of(context);
+  final decoration = contractGlassFieldDecoration(context, hintText: hintText);
+  return decoration.copyWith(
+    labelText: labelText,
+    labelStyle: TextStyle(color: tokens.badgeText, fontWeight: FontWeight.w800),
+    floatingLabelStyle: TextStyle(
+      color: tokens.primaryStrong,
+      fontWeight: FontWeight.w900,
+    ),
+  );
+}
+
+TextStyle _paymentCenterOverlayFieldTextStyle(BuildContext context) {
+  final tokens = AreaThemeScope.of(context);
+  return TextStyle(
+    color: tokens.onGlass,
+    fontSize: 14.5,
+    fontWeight: FontWeight.w800,
+  );
+}
+
+ButtonStyle _paymentCenterTextButtonStyle(BuildContext context, {Color? tone}) {
+  final tokens = AreaThemeScope.of(context);
+  final resolvedTone = tone ?? tokens.primaryStrong;
+  return TextButton.styleFrom(
+    foregroundColor: resolvedTone,
+    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+    overlayColor: resolvedTone.withValues(alpha: 0.08),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+  );
+}
+
+ButtonStyle _paymentCenterOutlinedButtonStyle(
+  BuildContext context, {
+  Color? tone,
+  Color? backgroundColor,
+}) {
+  final tokens = AreaThemeScope.of(context);
+  final resolvedTone = tone ?? tokens.primaryStrong;
+  return OutlinedButton.styleFrom(
+    foregroundColor: resolvedTone,
+    textStyle: const TextStyle(fontWeight: FontWeight.w800),
+    side: BorderSide(color: resolvedTone.withValues(alpha: 0.44)),
+    backgroundColor:
+        backgroundColor ??
+        Color.alphaBlend(
+          resolvedTone.withValues(alpha: 0.06),
+          tokens.glassSurface.withValues(alpha: 0.88),
+        ),
+    overlayColor: resolvedTone.withValues(alpha: 0.08),
+    padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  );
+}
+
+ButtonStyle _paymentCenterFilledButtonStyle(
+  BuildContext context, {
+  Color? tone,
+  Color? foregroundColor,
+}) {
+  final tokens = AreaThemeScope.of(context);
+  final resolvedTone = tone ?? tokens.primaryStrong;
+  return FilledButton.styleFrom(
+    foregroundColor: foregroundColor ?? tokens.onGlass,
+    backgroundColor: resolvedTone,
+    textStyle: const TextStyle(fontWeight: FontWeight.w900),
+    overlayColor: (foregroundColor ?? tokens.onGlass).withValues(alpha: 0.08),
+    shadowColor: resolvedTone.withValues(alpha: 0.34),
+    elevation: 8,
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+  );
 }
 
 class FinanzasPaymentCenterPage extends StatefulWidget {
@@ -70,11 +287,19 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
   bool _loading = true;
   bool _canReturnToDirection = false;
   bool _canAccessComprasArea = false;
-  final _PaymentCenterMode _activeMode = _PaymentCenterMode.operacion;
-  List<_PaymentCenterItem> _items = const <_PaymentCenterItem>[];
+  _PaymentCenterMode _activeMode = _PaymentCenterMode.presupuesto;
+  List<FinanzasPaymentCenterOperationalItem> _items =
+      const <FinanzasPaymentCenterOperationalItem>[];
   List<FinanzasPaymentLearningRecord> _learningLogs =
       const <FinanzasPaymentLearningRecord>[];
   Map<String, double> _accountBalances = const <String, double>{};
+  Map<String, double> _realAccountBalances = const <String, double>{};
+  List<FinanzasPaymentCenterReserveRecord> _reserves =
+      const <FinanzasPaymentCenterReserveRecord>[];
+  FinanzasPaymentCenterReserveImpactSummary _reserveSummary =
+      const FinanzasPaymentCenterReserveImpactSummary.empty();
+  FinanzasPaymentCenterBudgetTodaySummary? _budgetToday;
+  FinanzasPaymentCenterBudgetWeekSummary? _budgetWeek;
 
   @override
   void initState() {
@@ -94,60 +319,43 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
 
   Future<void> _loadPage() async {
     setState(() => _loading = true);
-    final results = await Future.wait<dynamic>([
-      FinanzasCompanyDirectoryStore.loadDirectory(),
-      ComprasTicketsStore.loadTickets(),
-      ComprasTicketsStore.loadTicketPaymentApplications(),
-      FinanzasProviderAccountsStore.loadInvoices(),
-      FinanzasProviderAccountsStore.loadAgreements(),
-      FinanzasProviderAccountsStore.loadAgreementInstallments(),
-      FinanzasProviderAccountsStore.loadAgreementInvoices(),
-      FinanzasBankAccountsStore.loadMovements(),
-      FinanzasFixedPaymentsStore.loadPayments(),
-      FinanzasPaymentLearningStore.loadLogs(),
-    ]);
-    if (!mounted) return;
-    final directory = results[0] as List<FinanzasCompanyDirectoryRecord>;
-    final tickets = results[1] as List<ComprasTicketRecord>;
-    final ticketApplications =
-        results[2] as List<ComprasTicketPaymentApplicationRecord>;
-    final invoices = results[3] as List<FinanzasSupplierInvoiceRecord>;
-    final agreements = results[4] as List<FinanzasSupplierAgreementRecord>;
-    final installments =
-        results[5] as List<FinanzasSupplierAgreementInstallmentRecord>;
-    final agreementInvoiceLinks =
-        results[6] as List<FinanzasSupplierAgreementInvoiceRecord>;
-    final bankMovements = results[7] as List<FinanzasBankMovementRecord>;
-    final fixedPayments = results[8] as List<FinanzasFixedPaymentRecord>;
-    final learningLogs = results[9] as List<FinanzasPaymentLearningRecord>;
-
-    final balances = _computeBalances(bankMovements);
-    final items = _buildItems(
-      directory: directory,
-      tickets: tickets,
-      ticketApplications: ticketApplications,
-      invoices: invoices,
-      agreements: agreements,
-      installments: installments,
-      agreementInvoiceLinks: agreementInvoiceLinks,
-      fixedPayments: fixedPayments,
-      balances: balances,
-    );
-    setState(() {
-      _accountBalances = balances;
-      _items = items;
-      _learningLogs = learningLogs;
-      _loading = false;
-    });
+    try {
+      final sourceSnapshot = await loadFinanzasPaymentCenterSourceSnapshot();
+      if (!mounted) return;
+      final operationalSnapshot = buildFinanzasPaymentCenterOperationalSnapshot(
+        sourceSnapshot,
+      );
+      setState(() {
+        _realAccountBalances = operationalSnapshot.realAccountBalances;
+        _accountBalances = operationalSnapshot.accountBalances;
+        _items = operationalSnapshot.items;
+        _learningLogs = operationalSnapshot.learningLogs;
+        _reserves = operationalSnapshot.reserves;
+        _reserveSummary = operationalSnapshot.reserveSummary;
+        _budgetToday = operationalSnapshot.budgetToday;
+        _budgetWeek = operationalSnapshot.budgetWeek;
+        _loading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _loading = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'No se pudo cargar Centro de pagos con la informacion remota actual.',
+          ),
+        ),
+      );
+    }
   }
 
-  String _learningActionLabel(_PaymentExecutionDecision decision) {
+  String _learningActionLabel(FinanzasPaymentCenterExecutionDecision decision) {
     switch (decision) {
-      case _PaymentExecutionDecision.pagarCompleto:
+      case FinanzasPaymentCenterExecutionDecision.pagarCompleto:
         return 'PAGAR_COMPLETO';
-      case _PaymentExecutionDecision.abonar:
+      case FinanzasPaymentCenterExecutionDecision.abonar:
         return 'ABONAR';
-      case _PaymentExecutionDecision.esperar:
+      case FinanzasPaymentCenterExecutionDecision.esperar:
         return 'ESPERAR';
     }
   }
@@ -359,574 +567,101 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
     }
   }
 
-  Map<String, double> _computeBalances(List<FinanzasBankMovementRecord> rows) {
-    final map = <String, double>{};
-    for (final row in rows) {
-      map.update(
-        row.accountKey,
-        (value) => value + row.creditAmount - row.debitAmount,
-        ifAbsent: () => row.creditAmount - row.debitAmount,
-      );
-    }
-    return map;
-  }
-
-  int _bucketBaseScore(_PaymentCenterTab bucket) {
-    switch (bucket) {
-      case _PaymentCenterTab.obligatorio:
-        return 400;
-      case _PaymentCenterTab.urgente:
-        return 300;
-      case _PaymentCenterTab.recomendado:
-        return 200;
-      case _PaymentCenterTab.postergable:
-        return 100;
+  Future<void> _openReserveDialog({
+    FinanzasPaymentCenterReserveRecord? initialRow,
+  }) async {
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (_) => _PaymentCenterReserveDialog(initialRow: initialRow),
+    );
+    if (saved == true && mounted) {
+      await _loadPage();
     }
   }
 
-  _PaymentCenterTab _maxUrgencyBucket(
-    _PaymentCenterTab current,
-    _PaymentCenterTab minimum,
-  ) {
-    final order = <_PaymentCenterTab, int>{
-      _PaymentCenterTab.obligatorio: 0,
-      _PaymentCenterTab.urgente: 1,
-      _PaymentCenterTab.recomendado: 2,
-      _PaymentCenterTab.postergable: 3,
-    };
-    return (order[current] ?? 99) <= (order[minimum] ?? 99) ? current : minimum;
-  }
-
-  ({_PaymentCenterTab bucket, List<String> reasons, int score})
-  _buildPriorityMeta({
-    required _PaymentCenterTab bucket,
-    required String itemType,
-    required DateTime? dueDate,
-    required String agreementLabel,
-    required double amountSuggested,
-    required bool hasAgreement,
-    required String paymentStage,
-    required String providerManualPriority,
-    required String providerPriorityNote,
-    required String invoiceManualPriority,
-    required String invoicePriorityNote,
-    required DateTime today,
-  }) {
-    final reasons = <String>[];
-    var effectiveBucket = bucket;
-    var score = _bucketBaseScore(effectiveBucket);
-    final dueOnly = dueDate == null ? null : DateUtils.dateOnly(dueDate);
-    if (dueOnly != null) {
-      if (dueOnly.isBefore(today)) {
-        reasons.add('Ya venció');
-        score += 60;
-      } else if (dueOnly.isAtSameMomentAs(today)) {
-        reasons.add('Vence hoy');
-        score += 45;
-      } else if (dueOnly.isBefore(today.add(const Duration(days: 4)))) {
-        reasons.add('Vence esta semana');
-        score += 25;
-      }
-    }
-    if (itemType == 'Pago fijo') {
-      reasons.add('Compromiso fijo del mes');
-      score += 40;
-    }
-    if (itemType == 'Convenio') {
-      reasons.add('Compromiso pactado con proveedor');
-      score += 35;
-    }
-    if (invoiceManualPriority == 'CRITICA') {
-      effectiveBucket = _maxUrgencyBucket(
-        effectiveBucket,
-        _PaymentCenterTab.obligatorio,
-      );
-      reasons.add('Prioridad manual crítica en factura');
-      score += 110;
-      if (invoicePriorityNote.trim().isNotEmpty) {
-        reasons.add('Nota factura: ${invoicePriorityNote.trim()}');
-      }
-    } else if (invoiceManualPriority == 'ALTA') {
-      effectiveBucket = _maxUrgencyBucket(
-        effectiveBucket,
-        _PaymentCenterTab.urgente,
-      );
-      reasons.add('Prioridad manual alta en factura');
-      score += 60;
-      if (invoicePriorityNote.trim().isNotEmpty) {
-        reasons.add('Nota factura: ${invoicePriorityNote.trim()}');
-      }
-    } else if (providerManualPriority == 'CRITICA') {
-      effectiveBucket = _maxUrgencyBucket(
-        effectiveBucket,
-        _PaymentCenterTab.urgente,
-      );
-      reasons.add('Proveedor con prioridad crítica');
-      score += 80;
-      if (providerPriorityNote.trim().isNotEmpty) {
-        reasons.add('Nota proveedor: ${providerPriorityNote.trim()}');
-      }
-    } else if (providerManualPriority == 'ALTA') {
-      effectiveBucket = _maxUrgencyBucket(
-        effectiveBucket,
-        _PaymentCenterTab.recomendado,
-      );
-      reasons.add('Proveedor con prioridad alta');
-      score += 36;
-      if (providerPriorityNote.trim().isNotEmpty) {
-        reasons.add('Nota proveedor: ${providerPriorityNote.trim()}');
-      }
-    }
-    if (itemType == 'Factura' && hasAgreement) {
-      reasons.add('Proveedor con convenio activo');
-      score += 10;
-    }
-    if (paymentStage == 'ATRASADO') {
-      reasons.add('Proveedor marcado como atrasado');
-      score += 30;
-    } else if (paymentStage == 'PAGO_SEMANAL') {
-      reasons.add('Proveedor de pago semanal');
-      score += 14;
-    } else if (paymentStage == 'CONVENIO') {
-      reasons.add('Proveedor bajo convenio');
-      score += 20;
-    }
-    if (agreementLabel.contains('Vencid') ||
-        agreementLabel.contains('Atrasad')) {
-      reasons.add('Estado sensible');
-      score += 18;
-    }
-    if (amountSuggested >= 100000) {
-      reasons.add('Monto alto');
-      score += 12;
-    } else if (amountSuggested >= 25000) {
-      reasons.add('Monto relevante');
-      score += 6;
-    }
-    score += (_bucketBaseScore(effectiveBucket) - _bucketBaseScore(bucket));
-    return (bucket: effectiveBucket, reasons: reasons, score: score);
-  }
-
-  List<_PaymentCenterItem> _buildItems({
-    required List<FinanzasCompanyDirectoryRecord> directory,
-    required List<ComprasTicketRecord> tickets,
-    required List<ComprasTicketPaymentApplicationRecord> ticketApplications,
-    required List<FinanzasSupplierInvoiceRecord> invoices,
-    required List<FinanzasSupplierAgreementRecord> agreements,
-    required List<FinanzasSupplierAgreementInstallmentRecord> installments,
-    required List<FinanzasSupplierAgreementInvoiceRecord> agreementInvoiceLinks,
-    required List<FinanzasFixedPaymentRecord> fixedPayments,
-    required Map<String, double> balances,
-  }) {
-    final providerById = <String, FinanzasCompanyDirectoryRecord>{
-      for (final row in directory.where(
-        (company) =>
-            company.active && company.source.trim().toUpperCase() != 'VENTAS',
-      ))
-        row.companyId: row,
-    };
-    final providerByAlias = <String, FinanzasCompanyDirectoryRecord>{
-      for (final row in providerById.values)
-        normalizeFinanzasCompanyAliasKey(
-          row.linkedName.trim().isNotEmpty ? row.linkedName : row.companyName,
-        ): row,
-    };
-
-    final installmentsByAgreementId =
-        <String, List<FinanzasSupplierAgreementInstallmentRecord>>{};
-    for (final row in installments) {
-      installmentsByAgreementId
-          .putIfAbsent(
-            row.agreementId,
-            () => <FinanzasSupplierAgreementInstallmentRecord>[],
-          )
-          .add(row);
-    }
-    final invoicesById = <String, FinanzasSupplierInvoiceRecord>{
-      for (final invoice in invoices) invoice.id: invoice,
-    };
-    final agreementInvoiceLinksByInstallmentId =
-        <String, List<FinanzasSupplierAgreementInvoiceRecord>>{};
-    for (final link in agreementInvoiceLinks) {
-      agreementInvoiceLinksByInstallmentId
-          .putIfAbsent(
-            link.installmentId,
-            () => <FinanzasSupplierAgreementInvoiceRecord>[],
-          )
-          .add(link);
-    }
-
-    final items = <_PaymentCenterItem>[];
-    final agreementProviderIds = <String>{};
-    final today = DateUtils.dateOnly(DateTime.now());
-    final directAppliedByTicketId = <String, double>{};
-    final comprasProviderIdByAlias = <String, String>{};
-    for (final application in ticketApplications) {
-      directAppliedByTicketId.update(
-        application.ticketId,
-        (value) => value + application.appliedAmount,
-        ifAbsent: () => application.appliedAmount,
-      );
-    }
-    for (final ticket in tickets) {
-      final aliasKey = normalizeFinanzasCompanyAliasKey(
-        ticket.providerNameSnapshot,
-      );
-      if (aliasKey.isNotEmpty) {
-        comprasProviderIdByAlias.putIfAbsent(aliasKey, () => ticket.providerId);
-      }
-    }
-
-    for (final payment in fixedPayments.where(
-      (row) => row.status != 'PAGADO',
-    )) {
-      final dueDate = DateUtils.dateOnly(payment.paymentDate);
-      final bucket = payment.status == 'VENCIDO' || dueDate.isBefore(today)
-          ? _PaymentCenterTab.obligatorio
-          : dueDate.isAtSameMomentAs(today) ||
-                dueDate.isBefore(today.add(const Duration(days: 4)))
-          ? _PaymentCenterTab.urgente
-          : dueDate.month == today.month && dueDate.year == today.year
-          ? _PaymentCenterTab.recomendado
-          : _PaymentCenterTab.postergable;
-      final priority = _buildPriorityMeta(
-        bucket: bucket,
-        itemType: 'Pago fijo',
-        dueDate: payment.paymentDate,
-        agreementLabel: finFixedPaymentStatusLabel(payment.status),
-        amountSuggested: payment.amount,
-        hasAgreement: false,
-        paymentStage: 'AL_CORRIENTE',
-        providerManualPriority: 'NORMAL',
-        providerPriorityNote: '',
-        invoiceManualPriority: 'NORMAL',
-        invoicePriorityNote: '',
-        today: today,
-      );
-      items.add(
-        _PaymentCenterItem(
-          providerId: payment.companyId,
-          providerName: payment.companyNameSnapshot,
-          bucket: priority.bucket,
-          itemType: 'Pago fijo',
-          sourceLabel: payment.notes.trim().isEmpty
-              ? 'Compromiso mensual'
-              : payment.notes.trim(),
-          dueDate: payment.paymentDate,
-          agreementLabel: finFixedPaymentStatusLabel(payment.status),
-          amountSuggested: payment.amount,
-          amountTotal: payment.amount,
-          targetCompany: payment.targetCompany,
-          targetBranch: payment.branch,
-          urgencyLabel: bucket.label,
-          recommendation: bucket == _PaymentCenterTab.obligatorio
-              ? 'Cubrir pago fijo vencido'
-              : bucket == _PaymentCenterTab.urgente
-              ? 'Reservar flujo para pago fijo'
-              : bucket == _PaymentCenterTab.recomendado
-              ? 'Programar pago fijo del mes'
-              : 'Pago fijo futuro',
-          decisionReasons: priority.reasons,
-          priorityScore: priority.score,
-          allowPartialPayment: false,
-          linkedFixedPaymentId: payment.id,
-        ),
-      );
-    }
-
-    for (final agreement in agreements) {
-      final provider =
-          providerById[agreement.providerId] ??
-          providerByAlias[normalizeFinanzasCompanyAliasKey(
-            agreement.providerNameSnapshot,
-          )];
-      if (provider == null) continue;
-      agreementProviderIds.add(provider.companyId);
-      final agreementInstallments =
-          installmentsByAgreementId[agreement.id] ?? const [];
-      for (final installment in agreementInstallments) {
-        if (installment.status == 'PAGADO') continue;
-        final dueDate = DateUtils.dateOnly(installment.dueDate);
-        final amount = (installment.amount - installment.paidAmount)
-            .clamp(0, double.infinity)
-            .toDouble();
-        if (amount <= 0.009) continue;
-        final bucket = dueDate.isBefore(today)
-            ? _PaymentCenterTab.obligatorio
-            : dueDate.isAtSameMomentAs(today) ||
-                  dueDate.isBefore(today.add(const Duration(days: 4)))
-            ? _PaymentCenterTab.urgente
-            : _PaymentCenterTab.recomendado;
-        final installmentLinks =
-            agreementInvoiceLinksByInstallmentId[installment.id] ??
-            const <FinanzasSupplierAgreementInvoiceRecord>[];
-        final sourceLabel = agreement.agreementType == 'POR_FACTURAS'
-            ? installmentLinks
-                      .map((link) => invoicesById[link.invoiceId]?.folio ?? '')
-                      .where((folio) => folio.isNotEmpty)
-                      .join(' · ')
-                      .trim()
-                      .isEmpty
-                  ? 'Compromiso ${installment.sequenceNumber}'
-                  : installmentLinks
-                        .map(
-                          (link) => invoicesById[link.invoiceId]?.folio ?? '',
-                        )
-                        .where((folio) => folio.isNotEmpty)
-                        .join(' · ')
-            : 'Pago ${installment.sequenceNumber}';
-        final priority = _buildPriorityMeta(
-          bucket: bucket,
-          itemType: 'Convenio',
-          dueDate: installment.dueDate,
-          agreementLabel: finSupplierAgreementStatusLabel(agreement.status),
-          amountSuggested: amount,
-          hasAgreement: true,
-          paymentStage: provider.paymentStage,
-          providerManualPriority: provider.manualPriority,
-          providerPriorityNote: provider.priorityNote,
-          invoiceManualPriority: 'NORMAL',
-          invoicePriorityNote: '',
-          today: today,
-        );
-        items.add(
-          _PaymentCenterItem(
-            providerId: provider.companyId,
-            providerName: provider.companyName,
-            bucket: priority.bucket,
-            itemType: 'Convenio',
-            sourceLabel: sourceLabel,
-            dueDate: installment.dueDate,
-            agreementLabel:
-                '${finSupplierAgreementTypeLabel(agreement.agreementType)} · ${finSupplierAgreementFrequencyLabel(agreement.frequency)} · ${finSupplierAgreementStatusLabel(agreement.status)}',
-            amountSuggested: amount,
-            amountTotal: agreement.remainingAmount,
-            targetCompany: agreement.targetCompany,
-            targetBranch: agreement.targetBranch,
-            urgencyLabel: bucket.label,
-            recommendation: dueDate.isBefore(today)
-                ? agreement.agreementType == 'POR_FACTURAS'
-                      ? 'Cumplir facturas comprometidas'
-                      : 'Cumplir convenio vencido'
-                : agreement.agreementType == 'POR_FACTURAS'
-                ? 'Respetar facturas comprometidas'
-                : 'Respetar pago comprometido',
-            decisionReasons: priority.reasons,
-            priorityScore: priority.score,
-            allowPartialPayment: agreement.agreementType == 'POR_MONTO',
-            linkedAgreementId: agreement.id,
+  Future<void> _confirmDeleteReserve(
+    FinanzasPaymentCenterReserveRecord row,
+  ) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final tokens = AreaThemeScope.of(dialogContext);
+        return Dialog(
+          backgroundColor: Colors.transparent,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 520),
+            child: ContractGlassCard(
+              borderRadius: BorderRadius.circular(30),
+              padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Eliminar reserva',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: tokens.primaryStrong,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Text(
+                    'Se eliminará `${row.name}` de Centro de pagos. Esta acción solo afecta reservas protegidas.',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: kFinanzasMutedInk,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.end,
+                    children: [
+                      TextButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(false),
+                        child: const Text('Cancelar'),
+                      ),
+                      const SizedBox(width: 10),
+                      FilledButton(
+                        onPressed: () => Navigator.of(dialogContext).pop(true),
+                        style: _paymentCenterFilledButtonStyle(
+                          dialogContext,
+                          tone: kFinanzasCoral,
+                        ),
+                        child: const Text('Eliminar'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
           ),
         );
-      }
-    }
-
-    for (final invoice in invoices.where((row) => row.status != 'PAGADA')) {
-      final provider =
-          providerById[invoice.providerId] ??
-          providerByAlias[normalizeFinanzasCompanyAliasKey(
-            invoice.providerNameSnapshot,
-          )];
-      if (provider == null) continue;
-      final dueDate = invoice.dueDate;
-      final dueOnly = dueDate == null ? null : DateUtils.dateOnly(dueDate);
-      final hasAgreement = agreementProviderIds.contains(provider.companyId);
-      final bucket = dueOnly != null && dueOnly.isBefore(today)
-          ? _PaymentCenterTab.urgente
-          : hasAgreement
-          ? _PaymentCenterTab.recomendado
-          : invoice.status == 'VENCIDA' || provider.paymentStage == 'ATRASADO'
-          ? _PaymentCenterTab.urgente
-          : provider.paymentStage == 'PAGO_SEMANAL'
-          ? _PaymentCenterTab.recomendado
-          : _PaymentCenterTab.postergable;
-      final priority = _buildPriorityMeta(
-        bucket: bucket,
-        itemType: 'Factura',
-        dueDate: dueDate,
-        agreementLabel: hasAgreement ? 'Con convenio' : 'Sin convenio',
-        amountSuggested: invoice.balanceAmount,
-        hasAgreement: hasAgreement,
-        paymentStage: provider.paymentStage,
-        providerManualPriority: provider.manualPriority,
-        providerPriorityNote: provider.priorityNote,
-        invoiceManualPriority: invoice.manualPriority,
-        invoicePriorityNote: invoice.priorityNote,
-        today: today,
-      );
-      items.add(
-        _PaymentCenterItem(
-          providerId: provider.companyId,
-          providerName: provider.companyName,
-          bucket: priority.bucket,
-          itemType: 'Factura',
-          sourceLabel: invoice.folio,
-          dueDate: dueDate,
-          agreementLabel: hasAgreement ? 'Con convenio' : 'Sin convenio',
-          amountSuggested: invoice.balanceAmount,
-          amountTotal: invoice.totalAmount,
-          targetCompany: invoice.targetCompany,
-          targetBranch: invoice.targetBranch,
-          urgencyLabel: bucket.label,
-          recommendation: hasAgreement
-              ? 'No adelantar sin revisar convenio'
-              : dueOnly != null && dueOnly.isBefore(today)
-              ? 'Atender factura vencida'
-              : provider.paymentStage == 'ATRASADO'
-              ? 'Proveedor con urgencia de pago'
-              : 'Pago negociable',
-          decisionReasons: priority.reasons,
-          priorityScore: priority.score,
-          allowPartialPayment: false,
-          linkedInvoiceId: invoice.id,
+      },
+    );
+    if (confirmed != true) return;
+    try {
+      await FinanzasPaymentCenterReservesStore.deleteReserve(row.id);
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isMissingPaymentCenterReservesFeatureError(error)
+                ? kFinPaymentCenterReservesUnavailableMessage
+                : 'No se pudo eliminar la reserva protegida.',
+          ),
         ),
       );
+      return;
     }
-
-    final ticketAmountsByProvider = computeOpenGeneralAmountsByProvider(
-      tickets: tickets,
-      applications: ticketApplications,
-    );
-
-    for (final provider in providerById.values) {
-      if (agreementProviderIds.contains(provider.companyId)) continue;
-      final comprasId = _resolveComprasProviderId(
-        provider,
-        comprasProviderIdByAlias,
-      );
-      final openAmount = ticketAmountsByProvider[comprasId] ?? 0;
-      if (openAmount <= 0.009) continue;
-      if (provider.paymentStage == 'AL_CORRIENTE') continue;
-      final target = _inferTarget(provider);
-      final bucket = provider.paymentStage == 'ATRASADO'
-          ? _PaymentCenterTab.urgente
-          : _PaymentCenterTab.recomendado;
-      final priority = _buildPriorityMeta(
-        bucket: bucket,
-        itemType: 'Saldo general',
-        dueDate: null,
-        agreementLabel: 'Sin convenio',
-        amountSuggested: openAmount,
-        hasAgreement: false,
-        paymentStage: provider.paymentStage,
-        providerManualPriority: provider.manualPriority,
-        providerPriorityNote: provider.priorityNote,
-        invoiceManualPriority: 'NORMAL',
-        invoicePriorityNote: '',
-        today: today,
-      );
-      items.add(
-        _PaymentCenterItem(
-          providerId: provider.companyId,
-          providerName: provider.companyName,
-          bucket: priority.bucket,
-          itemType: 'Saldo general',
-          sourceLabel: 'Cuenta abierta',
-          dueDate: null,
-          agreementLabel: 'Sin convenio',
-          amountSuggested: openAmount,
-          amountTotal: openAmount,
-          targetCompany: target.$1,
-          targetBranch: target.$2,
-          urgencyLabel: bucket.label,
-          recommendation: provider.paymentStage == 'ATRASADO'
-              ? 'Proveedor urgente sin convenio'
-              : 'Preparar siguiente abono',
-          decisionReasons: priority.reasons,
-          priorityScore: priority.score,
-          allowPartialPayment: true,
-        ),
-      );
-    }
-
-    final bucketOrder = <_PaymentCenterTab, int>{
-      _PaymentCenterTab.obligatorio: 0,
-      _PaymentCenterTab.urgente: 1,
-      _PaymentCenterTab.recomendado: 2,
-      _PaymentCenterTab.postergable: 3,
-    };
-    items.sort((a, b) {
-      final bucketCompare = (bucketOrder[a.bucket] ?? 99).compareTo(
-        bucketOrder[b.bucket] ?? 99,
-      );
-      if (bucketCompare != 0) return bucketCompare;
-      final aDue = a.dueDate ?? DateTime(2100);
-      final bDue = b.dueDate ?? DateTime(2100);
-      final dueCompare = aDue.compareTo(bDue);
-      if (dueCompare != 0) return dueCompare;
-      final scoreCompare = b.priorityScore.compareTo(a.priorityScore);
-      if (scoreCompare != 0) return scoreCompare;
-      return b.amountSuggested.compareTo(a.amountSuggested);
-    });
-    final decisions = optimizePaymentExecution(
-      items: items
-          .map(
-            (item) => PaymentOptimizationSnapshot(
-              id: '${item.providerId}|${item.itemType}|${item.sourceLabel}|${item.linkedInvoiceId ?? item.linkedAgreementId ?? item.linkedFixedPaymentId ?? ''}',
-              accountKey: buildFinBankAccountKey(
-                company: item.targetCompany,
-                branch: item.targetBranch,
-              ),
-              bucketKey: switch (item.bucket) {
-                _PaymentCenterTab.obligatorio => 'OBLIGATORIO',
-                _PaymentCenterTab.urgente => 'URGENTE',
-                _PaymentCenterTab.recomendado => 'RECOMENDADO',
-                _PaymentCenterTab.postergable => 'POSTERGABLE',
-              },
-              itemType: item.itemType,
-              amountSuggested: item.amountSuggested,
-              allowPartialPayment: item.allowPartialPayment,
-              priorityScore: item.priorityScore,
-              dueDate: item.dueDate,
-            ),
-          )
-          .toList(growable: false),
-      balances: balances,
-    );
-    for (final item in items) {
-      final key =
-          '${item.providerId}|${item.itemType}|${item.sourceLabel}|${item.linkedInvoiceId ?? item.linkedAgreementId ?? item.linkedFixedPaymentId ?? ''}';
-      final decision = decisions[key];
-      if (decision == null) continue;
-      item.availableBalance = decision.availableBalance;
-      item.canPayNow = decision.canPayNow;
-      item.executionDecision = switch (decision.decisionKey) {
-        'PAGAR_COMPLETO' => _PaymentExecutionDecision.pagarCompleto,
-        'ABONAR' => _PaymentExecutionDecision.abonar,
-        _ => _PaymentExecutionDecision.esperar,
-      };
-      item.executionAmount = decision.executionAmount;
-      item.executionSummary = decision.summary;
-    }
-    return items;
-  }
-
-  (String, String) _inferTarget(FinanzasCompanyDirectoryRecord provider) {
-    final raw =
-        '${provider.companyName} ${provider.linkedName} ${provider.location} ${provider.paymentNotes}'
-            .toUpperCase();
-    final company = raw.contains('VH') ? 'VH' : 'DICSA';
-    final branch = raw.contains('MAZATLAN') ? 'MAZATLAN' : 'CELAYA';
-    return (company, branch);
-  }
-
-  String _resolveComprasProviderId(
-    FinanzasCompanyDirectoryRecord company,
-    Map<String, String> comprasProviderIdByAlias,
-  ) {
-    if (company.source.trim().toUpperCase() == 'COMPRAS' &&
-        company.companyId.startsWith('compras_')) {
-      return company.companyId.substring('compras_'.length);
-    }
-    final aliasKey = normalizeFinanzasCompanyAliasKey(
-      company.linkedName.trim().isNotEmpty
-          ? company.linkedName
-          : company.companyName,
-    );
-    final aliasMatch = comprasProviderIdByAlias[aliasKey];
-    if (aliasMatch != null && aliasMatch.trim().isNotEmpty) {
-      return aliasMatch;
-    }
-    return company.companyId;
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('Reserva eliminada: ${row.name}')));
+    await _loadPage();
   }
 
   Future<void> _logout() async {
@@ -993,7 +728,9 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
     );
   }
 
-  Future<void> _openFixedPaymentsForRow(_PaymentCenterItem row) async {
+  Future<void> _openFixedPaymentsForRow(
+    FinanzasPaymentCenterOperationalItem row,
+  ) async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       appPageRoute(
@@ -1005,7 +742,9 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
     );
   }
 
-  Future<void> _openBankExecutionForRow(_PaymentCenterItem row) async {
+  Future<void> _openBankExecutionForRow(
+    FinanzasPaymentCenterOperationalItem row,
+  ) async {
     if (!mounted) return;
     final preset = _buildBankLaunchPreset(row);
     await Navigator.of(context).pushReplacement(
@@ -1016,7 +755,7 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
   }
 
   FinanzasBankMovementLaunchPreset? _buildBankLaunchPreset(
-    _PaymentCenterItem row,
+    FinanzasPaymentCenterOperationalItem row,
   ) {
     if (row.itemType == 'Pago fijo' && row.linkedFixedPaymentId != null) {
       return FinanzasBankMovementLaunchPreset(
@@ -1126,39 +865,52 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
 
   @override
   Widget build(BuildContext context) {
-    final totalAvailable = _accountBalances.values.fold<double>(
+    final protectedAccountTotal = _accountBalances.values.fold<double>(
       0,
       (sum, value) => sum + value,
     );
+    final realTotalAvailable = _reserveSummary.realTotalBalance;
+    final protectedAvailable = _reserveSummary.availableAfterBlocking;
     final displayItems = _items;
     final totalSuggested = displayItems.fold<double>(
       0,
       (sum, row) => sum + row.amountSuggested,
     );
-    final visualItemsByBucket = <_PaymentCenterTab, List<_PaymentCenterItem>>{
-      for (final bucket in _PaymentCenterTab.values)
-        bucket: displayItems
-            .where((row) => row.bucket == bucket)
-            .toList(growable: false),
-    };
+    final visualItemsByBucket =
+        <
+          FinanzasPaymentCenterPriorityBucket,
+          List<FinanzasPaymentCenterOperationalItem>
+        >{
+          for (final bucket in FinanzasPaymentCenterPriorityBucket.values)
+            bucket: displayItems
+                .where((row) => row.bucket == bucket)
+                .toList(growable: false),
+        };
     final payableNowAmount = displayItems.fold<double>(
       0,
       (sum, row) => sum + (row.executionAmount > 0 ? row.executionAmount : 0),
     );
     final criticalCount = displayItems
-        .where((row) => row.bucket == _PaymentCenterTab.obligatorio)
+        .where(
+          (row) =>
+              row.bucket == FinanzasPaymentCenterPriorityBucket.obligatorio,
+        )
         .length;
     final urgentCount = displayItems
-        .where((row) => row.bucket == _PaymentCenterTab.urgente)
+        .where(
+          (row) => row.bucket == FinanzasPaymentCenterPriorityBucket.urgente,
+        )
         .length;
     final actionableCount = displayItems
         .where(
-          (row) => row.executionDecision != _PaymentExecutionDecision.esperar,
+          (row) =>
+              row.executionDecision !=
+              FinanzasPaymentCenterExecutionDecision.esperar,
         )
         .length;
     final coverageRatio = totalSuggested <= 0.009
         ? 1.0
-        : (totalAvailable / totalSuggested).clamp(0.0, 1.0);
+        : (protectedAvailable / totalSuggested).clamp(0.0, 1.0);
     final learningPending = _learningLogs
         .where((row) => row.status == 'PENDIENTE')
         .length;
@@ -1176,329 +928,655 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
     final learningMatchRatio = learningRegistered == 0
         ? 0.0
         : learningMatched / learningRegistered;
+    final reserveActiveCount = _reserveSummary.activeCount;
+    final reserveBlockingCount = _reserveSummary.blockingReserveCount;
+    final reserveAccountPressureCount = _reserveSummary.accountPressureCount;
+    final reserveGlobalCount = _reserveSummary.globalReserveCount;
+    final budgetToday = _budgetToday;
+    final budgetAccounts =
+        budgetToday?.accounts ??
+        const <FinanzasPaymentCenterBudgetAccountSummary>[];
+    final budgetMovements = budgetAccounts
+        .expand((account) => account.providers)
+        .toList(growable: false);
+    final budgetMinimumToday = budgetToday?.minimumTodayAmount ?? 0;
+    final budgetRecommendedAdditional =
+        budgetToday?.recommendedAdditionalAmount ?? 0;
+    final budgetRecommendedToday = budgetToday?.recommendedTodayAmount ?? 0;
+    final budgetAvailableAmount = budgetToday?.availableBudgetAmount ?? 0;
+    final budgetPlannedToday = budgetToday?.plannedTodayAmount ?? 0;
+    final budgetFreeMarginAfterPlanned =
+        budgetToday?.freeMarginAfterPlanned ?? 0;
+    final budgetUncoveredMinimumToday =
+        budgetToday?.uncoveredMinimumTodayAmount ?? 0;
+    final budgetRiskReviewAmount = budgetToday?.riskReviewAmount ?? 0;
+    final budgetRecommendedMovementCount = budgetMovements
+        .where((provider) => provider.recommendedAdditionalAmount > 0.009)
+        .length;
+    final budgetPlannedMovementCount = budgetMovements
+        .where((provider) => provider.plannedTodayAmount > 0.009)
+        .length;
+    final budgetMinimumShortfallMovementCount = budgetMovements
+        .where((provider) => provider.uncoveredMinimumTodayAmount > 0.009)
+        .length;
+    final budgetAccountsWithPressure = budgetAccounts
+        .where(
+          (account) =>
+              account.minimumTodayAmount > 0.009 ||
+              account.recommendedAdditionalAmount > 0.009 ||
+              account.riskReviewAmount > 0.009,
+        )
+        .length;
+
+    List<Widget> buildMetricCards(double cardWidth) {
+      switch (_activeMode) {
+        case _PaymentCenterMode.presupuesto:
+          final plannedTone = budgetPlannedToday > 0.009
+              ? kFinanzasSage
+              : kFinanzasAmber;
+          final shortfallTone = budgetUncoveredMinimumToday > 0.009
+              ? kFinanzasCoral
+              : kFinanzasSage;
+          final recommendedTone = budgetRecommendedAdditional > 0.009
+              ? kFinanzasAmber
+              : kFinanzasSage;
+          final freeMarginTone = budgetFreeMarginAfterPlanned >= 0
+              ? kFinanzasSage
+              : kFinanzasCoral;
+          return <Widget>[
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Saldo real en bancos',
+                value: _money(
+                  budgetToday?.realTotalBalance ?? realTotalAvailable,
+                ),
+                subtitle: 'Caja viva al miércoles 12/08/2026',
+                icon: Icons.account_balance_wallet_rounded,
+                tone: finanzasAreaTokens.primaryStrong,
+                progress: 0.84,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Reservas protegidas',
+                value: _money(budgetToday?.protectedReserveTotal ?? 0),
+                subtitle:
+                    '$reserveBlockingCount bloqueantes · ${_money(_reserveSummary.globalBlockingTotal)} globales',
+                icon: Icons.shield_moon_outlined,
+                tone: kFinanzasCoral,
+                progress: _reserveSummary.blockingReserveTotal <= 0.009
+                    ? 0.12
+                    : 0.82,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Disponible presupuestable',
+                value: _money(budgetAvailableAmount),
+                subtitle: '$budgetAccountsWithPressure cuentas con presión hoy',
+                icon: Icons.radar_rounded,
+                tone: kFinanzasSage,
+                progress: realTotalAvailable <= 0.009
+                    ? 0
+                    : (budgetAvailableAmount / realTotalAvailable).clamp(
+                        0.0,
+                        1.0,
+                      ),
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Qué pagar hoy',
+                value: _money(budgetPlannedToday),
+                subtitle:
+                    '$budgetPlannedMovementCount movimientos sí caben hoy con la caja protegida',
+                icon: Icons.priority_high_rounded,
+                tone: plannedTone,
+                progress: budgetAvailableAmount <= 0.009
+                    ? 0
+                    : (budgetPlannedToday / budgetAvailableAmount).clamp(
+                        0.0,
+                        1.0,
+                      ),
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Brecha mínima hoy',
+                value: _money(budgetUncoveredMinimumToday),
+                subtitle:
+                    '$budgetMinimumShortfallMovementCount movimientos mínimos siguen sin fondeo hoy',
+                icon: Icons.warning_amber_rounded,
+                tone: shortfallTone,
+                progress: budgetMinimumToday <= 0.009
+                    ? 0
+                    : (budgetUncoveredMinimumToday / budgetMinimumToday).clamp(
+                        0.0,
+                        1.0,
+                      ),
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Presión adicional sugerida',
+                value: _money(budgetRecommendedAdditional),
+                subtitle:
+                    '$budgetRecommendedMovementCount movimientos extra · mínimo visible ${_money(budgetMinimumToday)}',
+                icon: Icons.fact_check_outlined,
+                tone: recommendedTone,
+                progress: budgetAvailableAmount <= 0.009
+                    ? 0
+                    : (budgetRecommendedAdditional / budgetAvailableAmount)
+                          .clamp(0.0, 1.0),
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Margen tras plan de hoy',
+                value: _money(budgetFreeMarginAfterPlanned),
+                subtitle:
+                    'Presión total visible ${_money(budgetRecommendedToday)} · riesgo ${_money(budgetRiskReviewAmount)}',
+                icon: Icons.show_chart_rounded,
+                tone: freeMarginTone,
+                progress: budgetAvailableAmount <= 0.009
+                    ? 0
+                    : (budgetFreeMarginAfterPlanned / budgetAvailableAmount)
+                          .clamp(0.0, 1.0),
+              ),
+            ),
+          ];
+        case _PaymentCenterMode.pendientes:
+          return <Widget>[
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Saldo real',
+                value: _money(realTotalAvailable),
+                subtitle: 'Caja viva antes de proteger reservas',
+                icon: Icons.account_balance_wallet_rounded,
+                tone: finanzasAreaTokens.primaryStrong,
+                progress: 0.84,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Reservas protegidas',
+                value: _money(_reserveSummary.blockingReserveTotal),
+                subtitle:
+                    '$reserveBlockingCount bloqueantes · ${_money(_reserveSummary.globalBlockingTotal)} globales',
+                icon: Icons.shield_moon_outlined,
+                tone: kFinanzasCoral,
+                progress: _reserveSummary.blockingReserveTotal <= 0.009
+                    ? 0.12
+                    : 0.82,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Disponible protegido',
+                value: _money(protectedAvailable),
+                subtitle:
+                    '${_money(_reserveSummary.accountScopedBlockingTotal)} por cuenta · ${_money(_reserveSummary.globalBlockingTotal)} globales',
+                icon: Icons.radar_rounded,
+                tone: kFinanzasSage,
+                progress: realTotalAvailable <= 0.009
+                    ? 0
+                    : (protectedAvailable / realTotalAvailable).clamp(0.0, 1.0),
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Pendientes',
+                value: '${displayItems.length}',
+                subtitle: '$criticalCount críticos · $urgentCount urgentes',
+                icon: Icons.layers_rounded,
+                tone: kFinanzasAmber,
+                progress: 0.58,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Cobertura inmediata',
+                value: '${(coverageRatio * 100).toStringAsFixed(0)}%',
+                subtitle:
+                    'Pago ejecutable hoy: ${_money(payableNowAmount)} · $actionableCount movimientos',
+                icon: Icons.rule_folder_outlined,
+                tone: coverageRatio >= 0.85
+                    ? kFinanzasSage
+                    : coverageRatio >= 0.55
+                    ? kFinanzasAmber
+                    : kFinanzasCoral,
+                progress: coverageRatio >= 0.85
+                    ? 1
+                    : coverageRatio >= 0.55
+                    ? 0.58
+                    : 0.32,
+              ),
+            ),
+          ];
+        case _PaymentCenterMode.reservas:
+          return <Widget>[
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Saldo real',
+                value: _money(realTotalAvailable),
+                subtitle: 'Caja viva antes de proteger reservas',
+                icon: Icons.account_balance_wallet_rounded,
+                tone: finanzasAreaTokens.primaryStrong,
+                progress: 0.84,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Reservas visibles',
+                value: _money(_reserveSummary.visibleReserveTotal),
+                subtitle:
+                    '$reserveActiveCount activas · ${_money(_reserveSummary.provisionalVisibleTotal)} provisionales',
+                icon: Icons.visibility_rounded,
+                tone: kFinanzasCopper,
+                progress: reserveActiveCount == 0 ? 0.18 : 0.78,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Reservas que bloquean',
+                value: _money(_reserveSummary.blockingReserveTotal),
+                subtitle:
+                    '${_money(_reserveSummary.accountScopedBlockingTotal)} por cuenta · ${_money(_reserveSummary.globalBlockingTotal)} globales',
+                icon: Icons.lock_outline_rounded,
+                tone: kFinanzasCoral,
+                progress: _reserveSummary.blockingReserveTotal <= 0.009
+                    ? 0.12
+                    : 0.88,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Disponible protegido',
+                value: _money(protectedAvailable),
+                subtitle: 'Saldo por cuenta: ${_money(protectedAccountTotal)}',
+                icon: Icons.shield_outlined,
+                tone: kFinanzasSage,
+                progress: realTotalAvailable <= 0.009
+                    ? 0
+                    : (protectedAvailable / realTotalAvailable).clamp(0.0, 1.0),
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Cuentas impactadas',
+                value: '$reserveAccountPressureCount',
+                subtitle:
+                    '$reserveGlobalCount globales · $reserveBlockingCount bloqueantes',
+                icon: Icons.account_tree_outlined,
+                tone: kFinanzasAmber,
+                progress: reserveAccountPressureCount == 0 ? 0.18 : 0.68,
+              ),
+            ),
+          ];
+        case _PaymentCenterMode.aprendizaje:
+          return <Widget>[
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Cortes capturados',
+                value: '${_learningLogs.length}',
+                subtitle: 'Historial total guardado por Centro de pagos',
+                icon: Icons.camera_alt_outlined,
+                tone: finanzasAreaTokens.primaryStrong,
+                progress: _learningLogs.isEmpty ? 0.12 : 0.86,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Pendientes por registrar',
+                value: '$learningPending',
+                subtitle: 'Cortes esperando decisión humana',
+                icon: Icons.pending_actions_rounded,
+                tone: kFinanzasOrangeElectric,
+                progress: learningPending == 0 ? 0.18 : 0.58,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Decisiones registradas',
+                value: '$learningRegistered',
+                subtitle: 'Historial ya validado contra la operación',
+                icon: Icons.fact_check_outlined,
+                tone: kFinanzasOrange,
+                progress: learningRegistered == 0 ? 0.12 : 0.88,
+              ),
+            ),
+            SizedBox(
+              width: cardWidth,
+              child: _CenterMetricCard(
+                label: 'Coincidencia del motor',
+                value: '${(learningMatchRatio * 100).toStringAsFixed(0)}%',
+                subtitle: 'Qué tanto coincide el sistema con la decisión real',
+                icon: Icons.hub_outlined,
+                tone: learningMatchRatio >= 0.7
+                    ? kFinanzasSage
+                    : learningMatchRatio >= 0.45
+                    ? kFinanzasAmber
+                    : kFinanzasCoral,
+                progress: learningMatchRatio.clamp(0.0, 1.0),
+              ),
+            ),
+          ];
+      }
+    }
+
     return AreaThemeScope(
       tokens: finanzasAreaTokens,
-      child: Material(
-        color: Colors.transparent,
-        child: AppShell(
-          background: const _FinPaymentCenterBackground(),
-          animateBody: !widget.instantOpen,
-          wrapBodyInGlass: false,
-          headerBodySpacing: 8,
-          padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
-          leadingBuilder: (_, _) => _FinCenterHeaderButton(
-            label: _menuOpen ? 'Cerrar panel' : 'Navegación',
-            icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
-            onTapSync: () => setState(() => _menuOpen = !_menuOpen),
-          ),
-          centerBuilder: (_, _) => const _FinPaymentCenterHeaderBrand(),
-          trailingBuilder: (_, _) => _FinCenterHeaderButton(
-            label: 'Cerrar sesión',
-            icon: Icons.logout_rounded,
-            onTap: _logout,
-          ),
-          child: Stack(
-            children: [
-              Align(
-                alignment: Alignment.topCenter,
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 1520),
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(56, 0, 6, 0),
-                    child: _loading
-                        ? const Center(child: CircularProgressIndicator())
-                        : Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              LayoutBuilder(
-                                builder: (context, constraints) {
-                                  const spacing = 10.0;
-                                  final cardWidth =
-                                      ((constraints.maxWidth - (spacing * 3)) /
-                                              4)
-                                          .clamp(250.0, 380.0);
-                                  return SingleChildScrollView(
-                                    scrollDirection: Axis.horizontal,
-                                    child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.center,
-                                      children: [
-                                        SizedBox(
-                                          width: cardWidth,
-                                          child: _CenterMetricCard(
-                                            label: 'Disponible total',
-                                            value: _money(totalAvailable),
-                                            subtitle:
-                                                'Suma viva por cuentas bancarias',
-                                            icon: Icons
-                                                .account_balance_wallet_rounded,
-                                            tone: finanzasAreaTokens
-                                                .primaryStrong,
-                                            progress: 0.84,
+      child: Builder(
+        builder: (context) => Theme(
+          data: _paymentCenterContractTheme(context),
+          child: Material(
+            color: Colors.transparent,
+            child: AppShell(
+              background: const _FinPaymentCenterBackground(),
+              animateBody: !widget.instantOpen,
+              wrapBodyInGlass: false,
+              headerBodySpacing: 8,
+              padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
+              leadingBuilder: (_, _) => _FinCenterHeaderButton(
+                label: _menuOpen ? 'Cerrar panel' : 'Navegación',
+                icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
+                onTapSync: () => setState(() => _menuOpen = !_menuOpen),
+              ),
+              centerBuilder: (_, _) => const _FinPaymentCenterHeaderBrand(),
+              trailingBuilder: (_, _) => _FinCenterHeaderButton(
+                label: 'Cerrar sesión',
+                icon: Icons.logout_rounded,
+                onTap: _logout,
+              ),
+              child: Stack(
+                children: [
+                  Align(
+                    alignment: Alignment.topCenter,
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1520),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(56, 0, 6, 0),
+                        child: _loading
+                            ? const Center(child: CircularProgressIndicator())
+                            : Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  LayoutBuilder(
+                                    builder: (context, constraints) {
+                                      const spacing = 10.0;
+                                      final cardWidth =
+                                          ((constraints.maxWidth -
+                                                      (spacing * 3)) /
+                                                  4)
+                                              .clamp(250.0, 380.0);
+                                      final metricCards = buildMetricCards(
+                                        cardWidth,
+                                      );
+                                      return SingleChildScrollView(
+                                        scrollDirection: Axis.horizontal,
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.center,
+                                          children: [
+                                            for (
+                                              var i = 0;
+                                              i < metricCards.length;
+                                              i++
+                                            ) ...[
+                                              metricCards[i],
+                                              if (i != metricCards.length - 1)
+                                                const SizedBox(width: spacing),
+                                            ],
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                                  const SizedBox(height: 16),
+                                  Wrap(
+                                    spacing: 10,
+                                    runSpacing: 10,
+                                    children: [
+                                      for (final mode
+                                          in _PaymentCenterMode.values)
+                                        ChoiceChip(
+                                          label: Text(mode.label),
+                                          selected: _activeMode == mode,
+                                          onSelected: (_) => setState(
+                                            () => _activeMode = mode,
                                           ),
                                         ),
-                                        const SizedBox(width: spacing),
-                                        SizedBox(
-                                          width: cardWidth,
-                                          child: _CenterMetricCard(
-                                            label: 'Pendientes',
-                                            value: '${displayItems.length}',
-                                            subtitle:
-                                                '$criticalCount críticos · $urgentCount urgentes',
-                                            icon: Icons.layers_rounded,
-                                            tone: kFinanzasAmber,
-                                            progress: 0.58,
-                                          ),
-                                        ),
-                                        const SizedBox(width: spacing),
-                                        SizedBox(
-                                          width: cardWidth,
-                                          child: _CenterMetricCard(
-                                            label: 'Monto sugerido',
-                                            value: _money(totalSuggested),
-                                            subtitle:
-                                                '$actionableCount salidas listas para revisión',
-                                            icon: Icons.rule_folder_outlined,
-                                            tone: kFinanzasCopper,
-                                            progress: 0.72,
-                                          ),
-                                        ),
-                                        const SizedBox(width: spacing),
-                                        SizedBox(
-                                          width: cardWidth,
-                                          child: _CenterMetricCard(
-                                            label: 'Cobertura inmediata',
-                                            value:
-                                                '${(coverageRatio * 100).toStringAsFixed(0)}%',
-                                            subtitle:
-                                                'Pago ejecutable hoy: ${_money(payableNowAmount)}',
-                                            icon: Icons.radar_rounded,
-                                            tone: coverageRatio >= 0.85
-                                                ? kFinanzasSage
-                                                : coverageRatio >= 0.55
-                                                ? kFinanzasAmber
-                                                : kFinanzasCoral,
-                                            progress: coverageRatio >= 0.85
-                                                ? 1
-                                                : coverageRatio >= 0.55
-                                                ? 0.58
-                                                : 0.32,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  );
-                                },
-                              ),
-                              const SizedBox(height: 18),
-                              Expanded(
-                                child:
-                                    _activeMode == _PaymentCenterMode.operacion
-                                    ? (displayItems.isEmpty
-                                          ? const _CenterEmptyPane(
-                                              label:
-                                                  'Sin pendientes por priorizar',
-                                              subtitle:
-                                                  'Cuando entren compromisos, urgencias o facturas priorizadas, aparecerán aquí.',
-                                            )
-                                          : LayoutBuilder(
-                                              builder: (context, constraints) {
-                                                const spacing = 12.0;
-                                                final columnWidth =
-                                                    ((constraints.maxWidth -
-                                                                (spacing * 3)) /
-                                                            4)
-                                                        .clamp(280.0, 380.0);
-                                                final totalWidth =
-                                                    (columnWidth * 4) +
-                                                    (spacing * 3);
-                                                return SingleChildScrollView(
-                                                  child: SingleChildScrollView(
-                                                    scrollDirection:
-                                                        Axis.horizontal,
-                                                    child: SizedBox(
-                                                      width:
-                                                          totalWidth <
-                                                              constraints
+                                    ],
+                                  ),
+                                  const SizedBox(height: 18),
+                                  Expanded(
+                                    child: switch (_activeMode) {
+                                      _PaymentCenterMode.presupuesto =>
+                                        budgetToday == null ||
+                                                _budgetWeek == null
+                                            ? const _CenterEmptyPane(
+                                                label:
+                                                    'Sin presupuesto disponible',
+                                                subtitle:
+                                                    'Recarga Centro de pagos para reconstruir el corte presupuestal del día.',
+                                              )
+                                            : _PaymentCenterBudgetTodayView(
+                                                summary: budgetToday,
+                                                weekSummary: _budgetWeek!,
+                                                reserveSummary: _reserveSummary,
+                                                moneyFormatter: _money,
+                                                dateFormatter: _dateLabel,
+                                                onShowPendingMode: () =>
+                                                    setState(
+                                                      () => _activeMode =
+                                                          _PaymentCenterMode
+                                                              .pendientes,
+                                                    ),
+                                                onOpenProviderAccounts: () =>
+                                                    _openProviderAccounts(),
+                                              ),
+                                      _PaymentCenterMode.pendientes =>
+                                        displayItems.isEmpty
+                                            ? const _CenterEmptyPane(
+                                                label:
+                                                    'Sin pendientes por priorizar',
+                                                subtitle:
+                                                    'Cuando entren compromisos, urgencias o facturas priorizadas, aparecerán aquí.',
+                                              )
+                                            : LayoutBuilder(
+                                                builder: (context, constraints) {
+                                                  const spacing = 12.0;
+                                                  final columnWidth =
+                                                      ((constraints.maxWidth -
+                                                                  (spacing *
+                                                                      3)) /
+                                                              4)
+                                                          .clamp(280.0, 380.0);
+                                                  final totalWidth =
+                                                      (columnWidth * 4) +
+                                                      (spacing * 3);
+                                                  return SingleChildScrollView(
+                                                    child: SingleChildScrollView(
+                                                      scrollDirection:
+                                                          Axis.horizontal,
+                                                      child: SizedBox(
+                                                        width:
+                                                            totalWidth <
+                                                                constraints
+                                                                    .maxWidth
+                                                            ? constraints
                                                                   .maxWidth
-                                                          ? constraints.maxWidth
-                                                          : totalWidth,
-                                                      child: Row(
-                                                        crossAxisAlignment:
-                                                            CrossAxisAlignment
-                                                                .start,
-                                                        children: [
-                                                          for (
-                                                            var i = 0;
-                                                            i <
-                                                                _PaymentCenterTab
-                                                                    .values
-                                                                    .length;
-                                                            i++
-                                                          ) ...[
-                                                            SizedBox(
-                                                              width:
-                                                                  columnWidth,
-                                                              height: constraints
-                                                                  .maxHeight,
-                                                              child: _PaymentCenterPriorityColumn(
-                                                                bucket:
-                                                                    _PaymentCenterTab
-                                                                        .values[i],
-                                                                rows:
-                                                                    visualItemsByBucket[_PaymentCenterTab
-                                                                        .values[i]] ??
-                                                                    const <
-                                                                      _PaymentCenterItem
-                                                                    >[],
-                                                                moneyFormatter:
-                                                                    _money,
-                                                                dateFormatter:
-                                                                    _dateLabel,
-                                                                onOpenProviderAccounts:
-                                                                    () =>
-                                                                        _openProviderAccounts(),
-                                                                onOpenBankAccounts:
-                                                                    (row) =>
-                                                                        _openBankExecutionForRow(
-                                                                          row,
-                                                                        ),
-                                                                onOpenFixedPayments:
-                                                                    (row) =>
-                                                                        _openFixedPaymentsForRow(
-                                                                          row,
-                                                                        ),
+                                                            : totalWidth,
+                                                        child: Row(
+                                                          crossAxisAlignment:
+                                                              CrossAxisAlignment
+                                                                  .start,
+                                                          children: [
+                                                            for (
+                                                              var i = 0;
+                                                              i <
+                                                                  FinanzasPaymentCenterPriorityBucket
+                                                                      .values
+                                                                      .length;
+                                                              i++
+                                                            ) ...[
+                                                              SizedBox(
+                                                                width:
+                                                                    columnWidth,
+                                                                height: constraints
+                                                                    .maxHeight,
+                                                                child: _PaymentCenterPriorityColumn(
+                                                                  bucket: FinanzasPaymentCenterPriorityBucket
+                                                                      .values[i],
+                                                                  rows:
+                                                                      visualItemsByBucket[FinanzasPaymentCenterPriorityBucket
+                                                                          .values[i]] ??
+                                                                      const <
+                                                                        FinanzasPaymentCenterOperationalItem
+                                                                      >[],
+                                                                  moneyFormatter:
+                                                                      _money,
+                                                                  dateFormatter:
+                                                                      _dateLabel,
+                                                                  onOpenProviderAccounts:
+                                                                      () =>
+                                                                          _openProviderAccounts(),
+                                                                  onOpenBankAccounts:
+                                                                      (row) =>
+                                                                          _openBankExecutionForRow(
+                                                                            row,
+                                                                          ),
+                                                                  onOpenFixedPayments:
+                                                                      (row) =>
+                                                                          _openFixedPaymentsForRow(
+                                                                            row,
+                                                                          ),
+                                                                ),
                                                               ),
-                                                            ),
-                                                            if (i !=
-                                                                _PaymentCenterTab
-                                                                        .values
-                                                                        .length -
-                                                                    1)
-                                                              const SizedBox(
-                                                                width: spacing,
-                                                              ),
+                                                              if (i !=
+                                                                  FinanzasPaymentCenterPriorityBucket
+                                                                          .values
+                                                                          .length -
+                                                                      1)
+                                                                const SizedBox(
+                                                                  width:
+                                                                      spacing,
+                                                                ),
+                                                            ],
                                                           ],
-                                                        ],
+                                                        ),
                                                       ),
                                                     ),
-                                                  ),
-                                                );
-                                              },
-                                            ))
-                                    : _PaymentCenterLearningView(
-                                        logs: _learningLogs,
-                                        pendingCount: learningPending,
-                                        registeredCount: learningRegistered,
-                                        matchRatio: learningMatchRatio,
-                                        moneyFormatter: _money,
-                                        dateFormatter: _dateLabel,
-                                        onCaptureSnapshot:
-                                            _captureLearningSnapshot,
-                                        onRegisterDecision:
-                                            _registerLearningDecision,
-                                      ),
+                                                  );
+                                                },
+                                              ),
+                                      _PaymentCenterMode.reservas =>
+                                        _PaymentCenterReservesView(
+                                          reserves: _reserves,
+                                          reserveSummary: _reserveSummary,
+                                          realAccountBalances:
+                                              _realAccountBalances,
+                                          protectedAccountBalances:
+                                              _accountBalances,
+                                          moneyFormatter: _money,
+                                          dateFormatter: _dateLabel,
+                                          onCreateReserve: () =>
+                                              _openReserveDialog(),
+                                          onEditReserve: (row) =>
+                                              _openReserveDialog(
+                                                initialRow: row,
+                                              ),
+                                          onDeleteReserve:
+                                              _confirmDeleteReserve,
+                                        ),
+                                      _PaymentCenterMode.aprendizaje =>
+                                        _PaymentCenterLearningView(
+                                          logs: _learningLogs,
+                                          pendingCount: learningPending,
+                                          registeredCount: learningRegistered,
+                                          matchRatio: learningMatchRatio,
+                                          moneyFormatter: _money,
+                                          dateFormatter: _dateLabel,
+                                          onCaptureSnapshot:
+                                              _captureLearningSnapshot,
+                                          onRegisterDecision:
+                                              _registerLearningDecision,
+                                        ),
+                                    },
+                                  ),
+                                ],
                               ),
-                            ],
-                          ),
-                  ),
-                ),
-              ),
-              Positioned.fill(
-                child: IgnorePointer(
-                  ignoring: !_menuOpen,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 180),
-                    opacity: _menuOpen ? 1 : 0,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => setState(() => _menuOpen = false),
-                      child: Container(
-                        color: const Color(0xFF8B4A1A).withValues(alpha: 0.08),
                       ),
                     ),
                   ),
-                ),
-              ),
-              Positioned(
-                left: 0,
-                top: 2,
-                bottom: 0,
-                child: AnimatedSlide(
-                  duration: const Duration(milliseconds: 220),
-                  curve: Curves.easeOutCubic,
-                  offset: _menuOpen ? Offset.zero : const Offset(-1.08, 0),
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 160),
-                    opacity: _menuOpen ? 1 : 0,
+                  Positioned.fill(
                     child: IgnorePointer(
                       ignoring: !_menuOpen,
-                      child: _FinPaymentCenterSidePanel(
-                        canReturnToDirection: _canReturnToDirection,
-                        canAccessComprasArea: _canAccessComprasArea,
-                        onNavigate: _handleNavigationAction,
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 180),
+                        opacity: _menuOpen ? 1 : 0,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () => setState(() => _menuOpen = false),
+                          child: Container(
+                            color: const Color(
+                              0xFF8B4A1A,
+                            ).withValues(alpha: 0.08),
+                          ),
+                        ),
                       ),
                     ),
                   ),
-                ),
+                  Positioned(
+                    left: 0,
+                    top: 2,
+                    bottom: 0,
+                    child: AnimatedSlide(
+                      duration: const Duration(milliseconds: 220),
+                      curve: Curves.easeOutCubic,
+                      offset: _menuOpen ? Offset.zero : const Offset(-1.08, 0),
+                      child: AnimatedOpacity(
+                        duration: const Duration(milliseconds: 160),
+                        opacity: _menuOpen ? 1 : 0,
+                        child: IgnorePointer(
+                          ignoring: !_menuOpen,
+                          child: _FinPaymentCenterSidePanel(
+                            canReturnToDirection: _canReturnToDirection,
+                            canAccessComprasArea: _canAccessComprasArea,
+                            onNavigate: _handleNavigationAction,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ],
+            ),
           ),
         ),
       ),
     );
   }
-}
-
-class _PaymentCenterItem {
-  final String providerId;
-  final String providerName;
-  final _PaymentCenterTab bucket;
-  final String itemType;
-  final String sourceLabel;
-  final DateTime? dueDate;
-  final String agreementLabel;
-  final double amountSuggested;
-  final double amountTotal;
-  final String targetCompany;
-  final String targetBranch;
-  final String urgencyLabel;
-  final String recommendation;
-  final List<String> decisionReasons;
-  final int priorityScore;
-  final bool allowPartialPayment;
-  final String? linkedInvoiceId;
-  final String? linkedFixedPaymentId;
-  final String? linkedAgreementId;
-  bool isPreviewMock = false;
-  double availableBalance = 0;
-  bool canPayNow = false;
-  _PaymentExecutionDecision executionDecision =
-      _PaymentExecutionDecision.esperar;
-  double executionAmount = 0;
-  String executionSummary = '';
-
-  _PaymentCenterItem({
-    required this.providerId,
-    required this.providerName,
-    required this.bucket,
-    required this.itemType,
-    required this.sourceLabel,
-    required this.dueDate,
-    required this.agreementLabel,
-    required this.amountSuggested,
-    required this.amountTotal,
-    required this.targetCompany,
-    required this.targetBranch,
-    required this.urgencyLabel,
-    required this.recommendation,
-    required this.decisionReasons,
-    required this.priorityScore,
-    required this.allowPartialPayment,
-    this.linkedInvoiceId,
-    this.linkedFixedPaymentId,
-    this.linkedAgreementId,
-  });
 }
 
 class _CenterMetricCard extends StatelessWidget {
@@ -1519,96 +1597,1676 @@ class _CenterMetricCard extends StatelessWidget {
   });
 
   @override
+  Widget build(BuildContext context) => FinanzasSummaryMetricCard(
+    label: label,
+    value: value,
+    icon: icon,
+    accent: tone,
+    valueColor: tone,
+    subtitle: subtitle,
+    subtitleFontSize: 11.8,
+    labelFontSize: 12.5,
+    iconBoxSize: 48,
+    iconSize: 24,
+    centered: true,
+    progress: progress,
+    height: 170,
+  );
+}
+
+class _PaymentCenterBudgetTodayView extends StatelessWidget {
+  final FinanzasPaymentCenterBudgetTodaySummary summary;
+  final FinanzasPaymentCenterBudgetWeekSummary weekSummary;
+  final FinanzasPaymentCenterReserveImpactSummary reserveSummary;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+  final VoidCallback onShowPendingMode;
+  final Future<void> Function() onOpenProviderAccounts;
+
+  const _PaymentCenterBudgetTodayView({
+    required this.summary,
+    required this.weekSummary,
+    required this.reserveSummary,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+    required this.onShowPendingMode,
+    required this.onOpenProviderAccounts,
+  });
+
+  String _headlineDate() {
+    const weekdays = <String>[
+      'lunes',
+      'martes',
+      'miercoles',
+      'jueves',
+      'viernes',
+      'sabado',
+      'domingo',
+    ];
+    final weekday = weekdays[summary.today.weekday - 1];
+    return '$weekday ${dateFormatter(summary.today)}';
+  }
+
+  @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    return FinanzasGlassPanel(
-      borderRadius: BorderRadius.circular(24),
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-      fillColor: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.94),
-      borderColor: tone.withValues(alpha: 0.30),
-      glowColor: tone.withValues(alpha: 0.22),
-      edgeHighlightColor: kFinanzasOrange.withValues(alpha: 0.12),
-      child: SizedBox(
-        height: 170,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Container(
-              width: 48,
-              height: 48,
-              decoration: BoxDecoration(
-                color: tone.withValues(alpha: 0.14),
-                borderRadius: BorderRadius.circular(15),
-                border: Border.all(color: tone.withValues(alpha: 0.30)),
-              ),
-              child: Icon(icon, color: tone, size: 24),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              label,
-              maxLines: 2,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w800,
-                color: kFinanzasInk,
-              ),
-            ),
-            const SizedBox(height: 8),
-            FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                value,
-                maxLines: 1,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  color: tone,
-                  height: 1,
+    final accountsWithProviders = summary.accounts
+        .where((account) => account.providers.isNotEmpty)
+        .toList(growable: false);
+    final weekAccountsWithPressure = weekSummary.accounts
+        .where(
+          (account) =>
+              account.weekPressureAmount > 0.009 ||
+              account.riskReviewAmount > 0.009 ||
+              account.outsideWindowAmount > 0.009,
+        )
+        .toList(growable: false);
+    final movementCount = accountsWithProviders.fold<int>(
+      0,
+      (sum, account) => sum + account.providers.length,
+    );
+    final plannedMovementCount = accountsWithProviders.fold<int>(
+      0,
+      (sum, account) =>
+          sum +
+          account.providers
+              .where((provider) => provider.plannedTodayAmount > 0.009)
+              .length,
+    );
+    final uncoveredMinimumMovementCount = accountsWithProviders.fold<int>(
+      0,
+      (sum, account) =>
+          sum +
+          account.providers
+              .where((provider) => provider.uncoveredMinimumTodayAmount > 0.009)
+              .length,
+    );
+    final riskCount = summary.riskItems.length;
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.zero,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Presupuesto de hoy',
+                      style: TextStyle(
+                        fontSize: 24,
+                        fontWeight: FontWeight.w900,
+                        color: tokens.primaryStrong,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Corte del ${_headlineDate()}. Aqui se separa lo que si cabe pagar hoy con caja real, la presion minima que sigue abierta y lo adicional sugerido sin tocar otras pantallas.',
+                      style: const TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: kFinanzasMutedInk,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
                 ),
+              ),
+              const SizedBox(width: 12),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  OutlinedButton.icon(
+                    onPressed: onShowPendingMode,
+                    style: _paymentCenterOutlinedButtonStyle(context),
+                    icon: const Icon(Icons.view_column_rounded, size: 18),
+                    label: const Text('Ver pendientes'),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed: () => unawaited(onOpenProviderAccounts()),
+                    style: _paymentCenterOutlinedButtonStyle(
+                      context,
+                      tone: kFinanzasAmber,
+                    ),
+                    icon: const Icon(Icons.apartment_rounded, size: 18),
+                    label: const Text('Abrir CxP'),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          FinanzasGlassPanel(
+            borderRadius: BorderRadius.circular(26),
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+            fillColor: kFinanzasPanelSurfaceStrong,
+            borderColor: tokens.border.withValues(alpha: 0.34),
+            glowColor: kFinanzasCopper.withValues(alpha: 0.12),
+            child: Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _TinyChip(
+                  label:
+                      'Planeado hoy ${moneyFormatter(summary.plannedTodayAmount)}',
+                  tone: kFinanzasSage,
+                ),
+                _TinyChip(
+                  label: '$movementCount movimientos en tablero',
+                  tone: finanzasAreaTokens.primaryStrong,
+                ),
+                _TinyChip(
+                  label:
+                      'Presión mínima ${moneyFormatter(summary.minimumTodayAmount)}',
+                  tone: kFinanzasCoral,
+                ),
+                _TinyChip(
+                  label:
+                      'Adicional ${moneyFormatter(summary.recommendedAdditionalAmount)}',
+                  tone: kFinanzasAmber,
+                ),
+                if (reserveSummary.globalBlockingTotal > 0.009)
+                  _TinyChip(
+                    label:
+                        'Reserva global ${moneyFormatter(reserveSummary.globalBlockingTotal)}',
+                    tone: kFinanzasCoral,
+                  ),
+                if (riskCount > 0)
+                  _TinyChip(
+                    label: '$riskCount riesgos por revisar',
+                    tone: kFinanzasAmber,
+                  ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 18),
+          _PaymentCenterTodayFocusPanel(
+            summary: summary,
+            plannedMovementCount: plannedMovementCount,
+            uncoveredMinimumMovementCount: uncoveredMinimumMovementCount,
+            riskCount: riskCount,
+            moneyFormatter: moneyFormatter,
+          ),
+          const SizedBox(height: 18),
+          if (summary.accounts.isEmpty)
+            const _CenterEmptyPane(
+              label: 'Sin presión presupuestal todavía',
+              subtitle:
+                  'Cuando entren convenios, facturas, pagos fijos o saldos abiertos, aquí aparecerá la caja disponible del día.',
+            )
+          else ...[
+            Text(
+              'Qué se movería hoy',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: tokens.primaryStrong,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Empieza por aqui. Primero revisa lo que si tiene cabida hoy y despues la caja que sostiene esa decision.',
+              style: TextStyle(
+                fontSize: 12.8,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasMutedInk,
+                height: 1.35,
               ),
             ),
             const SizedBox(height: 10),
-            Expanded(
-              child: Text(
-                subtitle,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 11.8,
-                  fontWeight: FontWeight.w700,
-                  color: kFinanzasMutedInk,
-                  height: 1.3,
-                ),
-              ),
-            ),
-            Container(
-              height: 6,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(999),
-                color: tokens.badgeBackground.withValues(alpha: 0.42),
-              ),
-              child: FractionallySizedBox(
-                alignment: Alignment.centerLeft,
-                widthFactor: progress.clamp(0.0, 1.0),
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(999),
-                    gradient: LinearGradient(
-                      colors: [
-                        tone.withValues(alpha: 0.58),
-                        tone.withValues(alpha: 0.92),
-                      ],
-                    ),
+            if (accountsWithProviders.isEmpty)
+              FinanzasGlassPanel(
+                borderRadius: BorderRadius.circular(24),
+                padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                fillColor: kFinanzasPanelSurfaceStrong,
+                borderColor: tokens.border.withValues(alpha: 0.34),
+                child: const Text(
+                  'Las cuentas tienen saldo, pero no hay movimientos con presión activa para este corte.',
+                  style: TextStyle(
+                    fontSize: 13.5,
+                    fontWeight: FontWeight.w700,
+                    color: kFinanzasMutedInk,
+                    height: 1.35,
                   ),
                 ),
+              )
+            else
+              Column(
+                children: [
+                  for (var i = 0; i < accountsWithProviders.length; i++) ...[
+                    _PaymentCenterBudgetAccountSection(
+                      summary: accountsWithProviders[i],
+                      moneyFormatter: moneyFormatter,
+                      dateFormatter: dateFormatter,
+                    ),
+                    if (i != accountsWithProviders.length - 1)
+                      const SizedBox(height: 16),
+                  ],
+                ],
+              ),
+            const SizedBox(height: 18),
+            Text(
+              'Caja por cuenta',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: tokens.primaryStrong,
+              ),
+            ),
+            const SizedBox(height: 6),
+            const Text(
+              'Esta capa ya es de soporte: confirma que la decision del dia si cuadra contra cada cuenta.',
+              style: TextStyle(
+                fontSize: 12.8,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasMutedInk,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 12,
+              runSpacing: 12,
+              children: [
+                for (final account in summary.accounts)
+                  _PaymentCenterBudgetAccountCard(
+                    summary: account,
+                    moneyFormatter: moneyFormatter,
+                  ),
+              ],
+            ),
+            if (summary.riskItems.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              _PaymentCenterBudgetRiskPanel(
+                items: summary.riskItems,
+                moneyFormatter: moneyFormatter,
+                dateFormatter: dateFormatter,
+                onOpenProviderAccounts: onOpenProviderAccounts,
+              ),
+            ],
+          ],
+          const SizedBox(height: 18),
+          _PaymentCenterBudgetWeekOverview(
+            summary: weekSummary,
+            accounts: weekAccountsWithPressure,
+            moneyFormatter: moneyFormatter,
+            dateFormatter: dateFormatter,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentCenterTodayFocusPanel extends StatelessWidget {
+  final FinanzasPaymentCenterBudgetTodaySummary summary;
+  final int plannedMovementCount;
+  final int uncoveredMinimumMovementCount;
+  final int riskCount;
+  final String Function(double value) moneyFormatter;
+
+  const _PaymentCenterTodayFocusPanel({
+    required this.summary,
+    required this.plannedMovementCount,
+    required this.uncoveredMinimumMovementCount,
+    required this.riskCount,
+    required this.moneyFormatter,
+  });
+
+  String _headline() {
+    if (summary.plannedTodayAmount > 0.009 &&
+        summary.uncoveredMinimumTodayAmount <= 0.009) {
+      return 'Hoy ya queda claro que si se puede mover.';
+    }
+    if (summary.plannedTodayAmount > 0.009) {
+      return 'Hoy ya hay un plan parcial aterrizado.';
+    }
+    if (summary.minimumTodayAmount > 0.009) {
+      return 'Hoy hay presión visible, pero la caja no alcanza para resolverla.';
+    }
+    return 'Hoy no hay presión inmediata con salida sugerida.';
+  }
+
+  String _narrative() {
+    if (summary.plannedTodayAmount > 0.009 &&
+        summary.uncoveredMinimumTodayAmount > 0.009) {
+      return 'La caja protegida de hoy alcanza para programar ${moneyFormatter(summary.plannedTodayAmount)}, pero todavía deja ${moneyFormatter(summary.uncoveredMinimumTodayAmount)} de mínimo visible sin fondeo.';
+    }
+    if (summary.plannedTodayAmount > 0.009 &&
+        summary.recommendedAdditionalAmount > 0.009) {
+      return 'Lo mínimo visible ya encuentra salida hoy. Lo que sigue aparece como presión adicional y se revisa solo si sobra margen.';
+    }
+    if (summary.plannedTodayAmount > 0.009) {
+      return 'Lo que ves aqui ya cabe con la caja real y las reservas protegidas del dia.';
+    }
+    if (summary.minimumTodayAmount > 0.009) {
+      return 'La pantalla detecta presión mínima, pero hoy no hay caja suficiente para convertirla en plan de pago real.';
+    }
+    return 'La caja de hoy no trae una instrucción inmediata de salida. Puedes usar la semana como contexto sin perder el foco del día.';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final planTone = summary.plannedTodayAmount > 0.009
+        ? kFinanzasSage
+        : kFinanzasAmber;
+    final shortfallTone = summary.uncoveredMinimumTodayAmount > 0.009
+        ? kFinanzasCoral
+        : kFinanzasSage;
+    return FinanzasGlassPanel(
+      borderRadius: BorderRadius.circular(28),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
+      fillColor: kFinanzasPanelSurfaceStrong,
+      borderColor: tokens.border.withValues(alpha: 0.34),
+      glowColor: planTone.withValues(alpha: 0.12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _TinyChip(label: 'Decision del dia', tone: planTone),
+          const SizedBox(height: 10),
+          Text(
+            _headline(),
+            style: TextStyle(
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              color: tokens.primaryStrong,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            _narrative(),
+            style: const TextStyle(
+              fontSize: 13.2,
+              fontWeight: FontWeight.w700,
+              color: kFinanzasMutedInk,
+              height: 1.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _MiniInfoPill(
+                label: 'Qué pagar hoy',
+                value: moneyFormatter(summary.plannedTodayAmount),
+              ),
+              _MiniInfoPill(
+                label: 'Brecha mínima',
+                value: moneyFormatter(summary.uncoveredMinimumTodayAmount),
+              ),
+              _MiniInfoPill(
+                label: 'Margen tras plan',
+                value: moneyFormatter(summary.freeMarginAfterPlanned),
+              ),
+              _MiniInfoPill(
+                label: 'Adicional sugerido',
+                value: moneyFormatter(summary.recommendedAdditionalAmount),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _TinyChip(
+                label: '$plannedMovementCount movimientos fondeados hoy',
+                tone: planTone,
+              ),
+              if (uncoveredMinimumMovementCount > 0)
+                _TinyChip(
+                  label:
+                      '$uncoveredMinimumMovementCount movimientos minimos pendientes',
+                  tone: shortfallTone,
+                ),
+              if (riskCount > 0)
+                _TinyChip(
+                  label: '$riskCount riesgos antes de decidir más',
+                  tone: kFinanzasAmber,
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentCenterBudgetWeekOverview extends StatelessWidget {
+  final FinanzasPaymentCenterBudgetWeekSummary summary;
+  final List<FinanzasPaymentCenterBudgetWeekAccountSummary> accounts;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+
+  const _PaymentCenterBudgetWeekOverview({
+    required this.summary,
+    required this.accounts,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+  });
+
+  String _rangeLabel() =>
+      '${dateFormatter(summary.startDate)} al ${dateFormatter(summary.endDate)}';
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final providers = accounts
+        .expand((account) => account.providers)
+        .toList(growable: false);
+    final topProviders = providers
+        .where(
+          (provider) =>
+              provider.weekPressureAmount > 0.009 ||
+              provider.riskReviewAmount > 0.009 ||
+              provider.outsideWindowAmount > 0.009,
+        )
+        .take(8)
+        .toList(growable: false);
+    final committedProviderCount = providers
+        .where((provider) => provider.committedWeekAmount > 0.009)
+        .length;
+    final extendedProviderCount = providers
+        .where((provider) => provider.weekPressureAmount > 0.009)
+        .length;
+    final conservativeStressCount = accounts
+        .where((account) => account.marginAfterCommitted < -0.009)
+        .length;
+    final extendedStressCount = accounts
+        .where((account) => account.marginAfterWeekPressure < -0.009)
+        .length;
+    final peakCommittedDay = summary.days
+        .fold<FinanzasPaymentCenterBudgetWeekDaySummary?>(
+          null,
+          (selected, day) =>
+              selected == null || day.committedAmount > selected.committedAmount
+              ? day
+              : selected,
+        );
+    final peakExtendedDay = summary.days
+        .fold<FinanzasPaymentCenterBudgetWeekDaySummary?>(
+          null,
+          (selected, day) =>
+              selected == null || day.pressureAmount > selected.pressureAmount
+              ? day
+              : selected,
+        );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Lo que sigue esta semana',
+          style: TextStyle(
+            fontSize: 18,
+            fontWeight: FontWeight.w900,
+            color: tokens.primaryStrong,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Revisa esto despues de definir hoy. Ventana del ${_rangeLabel()}. Este consolidado compara compromisos contra la caja protegida del miércoles 12/08/2026 y no mete entradas futuras todavía.',
+          style: const TextStyle(
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            color: kFinanzasMutedInk,
+            height: 1.35,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _PaymentCenterBudgetScenarioCard(
+              label: 'Escenario conservador',
+              title: 'Cubrir solo compromisos fechados',
+              amount: summary.committedWeekAmount,
+              margin: summary.freeMarginAfterCommitted,
+              accountStressCount: conservativeStressCount,
+              providerCount: committedProviderCount,
+              peakDay: peakCommittedDay,
+              note:
+                  'Toma como base solo lo que vence del miércoles 12 de agosto de 2026 al martes 18 de agosto de 2026.',
+              amountTone: kFinanzasCoral,
+              moneyFormatter: moneyFormatter,
+              dateFormatter: dateFormatter,
+            ),
+            _PaymentCenterBudgetScenarioCard(
+              label: 'Escenario extendido',
+              title: 'Sumar presión sugerida de la semana',
+              amount: summary.weekPressureAmount,
+              margin: summary.freeMarginAfterWeekPressure,
+              accountStressCount: extendedStressCount,
+              providerCount: extendedProviderCount,
+              peakDay: peakExtendedDay,
+              note:
+                  'Además incorpora saldos abiertos y presión cercana para no gastar caja que luego hará falta.',
+              amountTone: kFinanzasAmber,
+              moneyFormatter: moneyFormatter,
+              dateFormatter: dateFormatter,
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        Wrap(
+          spacing: 12,
+          runSpacing: 12,
+          children: [
+            _PaymentCenterBudgetWeekStatCard(
+              label: 'Caja base protegida',
+              value: moneyFormatter(summary.availableBudgetAmount),
+              note: 'Saldo libre hoy después de reservas.',
+              tone: finanzasAreaTokens.primaryStrong,
+            ),
+            _PaymentCenterBudgetWeekStatCard(
+              label: 'Compromisos 7 días',
+              value: moneyFormatter(summary.committedWeekAmount),
+              note: 'Pagos con fecha dentro de la ventana.',
+              tone: kFinanzasCoral,
+            ),
+            _PaymentCenterBudgetWeekStatCard(
+              label: 'Presión adicional',
+              value: moneyFormatter(summary.suggestedAdditionalAmount),
+              note: 'Sugerido sin fecha dura o presión abierta.',
+              tone: kFinanzasAmber,
+            ),
+            _PaymentCenterBudgetWeekStatCard(
+              label: 'Margen tras compromisos',
+              value: moneyFormatter(summary.freeMarginAfterCommitted),
+              note: 'Lo que queda si cubrimos la semana base.',
+              tone: summary.freeMarginAfterCommitted >= 0
+                  ? kFinanzasSage
+                  : kFinanzasCoral,
+            ),
+            _PaymentCenterBudgetWeekStatCard(
+              label: 'Margen tras presión',
+              value: moneyFormatter(summary.freeMarginAfterWeekPressure),
+              note: 'Escenario extendido con sugeridos.',
+              tone: summary.freeMarginAfterWeekPressure >= 0
+                  ? kFinanzasSage
+                  : kFinanzasCoral,
+            ),
+            _PaymentCenterBudgetWeekStatCard(
+              label: 'Riesgo y fuera de ventana',
+              value: moneyFormatter(
+                summary.riskReviewAmount + summary.outsideWindowAmount,
+              ),
+              note:
+                  'Pendientes sin fecha clara o visibles después del 18/08/2026.',
+              tone: kFinanzasCopper,
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var i = 0; i < summary.days.length; i++) ...[
+                _PaymentCenterBudgetWeekDayCard(
+                  summary: summary.days[i],
+                  moneyFormatter: moneyFormatter,
+                  dateFormatter: dateFormatter,
+                ),
+                if (i != summary.days.length - 1) const SizedBox(width: 12),
+              ],
+            ],
+          ),
+        ),
+        if (accounts.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(
+            'Cuentas con mayor presión semanal',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: tokens.primaryStrong,
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              for (final account in accounts.take(4))
+                _PaymentCenterBudgetWeekAccountCard(
+                  summary: account,
+                  moneyFormatter: moneyFormatter,
+                ),
+            ],
+          ),
+        ],
+        if (topProviders.isNotEmpty) ...[
+          const SizedBox(height: 14),
+          Text(
+            'Movimientos que cargan la semana',
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w900,
+              color: tokens.primaryStrong,
+            ),
+          ),
+          const SizedBox(height: 10),
+          FinanzasGlassPanel(
+            borderRadius: BorderRadius.circular(24),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+            fillColor: kFinanzasPanelSurfaceStrong,
+            borderColor: tokens.border.withValues(alpha: 0.32),
+            glowColor: kFinanzasCopper.withValues(alpha: 0.10),
+            child: Column(
+              children: [
+                for (var i = 0; i < topProviders.length; i++) ...[
+                  _PaymentCenterBudgetWeekProviderRow(
+                    summary: topProviders[i],
+                    moneyFormatter: moneyFormatter,
+                    dateFormatter: dateFormatter,
+                  ),
+                  if (i != topProviders.length - 1) const SizedBox(height: 12),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _PaymentCenterBudgetScenarioCard extends StatelessWidget {
+  final String label;
+  final String title;
+  final double amount;
+  final double margin;
+  final int accountStressCount;
+  final int providerCount;
+  final FinanzasPaymentCenterBudgetWeekDaySummary? peakDay;
+  final String note;
+  final Color amountTone;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+
+  const _PaymentCenterBudgetScenarioCard({
+    required this.label,
+    required this.title,
+    required this.amount,
+    required this.margin,
+    required this.accountStressCount,
+    required this.providerCount,
+    required this.peakDay,
+    required this.note,
+    required this.amountTone,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final marginTone = margin >= 0 ? kFinanzasSage : kFinanzasCoral;
+    final dayLabel = peakDay == null
+        ? 'Sin pico'
+        : '${dateFormatter(peakDay!.date)} · ${moneyFormatter(amountTone == kFinanzasAmber ? peakDay!.pressureAmount : peakDay!.committedAmount)}';
+    return SizedBox(
+      width: 360,
+      child: FinanzasGlassPanel(
+        borderRadius: BorderRadius.circular(24),
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+        fillColor: kFinanzasPanelSurfaceStrong,
+        borderColor: amountTone.withValues(alpha: 0.30),
+        glowColor: amountTone.withValues(alpha: 0.12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _TinyChip(label: label, tone: amountTone),
+            const SizedBox(height: 10),
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: tokens.primaryStrong,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              moneyFormatter(amount),
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.w900,
+                color: amountTone,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _MiniInfoPill(
+                  label: 'Margen final',
+                  value: moneyFormatter(margin),
+                ),
+                _MiniInfoPill(
+                  label: 'Cuentas tensas',
+                  value: '$accountStressCount',
+                ),
+                _MiniInfoPill(label: 'Movimientos', value: '$providerCount'),
+                _MiniInfoPill(label: 'Día pico', value: dayLabel),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              note,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: marginTone,
+                height: 1.35,
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _PaymentCenterBudgetWeekStatCard extends StatelessWidget {
+  final String label;
+  final String value;
+  final String note;
+  final Color tone;
+
+  const _PaymentCenterBudgetWeekStatCard({
+    required this.label,
+    required this.value,
+    required this.note,
+    required this.tone,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return SizedBox(
+      width: 240,
+      child: FinanzasGlassPanel(
+        borderRadius: BorderRadius.circular(22),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        fillColor: kFinanzasPanelSurfaceStrong,
+        borderColor: tone.withValues(alpha: 0.28),
+        glowColor: tone.withValues(alpha: 0.10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                color: tokens.primaryStrong,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              value,
+              style: TextStyle(
+                fontSize: 21,
+                fontWeight: FontWeight.w900,
+                color: tone,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              note,
+              style: const TextStyle(
+                fontSize: 11.8,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasMutedInk,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentCenterBudgetWeekDayCard extends StatelessWidget {
+  final FinanzasPaymentCenterBudgetWeekDaySummary summary;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+
+  const _PaymentCenterBudgetWeekDayCard({
+    required this.summary,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+  });
+
+  String _weekdayLabel() {
+    const weekdays = <String>['Lun', 'Mar', 'Mie', 'Jue', 'Vie', 'Sab', 'Dom'];
+    return weekdays[summary.date.weekday - 1];
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final tone = summary.remainingAfterSuggested >= 0
+        ? kFinanzasSage
+        : kFinanzasCoral;
+    return SizedBox(
+      width: 220,
+      child: FinanzasGlassPanel(
+        borderRadius: BorderRadius.circular(22),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        fillColor: kFinanzasPanelSurfaceStrong,
+        borderColor: tokens.border.withValues(alpha: 0.34),
+        glowColor: tone.withValues(alpha: 0.10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    '${_weekdayLabel()} ${dateFormatter(summary.date)}',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      color: tokens.primaryStrong,
+                    ),
+                  ),
+                ),
+                _TinyChip(
+                  label: '${summary.providerCount} prov.',
+                  tone: finanzasAreaTokens.primaryStrong,
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            _MiniInfoPill(
+              label: 'Compromisos',
+              value: moneyFormatter(summary.committedAmount),
+            ),
+            const SizedBox(height: 8),
+            _MiniInfoPill(
+              label: 'Adicional',
+              value: moneyFormatter(summary.suggestedAdditionalAmount),
+            ),
+            const SizedBox(height: 8),
+            _MiniInfoPill(
+              label: 'Margen cierre',
+              value: moneyFormatter(summary.remainingAfterSuggested),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              '${summary.itemCount} movimientos visibles en el día.',
+              style: const TextStyle(
+                fontSize: 11.8,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasMutedInk,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentCenterBudgetWeekAccountCard extends StatelessWidget {
+  final FinanzasPaymentCenterBudgetWeekAccountSummary summary;
+  final String Function(double value) moneyFormatter;
+
+  const _PaymentCenterBudgetWeekAccountCard({
+    required this.summary,
+    required this.moneyFormatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final tone = summary.marginAfterWeekPressure >= 0
+        ? kFinanzasSage
+        : kFinanzasCoral;
+    return SizedBox(
+      width: 280,
+      child: FinanzasGlassPanel(
+        borderRadius: BorderRadius.circular(22),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        fillColor: kFinanzasPanelSurfaceStrong,
+        borderColor: tone.withValues(alpha: 0.28),
+        glowColor: tone.withValues(alpha: 0.10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${summary.targetCompany} ${summary.targetBranch}',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                color: tokens.primaryStrong,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _MiniInfoPill(
+                  label: 'Compromisos',
+                  value: moneyFormatter(summary.committedWeekAmount),
+                ),
+                _MiniInfoPill(
+                  label: 'Presión',
+                  value: moneyFormatter(summary.weekPressureAmount),
+                ),
+                _MiniInfoPill(
+                  label: 'Margen',
+                  value: moneyFormatter(summary.marginAfterWeekPressure),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'Fuera de ventana ${moneyFormatter(summary.outsideWindowAmount)} · riesgo ${moneyFormatter(summary.riskReviewAmount)}',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasMutedInk,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentCenterBudgetWeekProviderRow extends StatelessWidget {
+  final FinanzasPaymentCenterBudgetWeekProviderSummary summary;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+
+  const _PaymentCenterBudgetWeekProviderRow({
+    required this.summary,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final tone = summary.committedWeekAmount > 0.009
+        ? kFinanzasCoral
+        : summary.suggestedAdditionalAmount > 0.009
+        ? kFinanzasAmber
+        : kFinanzasCopper;
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: kFinanzasPanelSurfaceSoft,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: tone.withValues(alpha: 0.24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      summary.providerName,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w900,
+                        color: tokens.primaryStrong,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${summary.targetCompany} ${summary.targetBranch} · siguiente fecha ${dateFormatter(summary.nextDueDate)}',
+                      style: const TextStyle(
+                        fontSize: 12.1,
+                        fontWeight: FontWeight.w700,
+                        color: kFinanzasMutedInk,
+                      ),
+                    ),
+                    if (summary.sourcePreviews.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Detalle: ${summary.sourcePreviews.join(' · ')}',
+                        style: const TextStyle(
+                          fontSize: 12.1,
+                          fontWeight: FontWeight.w700,
+                          color: kFinanzasMutedInk,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                moneyFormatter(summary.weekPressureAmount),
+                style: TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  color: tone,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MiniInfoPill(
+                label: 'Compromisos',
+                value: moneyFormatter(summary.committedWeekAmount),
+              ),
+              _MiniInfoPill(
+                label: 'Adicional',
+                value: moneyFormatter(summary.suggestedAdditionalAmount),
+              ),
+              if (summary.outsideWindowAmount > 0.009)
+                _MiniInfoPill(
+                  label: 'Post semana',
+                  value: moneyFormatter(summary.outsideWindowAmount),
+                ),
+              if (summary.riskReviewAmount > 0.009)
+                _MiniInfoPill(
+                  label: 'Riesgo',
+                  value: moneyFormatter(summary.riskReviewAmount),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentCenterBudgetAccountCard extends StatelessWidget {
+  final FinanzasPaymentCenterBudgetAccountSummary summary;
+  final String Function(double value) moneyFormatter;
+
+  const _PaymentCenterBudgetAccountCard({
+    required this.summary,
+    required this.moneyFormatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final marginTone = summary.marginAfterRecommended >= 0
+        ? kFinanzasSage
+        : kFinanzasCoral;
+    return SizedBox(
+      width: 290,
+      child: FinanzasGlassPanel(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        borderRadius: BorderRadius.circular(24),
+        fillColor: kFinanzasPanelSurfaceStrong,
+        borderColor: tokens.border.withValues(alpha: 0.36),
+        glowColor: marginTone.withValues(alpha: 0.12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${summary.targetCompany} ${summary.targetBranch}',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: tokens.primaryStrong,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _TinyChip(
+                  label: '${summary.providers.length} movimientos',
+                  tone: finanzasAreaTokens.primaryStrong,
+                ),
+                if (summary.minimumTodayAmount > 0.009)
+                  _TinyChip(label: 'Minimo hoy', tone: kFinanzasCoral),
+                if (summary.recommendedAdditionalAmount > 0.009)
+                  _TinyChip(label: 'Recomendado', tone: kFinanzasAmber),
+                if (summary.riskReviewAmount > 0.009)
+                  _TinyChip(label: 'Riesgo', tone: kFinanzasAmber),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _MiniInfoPill(
+                  label: 'Saldo real',
+                  value: moneyFormatter(summary.realBalance),
+                ),
+                _MiniInfoPill(
+                  label: 'Reserva',
+                  value: moneyFormatter(summary.reserveAmount),
+                ),
+                _MiniInfoPill(
+                  label: 'Libre',
+                  value: moneyFormatter(summary.availableBalance),
+                ),
+                _MiniInfoPill(
+                  label: 'Mínimo hoy',
+                  value: moneyFormatter(summary.minimumTodayAmount),
+                ),
+                _MiniInfoPill(
+                  label: 'Recomendado',
+                  value: moneyFormatter(summary.recommendedTodayAmount),
+                ),
+                _MiniInfoPill(
+                  label: 'Margen final',
+                  value: moneyFormatter(summary.marginAfterRecommended),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            Text(
+              summary.providers.isEmpty
+                  ? 'Sin presión registrada hoy para esta cuenta.'
+                  : 'Presión planeada hoy: ${moneyFormatter(summary.plannedTodayAmount)}.',
+              style: TextStyle(
+                fontSize: 12.2,
+                fontWeight: FontWeight.w700,
+                color: marginTone,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentCenterBudgetAccountSection extends StatelessWidget {
+  final FinanzasPaymentCenterBudgetAccountSummary summary;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+
+  const _PaymentCenterBudgetAccountSection({
+    required this.summary,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return FinanzasGlassPanel(
+      borderRadius: BorderRadius.circular(26),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      fillColor: kFinanzasPanelSurfaceStrong,
+      borderColor: tokens.border.withValues(alpha: 0.34),
+      glowColor: kFinanzasCopper.withValues(alpha: 0.12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${summary.targetCompany} ${summary.targetBranch}',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.w900,
+                        color: tokens.primaryStrong,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Disponible libre ${moneyFormatter(summary.availableBalance)} · margen final ${moneyFormatter(summary.marginAfterRecommended)}',
+                      style: const TextStyle(
+                        fontSize: 12.8,
+                        fontWeight: FontWeight.w700,
+                        color: kFinanzasMutedInk,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  _TinyChip(
+                    label:
+                        'Mínimo ${moneyFormatter(summary.minimumTodayAmount)}',
+                    tone: kFinanzasCoral,
+                  ),
+                  _TinyChip(
+                    label:
+                        'Recomendado ${moneyFormatter(summary.recommendedTodayAmount)}',
+                    tone: kFinanzasAmber,
+                  ),
+                  _TinyChip(
+                    label:
+                        'Postergable ${moneyFormatter(summary.postergableAmount)}',
+                    tone: kFinanzasSage,
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Column(
+            children: [
+              for (var i = 0; i < summary.providers.length; i++) ...[
+                _PaymentCenterBudgetProviderCard(
+                  summary: summary.providers[i],
+                  moneyFormatter: moneyFormatter,
+                  dateFormatter: dateFormatter,
+                ),
+                if (i != summary.providers.length - 1)
+                  const SizedBox(height: 12),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentCenterBudgetProviderCard extends StatelessWidget {
+  final FinanzasPaymentCenterBudgetProviderSummary summary;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+
+  const _PaymentCenterBudgetProviderCard({
+    required this.summary,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+  });
+
+  Color _headlineTone() {
+    if (summary.minimumTodayAmount > 0.009) return kFinanzasCoral;
+    if (summary.recommendedAdditionalAmount > 0.009) return kFinanzasAmber;
+    if (summary.riskReviewAmount > 0.009) return kFinanzasAmber;
+    return kFinanzasSage;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final tone = _headlineTone();
+    final primaryItem = summary.primaryActionItem;
+    final headlineAmount = summary.plannedTodayAmount > 0.009
+        ? summary.plannedTodayAmount
+        : summary.minimumTodayAmount > 0.009
+        ? summary.minimumTodayAmount
+        : summary.recommendedTodayAmount;
+    final headlineLabel = summary.plannedTodayAmount > 0.009
+        ? 'Plan de hoy'
+        : summary.minimumTodayAmount > 0.009
+        ? 'Presión mínima'
+        : summary.recommendedAdditionalAmount > 0.009
+        ? 'Adicional sugerido'
+        : 'Visible';
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      decoration: BoxDecoration(
+        color: kFinanzasPanelSurfaceSoft,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: tone.withValues(alpha: 0.26)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      summary.providerName,
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w900,
+                        color: tokens.primaryStrong,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      primaryItem != null && summary.itemCount == 1
+                          ? '${primaryItem.itemType} · ${primaryItem.sourceLabel} · abierto ${moneyFormatter(summary.totalOpenAmount)}'
+                          : '${summary.itemCount} movimientos · abierto ${moneyFormatter(summary.totalOpenAmount)}',
+                      style: const TextStyle(
+                        fontSize: 12.4,
+                        fontWeight: FontWeight.w700,
+                        color: kFinanzasMutedInk,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Text(
+                    headlineLabel,
+                    style: const TextStyle(
+                      fontSize: 11.8,
+                      fontWeight: FontWeight.w800,
+                      color: kFinanzasMutedInk,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    moneyFormatter(headlineAmount),
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.w900,
+                      color: tone,
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              if (summary.minimumTodayAmount > 0.009)
+                _TinyChip(label: 'Minimo hoy', tone: kFinanzasCoral),
+              if (summary.recommendedAdditionalAmount > 0.009)
+                _TinyChip(
+                  label:
+                      'Extra sugerido ${moneyFormatter(summary.recommendedAdditionalAmount)}',
+                  tone: kFinanzasAmber,
+                ),
+              if (summary.postergableAmount > 0.009)
+                _TinyChip(label: 'Postergable', tone: kFinanzasSage),
+              if (summary.riskReviewAmount > 0.009)
+                _TinyChip(label: 'Riesgo a revisar', tone: kFinanzasAmber),
+              if (summary.plannedTodayAmount > 0.009)
+                _TinyChip(
+                  label:
+                      'Planeado ${moneyFormatter(summary.plannedTodayAmount)}',
+                  tone: finanzasAreaTokens.primaryStrong,
+                ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MiniInfoPill(
+                label: 'Mínimo hoy',
+                value: moneyFormatter(summary.minimumTodayAmount),
+              ),
+              _MiniInfoPill(
+                label: 'Recomendado hoy',
+                value: moneyFormatter(summary.recommendedTodayAmount),
+              ),
+              _MiniInfoPill(
+                label: 'Postergable',
+                value: moneyFormatter(summary.postergableAmount),
+              ),
+              if (summary.riskReviewAmount > 0.009)
+                _MiniInfoPill(
+                  label: 'Riesgo',
+                  value: moneyFormatter(summary.riskReviewAmount),
+                ),
+            ],
+          ),
+          if (summary.sourcePreviews.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Fuentes: ${summary.sourcePreviews.join(' · ')}',
+              style: const TextStyle(
+                fontSize: 12.3,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasMutedInk,
+                height: 1.35,
+              ),
+            ),
+          ],
+          if (primaryItem != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              'Ancla del día',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w900,
+                color: tone,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '${primaryItem.itemType} · ${primaryItem.sourceLabel} · ${dateFormatter(primaryItem.dueDate)}',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w800,
+                color: tokens.primaryStrong,
+              ),
+            ),
+            if (primaryItem.recommendation.trim().isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                primaryItem.recommendation,
+                style: const TextStyle(
+                  fontSize: 12.3,
+                  fontWeight: FontWeight.w700,
+                  color: kFinanzasMutedInk,
+                  height: 1.35,
+                ),
+              ),
+            ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentCenterBudgetRiskPanel extends StatelessWidget {
+  final List<FinanzasPaymentCenterOperationalItem> items;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+  final Future<void> Function() onOpenProviderAccounts;
+
+  const _PaymentCenterBudgetRiskPanel({
+    required this.items,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+    required this.onOpenProviderAccounts,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return FinanzasGlassPanel(
+      borderRadius: BorderRadius.circular(26),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      fillColor: kFinanzasPanelSurfaceStrong,
+      borderColor: kFinanzasAmber.withValues(alpha: 0.34),
+      glowColor: kFinanzasAmber.withValues(alpha: 0.10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Riesgo a revisar',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        color: tokens.primaryStrong,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      'Aquí caen los movimientos que todavía no tienen suficiente contexto para presupuestar bien, por ejemplo facturas sin fecha de vencimiento.',
+                      style: const TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: kFinanzasMutedInk,
+                        height: 1.35,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              OutlinedButton.icon(
+                onPressed: () => unawaited(onOpenProviderAccounts()),
+                style: _paymentCenterOutlinedButtonStyle(
+                  context,
+                  tone: kFinanzasAmber,
+                ),
+                icon: const Icon(Icons.open_in_new_rounded, size: 18),
+                label: const Text('Revisar en CxP'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Column(
+            children: [
+              for (var i = 0; i < items.length; i++) ...[
+                _PaymentCenterBudgetRiskRow(
+                  row: items[i],
+                  moneyFormatter: moneyFormatter,
+                  dateFormatter: dateFormatter,
+                ),
+                if (i != items.length - 1) const SizedBox(height: 12),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentCenterBudgetRiskRow extends StatelessWidget {
+  final FinanzasPaymentCenterOperationalItem row;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+
+  const _PaymentCenterBudgetRiskRow({
+    required this.row,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      decoration: BoxDecoration(
+        color: kFinanzasPanelSurfaceSoft,
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: kFinanzasAmber.withValues(alpha: 0.26)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      row.providerName,
+                      style: TextStyle(
+                        fontSize: 15.5,
+                        fontWeight: FontWeight.w900,
+                        color: tokens.primaryStrong,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      '${row.itemType} · ${row.sourceLabel}',
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: kFinanzasMutedInk,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                moneyFormatter(row.amountSuggested),
+                style: const TextStyle(
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                  color: kFinanzasAmber,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MiniInfoPill(
+                label: 'Cuenta',
+                value: '${row.targetCompany} ${row.targetBranch}',
+              ),
+              _MiniInfoPill(label: 'Vence', value: dateFormatter(row.dueDate)),
+              _MiniInfoPill(label: 'Acuerdo', value: row.agreementLabel),
+            ],
+          ),
+          if (row.recommendation.trim().isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(
+              row.recommendation,
+              style: const TextStyle(
+                fontSize: 12.4,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasMutedInk,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }
@@ -1656,15 +3314,7 @@ class _PaymentCenterLearningView extends StatelessWidget {
             ),
             OutlinedButton.icon(
               onPressed: onCaptureSnapshot,
-              style: OutlinedButton.styleFrom(
-                foregroundColor: kFinanzasInk,
-                side: BorderSide(
-                  color: kFinanzasBorder.withValues(alpha: 0.54),
-                ),
-                backgroundColor: kFinanzasPanelSurfaceStrong.withValues(
-                  alpha: 0.92,
-                ),
-              ),
+              style: _paymentCenterOutlinedButtonStyle(context),
               icon: const Icon(Icons.camera_alt_outlined, size: 18),
               label: const Text('Capturar corte actual'),
             ),
@@ -1865,12 +3515,9 @@ class _PaymentLearningRow extends StatelessWidget {
               const SizedBox(width: 10),
               OutlinedButton.icon(
                 onPressed: onRegisterDecision,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kFinanzasAmber,
-                  side: BorderSide(
-                    color: kFinanzasAmber.withValues(alpha: 0.58),
-                  ),
-                  backgroundColor: kFinanzasPanelSurfaceSoft,
+                style: _paymentCenterOutlinedButtonStyle(
+                  context,
+                  tone: kFinanzasAmber,
                 ),
                 icon: const Icon(Icons.edit_note_rounded, size: 18),
                 label: Text(
@@ -1887,14 +3534,1112 @@ class _PaymentLearningRow extends StatelessWidget {
   }
 }
 
+class _PaymentCenterReservesView extends StatelessWidget {
+  final List<FinanzasPaymentCenterReserveRecord> reserves;
+  final FinanzasPaymentCenterReserveImpactSummary reserveSummary;
+  final Map<String, double> realAccountBalances;
+  final Map<String, double> protectedAccountBalances;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+  final Future<void> Function() onCreateReserve;
+  final Future<void> Function(FinanzasPaymentCenterReserveRecord row)
+  onEditReserve;
+  final Future<void> Function(FinanzasPaymentCenterReserveRecord row)
+  onDeleteReserve;
+
+  const _PaymentCenterReservesView({
+    required this.reserves,
+    required this.reserveSummary,
+    required this.realAccountBalances,
+    required this.protectedAccountBalances,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+    required this.onCreateReserve,
+    required this.onEditReserve,
+    required this.onDeleteReserve,
+  });
+
+  String _accountLabel(String accountKey) {
+    final parts = accountKey.split('_');
+    if (parts.length < 2) return accountKey;
+    return '${parts.first} ${parts.sublist(1).join(' ')}';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final accountKeys = <String>{
+      ...realAccountBalances.keys,
+      ...protectedAccountBalances.keys,
+      ...reserveSummary.accountReserveAmounts.keys,
+    }.toList(growable: false)..sort();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Reservas protegidas',
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      color: tokens.primaryStrong,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    'Protege nómina, impuestos, colchones y extraordinarios sin salir de Centro de pagos.',
+                    style: const TextStyle(
+                      fontSize: 13.5,
+                      fontWeight: FontWeight.w700,
+                      color: kFinanzasMutedInk,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: onCreateReserve,
+              style: _paymentCenterFilledButtonStyle(
+                context,
+                tone: kFinanzasCoral,
+              ),
+              icon: const Icon(Icons.add_rounded, size: 18),
+              label: const Text('Nueva reserva'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 14),
+        if (reserves.isEmpty)
+          Expanded(
+            child: const _CenterEmptyPane(
+              label: 'Aún no hay reservas protegidas',
+              subtitle:
+                  'Captura nómina, impuestos o colchones para que Centro de pagos deje de sobreestimar la caja disponible.',
+            ),
+          )
+        else
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.zero,
+              children: [
+                if (reserveSummary.activeReserves.isEmpty)
+                  FinanzasGlassPanel(
+                    padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+                    borderRadius: BorderRadius.circular(24),
+                    fillColor: kFinanzasPanelSurfaceStrong,
+                    borderColor: kFinanzasAmber.withValues(alpha: 0.32),
+                    glowColor: kFinanzasAmber.withValues(alpha: 0.14),
+                    child: const Text(
+                      'Hay reservas registradas, pero ninguna está activa hoy. El presupuesto sigue corriendo sin caja protegida efectiva para el miércoles 12 de agosto de 2026.',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w700,
+                        color: kFinanzasMutedInk,
+                        height: 1.35,
+                      ),
+                    ),
+                  ),
+                if (reserveSummary.activeReserves.isEmpty)
+                  const SizedBox(height: 14),
+                Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    if (reserveSummary.globalBlockingTotal > 0.009)
+                      _PaymentCenterReserveAccountCard(
+                        title: 'Reserva global',
+                        realBalance: reserveSummary.realTotalBalance,
+                        reserveAmount: reserveSummary.globalBlockingTotal,
+                        availableBalance: reserveSummary.availableAfterBlocking,
+                        moneyFormatter: moneyFormatter,
+                        note:
+                            'No se reparte por cuenta; se protege a nivel total.',
+                      ),
+                    for (final accountKey in accountKeys)
+                      _PaymentCenterReserveAccountCard(
+                        title: _accountLabel(accountKey),
+                        realBalance: realAccountBalances[accountKey] ?? 0,
+                        reserveAmount:
+                            reserveSummary.accountReserveAmounts[accountKey] ??
+                            0,
+                        availableBalance:
+                            protectedAccountBalances[accountKey] ?? 0,
+                        moneyFormatter: moneyFormatter,
+                        note: 'Saldo real vs saldo protegido de la cuenta.',
+                      ),
+                  ],
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  'Reservas registradas',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: tokens.primaryStrong,
+                  ),
+                ),
+                const SizedBox(height: 10),
+                for (var i = 0; i < reserves.length; i++) ...[
+                  _PaymentCenterReserveRowCard(
+                    row: reserves[i],
+                    moneyFormatter: moneyFormatter,
+                    dateFormatter: dateFormatter,
+                    onEdit: () => onEditReserve(reserves[i]),
+                    onDelete: () => onDeleteReserve(reserves[i]),
+                  ),
+                  if (i != reserves.length - 1) const SizedBox(height: 12),
+                ],
+              ],
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _PaymentCenterReserveAccountCard extends StatelessWidget {
+  final String title;
+  final double realBalance;
+  final double reserveAmount;
+  final double availableBalance;
+  final String Function(double value) moneyFormatter;
+  final String note;
+
+  const _PaymentCenterReserveAccountCard({
+    required this.title,
+    required this.realBalance,
+    required this.reserveAmount,
+    required this.availableBalance,
+    required this.moneyFormatter,
+    required this.note,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return SizedBox(
+      width: 268,
+      child: FinanzasGlassPanel(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        borderRadius: BorderRadius.circular(24),
+        fillColor: kFinanzasPanelSurfaceStrong,
+        borderColor: tokens.border.withValues(alpha: 0.36),
+        glowColor: kFinanzasCopper.withValues(alpha: 0.12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w900,
+                color: tokens.primaryStrong,
+              ),
+            ),
+            const SizedBox(height: 10),
+            _MiniInfoPill(
+              label: 'Saldo real',
+              value: moneyFormatter(realBalance),
+            ),
+            const SizedBox(height: 8),
+            _MiniInfoPill(
+              label: 'Reserva',
+              value: moneyFormatter(reserveAmount),
+            ),
+            const SizedBox(height: 8),
+            _MiniInfoPill(
+              label: 'Disponible',
+              value: moneyFormatter(availableBalance),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              note,
+              style: const TextStyle(
+                fontSize: 11.8,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasMutedInk,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PaymentCenterReserveRowCard extends StatelessWidget {
+  final FinanzasPaymentCenterReserveRecord row;
+  final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
+  final Future<void> Function() onEdit;
+  final Future<void> Function() onDelete;
+
+  const _PaymentCenterReserveRowCard({
+    required this.row,
+    required this.moneyFormatter,
+    required this.dateFormatter,
+    required this.onEdit,
+    required this.onDelete,
+  });
+
+  Color _typeTone() {
+    switch (row.reserveType) {
+      case 'NOMINA':
+        return kFinanzasCoral;
+      case 'IMPUESTOS':
+        return kFinanzasAmber;
+      case 'COLCHON_CUENTA':
+        return kFinanzasSage;
+      default:
+        return kFinanzasCopper;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final typeTone = _typeTone();
+    final statusTone = row.isActive ? typeTone : kFinanzasMutedInk;
+    final scopeLabel = row.isGlobal
+        ? 'Global'
+        : '${row.targetCompany ?? ''} ${row.targetBranch ?? ''}'.trim();
+    return FinanzasGlassPanel(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+      borderRadius: BorderRadius.circular(24),
+      fillColor: kFinanzasPanelSurfaceStrong,
+      borderColor: tokens.border.withValues(alpha: 0.32),
+      glowColor: typeTone.withValues(alpha: 0.10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      row.name,
+                      style: TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                        color: tokens.primaryStrong,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _TinyChip(
+                          label: finPaymentCenterReserveTypeLabel(
+                            row.reserveType,
+                          ),
+                          tone: typeTone,
+                        ),
+                        _TinyChip(
+                          label: finPaymentCenterReserveClassificationLabel(
+                            row.classification,
+                          ),
+                          tone: row.classification == 'DURA'
+                              ? kFinanzasCoral
+                              : kFinanzasAmber,
+                        ),
+                        _TinyChip(
+                          label: finPaymentCenterReserveScopeLabel(
+                            row.scopeType,
+                          ),
+                          tone: kFinanzasCopper,
+                        ),
+                        _TinyChip(
+                          label: row.blocksCash
+                              ? 'Bloquea caja'
+                              : 'Solo visible',
+                          tone: row.blocksCash
+                              ? kFinanzasCoral
+                              : kFinanzasMutedInk,
+                        ),
+                        _TinyChip(
+                          label: row.isActive ? 'Activa' : 'Inactiva',
+                          tone: statusTone,
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Text(
+                moneyFormatter(row.amount),
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.w900,
+                  color: typeTone,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              _MiniInfoPill(label: 'Cuenta', value: scopeLabel),
+              _MiniInfoPill(
+                label: 'Efectiva',
+                value: dateFormatter(row.effectiveDate),
+              ),
+              _MiniInfoPill(label: 'Límite', value: dateFormatter(row.endDate)),
+            ],
+          ),
+          if (row.note.trim().isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              row.note,
+              style: const TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasMutedInk,
+                height: 1.35,
+              ),
+            ),
+          ],
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: onEdit,
+                style: _paymentCenterOutlinedButtonStyle(
+                  context,
+                  tone: kFinanzasAmber,
+                ),
+                icon: const Icon(Icons.edit_note_rounded, size: 18),
+                label: const Text('Editar'),
+              ),
+              OutlinedButton.icon(
+                onPressed: onDelete,
+                style: _paymentCenterOutlinedButtonStyle(
+                  context,
+                  tone: kFinanzasCoral,
+                ),
+                icon: const Icon(Icons.delete_outline_rounded, size: 18),
+                label: const Text('Eliminar'),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentCenterOverlaySection extends StatelessWidget {
+  final String title;
+  final String? subtitle;
+  final Widget child;
+
+  const _PaymentCenterOverlaySection({
+    required this.title,
+    required this.child,
+    this.subtitle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    return ContractGlassCard(
+      borderRadius: BorderRadius.circular(24),
+      padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 14.5,
+              fontWeight: FontWeight.w900,
+              color: tokens.primaryStrong,
+            ),
+          ),
+          if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              subtitle!,
+              style: const TextStyle(
+                fontSize: 12.4,
+                fontWeight: FontWeight.w700,
+                color: kFinanzasMutedInk,
+                height: 1.35,
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _PaymentCenterReserveDialog extends StatefulWidget {
+  final FinanzasPaymentCenterReserveRecord? initialRow;
+
+  const _PaymentCenterReserveDialog({this.initialRow});
+
+  @override
+  State<_PaymentCenterReserveDialog> createState() =>
+      _PaymentCenterReserveDialogState();
+}
+
+class _PaymentCenterReserveDialogState
+    extends State<_PaymentCenterReserveDialog> {
+  late final TextEditingController _nameC;
+  late final TextEditingController _amountC;
+  late final TextEditingController _noteC;
+  late String _reserveType;
+  late String _classification;
+  late String _scopeType;
+  late String _targetCompany;
+  late String _targetBranch;
+  late DateTime _effectiveDate;
+  DateTime? _endDate;
+  late bool _blocksCash;
+  late bool _isActive;
+  bool _saving = false;
+
+  static const _companies = <String>['DICSA', 'VH'];
+  static const _branches = <String>['CELAYA', 'MAZATLAN'];
+
+  @override
+  void initState() {
+    super.initState();
+    final row = widget.initialRow;
+    _nameC = TextEditingController(text: row?.name ?? '');
+    _amountC = TextEditingController(
+      text: row == null ? '' : row.amount.toStringAsFixed(2),
+    );
+    _noteC = TextEditingController(text: row?.note ?? '');
+    _reserveType = row?.reserveType ?? 'NOMINA';
+    _classification = row?.classification ?? 'DURA';
+    _scopeType = row?.scopeType ?? 'GLOBAL';
+    _targetCompany = row?.targetCompany ?? 'DICSA';
+    _targetBranch = row?.targetBranch ?? 'CELAYA';
+    _effectiveDate = DateUtils.dateOnly(row?.effectiveDate ?? DateTime.now());
+    _endDate = row?.endDate == null ? null : DateUtils.dateOnly(row!.endDate!);
+    _blocksCash = row?.blocksCash ?? true;
+    _isActive = row?.isActive ?? true;
+  }
+
+  @override
+  void dispose() {
+    _nameC.dispose();
+    _amountC.dispose();
+    _noteC.dispose();
+    super.dispose();
+  }
+
+  double _parseAmount() {
+    final cleaned = _amountC.text
+        .replaceAll(',', '')
+        .replaceAll('\$', '')
+        .trim();
+    return double.tryParse(cleaned) ?? 0;
+  }
+
+  String? get _validationMessage {
+    if (_nameC.text.trim().isEmpty) return 'Captura el nombre de la reserva.';
+    if (_parseAmount() <= 0) return 'Captura un monto mayor a cero.';
+    if (_reserveType == 'COLCHON_CUENTA' && _scopeType != 'CUENTA') {
+      return 'Colchon de cuenta debe ir ligado a una cuenta.';
+    }
+    if (_scopeType == 'CUENTA' &&
+        (_targetCompany.trim().isEmpty || _targetBranch.trim().isEmpty)) {
+      return 'Selecciona la cuenta objetivo de la reserva.';
+    }
+    if (_endDate != null && _endDate!.isBefore(_effectiveDate)) {
+      return 'La fecha límite no puede ser anterior a la fecha efectiva.';
+    }
+    return null;
+  }
+
+  String _dateLabel(DateTime value) =>
+      '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+
+  Future<void> _pickEffectiveDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
+      builder: _buildThemedDatePicker,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _effectiveDate = DateUtils.dateOnly(picked));
+  }
+
+  Future<void> _pickEndDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+      currentDate: defaultDatePickerOpenDate(
+        firstDate: DateTime(2020),
+        lastDate: DateTime(2100),
+      ),
+      builder: _buildThemedDatePicker,
+    );
+    if (picked == null || !mounted) return;
+    setState(() => _endDate = DateUtils.dateOnly(picked));
+  }
+
+  Widget _buildThemedDatePicker(BuildContext context, Widget? child) {
+    return AreaThemeScope(
+      tokens: finanzasAreaTokens,
+      child: Builder(
+        builder: (context) => Theme(
+          data: _paymentCenterOverlayTheme(context),
+          child: child ?? const SizedBox.shrink(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _save() async {
+    final validationMessage = _validationMessage;
+    if (validationMessage != null) return;
+    setState(() => _saving = true);
+    try {
+      final initial = widget.initialRow;
+      final reserve =
+          (initial ??
+                  FinanzasPaymentCenterReserveRecord(
+                    id: 'fin_reserve_${DateTime.now().microsecondsSinceEpoch}',
+                    name: '',
+                    reserveType: 'NOMINA',
+                    classification: 'DURA',
+                    scopeType: 'GLOBAL',
+                    targetCompany: null,
+                    targetBranch: null,
+                    amount: 0,
+                    effectiveDate: _effectiveDate,
+                    endDate: null,
+                    note: '',
+                    blocksCash: true,
+                    isActive: true,
+                    createdAt: null,
+                    updatedAt: null,
+                  ))
+              .copyWith(
+                name: _nameC.text.trim(),
+                reserveType: _reserveType,
+                classification: _classification,
+                scopeType: _scopeType,
+                targetCompany: _scopeType == 'GLOBAL' ? null : _targetCompany,
+                clearTargetCompany: _scopeType == 'GLOBAL',
+                targetBranch: _scopeType == 'GLOBAL' ? null : _targetBranch,
+                clearTargetBranch: _scopeType == 'GLOBAL',
+                amount: _parseAmount(),
+                effectiveDate: _effectiveDate,
+                endDate: _endDate,
+                clearEndDate: _endDate == null,
+                note: _noteC.text.trim(),
+                blocksCash: _blocksCash,
+                isActive: _isActive,
+              );
+      await FinanzasPaymentCenterReservesStore.saveReserve(reserve);
+      if (!mounted) return;
+      Navigator.of(context).pop(true);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _saving = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            isMissingPaymentCenterReservesFeatureError(error)
+                ? kFinPaymentCenterReservesUnavailableMessage
+                : 'No se pudo guardar la reserva protegida.',
+          ),
+        ),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final isEditing = widget.initialRow != null;
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 28),
+      child: AreaThemeScope(
+        tokens: finanzasAreaTokens,
+        child: Builder(
+          builder: (context) {
+            return Theme(
+              data: _paymentCenterOverlayTheme(context),
+              child: FinanzasGlassPanel(
+                borderRadius: BorderRadius.circular(34),
+                padding: const EdgeInsets.fromLTRB(24, 24, 24, 22),
+                fillColor: kFinanzasPanelSurface,
+                borderColor: tokens.border.withValues(alpha: 0.38),
+                edgeHighlightColor: kFinanzasLightGlow.withValues(alpha: 0.12),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(
+                    maxWidth: 980,
+                    maxHeight: 820,
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  isEditing
+                                      ? 'Editar reserva protegida'
+                                      : 'Nueva reserva protegida',
+                                  style: const TextStyle(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w900,
+                                    color: kFinanzasInk,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Esta captura vive solo dentro de Centro de pagos y define dinero que no se debe comprometer sin control.',
+                                  style: TextStyle(
+                                    fontSize: 13.5,
+                                    fontWeight: FontWeight.w700,
+                                    color: kFinanzasMutedInk.withValues(
+                                      alpha: 0.92,
+                                    ),
+                                    height: 1.35,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              _PaymentCenterOverlaySection(
+                                title: 'Datos base',
+                                subtitle:
+                                    'Ponle nombre, monto y contexto para que esta reserva sea entendible en el tablero.',
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    TextField(
+                                      controller: _nameC,
+                                      cursorColor: tokens.primaryStrong,
+                                      style:
+                                          _paymentCenterOverlayFieldTextStyle(
+                                            context,
+                                          ),
+                                      decoration:
+                                          _paymentCenterOverlayFieldDecoration(
+                                            context,
+                                            labelText: 'Nombre',
+                                            hintText: 'Nomina jueves Celaya',
+                                          ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    TextField(
+                                      controller: _amountC,
+                                      cursorColor: tokens.primaryStrong,
+                                      style:
+                                          _paymentCenterOverlayFieldTextStyle(
+                                            context,
+                                          ),
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      decoration:
+                                          _paymentCenterOverlayFieldDecoration(
+                                            context,
+                                            labelText: 'Monto',
+                                            hintText: '121000.00',
+                                          ),
+                                    ),
+                                    const SizedBox(height: 14),
+                                    TextField(
+                                      controller: _noteC,
+                                      cursorColor: tokens.primaryStrong,
+                                      style:
+                                          _paymentCenterOverlayFieldTextStyle(
+                                            context,
+                                          ),
+                                      minLines: 2,
+                                      maxLines: 4,
+                                      decoration:
+                                          _paymentCenterOverlayFieldDecoration(
+                                            context,
+                                            labelText: 'Nota',
+                                            hintText:
+                                                'Ejemplo: reservar base de nomina del jueves.',
+                                          ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              _PaymentCenterOverlaySection(
+                                title: 'Tipo y alcance',
+                                subtitle:
+                                    'Define que clase de reserva es y si protege toda la caja o una cuenta específica.',
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'Tipo',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w900,
+                                        color: tokens.primaryStrong,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 10,
+                                      runSpacing: 10,
+                                      children: [
+                                        for (final value
+                                            in kFinPaymentCenterReserveTypes)
+                                          ChoiceChip(
+                                            label: Text(
+                                              finPaymentCenterReserveTypeLabel(
+                                                value,
+                                              ),
+                                            ),
+                                            selected: _reserveType == value,
+                                            onSelected: (_) => setState(() {
+                                              _reserveType = value;
+                                              if (value == 'COLCHON_CUENTA') {
+                                                _scopeType = 'CUENTA';
+                                              }
+                                            }),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 18),
+                                    Text(
+                                      'Clasificación',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w900,
+                                        color: tokens.primaryStrong,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 10,
+                                      runSpacing: 10,
+                                      children: [
+                                        for (final value
+                                            in kFinPaymentCenterReserveClassifications)
+                                          ChoiceChip(
+                                            label: Text(
+                                              finPaymentCenterReserveClassificationLabel(
+                                                value,
+                                              ),
+                                            ),
+                                            selected: _classification == value,
+                                            onSelected: (_) => setState(
+                                              () => _classification = value,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 18),
+                                    Text(
+                                      'Alcance',
+                                      style: TextStyle(
+                                        fontSize: 13,
+                                        fontWeight: FontWeight.w900,
+                                        color: tokens.primaryStrong,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Wrap(
+                                      spacing: 10,
+                                      runSpacing: 10,
+                                      children: [
+                                        for (final value
+                                            in kFinPaymentCenterReserveScopeTypes)
+                                          ChoiceChip(
+                                            label: Text(
+                                              finPaymentCenterReserveScopeLabel(
+                                                value,
+                                              ),
+                                            ),
+                                            selected: _scopeType == value,
+                                            onSelected: (_) => setState(
+                                              () => _scopeType = value,
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                    if (_scopeType == 'CUENTA') ...[
+                                      const SizedBox(height: 18),
+                                      Text(
+                                        'Cuenta objetivo',
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.w900,
+                                          color: tokens.primaryStrong,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Wrap(
+                                        spacing: 10,
+                                        runSpacing: 10,
+                                        children: [
+                                          for (final company in _companies)
+                                            ChoiceChip(
+                                              label: Text(company),
+                                              selected:
+                                                  _targetCompany == company,
+                                              onSelected: (_) => setState(
+                                                () => _targetCompany = company,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                      const SizedBox(height: 10),
+                                      Wrap(
+                                        spacing: 10,
+                                        runSpacing: 10,
+                                        children: [
+                                          for (final branch in _branches)
+                                            ChoiceChip(
+                                              label: Text(branch),
+                                              selected: _targetBranch == branch,
+                                              onSelected: (_) => setState(
+                                                () => _targetBranch = branch,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(height: 14),
+                              _PaymentCenterOverlaySection(
+                                title: 'Vigencia y efecto en caja',
+                                subtitle:
+                                    'Controla desde cuando aplica y si realmente debe apartar disponibilidad hoy.',
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Wrap(
+                                      spacing: 10,
+                                      runSpacing: 10,
+                                      children: [
+                                        OutlinedButton.icon(
+                                          onPressed: _pickEffectiveDate,
+                                          icon: const Icon(
+                                            Icons.event_available_outlined,
+                                            size: 18,
+                                          ),
+                                          label: Text(
+                                            'Efectiva: ${_dateLabel(_effectiveDate)}',
+                                          ),
+                                        ),
+                                        OutlinedButton.icon(
+                                          onPressed: _pickEndDate,
+                                          icon: const Icon(
+                                            Icons.event_busy_outlined,
+                                            size: 18,
+                                          ),
+                                          label: Text(
+                                            _endDate == null
+                                                ? 'Sin fecha límite'
+                                                : 'Límite: ${_dateLabel(_endDate!)}',
+                                          ),
+                                        ),
+                                        if (_endDate != null)
+                                          TextButton(
+                                            onPressed: () =>
+                                                setState(() => _endDate = null),
+                                            child: const Text('Quitar límite'),
+                                          ),
+                                      ],
+                                    ),
+                                    const SizedBox(height: 14),
+                                    Container(
+                                      decoration: BoxDecoration(
+                                        color: tokens.fieldSurface.withValues(
+                                          alpha: 0.82,
+                                        ),
+                                        borderRadius: BorderRadius.circular(20),
+                                        border: Border.all(
+                                          color: tokens.border.withValues(
+                                            alpha: 0.34,
+                                          ),
+                                        ),
+                                      ),
+                                      child: Column(
+                                        children: [
+                                          SwitchListTile(
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 14,
+                                                  vertical: 2,
+                                                ),
+                                            title: Text(
+                                              'Bloquea caja',
+                                              style: TextStyle(
+                                                color: tokens.onGlass,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                            subtitle: const Text(
+                                              'Si está activa, descuenta disponibilidad real.',
+                                              style: TextStyle(
+                                                color: kFinanzasMutedInk,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            value: _blocksCash,
+                                            onChanged: (value) => setState(
+                                              () => _blocksCash = value,
+                                            ),
+                                          ),
+                                          Divider(
+                                            height: 1,
+                                            color: tokens.border.withValues(
+                                              alpha: 0.24,
+                                            ),
+                                          ),
+                                          SwitchListTile(
+                                            contentPadding:
+                                                const EdgeInsets.symmetric(
+                                                  horizontal: 14,
+                                                  vertical: 2,
+                                                ),
+                                            title: Text(
+                                              'Activa',
+                                              style: TextStyle(
+                                                color: tokens.onGlass,
+                                                fontWeight: FontWeight.w900,
+                                              ),
+                                            ),
+                                            subtitle: const Text(
+                                              'Permite dejarla registrada sin afectar hoy.',
+                                              style: TextStyle(
+                                                color: kFinanzasMutedInk,
+                                                fontWeight: FontWeight.w700,
+                                              ),
+                                            ),
+                                            value: _isActive,
+                                            onChanged: (value) => setState(
+                                              () => _isActive = value,
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              if (_validationMessage != null) ...[
+                                const SizedBox(height: 14),
+                                Text(
+                                  _validationMessage!,
+                                  style: const TextStyle(
+                                    fontSize: 12.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: kFinanzasCoral,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: _saving
+                                ? null
+                                : () => Navigator.of(context).pop(false),
+                            child: const Text('Cancelar'),
+                          ),
+                          const SizedBox(width: 10),
+                          FilledButton(
+                            onPressed: _saving || _validationMessage != null
+                                ? null
+                                : _save,
+                            style: _paymentCenterFilledButtonStyle(
+                              context,
+                              tone: kFinanzasCoral,
+                            ),
+                            child: Text(
+                              _saving
+                                  ? 'Guardando...'
+                                  : isEditing
+                                  ? 'Guardar cambios'
+                                  : 'Guardar reserva',
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
 class _PaymentCenterPriorityColumn extends StatelessWidget {
-  final _PaymentCenterTab bucket;
-  final List<_PaymentCenterItem> rows;
+  final FinanzasPaymentCenterPriorityBucket bucket;
+  final List<FinanzasPaymentCenterOperationalItem> rows;
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
   final Future<void> Function() onOpenProviderAccounts;
-  final Future<void> Function(_PaymentCenterItem row) onOpenBankAccounts;
-  final Future<void> Function(_PaymentCenterItem row) onOpenFixedPayments;
+  final Future<void> Function(FinanzasPaymentCenterOperationalItem row)
+  onOpenBankAccounts;
+  final Future<void> Function(FinanzasPaymentCenterOperationalItem row)
+  onOpenFixedPayments;
 
   const _PaymentCenterPriorityColumn({
     required this.bucket,
@@ -1916,7 +4661,7 @@ class _PaymentCenterPriorityColumn extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       borderRadius: BorderRadius.circular(30),
       fillColor: kFinanzasPanelSurfaceSoft,
-      borderColor: Colors.white.withValues(alpha: 0.18),
+      borderColor: tokens.border.withValues(alpha: 0.28),
       glowColor: tone.withValues(alpha: 0.14),
       edgeHighlightColor: tone.withValues(alpha: 0.20),
       child: Column(
@@ -2041,7 +4786,7 @@ class _PaymentCenterPriorityColumn extends StatelessWidget {
 }
 
 class _PaymentCenterCompactCard extends StatelessWidget {
-  final _PaymentCenterItem row;
+  final FinanzasPaymentCenterOperationalItem row;
   final Color tone;
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
@@ -2077,7 +4822,7 @@ class _PaymentCenterCompactCard extends StatelessWidget {
         border: Border.all(
           color: row.isPreviewMock
               ? tone.withValues(alpha: 0.26)
-              : Colors.white.withValues(alpha: 0.10),
+              : tokens.border.withValues(alpha: 0.18),
         ),
         boxShadow: [
           BoxShadow(
@@ -2191,12 +4936,9 @@ class _PaymentCenterCompactCard extends StatelessWidget {
                 onPressed: row.itemType == 'Pago fijo'
                     ? onOpenFixedPayments
                     : onOpenProviderAccounts,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: kFinanzasAmber,
-                  side: BorderSide(
-                    color: kFinanzasAmber.withValues(alpha: 0.58),
-                  ),
-                  backgroundColor: kFinanzasPanelSurfaceSoft,
+                style: _paymentCenterOutlinedButtonStyle(
+                  context,
+                  tone: kFinanzasAmber,
                 ),
                 icon: Icon(
                   row.itemType == 'Pago fijo'
@@ -2208,17 +4950,16 @@ class _PaymentCenterCompactCard extends StatelessWidget {
               ),
               FilledButton.icon(
                 onPressed: onOpenBankAccounts,
-                style: FilledButton.styleFrom(
-                  foregroundColor: Colors.white,
-                  backgroundColor: kFinanzasCoral,
-                  shadowColor: kFinanzasCoral.withValues(alpha: 0.46),
-                  elevation: 8,
+                style: _paymentCenterFilledButtonStyle(
+                  context,
+                  tone: kFinanzasCoral,
                 ),
                 icon: const Icon(Icons.account_balance_outlined, size: 18),
                 label: Text(switch (row.executionDecision) {
-                  _PaymentExecutionDecision.pagarCompleto => 'Pagar',
-                  _PaymentExecutionDecision.abonar => 'Abonar',
-                  _PaymentExecutionDecision.esperar => 'Revisar',
+                  FinanzasPaymentCenterExecutionDecision.pagarCompleto =>
+                    'Pagar',
+                  FinanzasPaymentCenterExecutionDecision.abonar => 'Abonar',
+                  FinanzasPaymentCenterExecutionDecision.esperar => 'Revisar',
                 }),
               ),
             ],
@@ -2241,9 +4982,12 @@ class _MiniInfoPill extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
       decoration: BoxDecoration(
-        color: tokens.surfaceTint.withValues(alpha: 0.64),
+        color: Color.alphaBlend(
+          tokens.primary.withValues(alpha: 0.08),
+          tokens.badgeBackground.withValues(alpha: 0.86),
+        ),
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: tokens.border.withValues(alpha: 0.84)),
+        border: Border.all(color: tokens.border.withValues(alpha: 0.42)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2263,7 +5007,7 @@ class _MiniInfoPill extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w900,
-              color: tokens.primaryStrong,
+              color: tokens.onGlass,
             ),
           ),
         ],
@@ -2277,11 +5021,13 @@ class _CenterEmptyMiniColumn extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return FinanzasGlassPanel(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(14, 16, 14, 16),
       borderRadius: BorderRadius.circular(20),
       fillColor: kFinanzasPanelSurfaceLight,
+      borderColor: tokens.border.withValues(alpha: 0.24),
       child: Text(
         'Sin pendientes en esta prioridad.',
         style: TextStyle(
@@ -2302,12 +5048,16 @@ class _TinyChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: tone.withValues(alpha: 0.12),
+        color: Color.alphaBlend(
+          tone.withValues(alpha: 0.14),
+          tokens.badgeBackground.withValues(alpha: 0.92),
+        ),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: tone.withValues(alpha: 0.22)),
+        border: Border.all(color: tone.withValues(alpha: 0.34)),
       ),
       child: Text(
         label,
@@ -2328,19 +5078,20 @@ class _PreviewLabelChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: kFinanzasPearl.withValues(alpha: 0.06),
+        color: tokens.badgeBackground.withValues(alpha: 0.76),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: kFinanzasAmber.withValues(alpha: 0.18)),
+        border: Border.all(color: tokens.border.withValues(alpha: 0.32)),
       ),
       child: Text(
         label,
-        style: const TextStyle(
+        style: TextStyle(
           fontSize: 11,
           fontWeight: FontWeight.w900,
-          color: kFinanzasMutedInk,
+          color: tokens.badgeText,
         ),
       ),
     );
@@ -2362,7 +5113,7 @@ class _CenterEmptyPane extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(22, 22, 22, 22),
         borderRadius: BorderRadius.circular(24),
         fillColor: kFinanzasPanelSurfaceSoft,
-        borderColor: Colors.white.withValues(alpha: 0.18),
+        borderColor: tokens.border.withValues(alpha: 0.28),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -2467,6 +5218,10 @@ class _FinCenterHeaderButtonState extends State<_FinCenterHeaderButton> {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     final enabled = widget.onTap != null || widget.onTapSync != null;
+    final contentColor = enabled
+        ? tokens.onGlass
+        : tokens.onGlass.withValues(alpha: 0.46);
+    final borderColor = tokens.border.withValues(alpha: enabled ? 0.90 : 0.42);
     return MouseRegion(
       cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
       child: Material(
@@ -2498,29 +5253,33 @@ class _FinCenterHeaderButtonState extends State<_FinCenterHeaderButton> {
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
                 colors: [
-                  kFinanzasOrange.withValues(alpha: 0.26),
-                  kFinanzasOrangeIntense.withValues(alpha: 0.18),
+                  Color.alphaBlend(
+                    tokens.primaryStrong.withValues(alpha: 0.24),
+                    kFinanzasPanelSurfaceStrong.withValues(alpha: 0.92),
+                  ),
+                  Color.alphaBlend(
+                    tokens.accent.withValues(alpha: 0.18),
+                    kFinanzasPanelSurface.withValues(alpha: 0.88),
+                  ),
                 ],
               ),
               borderRadius: BorderRadius.circular(18),
-              border: Border.all(
-                color: kFinanzasBorder.withValues(alpha: 0.90),
-              ),
+              border: Border.all(color: borderColor),
               boxShadow: [
                 BoxShadow(
                   blurRadius: 16,
-                  color: kFinanzasOrange.withValues(alpha: 0.14),
+                  color: tokens.glow.withValues(alpha: enabled ? 0.14 : 0.06),
                   offset: const Offset(0, 8),
                 ),
                 BoxShadow(
                   blurRadius: 10,
-                  color: tokens.glow.withValues(alpha: 0.05),
+                  color: tokens.glow.withValues(alpha: enabled ? 0.05 : 0.02),
                 ),
               ],
             ),
             child: Row(
               children: [
-                Icon(widget.icon, size: 20, color: Colors.white),
+                Icon(widget.icon, size: 20, color: contentColor),
                 const SizedBox(width: 10),
                 Expanded(
                   child: FittedBox(
@@ -2531,7 +5290,7 @@ class _FinCenterHeaderButtonState extends State<_FinCenterHeaderButton> {
                       maxLines: 1,
                       softWrap: false,
                       style: TextStyle(
-                        color: Colors.white,
+                        color: contentColor,
                         fontSize: 14,
                         fontWeight: FontWeight.w800,
                       ),
@@ -2573,41 +5332,43 @@ class _FinPaymentCenterSidePanel extends StatelessWidget {
   }
 }
 
-Color _paymentCenterBucketTone(_PaymentCenterTab bucket) {
+Color _paymentCenterBucketTone(FinanzasPaymentCenterPriorityBucket bucket) {
   switch (bucket) {
-    case _PaymentCenterTab.obligatorio:
+    case FinanzasPaymentCenterPriorityBucket.obligatorio:
       return kFinanzasOrangeIntense;
-    case _PaymentCenterTab.urgente:
+    case FinanzasPaymentCenterPriorityBucket.urgente:
       return kFinanzasOrange;
-    case _PaymentCenterTab.recomendado:
+    case FinanzasPaymentCenterPriorityBucket.recomendado:
       return kFinanzasOrangeElectric;
-    case _PaymentCenterTab.postergable:
+    case FinanzasPaymentCenterPriorityBucket.postergable:
       return kFinanzasBronze;
   }
 }
 
-IconData _paymentCenterBucketIcon(_PaymentCenterTab bucket) {
+IconData _paymentCenterBucketIcon(FinanzasPaymentCenterPriorityBucket bucket) {
   switch (bucket) {
-    case _PaymentCenterTab.obligatorio:
+    case FinanzasPaymentCenterPriorityBucket.obligatorio:
       return Icons.warning_amber_rounded;
-    case _PaymentCenterTab.urgente:
+    case FinanzasPaymentCenterPriorityBucket.urgente:
       return Icons.flash_on_rounded;
-    case _PaymentCenterTab.recomendado:
+    case FinanzasPaymentCenterPriorityBucket.recomendado:
       return Icons.check_circle_outline_rounded;
-    case _PaymentCenterTab.postergable:
+    case FinanzasPaymentCenterPriorityBucket.postergable:
       return Icons.schedule_rounded;
   }
 }
 
-String _paymentCenterBucketSubtitle(_PaymentCenterTab bucket) {
+String _paymentCenterBucketSubtitle(
+  FinanzasPaymentCenterPriorityBucket bucket,
+) {
   switch (bucket) {
-    case _PaymentCenterTab.obligatorio:
+    case FinanzasPaymentCenterPriorityBucket.obligatorio:
       return 'Compromisos que ya no deberían esperar.';
-    case _PaymentCenterTab.urgente:
+    case FinanzasPaymentCenterPriorityBucket.urgente:
       return 'Salidas sensibles para esta ventana de caja.';
-    case _PaymentCenterTab.recomendado:
+    case FinanzasPaymentCenterPriorityBucket.recomendado:
       return 'Pagos programables con buena lectura operativa.';
-    case _PaymentCenterTab.postergable:
+    case FinanzasPaymentCenterPriorityBucket.postergable:
       return 'Elementos visibles sin presión inmediata.';
   }
 }

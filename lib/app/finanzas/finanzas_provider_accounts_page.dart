@@ -9409,8 +9409,12 @@ class _RegisterSupplierAgreementDialogState
             return (selectedInvoices.length / perPeriod).ceil();
           })()
         : _parseCount(_countC.text);
+    final dialogMaxHeight = math
+        .min(MediaQuery.sizeOf(context).height - 56, 760.0)
+        .toDouble();
     return Dialog(
       backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 28, vertical: 24),
       child: AreaThemeScope(
         tokens: finanzasAreaTokens,
         child: Builder(
@@ -9418,273 +9422,285 @@ class _RegisterSupplierAgreementDialogState
             borderRadius: BorderRadius.circular(28),
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 780),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _DialogHeader(
-                    title: widget.initialDraft == null
-                        ? 'Nuevo convenio'
-                        : 'Editar convenio',
-                    subtitle:
-                        '${widget.providerName} · Saldo sugerido ${_moneyStatic(widget.suggestedBalance)}',
-                  ),
-                  const SizedBox(height: 14),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _InlineChoiceField(
-                          label: 'Tipo',
-                          value: finSupplierAgreementTypeLabel(_agreementType),
-                          onTap: () {
-                            unawaited(_pickAgreementType());
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _InlineChoiceField(
-                          label: 'Inicio',
-                          value: _dateLabel(_startDate),
-                          onTap: () {
-                            unawaited(_pickDate());
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _InlineChoiceField(
-                          label: 'Frecuencia',
-                          value: finSupplierAgreementFrequencyLabel(_frequency),
-                          onTap: () {
-                            unawaited(_pickFrequency());
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _InlineChoiceField(
-                          label: 'Empresa objetivo',
-                          value: _targetCompany,
-                          onTap: () async {
-                            final selected = await _showSimpleOptionsDialog(
-                              context: context,
-                              title: 'Seleccionar empresa objetivo',
-                              options: _targetCompanies
-                                  .map(
-                                    (row) => _SimpleOption(
-                                      id: row,
-                                      label: row,
-                                      subtitle: 'Cuenta pagadora esperada',
-                                    ),
-                                  )
-                                  .toList(growable: false),
-                            );
-                            if (selected == null || !mounted) return;
-                            setState(() => _targetCompany = selected.id);
-                          },
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: _InlineChoiceField(
-                          label: 'Cuenta objetivo',
-                          value: _targetBranch == 'MAZATLAN'
-                              ? 'Mazatlan'
-                              : 'Celaya',
-                          onTap: () async {
-                            final selected = await _showSimpleOptionsDialog(
-                              context: context,
-                              title: 'Seleccionar cuenta objetivo',
-                              options: _targetBranches
-                                  .map(
-                                    (row) => _SimpleOption(
-                                      id: row,
-                                      label: row == 'MAZATLAN'
-                                          ? 'Mazatlan'
-                                          : 'Celaya',
-                                      subtitle: 'Sucursal/cuenta objetivo',
-                                    ),
-                                  )
-                                  .toList(growable: false),
-                            );
-                            if (selected == null || !mounted) return;
-                            setState(() => _targetBranch = selected.id);
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  if (_agreementType == 'POR_MONTO')
+              constraints: BoxConstraints(
+                maxWidth: 780,
+                maxHeight: dialogMaxHeight,
+              ),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.only(right: 4),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _DialogHeader(
+                      title: widget.initialDraft == null
+                          ? 'Nuevo convenio'
+                          : 'Editar convenio',
+                      subtitle:
+                          '${widget.providerName} · Saldo sugerido ${_moneyStatic(widget.suggestedBalance)}',
+                    ),
+                    const SizedBox(height: 14),
                     Row(
                       children: [
                         Expanded(
-                          child: TextField(
-                            controller: _amountC,
-                            style: const TextStyle(
-                              color: kFinanzasInk,
-                              fontWeight: FontWeight.w700,
+                          child: _InlineChoiceField(
+                            label: 'Tipo',
+                            value: finSupplierAgreementTypeLabel(
+                              _agreementType,
                             ),
-                            cursorColor: finanzasAreaTokens.primaryStrong,
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            decoration: contractGlassFieldDecoration(
-                              context,
-                              hintText: 'Monto por pago',
-                              prefixIcon: const Icon(Icons.payments_outlined),
-                            ),
+                            onTap: () {
+                              unawaited(_pickAgreementType());
+                            },
                           ),
                         ),
                         const SizedBox(width: 12),
                         Expanded(
-                          child: TextField(
-                            controller: _countC,
-                            style: const TextStyle(
-                              color: kFinanzasInk,
-                              fontWeight: FontWeight.w700,
+                          child: _InlineChoiceField(
+                            label: 'Inicio',
+                            value: _dateLabel(_startDate),
+                            onTap: () {
+                              unawaited(_pickDate());
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _InlineChoiceField(
+                            label: 'Frecuencia',
+                            value: finSupplierAgreementFrequencyLabel(
+                              _frequency,
                             ),
-                            cursorColor: finanzasAreaTokens.primaryStrong,
-                            keyboardType: TextInputType.number,
-                            decoration: contractGlassFieldDecoration(
-                              context,
-                              hintText: 'Número de pagos',
-                              prefixIcon: const Icon(
-                                Icons.format_list_numbered,
-                              ),
-                            ),
+                            onTap: () {
+                              unawaited(_pickFrequency());
+                            },
                           ),
                         ),
                       ],
-                    )
-                  else
-                    Column(
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
                       children: [
-                        Row(
-                          children: [
-                            Expanded(
-                              flex: 2,
-                              child: _InlineChoiceField(
-                                label: 'Facturas',
-                                value: _selectedInvoiceIds.isEmpty
-                                    ? 'Seleccionar facturas'
-                                    : '${_selectedInvoiceIds.length} seleccionadas',
-                                onTap: () {
-                                  unawaited(_pickInvoices());
-                                },
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: TextField(
-                                controller: _invoicesPerPeriodC,
-                                style: const TextStyle(
-                                  color: kFinanzasInk,
-                                  fontWeight: FontWeight.w700,
-                                ),
-                                cursorColor: finanzasAreaTokens.primaryStrong,
-                                keyboardType: TextInputType.number,
-                                decoration: contractGlassFieldDecoration(
-                                  context,
-                                  hintText: 'Facturas por periodo',
-                                  prefixIcon: const Icon(
-                                    Icons.stacked_line_chart_outlined,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
+                        Expanded(
+                          child: _InlineChoiceField(
+                            label: 'Empresa objetivo',
+                            value: _targetCompany,
+                            onTap: () async {
+                              final selected = await _showSimpleOptionsDialog(
+                                context: context,
+                                title: 'Seleccionar empresa objetivo',
+                                options: _targetCompanies
+                                    .map(
+                                      (row) => _SimpleOption(
+                                        id: row,
+                                        label: row,
+                                        subtitle: 'Cuenta pagadora esperada',
+                                      ),
+                                    )
+                                    .toList(growable: false),
+                              );
+                              if (selected == null || !mounted) return;
+                              setState(() => _targetCompany = selected.id);
+                            },
+                          ),
                         ),
-                        if (selectedInvoices.isNotEmpty) ...[
-                          const SizedBox(height: 10),
-                          Align(
-                            alignment: Alignment.centerLeft,
-                            child: Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                for (final invoice in selectedInvoices)
-                                  _CompactInvoiceChip(
-                                    label:
-                                        '${invoice.folio} · ${_moneyStatic(invoice.balanceAmount)}',
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: _InlineChoiceField(
+                            label: 'Cuenta objetivo',
+                            value: _targetBranch == 'MAZATLAN'
+                                ? 'Mazatlan'
+                                : 'Celaya',
+                            onTap: () async {
+                              final selected = await _showSimpleOptionsDialog(
+                                context: context,
+                                title: 'Seleccionar cuenta objetivo',
+                                options: _targetBranches
+                                    .map(
+                                      (row) => _SimpleOption(
+                                        id: row,
+                                        label: row == 'MAZATLAN'
+                                            ? 'Mazatlan'
+                                            : 'Celaya',
+                                        subtitle: 'Sucursal/cuenta objetivo',
+                                      ),
+                                    )
+                                    .toList(growable: false),
+                              );
+                              if (selected == null || !mounted) return;
+                              setState(() => _targetBranch = selected.id);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_agreementType == 'POR_MONTO')
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: _amountC,
+                              style: const TextStyle(
+                                color: kFinanzasInk,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              cursorColor: finanzasAreaTokens.primaryStrong,
+                              keyboardType:
+                                  const TextInputType.numberWithOptions(
+                                    decimal: true,
                                   ),
-                              ],
+                              decoration: contractGlassFieldDecoration(
+                                context,
+                                hintText: 'Monto por pago',
+                                prefixIcon: const Icon(Icons.payments_outlined),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: TextField(
+                              controller: _countC,
+                              style: const TextStyle(
+                                color: kFinanzasInk,
+                                fontWeight: FontWeight.w700,
+                              ),
+                              cursorColor: finanzasAreaTokens.primaryStrong,
+                              keyboardType: TextInputType.number,
+                              decoration: contractGlassFieldDecoration(
+                                context,
+                                hintText: 'Número de pagos',
+                                prefixIcon: const Icon(
+                                  Icons.format_list_numbered,
+                                ),
+                              ),
                             ),
                           ),
                         ],
+                      )
+                    else
+                      Column(
+                        children: [
+                          Row(
+                            children: [
+                              Expanded(
+                                flex: 2,
+                                child: _InlineChoiceField(
+                                  label: 'Facturas',
+                                  value: _selectedInvoiceIds.isEmpty
+                                      ? 'Seleccionar facturas'
+                                      : '${_selectedInvoiceIds.length} seleccionadas',
+                                  onTap: () {
+                                    unawaited(_pickInvoices());
+                                  },
+                                ),
+                              ),
+                              const SizedBox(width: 12),
+                              Expanded(
+                                child: TextField(
+                                  controller: _invoicesPerPeriodC,
+                                  style: const TextStyle(
+                                    color: kFinanzasInk,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                  cursorColor: finanzasAreaTokens.primaryStrong,
+                                  keyboardType: TextInputType.number,
+                                  decoration: contractGlassFieldDecoration(
+                                    context,
+                                    hintText: 'Facturas por periodo',
+                                    prefixIcon: const Icon(
+                                      Icons.stacked_line_chart_outlined,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          if (selectedInvoices.isNotEmpty) ...[
+                            const SizedBox(height: 10),
+                            Align(
+                              alignment: Alignment.centerLeft,
+                              child: Wrap(
+                                spacing: 8,
+                                runSpacing: 8,
+                                children: [
+                                  for (final invoice in selectedInvoices)
+                                    _CompactInvoiceChip(
+                                      label:
+                                          '${invoice.folio} · ${_moneyStatic(invoice.balanceAmount)}',
+                                    ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 10,
+                      runSpacing: 10,
+                      children: [
+                        _SummaryMetricCard(
+                          label: 'Total convenio',
+                          value: _moneyStatic(total),
+                        ),
+                        _SummaryMetricCard(
+                          label: _agreementType == 'POR_FACTURAS'
+                              ? 'Compromisos'
+                              : 'Pagos',
+                          value: '$projectedInstallments',
+                        ),
+                        _SummaryMetricCard(
+                          label: 'Frecuencia',
+                          value: finSupplierAgreementFrequencyLabel(_frequency),
+                        ),
                       ],
                     ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 10,
-                    runSpacing: 10,
-                    children: [
-                      _SummaryMetricCard(
-                        label: 'Total convenio',
-                        value: _moneyStatic(total),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: _notesC,
+                      style: const TextStyle(
+                        color: kFinanzasInk,
+                        fontWeight: FontWeight.w700,
                       ),
-                      _SummaryMetricCard(
-                        label: _agreementType == 'POR_FACTURAS'
-                            ? 'Compromisos'
-                            : 'Pagos',
-                        value: '$projectedInstallments',
+                      cursorColor: finanzasAreaTokens.primaryStrong,
+                      minLines: 3,
+                      maxLines: 4,
+                      decoration: contractGlassFieldDecoration(
+                        context,
+                        hintText: 'Notas del convenio',
+                        prefixIcon: const Icon(Icons.note_alt_outlined),
                       ),
-                      _SummaryMetricCard(
-                        label: 'Frecuencia',
-                        value: finSupplierAgreementFrequencyLabel(_frequency),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: _notesC,
-                    style: const TextStyle(
-                      color: kFinanzasInk,
-                      fontWeight: FontWeight.w700,
                     ),
-                    cursorColor: finanzasAreaTokens.primaryStrong,
-                    minLines: 3,
-                    maxLines: 4,
-                    decoration: contractGlassFieldDecoration(
-                      context,
-                      hintText: 'Notas del convenio',
-                      prefixIcon: const Icon(Icons.note_alt_outlined),
+                    const SizedBox(height: 16),
+                    _DialogActionsRow(
+                      onCancel: () => Navigator.of(context).pop(),
+                      onConfirm: !_canSave
+                          ? null
+                          : () {
+                              Navigator.of(context).pop(
+                                _AgreementDraftResult(
+                                  startDate: _startDate,
+                                  agreementType: _agreementType,
+                                  frequency: _frequency,
+                                  targetCompany: _targetCompany,
+                                  targetBranch: _targetBranch,
+                                  installmentAmount: _parseAmount(
+                                    _amountC.text,
+                                  ),
+                                  installmentCount: projectedInstallments,
+                                  invoicesPerPeriod: _parseInvoicesPerPeriod(
+                                    _invoicesPerPeriodC.text,
+                                  ),
+                                  selectedInvoiceIds: _selectedInvoiceIds
+                                      .toList(growable: false),
+                                  notes: _notesC.text.trim(),
+                                ),
+                              );
+                            },
+                      confirmLabel: 'Guardar convenio',
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  _DialogActionsRow(
-                    onCancel: () => Navigator.of(context).pop(),
-                    onConfirm: !_canSave
-                        ? null
-                        : () {
-                            Navigator.of(context).pop(
-                              _AgreementDraftResult(
-                                startDate: _startDate,
-                                agreementType: _agreementType,
-                                frequency: _frequency,
-                                targetCompany: _targetCompany,
-                                targetBranch: _targetBranch,
-                                installmentAmount: _parseAmount(_amountC.text),
-                                installmentCount: projectedInstallments,
-                                invoicesPerPeriod: _parseInvoicesPerPeriod(
-                                  _invoicesPerPeriodC.text,
-                                ),
-                                selectedInvoiceIds: _selectedInvoiceIds.toList(
-                                  growable: false,
-                                ),
-                                notes: _notesC.text.trim(),
-                              ),
-                            );
-                          },
-                    confirmLabel: 'Guardar convenio',
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

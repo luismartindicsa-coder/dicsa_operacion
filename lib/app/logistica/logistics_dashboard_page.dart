@@ -14,6 +14,7 @@ import 'logistics_catalog_page.dart';
 import 'logistics_control_daily_page.dart';
 import 'logistics_diesel_page.dart';
 import 'logistics_diesel_store.dart';
+import 'logistics_gasoline_page.dart';
 import 'logistics_theme.dart';
 
 class LogisticsDashboardPage extends StatelessWidget {
@@ -133,6 +134,16 @@ class LogisticsDashboardPage extends StatelessWidget {
       );
     }
 
+    Future<void> openGasoline() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const LogisticsGasolinePage(),
+          duration: const Duration(milliseconds: 420),
+          reverseDuration: const Duration(milliseconds: 360),
+        ),
+      );
+    }
+
     Future<void> openIncidents() async {
       _showLogisticsPhaseSnack(
         context,
@@ -191,6 +202,12 @@ class LogisticsDashboardPage extends StatelessWidget {
             onTap: openDiesel,
           ),
           DashboardNavAction(
+            title: kLogisticsNavGasolineLabel,
+            subtitle: 'Cargas directas en gasolinera por operador y unidad',
+            icon: Icons.local_gas_station_outlined,
+            onTap: openGasoline,
+          ),
+          DashboardNavAction(
             title: kLogisticsNavSavingsLabel,
             subtitle: 'Rutas, zonas y oportunidades de optimización',
             icon: Icons.insights_outlined,
@@ -204,6 +221,7 @@ class LogisticsDashboardPage extends StatelessWidget {
               onOpenUnits: openUnits,
               onOpenCatalogs: openCatalogs,
               onOpenDiesel: openDiesel,
+              onOpenGasoline: openGasoline,
               onOpenIncidents: openIncidents,
               onOpenSavings: openSavings,
             ),
@@ -218,12 +236,88 @@ void _showLogisticsPhaseSnack(BuildContext context, String message) {
   );
 }
 
+class LogisticsManagementExecutiveSection extends StatelessWidget {
+  final Future<void> Function()? onOpenControlDiario;
+  final Future<void> Function()? onOpenDiesel;
+  final Future<void> Function()? onOpenGasoline;
+
+  const LogisticsManagementExecutiveSection({
+    super.key,
+    this.onOpenControlDiario,
+    this.onOpenDiesel,
+    this.onOpenGasoline,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AreaThemeScope(
+      tokens: logisticsAreaTokens,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _LogisticsWorkspaceGroup(
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final availableWidth = constraints.maxWidth;
+                final summaryHeight = availableWidth < 1080 ? 404.0 : 364.0;
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _LogisticsDieselStatusStrip(onOpenSource: onOpenDiesel),
+                    const SizedBox(height: 14),
+                    _LogisticsWeeklyDriverCharts(
+                      width: availableWidth,
+                      preferSideBySide: availableWidth >= 1520,
+                      chartHeight: availableWidth >= 1520
+                          ? 472
+                          : availableWidth >= 1180
+                          ? 438
+                          : 408,
+                      onOpenDieselSource: onOpenDiesel,
+                      onOpenGasolineSource: onOpenGasoline,
+                      onOpenServicesSource: onOpenControlDiario,
+                    ),
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      height: summaryHeight,
+                      child: _LogisticsServicesSummaryPanel(
+                        onOpenSource: onOpenControlDiario,
+                      ),
+                    ),
+                  ],
+                );
+              },
+            ),
+          ),
+          if (onOpenControlDiario != null) ...[
+            const SizedBox(height: 14),
+            _LogisticsWorkspaceGroup(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+              child: _LogisticsModuleCard(
+                icon: Icons.view_kanban_rounded,
+                title: 'Control Diario',
+                badge: 'Logística',
+                subtitle:
+                    'Pantalla operativa principal para ver servicios del día, prioridad, zona, choferes y unidades disponibles.',
+                outcome:
+                    'Resuelve la lectura diaria de asignación para Gerencia sin salir del frente ejecutivo.',
+                onTap: onOpenControlDiario!,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _LogisticsDashboardWorkspace extends StatelessWidget {
   final double width;
   final Future<void> Function() onOpenControlDiario;
   final Future<void> Function() onOpenUnits;
   final Future<void> Function() onOpenCatalogs;
   final Future<void> Function() onOpenDiesel;
+  final Future<void> Function() onOpenGasoline;
   final Future<void> Function() onOpenIncidents;
   final Future<void> Function() onOpenSavings;
 
@@ -233,6 +327,7 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
     required this.onOpenUnits,
     required this.onOpenCatalogs,
     required this.onOpenDiesel,
+    required this.onOpenGasoline,
     required this.onOpenIncidents,
     required this.onOpenSavings,
   });
@@ -249,15 +344,7 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
           child: LayoutBuilder(
             builder: (context, constraints) {
               final availableWidth = constraints.maxWidth;
-              final shareRow = availableWidth >= 1360;
-              final summaryHeight = shareRow
-                  ? 412.0
-                  : availableWidth < 1080
-                  ? 430.0
-                  : 390.0;
-              final weeklyWidth = shareRow
-                  ? ((availableWidth - 14) * 0.60)
-                  : availableWidth;
+              final summaryHeight = availableWidth < 1080 ? 404.0 : 364.0;
               final summaryPanel = SizedBox(
                 height: summaryHeight,
                 child: _LogisticsServicesSummaryPanel(
@@ -265,10 +352,15 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
                 ),
               );
               final weeklyPanel = _LogisticsWeeklyDriverCharts(
-                width: weeklyWidth,
-                preferSideBySide: shareRow,
-                chartHeight: shareRow ? 320 : 350,
+                width: availableWidth,
+                preferSideBySide: availableWidth >= 1520,
+                chartHeight: availableWidth >= 1520
+                    ? 472
+                    : availableWidth >= 1180
+                    ? 438
+                    : 408,
                 onOpenDieselSource: onOpenDiesel,
+                onOpenGasolineSource: onOpenGasoline,
                 onOpenServicesSource: onOpenControlDiario,
               );
 
@@ -277,20 +369,9 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
                 children: [
                   _LogisticsDieselStatusStrip(onOpenSource: onOpenDiesel),
                   const SizedBox(height: 14),
-                  if (shareRow)
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Expanded(flex: 4, child: summaryPanel),
-                        const SizedBox(width: 14),
-                        Expanded(flex: 6, child: weeklyPanel),
-                      ],
-                    )
-                  else ...[
-                    summaryPanel,
-                    const SizedBox(height: 14),
-                    weeklyPanel,
-                  ],
+                  weeklyPanel,
+                  const SizedBox(height: 14),
+                  summaryPanel,
                 ],
               );
             },
@@ -375,6 +456,17 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 _LogisticsModuleCard(
+                  icon: Icons.local_gas_station_outlined,
+                  title: 'Control de Gasolina',
+                  badge: 'Gasolinera',
+                  subtitle:
+                      'Fecha, operador, unidad y litros cargados en compras directas fuera del tanque interno.',
+                  outcome:
+                      'Separa el consumo directo en gasolinera para medirlo sin mezclarlo con el saldo operativo de diesel.',
+                  onTap: onOpenGasoline,
+                ),
+                const SizedBox(height: 12),
+                _LogisticsModuleCard(
                   icon: Icons.report_problem_outlined,
                   title: 'Incidencias',
                   badge: 'Seguimiento',
@@ -443,6 +535,17 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
                       outcome:
                           'Hace visible el consumo diario para empezar a medir ahorro real por combustible.',
                       onTap: onOpenDiesel,
+                    ),
+                    _LogisticsModuleCard(
+                      width: (moduleGridWidth - 24) / 3,
+                      icon: Icons.local_gas_station_outlined,
+                      title: 'Control de Gasolina',
+                      badge: 'Gasolinera',
+                      subtitle:
+                          'Fecha, operador, unidad y litros cargados en compras directas fuera del tanque interno.',
+                      outcome:
+                          'Separa el consumo directo en gasolinera para medirlo sin mezclarlo con el saldo operativo de diesel.',
+                      onTap: onOpenGasoline,
                     ),
                     _LogisticsModuleCard(
                       width: (moduleGridWidth - 24) / 3,
@@ -539,7 +642,8 @@ class _LogisticsDieselStatusStripState
   bool _pendingReload = false;
   double _totalPurchased = 0;
   double _totalRequested = 0;
-  double _totalBalance = 0;
+  double _currentBalance = 0;
+  DateTime? _lastBalanceDate;
   Timer? _timer;
   RealtimeChannel? _dieselRealtime;
 
@@ -603,17 +707,17 @@ class _LogisticsDieselStatusStripState
       final entries = await LogisticsDieselConsumptionStore.loadEntries();
       var purchased = 0.0;
       var requested = 0.0;
-      var balance = 0.0;
       for (final entry in entries) {
         purchased += entry.litersPurchased;
         requested += entry.litersRequested;
-        balance += entry.balanceLiters;
       }
+      final latestEntry = entries.isEmpty ? null : entries.first;
       if (!mounted) return;
       setState(() {
         _totalPurchased = purchased;
         _totalRequested = requested;
-        _totalBalance = balance;
+        _currentBalance = latestEntry?.balanceLiters ?? 0;
+        _lastBalanceDate = latestEntry?.entryDate;
         _loading = false;
       });
     } catch (error, st) {
@@ -634,16 +738,16 @@ class _LogisticsDieselStatusStripState
   }
 
   _LogisticsDieselTankStatus get _tankStatus {
-    final balance = _totalBalance;
+    final balance = _currentBalance;
     if (balance > 600) {
       return const _LogisticsDieselTankStatus(
         label: 'Suficiente',
         helper: 'Arriba de 600 L disponibles',
         icon: Icons.check_circle_rounded,
-        topColor: Color(0xFFE4F3E6),
-        bottomColor: Color(0xFFCBE8CF),
-        borderColor: Color(0xFF98C99F),
-        textColor: Color(0xFF1F6A33),
+        topColor: Color(0xFFE5F2E6),
+        bottomColor: Color(0xFFD3E9D6),
+        borderColor: Color(0xFFA7CBAE),
+        textColor: Color(0xFF1E6933),
       );
     }
     if (balance >= 300) {
@@ -651,20 +755,20 @@ class _LogisticsDieselStatusStripState
         label: 'Solicitar',
         helper: 'Entre 300 L y 600 L',
         icon: Icons.warning_amber_rounded,
-        topColor: Color(0xFFF8F0D8),
-        bottomColor: Color(0xFFF0E0A6),
-        borderColor: Color(0xFFD8C06B),
-        textColor: Color(0xFF886100),
+        topColor: Color(0xFFF8F0D9),
+        bottomColor: Color(0xFFF1E2B1),
+        borderColor: Color(0xFFD8C27D),
+        textColor: Color(0xFF7A6102),
       );
     }
     return const _LogisticsDieselTankStatus(
       label: 'Crítico',
       helper: 'Abajo de 300 L',
       icon: Icons.error_rounded,
-      topColor: Color(0xFFF6DFDD),
-      bottomColor: Color(0xFFEAC0BC),
-      borderColor: Color(0xFFD39892),
-      textColor: Color(0xFF8C2922),
+      topColor: Color(0xFFF6E0DE),
+      bottomColor: Color(0xFFECC6C1),
+      borderColor: Color(0xFFD39D96),
+      textColor: Color(0xFF892D25),
     );
   }
 
@@ -673,28 +777,30 @@ class _LogisticsDieselStatusStripState
     final status = _tankStatus;
     return LayoutBuilder(
       builder: (context, constraints) {
-        final compact = constraints.maxWidth < 920;
+        final compact = constraints.maxWidth < 960;
         final cards = <Widget>[
-          _LogisticsDieselHighlightCard(
+          _LogisticsDieselHeadlineCard(
             title: 'Saldo actual de diesel',
             value: _loading
                 ? 'Cargando...'
-                : '${_fmtDashboardLiters(_totalBalance)} L',
+                : '${_fmtDashboardLiters(_currentBalance)} L',
             helper: _loading
-                ? 'Leyendo historial de compras y solicitudes'
-                : 'Comprados ${_fmtDashboardLiters(_totalPurchased)} L · Solicitados ${_fmtDashboardLiters(_totalRequested)} L',
+                ? 'Leyendo compras y solicitudes del tanque'
+                : _lastBalanceDate == null
+                ? 'Sin lectura vigente todavía'
+                : 'Última lectura ${_dashboardFormatShortDate(_lastBalanceDate!)} · Comprados ${_fmtDashboardLiters(_totalPurchased)} L · Solicitados ${_fmtDashboardLiters(_totalRequested)} L',
             icon: Icons.local_gas_station_rounded,
-            topColor: const Color(0xFFE7ECF2),
-            bottomColor: const Color(0xFFD8E0EA),
-            borderColor: const Color(0xFFB7C4D3),
+            topColor: const Color(0xFFE6EBF1),
+            bottomColor: const Color(0xFFD8E0E9),
+            borderColor: const Color(0xFFBCC7D3),
             textColor: kLogisticsSilverTextPrimary,
             onTap: widget.onOpenSource,
           ),
-          _LogisticsDieselHighlightCard(
+          _LogisticsDieselHeadlineCard(
             title: 'Estatus del tanque',
             value: _loading ? 'Calculando...' : status.label,
             helper: _loading
-                ? 'Esperando lectura del saldo actual'
+                ? 'Esperando saldo real del tanque'
                 : status.helper,
             icon: status.icon,
             topColor: status.topColor,
@@ -718,6 +824,138 @@ class _LogisticsDieselStatusStripState
           ],
         );
       },
+    );
+  }
+}
+
+class _LogisticsDieselTankStatus {
+  final String label;
+  final String helper;
+  final IconData icon;
+  final Color topColor;
+  final Color bottomColor;
+  final Color borderColor;
+  final Color textColor;
+
+  const _LogisticsDieselTankStatus({
+    required this.label,
+    required this.helper,
+    required this.icon,
+    required this.topColor,
+    required this.bottomColor,
+    required this.borderColor,
+    required this.textColor,
+  });
+}
+
+class _LogisticsDieselHeadlineCard extends StatelessWidget {
+  final String title;
+  final String value;
+  final String helper;
+  final IconData icon;
+  final Color topColor;
+  final Color bottomColor;
+  final Color borderColor;
+  final Color textColor;
+  final Future<void> Function()? onTap;
+
+  const _LogisticsDieselHeadlineCard({
+    required this.title,
+    required this.value,
+    required this.helper,
+    required this.icon,
+    required this.topColor,
+    required this.bottomColor,
+    required this.borderColor,
+    required this.textColor,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _LogisticsDashboardWidgetShortcut(
+      onTap: onTap,
+      child: ContractGlassCard(
+        blurSigma: 7,
+        elevation: 18,
+        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+        child: Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [topColor, bottomColor],
+            ),
+            borderRadius: BorderRadius.circular(24),
+            border: Border.all(color: borderColor),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 16,
+                offset: const Offset(0, 10),
+              ),
+              BoxShadow(
+                color: Colors.white.withValues(alpha: 0.58),
+                blurRadius: 12,
+                offset: const Offset(0, -2),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
+          child: Row(
+            children: [
+              Container(
+                width: 54,
+                height: 54,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.82),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.88),
+                  ),
+                ),
+                child: Icon(icon, size: 24, color: textColor),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w900,
+                        color: textColor.withValues(alpha: 0.88),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      value,
+                      style: TextStyle(
+                        fontSize: 30,
+                        fontWeight: FontWeight.w900,
+                        color: textColor,
+                        height: 1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      helper,
+                      style: TextStyle(
+                        fontSize: 12.6,
+                        fontWeight: FontWeight.w700,
+                        color: textColor.withValues(alpha: 0.82),
+                        height: 1.3,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
@@ -1161,6 +1399,7 @@ class _LogisticsWeeklyDriverCharts extends StatefulWidget {
   final bool preferSideBySide;
   final double chartHeight;
   final Future<void> Function()? onOpenDieselSource;
+  final Future<void> Function()? onOpenGasolineSource;
   final Future<void> Function()? onOpenServicesSource;
 
   const _LogisticsWeeklyDriverCharts({
@@ -1168,6 +1407,7 @@ class _LogisticsWeeklyDriverCharts extends StatefulWidget {
     this.preferSideBySide = false,
     this.chartHeight = 350,
     this.onOpenDieselSource,
+    this.onOpenGasolineSource,
     this.onOpenServicesSource,
   });
 
@@ -1187,9 +1427,11 @@ class _LogisticsWeeklyDriverChartsState
   List<DateTime> _availableWeeks = <DateTime>[];
   DateTime _selectedWeekStart = _dashboardWeekStart(DateTime.now());
   List<_LogisticsDriverMetricRow> _litersRows = <_LogisticsDriverMetricRow>[];
+  List<_LogisticsDriverMetricRow> _gasolineRows = <_LogisticsDriverMetricRow>[];
   List<_LogisticsDriverMetricRow> _tripRows = <_LogisticsDriverMetricRow>[];
   Timer? _timer;
   RealtimeChannel? _dieselRealtime;
+  RealtimeChannel? _gasolineRealtime;
   RealtimeChannel? _servicesRealtime;
 
   @override
@@ -1205,6 +1447,7 @@ class _LogisticsWeeklyDriverChartsState
     WidgetsBinding.instance.removeObserver(this);
     _timer?.cancel();
     _dieselRealtime?.unsubscribe();
+    _gasolineRealtime?.unsubscribe();
     _servicesRealtime?.unsubscribe();
     super.dispose();
   }
@@ -1229,6 +1472,17 @@ class _LogisticsWeeklyDriverChartsState
           event: PostgresChangeEvent.all,
           schema: 'public',
           table: 'logistics_diesel_consumption',
+          callback: (_) => _requestReload(),
+        )
+        .subscribe();
+
+    _gasolineRealtime?.unsubscribe();
+    _gasolineRealtime = _supa
+        .channel('logistics-dashboard-weekly-gasoline')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'logistics_gasoline_control',
           callback: (_) => _requestReload(),
         )
         .subscribe();
@@ -1293,6 +1547,11 @@ class _LogisticsWeeklyDriverChartsState
             .select('entry_date')
             .not('entry_date', 'is', null)
             .order('entry_date'),
+        _supa
+            .from('logistics_gasoline_control')
+            .select('entry_date')
+            .not('entry_date', 'is', null)
+            .order('entry_date'),
       ]);
       final weeks = <DateTime>{};
       for (final row in (results[0] as List)) {
@@ -1301,6 +1560,11 @@ class _LogisticsWeeklyDriverChartsState
         weeks.add(_dashboardWeekStart(_dashboardParseDate(value)));
       }
       for (final row in (results[1] as List)) {
+        final value = (row as Map<String, dynamic>)['entry_date'];
+        if (value == null) continue;
+        weeks.add(_dashboardWeekStart(_dashboardParseDate(value)));
+      }
+      for (final row in (results[2] as List)) {
         final value = (row as Map<String, dynamic>)['entry_date'];
         if (value == null) continue;
         weeks.add(_dashboardWeekStart(_dashboardParseDate(value)));
@@ -1340,6 +1604,12 @@ class _LogisticsWeeklyDriverChartsState
             .lte('entry_date', _dashboardFmtDbDate(weekEnd))
             .order('operator_name'),
         _supa
+            .from('logistics_gasoline_control')
+            .select('operator_name,liters_loaded')
+            .gte('entry_date', _dashboardFmtDbDate(_selectedWeekStart))
+            .lte('entry_date', _dashboardFmtDbDate(weekEnd))
+            .order('operator_name'),
+        _supa
             .from('services')
             .select('driver_employee_id,due_date')
             .gte('due_date', _dashboardFmtDbDate(_selectedWeekStart))
@@ -1363,8 +1633,19 @@ class _LogisticsWeeklyDriverChartsState
         litersByDriver[driver] = (litersByDriver[driver] ?? 0) + liters;
       }
 
+      final gasolineByDriver = <String, double>{};
+      for (final row in (results[1] as List)) {
+        final map = Map<String, dynamic>.from(row as Map);
+        final driver = _dashboardNormalizedLabel(
+          (map['operator_name'] ?? '').toString(),
+          fallback: 'Sin operador',
+        );
+        final liters = _dashboardTryParseDouble(map['liters_loaded']) ?? 0;
+        gasolineByDriver[driver] = (gasolineByDriver[driver] ?? 0) + liters;
+      }
+
       final driverNamesById = <String, String>{};
-      for (final row in (results[2] as List)) {
+      for (final row in (results[3] as List)) {
         final map = Map<String, dynamic>.from(row as Map);
         final id = (map['id'] ?? '').toString().trim();
         final label = (map['full_name'] ?? '').toString().trim();
@@ -1373,7 +1654,7 @@ class _LogisticsWeeklyDriverChartsState
       }
 
       final tripsByDriver = <String, double>{};
-      for (final row in (results[1] as List)) {
+      for (final row in (results[2] as List)) {
         final map = Map<String, dynamic>.from(row as Map);
         final driver = _dashboardNormalizedLabel(
           driverNamesById[(map['driver_employee_id'] ?? '')
@@ -1387,6 +1668,21 @@ class _LogisticsWeeklyDriverChartsState
 
       final litersRows =
           litersByDriver.entries
+              .map(
+                (entry) => _LogisticsDriverMetricRow(
+                  label: entry.key,
+                  value: entry.value,
+                ),
+              )
+              .toList(growable: false)
+            ..sort((a, b) {
+              final cmp = b.value.compareTo(a.value);
+              if (cmp != 0) return cmp;
+              return a.label.compareTo(b.label);
+            });
+
+      final gasolineRows =
+          gasolineByDriver.entries
               .map(
                 (entry) => _LogisticsDriverMetricRow(
                   label: entry.key,
@@ -1418,6 +1714,7 @@ class _LogisticsWeeklyDriverChartsState
       if (!mounted) return;
       setState(() {
         _litersRows = litersRows;
+        _gasolineRows = gasolineRows;
         _tripRows = tripRows;
         if (showLoader) _loadingWeek = false;
       });
@@ -1431,6 +1728,7 @@ class _LogisticsWeeklyDriverChartsState
       if (!mounted) return;
       setState(() {
         _litersRows = const <_LogisticsDriverMetricRow>[];
+        _gasolineRows = const <_LogisticsDriverMetricRow>[];
         _tripRows = const <_LogisticsDriverMetricRow>[];
         if (showLoader) _loadingWeek = false;
       });
@@ -1464,36 +1762,72 @@ class _LogisticsWeeklyDriverChartsState
     final weekLabel = _dashboardFormatWeekRangeEs(_selectedWeekStart);
     final weekSubtitle = _availableWeeks.isEmpty
         ? 'Sin semanas con datos todavía'
-        : 'Navega entre semanas reales del historial del área';
+        : 'Navega entre semanas reales de diesel, gasolina y viajes';
 
     final charts = <Widget>[
       SizedBox(
         height: widget.chartHeight,
-        child: _LogisticsVerticalBarChartCard(
-          title: 'Litros solicitados por chofer',
-          subtitle: 'Suma semanal tomada desde Consumo de Diesel',
+        child: _LogisticsDriverLeaderboardCard(
+          title: 'Control de Diesel',
+          subtitle: 'Litros solicitados por chofer en la semana',
           loading: loading,
           rows: _litersRows,
           emptyMessage: 'Todavía no hay litros solicitados en esta semana.',
           valueFormatter: (value) => '${_fmtDashboardLiters(value)} L',
+          totalLabel: 'Litros solicitados',
+          averageLabel: 'Promedio por chofer',
+          columnLabel: 'Litros solicitados',
+          footerNote: 'Ordenado de mayor a menor por litros solicitados.',
+          primaryIcon: Icons.local_gas_station_rounded,
+          secondaryIcon: Icons.timeline_rounded,
+          primaryAccent: const Color(0xFF526C8A),
+          secondaryAccent: const Color(0xFF7B8795),
           barTopColor: const Color(0xFFAFBAC7),
           barBottomColor: const Color(0xFF7B8795),
-          axisLabel: 'Litros',
           onOpenSource: widget.onOpenDieselSource,
         ),
       ),
       SizedBox(
         height: widget.chartHeight,
-        child: _LogisticsVerticalBarChartCard(
-          title: 'Número de viajes por chofer',
-          subtitle: 'Conteo semanal tomado desde Viajes y Servicios',
+        child: _LogisticsDriverLeaderboardCard(
+          title: 'Control de Gasolina',
+          subtitle: 'Litros cargados por chofer en la semana',
+          loading: loading,
+          rows: _gasolineRows,
+          emptyMessage: 'Todavía no hay cargas de gasolina en esta semana.',
+          valueFormatter: (value) => '${_fmtDashboardLiters(value)} L',
+          totalLabel: 'Litros cargados',
+          averageLabel: 'Promedio por chofer',
+          columnLabel: 'Litros cargados',
+          footerNote: 'Ordenado de mayor a menor por litros cargados.',
+          primaryIcon: Icons.local_gas_station_outlined,
+          secondaryIcon: Icons.route_rounded,
+          primaryAccent: const Color(0xFF6B727A),
+          secondaryAccent: const Color(0xFF868D96),
+          barTopColor: const Color(0xFFC2C7CC),
+          barBottomColor: const Color(0xFF7A838D),
+          onOpenSource: widget.onOpenGasolineSource,
+        ),
+      ),
+      SizedBox(
+        height: widget.chartHeight,
+        child: _LogisticsDriverLeaderboardCard(
+          title: 'Número de viajes',
+          subtitle: 'Viajes asignados por chofer en la semana',
           loading: loading,
           rows: _tripRows,
           emptyMessage: 'Todavía no hay viajes asignados en esta semana.',
           valueFormatter: (value) => _fmtDashboardCount(value),
+          totalLabel: 'Viajes asignados',
+          averageLabel: 'Promedio por chofer',
+          columnLabel: 'Viajes asignados',
+          footerNote: 'Ordenado de mayor a menor por número de viajes.',
+          primaryIcon: Icons.work_outline_rounded,
+          secondaryIcon: Icons.analytics_outlined,
+          primaryAccent: const Color(0xFF5A78B0),
+          secondaryAccent: const Color(0xFF7F96C4),
           barTopColor: const Color(0xFF8FA4B8),
           barBottomColor: const Color(0xFF546272),
-          axisLabel: 'Viajes',
           onOpenSource: widget.onOpenServicesSource,
         ),
       ),
@@ -1567,50 +1901,97 @@ class _LogisticsWeeklyDriverChartsState
           ),
         ),
         const SizedBox(height: 12),
-        if (stacked)
-          Column(children: [charts[0], const SizedBox(height: 12), charts[1]])
-        else
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(child: charts[0]),
-              const SizedBox(width: 12),
-              Expanded(child: charts[1]),
-            ],
-          ),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final fullWidth = constraints.maxWidth;
+            if (!stacked && fullWidth >= 1480) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(child: charts[0]),
+                  const SizedBox(width: 12),
+                  Expanded(child: charts[1]),
+                  const SizedBox(width: 12),
+                  Expanded(child: charts[2]),
+                ],
+              );
+            }
+            if (!stacked && fullWidth >= 980) {
+              return Column(
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: charts[0]),
+                      const SizedBox(width: 12),
+                      Expanded(child: charts[1]),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  charts[2],
+                ],
+              );
+            }
+            return Column(
+              children: [
+                charts[0],
+                const SizedBox(height: 12),
+                charts[1],
+                const SizedBox(height: 12),
+                charts[2],
+              ],
+            );
+          },
+        ),
       ],
     );
   }
 }
 
-class _LogisticsVerticalBarChartCard extends StatelessWidget {
+class _LogisticsDriverLeaderboardCard extends StatelessWidget {
   final String title;
   final String subtitle;
   final bool loading;
   final List<_LogisticsDriverMetricRow> rows;
   final String emptyMessage;
   final String Function(double value) valueFormatter;
+  final String totalLabel;
+  final String averageLabel;
+  final String columnLabel;
+  final String footerNote;
+  final IconData primaryIcon;
+  final IconData secondaryIcon;
+  final Color primaryAccent;
+  final Color secondaryAccent;
   final Color barTopColor;
   final Color barBottomColor;
-  final String axisLabel;
   final Future<void> Function()? onOpenSource;
 
-  const _LogisticsVerticalBarChartCard({
+  const _LogisticsDriverLeaderboardCard({
     required this.title,
     required this.subtitle,
     required this.loading,
     required this.rows,
     required this.emptyMessage,
     required this.valueFormatter,
+    required this.totalLabel,
+    required this.averageLabel,
+    required this.columnLabel,
+    required this.footerNote,
+    required this.primaryIcon,
+    required this.secondaryIcon,
+    required this.primaryAccent,
+    required this.secondaryAccent,
     required this.barTopColor,
     required this.barBottomColor,
-    required this.axisLabel,
     this.onOpenSource,
   });
 
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final totalValue = rows.fold<double>(0, (sum, row) => sum + row.value);
+    final averageValue = rows.isEmpty ? 0.0 : totalValue / rows.length;
     return _LogisticsDashboardWidgetShortcut(
       onTap: onOpenSource,
       child: ContractGlassCard(
@@ -1648,6 +2029,92 @@ class _LogisticsVerticalBarChartCard extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final stacked = constraints.maxWidth < 420;
+                  final cards = [
+                    _LogisticsDriverMetricSummaryCard(
+                      icon: primaryIcon,
+                      accent: primaryAccent,
+                      value: valueFormatter(totalValue),
+                      label: totalLabel,
+                    ),
+                    _LogisticsDriverMetricSummaryCard(
+                      icon: secondaryIcon,
+                      accent: secondaryAccent,
+                      value: valueFormatter(averageValue),
+                      label: averageLabel,
+                    ),
+                  ];
+                  if (stacked) {
+                    return Column(
+                      children: [
+                        cards[0],
+                        const SizedBox(height: 10),
+                        cards[1],
+                      ],
+                    );
+                  }
+                  return Row(
+                    children: [
+                      Expanded(child: cards[0]),
+                      const SizedBox(width: 10),
+                      Expanded(child: cards[1]),
+                    ],
+                  );
+                },
+              ),
+              const SizedBox(height: 14),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                decoration: BoxDecoration(
+                  gradient: kLogisticsCapsuleGradient,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: kLogisticsSilverDivider),
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      flex: 4,
+                      child: Text(
+                        'Chofer',
+                        style: TextStyle(
+                          fontSize: 11.8,
+                          fontWeight: FontWeight.w900,
+                          color: tokens.onGlass.withValues(alpha: 0.82),
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      flex: 6,
+                      child: Text(
+                        columnLabel,
+                        style: TextStyle(
+                          fontSize: 11.8,
+                          fontWeight: FontWeight.w900,
+                          color: primaryAccent,
+                        ),
+                      ),
+                    ),
+                    SizedBox(
+                      width: 82,
+                      child: Text(
+                        '% del total',
+                        textAlign: TextAlign.right,
+                        style: TextStyle(
+                          fontSize: 11.8,
+                          fontWeight: FontWeight.w900,
+                          color: tokens.onGlass.withValues(alpha: 0.82),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 10),
               Expanded(
                 child: loading
                     ? const Center(child: CircularProgressIndicator())
@@ -1663,60 +2130,46 @@ class _LogisticsVerticalBarChartCard extends StatelessWidget {
                           ),
                         ),
                       )
-                    : LayoutBuilder(
-                        builder: (context, constraints) {
-                          final maxValue = _dashboardMaxMetricValue(rows);
-                          final count = rows.isEmpty ? 1 : rows.length;
-                          final gutter = count <= 4
-                              ? 12.0
-                              : count <= 6
-                              ? 10.0
-                              : count <= 8
-                              ? 8.0
-                              : 6.0;
-                          final slotWidth = math.max(
-                            18.0,
-                            (constraints.maxWidth / count) - gutter,
-                          );
-                          return Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                axisLabel,
-                                style: const TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: kLogisticsSilverTextMuted,
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Expanded(
-                                child: Row(
-                                  crossAxisAlignment: CrossAxisAlignment.end,
-                                  children: [
-                                    for (final row in rows)
-                                      Expanded(
-                                        child: Padding(
-                                          padding: EdgeInsets.symmetric(
-                                            horizontal: gutter / 2,
-                                          ),
-                                          child: _LogisticsDriverBarColumn(
-                                            row: row,
-                                            maxValue: maxValue,
-                                            valueFormatter: valueFormatter,
-                                            barTopColor: barTopColor,
-                                            barBottomColor: barBottomColor,
-                                            slotWidth: slotWidth,
-                                          ),
-                                        ),
-                                      ),
-                                  ],
-                                ),
-                              ),
-                            ],
+                    : ListView.separated(
+                        physics: const ClampingScrollPhysics(),
+                        padding: EdgeInsets.zero,
+                        itemCount: rows.length,
+                        separatorBuilder: (_, _) => const SizedBox(height: 10),
+                        itemBuilder: (context, index) {
+                          final row = rows[index];
+                          return _LogisticsDriverLeaderboardRow(
+                            row: row,
+                            totalValue: totalValue,
+                            averageValue: averageValue,
+                            maxValue: _dashboardMaxMetricValue(rows),
+                            valueFormatter: valueFormatter,
+                            barTopColor: barTopColor,
+                            barBottomColor: barBottomColor,
+                            accentColor: primaryAccent,
                           );
                         },
                       ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    Icons.info_outline_rounded,
+                    size: 16,
+                    color: tokens.onGlass.withValues(alpha: 0.66),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      footerNote,
+                      style: TextStyle(
+                        fontSize: 11.8,
+                        fontWeight: FontWeight.w700,
+                        color: tokens.onGlass.withValues(alpha: 0.66),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -1726,135 +2179,73 @@ class _LogisticsVerticalBarChartCard extends StatelessWidget {
   }
 }
 
-class _LogisticsDriverBarColumn extends StatelessWidget {
-  final _LogisticsDriverMetricRow row;
-  final double maxValue;
-  final String Function(double value) valueFormatter;
-  final Color barTopColor;
-  final Color barBottomColor;
-  final double slotWidth;
+class _LogisticsDriverMetricSummaryCard extends StatelessWidget {
+  final IconData icon;
+  final Color accent;
+  final String value;
+  final String label;
 
-  const _LogisticsDriverBarColumn({
-    required this.row,
-    required this.maxValue,
-    required this.valueFormatter,
-    required this.barTopColor,
-    required this.barBottomColor,
-    required this.slotWidth,
+  const _LogisticsDriverMetricSummaryCard({
+    required this.icon,
+    required this.accent,
+    required this.value,
+    required this.label,
   });
 
   @override
   Widget build(BuildContext context) {
-    final ratio = maxValue <= 0 ? 0.0 : (row.value / maxValue).clamp(0.0, 1.0);
-    final barHeight = 34 + (ratio * 126);
-    final tooltipMessage = '${row.label}\n${valueFormatter(row.value)}';
-    final valueFontSize = slotWidth < 34
-        ? 8.2
-        : slotWidth < 48
-        ? 9.3
-        : 11.5;
-    final labelFontSize = slotWidth < 34
-        ? 7.4
-        : slotWidth < 48
-        ? 8.6
-        : slotWidth < 64
-        ? 10.0
-        : 11.6;
-    final labelHeight = slotWidth < 40 ? 40.0 : 34.0;
-    final labelMaxLines = slotWidth < 40 ? 3 : 2;
-    final barWidth = math.min(44.0, math.max(12.0, slotWidth * 0.56));
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: slotWidth < 38 ? 0 : 2),
-      child: Column(
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.72),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: kLogisticsSilverBorderLight),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Row(
         children: [
-          SizedBox(
-            height: 18,
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                valueFormatter(row.value),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: valueFontSize,
-                  fontWeight: FontWeight.w900,
-                  color: kLogisticsSilverTextPrimary,
-                ),
-              ),
+          Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
             ),
+            child: Icon(icon, color: accent, size: 22),
           ),
-          const SizedBox(height: 10),
+          const SizedBox(width: 12),
           Expanded(
-            child: Align(
-              alignment: Alignment.bottomCenter,
-              child: Tooltip(
-                message: tooltipMessage,
-                waitDuration: const Duration(milliseconds: 180),
-                showDuration: const Duration(seconds: 3),
-                preferBelow: false,
-                verticalOffset: 18,
-                textStyle: const TextStyle(
-                  color: kLogisticsSilverTextPrimary,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  height: 1.3,
-                ),
-                decoration: BoxDecoration(
-                  gradient: kLogisticsCapsuleGradient,
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: kLogisticsSilverBorder.withValues(alpha: 0.92),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.12),
-                      blurRadius: 16,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: Container(
-                    width: barWidth,
-                    height: barHeight,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topCenter,
-                        end: Alignment.bottomCenter,
-                        colors: [barTopColor, barBottomColor],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(
-                        color: Colors.white.withValues(alpha: 0.82),
-                      ),
-                      boxShadow: [
-                        BoxShadow(
-                          color: barBottomColor.withValues(alpha: 0.24),
-                          blurRadius: 14,
-                          offset: const Offset(0, 8),
-                        ),
-                      ],
-                    ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.w900,
+                    color: accent,
+                    height: 1,
                   ),
                 ),
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            height: labelHeight,
-            child: Text(
-              _dashboardCompactPersonLabel(row.label, slotWidth: slotWidth),
-              maxLines: labelMaxLines,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: labelFontSize,
-                fontWeight: FontWeight.w800,
-                color: kLogisticsSilverTextSecondary,
-                height: 1.15,
-              ),
+                const SizedBox(height: 6),
+                Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 12.4,
+                    fontWeight: FontWeight.w700,
+                    color: kLogisticsSilverTextSecondary,
+                    height: 1.25,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -1863,133 +2254,215 @@ class _LogisticsDriverBarColumn extends StatelessWidget {
   }
 }
 
-class _LogisticsDieselTankStatus {
-  final String label;
-  final String helper;
-  final IconData icon;
-  final Color topColor;
-  final Color bottomColor;
-  final Color borderColor;
-  final Color textColor;
+class _LogisticsDriverLeaderboardRow extends StatelessWidget {
+  final _LogisticsDriverMetricRow row;
+  final double totalValue;
+  final double averageValue;
+  final double maxValue;
+  final String Function(double value) valueFormatter;
+  final Color barTopColor;
+  final Color barBottomColor;
+  final Color accentColor;
 
-  const _LogisticsDieselTankStatus({
-    required this.label,
-    required this.helper,
-    required this.icon,
-    required this.topColor,
-    required this.bottomColor,
-    required this.borderColor,
-    required this.textColor,
-  });
-}
-
-class _LogisticsDieselHighlightCard extends StatelessWidget {
-  final String title;
-  final String value;
-  final String helper;
-  final IconData icon;
-  final Color topColor;
-  final Color bottomColor;
-  final Color borderColor;
-  final Color textColor;
-  final Future<void> Function()? onTap;
-
-  const _LogisticsDieselHighlightCard({
-    required this.title,
-    required this.value,
-    required this.helper,
-    required this.icon,
-    required this.topColor,
-    required this.bottomColor,
-    required this.borderColor,
-    required this.textColor,
-    this.onTap,
+  const _LogisticsDriverLeaderboardRow({
+    required this.row,
+    required this.totalValue,
+    required this.averageValue,
+    required this.maxValue,
+    required this.valueFormatter,
+    required this.barTopColor,
+    required this.barBottomColor,
+    required this.accentColor,
   });
 
   @override
   Widget build(BuildContext context) {
-    return _LogisticsDashboardWidgetShortcut(
-      onTap: onTap,
-      child: ContractGlassCard(
-        blurSigma: 7,
-        elevation: 18,
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-        child: Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [topColor, bottomColor],
-            ),
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: borderColor),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.06),
-                blurRadius: 16,
-                offset: const Offset(0, 10),
-              ),
-              BoxShadow(
-                color: Colors.white.withValues(alpha: 0.58),
-                blurRadius: 12,
-                offset: const Offset(0, -2),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.78),
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.88),
+    final ratio = maxValue <= 0 ? 0.0 : (row.value / maxValue).clamp(0.0, 1.0);
+    final averageRatio = maxValue <= 0
+        ? 0.0
+        : (averageValue / maxValue).clamp(0.0, 1.0);
+    final percent = totalValue <= 0 ? 0.0 : (row.value / totalValue) * 100;
+    final tooltipMessage = '${row.label}\n${valueFormatter(row.value)}';
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.68),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: kLogisticsSilverBorderLight.withValues(alpha: 0.88),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            flex: 4,
+            child: Row(
+              children: [
+                Container(
+                  width: 40,
+                  height: 40,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        accentColor.withValues(alpha: 0.16),
+                        accentColor.withValues(alpha: 0.08),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _dashboardInitials(row.label),
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      color: accentColor,
+                    ),
                   ),
                 ),
-                child: Icon(icon, size: 24, color: textColor),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w900,
-                        color: textColor.withValues(alpha: 0.88),
-                      ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    row.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12.8,
+                      fontWeight: FontWeight.w800,
+                      color: kLogisticsSilverTextPrimary,
                     ),
-                    const SizedBox(height: 6),
-                    Text(
-                      value,
-                      style: TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w900,
-                        color: textColor,
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      helper,
-                      style: TextStyle(
-                        fontSize: 12.6,
-                        fontWeight: FontWeight.w700,
-                        color: textColor.withValues(alpha: 0.82),
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
+          const SizedBox(width: 12),
+          Expanded(
+            flex: 6,
+            child: Row(
+              children: [
+                Expanded(
+                  child: Tooltip(
+                    message: tooltipMessage,
+                    waitDuration: const Duration(milliseconds: 180),
+                    showDuration: const Duration(seconds: 3),
+                    preferBelow: false,
+                    verticalOffset: 18,
+                    textStyle: const TextStyle(
+                      color: kLogisticsSilverTextPrimary,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                      height: 1.3,
+                    ),
+                    decoration: BoxDecoration(
+                      gradient: kLogisticsCapsuleGradient,
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: kLogisticsSilverBorder.withValues(alpha: 0.92),
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.12),
+                          blurRadius: 16,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        final width = constraints.maxWidth;
+                        final markerLeft = averageRatio * width;
+                        return Stack(
+                          alignment: Alignment.centerLeft,
+                          children: [
+                            Container(
+                              height: 26,
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFEFF2F6),
+                                borderRadius: BorderRadius.circular(999),
+                              ),
+                            ),
+                            if (averageRatio > 0)
+                              Positioned(
+                                left: math.max(
+                                  0,
+                                  math.min(width - 2, markerLeft),
+                                ),
+                                top: 1,
+                                bottom: 1,
+                                child: Container(
+                                  width: 2,
+                                  decoration: BoxDecoration(
+                                    color: kLogisticsSilverTextMuted.withValues(
+                                      alpha: 0.40,
+                                    ),
+                                    borderRadius: BorderRadius.circular(999),
+                                  ),
+                                ),
+                              ),
+                            FractionallySizedBox(
+                              widthFactor: ratio,
+                              child: Container(
+                                height: 26,
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.centerLeft,
+                                    end: Alignment.centerRight,
+                                    colors: [barTopColor, barBottomColor],
+                                  ),
+                                  borderRadius: BorderRadius.circular(999),
+                                  boxShadow: [
+                                    BoxShadow(
+                                      color: barBottomColor.withValues(
+                                        alpha: 0.24,
+                                      ),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 7),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 54,
+                  child: Text(
+                    valueFormatter(row.value),
+                    textAlign: TextAlign.right,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 12.8,
+                      fontWeight: FontWeight.w900,
+                      color: kLogisticsSilverTextPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          SizedBox(
+            width: 82,
+            child: Text(
+              _fmtDashboardPercent(percent),
+              textAlign: TextAlign.right,
+              style: TextStyle(
+                fontSize: 12.8,
+                fontWeight: FontWeight.w900,
+                color: accentColor,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -2191,6 +2664,13 @@ String _dashboardFormatLongDateEs(DateTime value) {
   return '${weekdays[value.weekday - 1]} ${value.day} de ${months[value.month - 1]} de ${value.year}';
 }
 
+String _dashboardFormatShortDate(DateTime value) {
+  final dd = value.day.toString().padLeft(2, '0');
+  final mm = value.month.toString().padLeft(2, '0');
+  final yy = (value.year % 100).toString().padLeft(2, '0');
+  return '$dd/$mm/$yy';
+}
+
 DateTime _dashboardWeekStart(DateTime value) {
   final day = DateUtils.dateOnly(value);
   return day.subtract(Duration(days: day.weekday - 1));
@@ -2251,28 +2731,25 @@ String _fmtDashboardCount(double value) {
   return normalized.toString();
 }
 
-String _dashboardCompactPersonLabel(String raw, {double? slotWidth}) {
+String _fmtDashboardPercent(double value) {
+  if (value.isNaN || value.isInfinite) return '0.0%';
+  return '${value.toStringAsFixed(1)}%';
+}
+
+String _dashboardInitials(String raw) {
   final words = raw
       .trim()
       .split(RegExp(r'\s+'))
       .where((element) => element.isNotEmpty)
       .toList(growable: false);
   if (words.isEmpty) return '—';
-  if ((slotWidth ?? 999) < 36) {
-    if (words.length == 1) {
-      final word = words.first;
-      return word.length <= 3 ? word : word.substring(0, 3);
-    }
-    final first = words.first.isEmpty ? '' : words.first[0];
-    final second = words.length > 1 && words[1].isNotEmpty ? words[1][0] : '';
-    return '$first\n$second';
+  if (words.length == 1) {
+    final single = words.first.toUpperCase();
+    return single.length >= 2 ? single.substring(0, 2) : single;
   }
-  if ((slotWidth ?? 999) < 52 && words.length > 1) {
-    final second = words[1].isEmpty ? '' : words[1][0];
-    return '${words.first}\n$second.';
-  }
-  if (words.length == 1) return words.first;
-  return '${words.first}\n${words[1]}';
+  final first = words.first.isEmpty ? '' : words.first[0];
+  final second = words[1].isEmpty ? '' : words[1][0];
+  return '$first$second'.toUpperCase();
 }
 
 class _LogisticsModuleCard extends StatefulWidget {

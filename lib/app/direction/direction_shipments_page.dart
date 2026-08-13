@@ -73,6 +73,24 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
           table: 'maintenance_orders',
           callback: (_) => unawaited(_load(silent: true)),
         )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'inventory_movements_v2',
+          callback: (_) => unawaited(_load(silent: true)),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'gerencia_bale_weekly_plans',
+          callback: (_) => unawaited(_load(silent: true)),
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.all,
+          schema: 'public',
+          table: 'gerencia_bale_weekly_plan_lines',
+          callback: (_) => unawaited(_load(silent: true)),
+        )
         .subscribe();
   }
 
@@ -193,6 +211,13 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
     if (bundle == null) return;
     final draft = await _showShipmentDialog(weekStart: bundle.weekStartDate);
     if (draft == null) return;
+    await _saveNewShipmentDraft(draft);
+  }
+
+  Future<void> _saveNewShipmentDraft(
+    _ShipmentDraft draft, {
+    String successMessage = 'Embarque guardado.',
+  }) async {
     setState(() => _runningMutation = true);
     try {
       await DirectionShipmentsStore.createShipmentPlan(
@@ -206,7 +231,7 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
         status: draft.status,
         notes: draft.notes,
       );
-      _toast('Embarque guardado.');
+      _toast(successMessage);
       await _load(silent: true);
     } catch (e) {
       _toast('No se pudo guardar el embarque: $e');
@@ -242,6 +267,22 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
     } finally {
       if (mounted) setState(() => _runningMutation = false);
     }
+  }
+
+  Future<void> _openSuggestedShipments() async {
+    final bundle = _bundle;
+    if (bundle == null) return;
+    final suggestion = await _showSuggestedShipmentsDialog(bundle);
+    if (suggestion == null) return;
+    final draft = await _showShipmentDialog(
+      weekStart: bundle.weekStartDate,
+      initialDraft: _draftFromSuggestion(suggestion),
+    );
+    if (draft == null) return;
+    await _saveNewShipmentDraft(
+      draft,
+      successMessage: 'Embarque sugerido guardado.',
+    );
   }
 
   Future<void> _deleteShipment(DirectionShipmentPlanRecord plan) async {
@@ -361,22 +402,34 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
   Future<_ShipmentDraft?> _showShipmentDialog({
     required DateTime weekStart,
     DirectionShipmentPlanRecord? initial,
+    _ShipmentDraft? initialDraft,
   }) {
     final dates = <DateTime>[
       for (var i = 0; i < 6; i++) weekStart.add(Duration(days: i)),
     ];
     final initialMaterial =
-        directionShipmentMaterialByCode(initial?.materialCode ?? '') ??
+        directionShipmentMaterialByCode(
+          initial?.materialCode ?? initialDraft?.materialCode ?? '',
+        ) ??
         kDirectionShipmentMaterials.first;
-    final clientC = TextEditingController(text: initial?.clientName ?? '');
-    final unitsC = TextEditingController(
-      text: initial?.plannedQuantity.toString() ?? '',
+    final clientC = TextEditingController(
+      text: initial?.clientName ?? initialDraft?.clientName ?? '',
     );
-    final notesC = TextEditingController(text: initial?.notes ?? '');
-    var selectedDate = initial?.shipDate ?? dates.first;
+    final unitsC = TextEditingController(
+      text:
+          initial?.plannedQuantity.toString() ??
+          initialDraft?.plannedQuantity.toString() ??
+          '',
+    );
+    final notesC = TextEditingController(
+      text: initial?.notes ?? initialDraft?.notes ?? '',
+    );
+    var selectedDate =
+        initial?.shipDate ?? initialDraft?.shipDate ?? dates.first;
     var selectedMaterial = initialMaterial.code;
-    var selectedPriority = initial?.priority ?? 'normal';
-    var selectedStatus = initial?.status ?? 'planeado';
+    var selectedPriority =
+        initial?.priority ?? initialDraft?.priority ?? 'normal';
+    var selectedStatus = initial?.status ?? initialDraft?.status ?? 'planeado';
 
     return showDialog<_ShipmentDraft>(
       context: context,
@@ -1004,7 +1057,7 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
                 ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 760),
                   child: Text(
-                    'La proyección cruza conteo de piso fresco + producción esperada futura por historial promedio - compromisos previos. Mezcla pacas y kg según el material; no usa inventario sistema.',
+                    'La proyección cruza conteo de piso fresco + producción esperada futura por historial promedio - compromisos previos. En el día del embarque solo cuenta turno día para completar saldo; la noche no salva la carga del mismo día. Mezcla pacas y kg según el material; no usa inventario sistema.',
                     style: const TextStyle(
                       color: kDirectionMutedText,
                       fontWeight: FontWeight.w700,
@@ -1034,6 +1087,14 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
                       icon: Icons.chevron_right_rounded,
                       tooltip: 'Semana siguiente',
                       onPressed: _canGoToNextWeek ? _openNextWeek : null,
+                    ),
+                    OutlinedButton.icon(
+                      style: _secondaryActionButtonStyle(context),
+                      onPressed: _runningMutation
+                          ? null
+                          : () => _openSuggestedShipments(),
+                      icon: const Icon(Icons.auto_awesome_rounded),
+                      label: const Text('Embarques sugeridos'),
                     ),
                     FilledButton.icon(
                       style: _primaryActionButtonStyle(context),
@@ -1132,6 +1193,125 @@ class _DirectionShipmentsPageState extends State<DirectionShipmentsPage> {
           ),
         ),
       ),
+    );
+  }
+
+  _ShipmentDraft _draftFromSuggestion(
+    DirectionSuggestedShipmentRecord suggestion,
+  ) {
+    return _ShipmentDraft(
+      shipDate: suggestion.suggestedDate,
+      clientName: suggestion.clientName,
+      materialCode: suggestion.materialCode,
+      materialScope: suggestion.materialScope,
+      quantityUnit: suggestion.quantityUnit,
+      plannedQuantity: suggestion.suggestedQuantity,
+      priority:
+          suggestion.risk == DirectionShipmentRisk.tight ||
+              suggestion.risk == DirectionShipmentRisk.atRisk
+          ? 'alta'
+          : 'normal',
+      status: 'planeado',
+      notes: 'Sugerido: ${suggestion.explanation}',
+    );
+  }
+
+  Future<DirectionSuggestedShipmentRecord?> _showSuggestedShipmentsDialog(
+    DirectionShipmentPlanningBundle bundle,
+  ) {
+    final suggestions = bundle.suggestedShipments;
+    final totalSuggested = suggestions.fold<int>(
+      0,
+      (sum, item) => sum + item.suggestedQuantity,
+    );
+    final uniqueClients = suggestions
+        .map((item) => item.clientName)
+        .toSet()
+        .length;
+    return showDialog<DirectionSuggestedShipmentRecord>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.30),
+      builder: (dialogContext) {
+        return _DirectionFormDialog(
+          icon: Icons.auto_awesome_rounded,
+          title: 'Embarques sugeridos',
+          subtitle:
+              'Cruza meta semanal de Gerencia, historial real de salidas en paca y piso + proyección futura para esta semana.',
+          maxWidth: 980,
+          onClose: () => Navigator.of(dialogContext).pop(),
+          body: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _DialogSectionCard(
+                title: 'Lectura rápida',
+                subtitle:
+                    'La sugerencia ya descuenta lo que sí salió y lo que ya está capturado en Embarques.',
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _InfoChip(
+                      label: '${suggestions.length} sugerencias',
+                      accent: kDirectionOliveGlow,
+                    ),
+                    _InfoChip(
+                      label: '$totalSuggested pacas sugeridas',
+                      accent: kDirectionGoldAccent,
+                    ),
+                    _InfoChip(
+                      label: '$uniqueClients clientes priorizados',
+                      accent: kDirectionSuccess,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+              if (suggestions.isEmpty)
+                const _DialogSectionCard(
+                  title: 'Sin sugerencias listas',
+                  subtitle:
+                      'Para la semana visible ya no queda hueco claro de meta o falta historial suficiente en los clientes priorizados.',
+                  child: Text(
+                    'Si capturas más conteo de piso o ajustas la meta semanal de Gerencia, este popup se recalcula solo.',
+                    style: TextStyle(
+                      color: kDirectionMutedText,
+                      fontWeight: FontWeight.w700,
+                      height: 1.4,
+                    ),
+                  ),
+                )
+              else
+                _DialogSectionCard(
+                  title: 'Semana ${_isoWeekNumber(bundle.weekStartDate)}',
+                  subtitle:
+                      'Prioridad aplicada: El Palomar, San Pablo, San Luis, Queretana, Bio Papel, Majose y Ricardo Mendieta.',
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var i = 0; i < suggestions.length; i++) ...[
+                        _SuggestedShipmentCard(
+                          suggestion: suggestions[i],
+                          onUse: () =>
+                              Navigator.of(dialogContext).pop(suggestions[i]),
+                        ),
+                        if (i < suggestions.length - 1)
+                          const SizedBox(height: 10),
+                      ],
+                    ],
+                  ),
+                ),
+            ],
+          ),
+          actions: [
+            OutlinedButton(
+              style: _secondaryActionButtonStyle(context),
+              onPressed: () => Navigator.of(dialogContext).pop(),
+              child: const Text('Cerrar'),
+            ),
+          ],
+        );
+      },
     );
   }
 }
@@ -1976,6 +2156,134 @@ class _WeekNavButton extends StatelessWidget {
         onPressed: onPressed,
         style: _secondaryActionButtonStyle(context, dense: true),
         child: Icon(icon, size: 18),
+      ),
+    );
+  }
+}
+
+class _SuggestedShipmentCard extends StatelessWidget {
+  final DirectionSuggestedShipmentRecord suggestion;
+  final VoidCallback onUse;
+
+  const _SuggestedShipmentCard({required this.suggestion, required this.onUse});
+
+  @override
+  Widget build(BuildContext context) {
+    final riskStyle = _riskStyle(suggestion.risk);
+    return Container(
+      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      suggestion.clientName,
+                      style: const TextStyle(
+                        color: kDirectionSurfaceText,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        _InfoChip(
+                          label:
+                              '${_weekdayLabel(suggestion.suggestedDate)} · ${_shortDate(suggestion.suggestedDate)}',
+                          accent: kDirectionSuccess,
+                        ),
+                        _InfoChip(
+                          label: directionShipmentMaterialLabel(
+                            suggestion.materialCode,
+                          ),
+                          accent: kDirectionOliveGlow,
+                        ),
+                        _InfoChip(
+                          label: _formatMaterialQuantity(
+                            suggestion.materialCode,
+                            suggestion.suggestedQuantity,
+                          ),
+                          accent: kDirectionGoldAccent,
+                        ),
+                        if (suggestion.noteMatched)
+                          const _InfoChip(
+                            label: 'Nota Gerencia',
+                            accent: kDirectionWarning,
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 12),
+              _RiskChip(style: riskStyle),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Text(
+            suggestion.explanation,
+            style: const TextStyle(
+              color: kDirectionMutedText,
+              fontWeight: FontWeight.w700,
+              height: 1.35,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            children: [
+              _ProjectionStatCard(
+                title: 'Meta pendiente',
+                accent: kDirectionWarning,
+                primary:
+                    '${suggestion.remainingGerenciaTargetQuantity} pacas por cubrir',
+                secondary: 'Ya contempla lo real y lo ya planeado',
+              ),
+              _ProjectionStatCard(
+                title: 'Piso + proyección',
+                accent: riskStyle.color,
+                primary:
+                    'Antes ${_formatMaterialQuantity(suggestion.materialCode, suggestion.projectedAvailableBeforeQuantity)}',
+                secondary:
+                    'Después ${_formatMaterialQuantity(suggestion.materialCode, suggestion.projectedRemainingAfterQuantity)}',
+              ),
+              _ProjectionStatCard(
+                title: 'Historial cliente',
+                accent: kDirectionSuccess,
+                primary: suggestion.historicalShipmentCount > 0
+                    ? 'Prom ${suggestion.historicalAverageQuantity} pacas'
+                    : 'Sin promedio fuerte',
+                secondary: suggestion.lastShipmentDate == null
+                    ? 'Sin salida previa clara en historial reciente'
+                    : '${suggestion.historicalShipmentCount} salidas · última ${_shortDate(suggestion.lastShipmentDate!)}',
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Align(
+            alignment: Alignment.centerRight,
+            child: FilledButton.icon(
+              style: _primaryActionButtonStyle(context, dense: true),
+              onPressed: onUse,
+              icon: const Icon(Icons.playlist_add_check_rounded, size: 18),
+              label: const Text('Usar sugerencia'),
+            ),
+          ),
+        ],
       ),
     );
   }

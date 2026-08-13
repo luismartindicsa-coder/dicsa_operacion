@@ -2578,6 +2578,15 @@ String _monthShortLabel(DateTime month) {
   return labels[month.month - 1];
 }
 
+class DirectionOperationalMaterialFlowWidget extends StatelessWidget {
+  const DirectionOperationalMaterialFlowWidget({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return const _DirectionMaterialFlowChartsSection();
+  }
+}
+
 class _DirectionMaterialFlowChartsSection extends StatefulWidget {
   const _DirectionMaterialFlowChartsSection();
 

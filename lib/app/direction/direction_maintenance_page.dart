@@ -21,8 +21,13 @@ String _fmtDirectionMaintenanceMoney(num value) => formatMoney(value);
 
 class DirectionMaintenancePage extends StatefulWidget {
   final bool instantOpen;
+  final bool viewerMode;
 
-  const DirectionMaintenancePage({super.key, this.instantOpen = false});
+  const DirectionMaintenancePage({
+    super.key,
+    this.instantOpen = false,
+    this.viewerMode = false,
+  });
 
   @override
   State<DirectionMaintenancePage> createState() =>
@@ -96,6 +101,10 @@ class _DirectionMaintenancePageState extends State<DirectionMaintenancePage> {
 
   Future<void> _openDashboard() async {
     if (!mounted) return;
+    if (widget.viewerMode) {
+      Navigator.of(context).pop();
+      return;
+    }
     await Navigator.of(context).pushReplacement(
       appPageRoute(
         page: const GeneralDashboardPage(instantOpen: true),
@@ -107,13 +116,19 @@ class _DirectionMaintenancePageState extends State<DirectionMaintenancePage> {
 
   Future<void> _openPurchaseOrdersFollowup() async {
     if (!mounted) return;
-    await Navigator.of(context).push(
-      appPageRoute(
-        page: const DirectionPurchaseOrdersPage(instantOpen: true),
-        duration: const Duration(milliseconds: 300),
-        reverseDuration: const Duration(milliseconds: 220),
+    final route = appPageRoute(
+      page: DirectionPurchaseOrdersPage(
+        instantOpen: true,
+        viewerMode: widget.viewerMode,
       ),
+      duration: const Duration(milliseconds: 300),
+      reverseDuration: const Duration(milliseconds: 220),
     );
+    if (widget.viewerMode) {
+      await Navigator.of(context).pushReplacement(route);
+      return;
+    }
+    await Navigator.of(context).push(route);
   }
 
   Future<void> _openVault() async {
@@ -139,6 +154,7 @@ class _DirectionMaintenancePageState extends State<DirectionMaintenancePage> {
   }
 
   Future<void> _openMaintenanceWorkspace({String? orderId}) async {
+    if (widget.viewerMode || !mounted) return;
     if (!mounted) return;
     await Navigator.of(context).push(
       appPageRoute(
@@ -177,7 +193,9 @@ class _DirectionMaintenancePageState extends State<DirectionMaintenancePage> {
           ),
           centerBuilder: (_, contentAnim) => DirectionHeaderBrand(
             contentAnim: contentAnim,
-            title: 'Mantenimiento OT Dirección',
+            title: widget.viewerMode
+                ? 'Mantenimiento OT Gerencia'
+                : 'Mantenimiento OT Dirección',
           ),
           trailingBuilder: (_, _) => Row(
             mainAxisSize: MainAxisSize.min,
@@ -190,7 +208,7 @@ class _DirectionMaintenancePageState extends State<DirectionMaintenancePage> {
               ),
               const SizedBox(width: 10),
               DirectionHeaderButton(
-                label: 'Dashboard',
+                label: widget.viewerMode ? 'Gerencia' : 'Dashboard',
                 icon: Icons.space_dashboard_rounded,
                 onTap: _openDashboard,
               ),
@@ -276,19 +294,23 @@ class _DirectionMaintenancePageState extends State<DirectionMaintenancePage> {
               children: [
                 Expanded(
                   child: Text(
-                    'Esta vista concentra recordatorios ejecutivos para que Dirección detecte OT estancadas, críticas o esperando seguimiento.',
+                    widget.viewerMode
+                        ? 'Vista de solo lectura para Gerencia. Aquí puedes seguir OT críticas o estancadas sin entrar al resto del flujo operativo.'
+                        : 'Esta vista concentra recordatorios ejecutivos para que Dirección detecte OT estancadas, críticas o esperando seguimiento.',
                     style: const TextStyle(
                       color: kDirectionMutedText,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
-                OutlinedButton.icon(
-                  onPressed: _openMaintenanceWorkspace,
-                  icon: const Icon(Icons.open_in_new_rounded),
-                  label: const Text('Abrir Mantenimiento'),
-                ),
+                if (!widget.viewerMode) ...[
+                  const SizedBox(width: 10),
+                  OutlinedButton.icon(
+                    onPressed: _openMaintenanceWorkspace,
+                    icon: const Icon(Icons.open_in_new_rounded),
+                    label: const Text('Abrir Mantenimiento'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -301,6 +323,7 @@ class _DirectionMaintenancePageState extends State<DirectionMaintenancePage> {
               );
               final listCard = _DirectionMaintenancePendingListCard(
                 items: summary.pendingItems,
+                viewerMode: widget.viewerMode,
                 onOpenMaintenance: _openMaintenanceWorkspace,
               );
               if (wide) {
@@ -338,35 +361,45 @@ class _DirectionMaintenancePageState extends State<DirectionMaintenancePage> {
           child: DirectionModuleMenuPanel(
             entries: [
               DirectionModuleMenuEntry(
-                icon: Icons.space_dashboard_rounded,
-                title: 'Dashboard Dirección',
-                subtitle: 'Resumen ejecutivo principal',
+                icon: widget.viewerMode
+                    ? Icons.keyboard_return_rounded
+                    : Icons.space_dashboard_rounded,
+                title: widget.viewerMode
+                    ? 'Volver a Gerencia'
+                    : 'Dashboard Dirección',
+                subtitle: widget.viewerMode
+                    ? 'Cerrar visualizador ejecutivo'
+                    : 'Resumen ejecutivo principal',
                 onTap: _openDashboard,
               ),
               DirectionModuleMenuEntry(
                 icon: Icons.shopping_cart_checkout_rounded,
                 title: 'Compras OT',
-                subtitle: 'Autorización y rechazo rápido',
+                subtitle: widget.viewerMode
+                    ? 'Seguimiento ejecutivo de compras'
+                    : 'Autorización y rechazo rápido',
                 onTap: _openPurchaseOrdersFollowup,
               ),
               const DirectionModuleMenuEntry(
                 icon: Icons.build_circle_outlined,
                 title: 'Mantenimiento OT',
-                subtitle: 'Seguimiento y alertas',
+                subtitle: 'Seguimiento ejecutivo de OT',
                 current: true,
               ),
-              DirectionModuleMenuEntry(
-                icon: Icons.account_balance_wallet_outlined,
-                title: 'Bóveda',
-                subtitle: 'Entradas y salidas de Dirección',
-                onTap: _openVault,
-              ),
-              DirectionModuleMenuEntry(
-                icon: Icons.storefront_rounded,
-                title: 'Análisis Menudeo',
-                subtitle: 'Mercado, efectivo y operación',
-                onTap: _openMenudeoAnalysis,
-              ),
+              if (!widget.viewerMode) ...[
+                DirectionModuleMenuEntry(
+                  icon: Icons.account_balance_wallet_outlined,
+                  title: 'Bóveda',
+                  subtitle: 'Entradas y salidas de Dirección',
+                  onTap: _openVault,
+                ),
+                DirectionModuleMenuEntry(
+                  icon: Icons.storefront_rounded,
+                  title: 'Análisis Menudeo',
+                  subtitle: 'Mercado, efectivo y operación',
+                  onTap: _openMenudeoAnalysis,
+                ),
+              ],
             ],
           ),
         ),
@@ -457,10 +490,12 @@ class _DirectionMaintenanceAlertsCard extends StatelessWidget {
 
 class _DirectionMaintenancePendingListCard extends StatelessWidget {
   final List<DirectionMaintenancePendingItem> items;
+  final bool viewerMode;
   final Future<void> Function({String? orderId}) onOpenMaintenance;
 
   const _DirectionMaintenancePendingListCard({
     required this.items,
+    required this.viewerMode,
     required this.onOpenMaintenance,
   });
 
@@ -579,11 +614,45 @@ class _DirectionMaintenancePendingListCard extends StatelessWidget {
                     ),
                   ],
                   const SizedBox(height: 10),
-                  OutlinedButton.icon(
-                    onPressed: () => onOpenMaintenance(orderId: item.id),
-                    icon: const Icon(Icons.open_in_new_rounded),
-                    label: const Text('Abrir OT'),
-                  ),
+                  if (viewerMode)
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 10,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.06),
+                        borderRadius: BorderRadius.circular(14),
+                        border: Border.all(
+                          color: Colors.white.withValues(alpha: 0.12),
+                        ),
+                      ),
+                      child: const Row(
+                        children: [
+                          Icon(
+                            Icons.visibility_rounded,
+                            size: 18,
+                            color: kDirectionSurfaceText,
+                          ),
+                          SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Modo visualizador activo para Gerencia.',
+                              style: TextStyle(
+                                color: kDirectionSurfaceText,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    OutlinedButton.icon(
+                      onPressed: () => onOpenMaintenance(orderId: item.id),
+                      icon: const Icon(Icons.open_in_new_rounded),
+                      label: const Text('Abrir OT'),
+                    ),
                 ],
               ),
             );
