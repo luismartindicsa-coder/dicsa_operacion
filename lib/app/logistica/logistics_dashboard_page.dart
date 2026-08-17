@@ -4,6 +4,9 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../management_reports/management_reports_registry.dart';
+import '../management_reports/management_reports_widgets.dart';
+import '../management_reports/management_supervision_page.dart';
 import '../shared/app_error_reporter.dart';
 import '../shared/page_routes.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
@@ -158,6 +161,16 @@ class LogisticsDashboardPage extends StatelessWidget {
       );
     }
 
+    Future<void> openManagementSupervision() async {
+      await Navigator.of(context).push(
+        appPageRoute(
+          page: const ManagementSupervisionPage(instantOpen: true),
+          duration: const Duration(milliseconds: 320),
+          reverseDuration: const Duration(milliseconds: 240),
+        ),
+      );
+    }
+
     return EmptyAreaDashboardPage(
       instantOpen: instantOpen,
       config: _config.copyWith(
@@ -224,6 +237,7 @@ class LogisticsDashboardPage extends StatelessWidget {
               onOpenGasoline: openGasoline,
               onOpenIncidents: openIncidents,
               onOpenSavings: openSavings,
+              onOpenSupervisionHub: openManagementSupervision,
             ),
       ),
     );
@@ -320,6 +334,7 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
   final Future<void> Function() onOpenGasoline;
   final Future<void> Function() onOpenIncidents;
   final Future<void> Function() onOpenSavings;
+  final Future<void> Function() onOpenSupervisionHub;
 
   const _LogisticsDashboardWorkspace({
     required this.width,
@@ -330,6 +345,7 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
     required this.onOpenGasoline,
     required this.onOpenIncidents,
     required this.onOpenSavings,
+    required this.onOpenSupervisionHub,
   });
 
   @override
@@ -372,6 +388,14 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
                   weeklyPanel,
                   const SizedBox(height: 14),
                   summaryPanel,
+                  const SizedBox(height: 14),
+                  ManagementAreaReportPanel(
+                    areaKey: ManagementAreaKey.logistica,
+                    subtitleOverride:
+                        'El encargado de Logística debe generar aquí su corte semanal, estudiarlo antes de la junta y llegar con explicación de costos, viajes y complicaciones.',
+                    showOpenHubButton: true,
+                    onOpenSupervisionHub: onOpenSupervisionHub,
+                  ),
                 ],
               );
             },

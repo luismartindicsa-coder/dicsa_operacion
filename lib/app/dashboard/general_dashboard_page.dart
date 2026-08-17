@@ -27,6 +27,7 @@ import '../gerencia/gerencia_bale_weekly_tracking_store.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
 import '../hr/human_resources_dashboard_page.dart';
 import '../logistica/logistics_dashboard_page.dart';
+import '../management_reports/management_supervision_page.dart';
 import '../maintenance/maintenance_statuses.dart';
 import '../mayoreo/mayoreo_dashboard_preview_page.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
@@ -258,6 +259,17 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     );
   }
 
+  Future<void> _openManagementSupervision() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const ManagementSupervisionPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   Future<void> _openDirectionCashWorkspace() async {
     if (!mounted) return;
     await Navigator.of(context).push(
@@ -419,6 +431,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
       onOpenGerencia: _openGerenciaDashboard,
       onOpenHumanResources: _openHumanResourcesDashboard,
       onOpenCommercial: _openCommercialDashboard,
+      onOpenSupervision: _openManagementSupervision,
       onToggleDirectionExpanded: () =>
           setState(() => _directionExpanded = !_directionExpanded),
       onToggleAreasExpanded: () =>
@@ -445,6 +458,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
             onOpenHumanResources: _openHumanResourcesDashboard,
             onOpenGerencia: _openGerenciaDashboard,
             onOpenCommercial: _openCommercialDashboard,
+            onOpenSupervision: _openManagementSupervision,
           ),
         ),
       ),
@@ -504,6 +518,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
   final Future<void> Function() onOpenHumanResources;
   final Future<void> Function() onOpenGerencia;
   final Future<void> Function() onOpenCommercial;
+  final Future<void> Function() onOpenSupervision;
 
   const _DirectionDashboardCanvas({
     required this.onOpenVault,
@@ -519,6 +534,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
     required this.onOpenHumanResources,
     required this.onOpenGerencia,
     required this.onOpenCommercial,
+    required this.onOpenSupervision,
   });
 
   @override
@@ -663,6 +679,17 @@ class _DirectionDashboardCanvas extends StatelessWidget {
                   child: _DirectionGerenciaDashboardSummary(
                     onOpenGerencia: onOpenGerencia,
                   ),
+                ),
+              ),
+              SizedBox(
+                width: 420,
+                child: _DirectionAnalysisEntryCard(
+                  title: 'Supervisión',
+                  subtitle:
+                      'Hub central para generar cortes diarios y de viernes, revisar historial y empujar a cada encargado a presentar su área.',
+                  badge: 'Dirección',
+                  icon: Icons.fact_check_rounded,
+                  onTap: onOpenSupervision,
                 ),
               ),
               SizedBox(
@@ -6051,6 +6078,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
   final Future<void> Function()? onOpenHumanResources;
   final Future<void> Function()? onOpenGerencia;
   final Future<void> Function()? onOpenCommercial;
+  final Future<void> Function()? onOpenSupervision;
 
   const _GeneralDashboardSideMenu({
     required this.directionExpanded,
@@ -6073,6 +6101,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
     this.onOpenHumanResources,
     this.onOpenGerencia,
     this.onOpenCommercial,
+    this.onOpenSupervision,
   });
 
   @override
@@ -6178,6 +6207,13 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                   expanded: areasExpanded,
                   onToggle: onToggleAreasExpanded,
                   children: [
+                    _MenuActionItem(
+                      icon: Icons.fact_check_rounded,
+                      title: 'Supervisión',
+                      subtitle: 'Hub central de reportes por área',
+                      onTap: onOpenSupervision,
+                    ),
+                    const SizedBox(height: 8),
                     _MenuActionItem(
                       icon: Icons.precision_manufacturing_rounded,
                       title: 'Operación',

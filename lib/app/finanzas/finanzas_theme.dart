@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -331,6 +332,7 @@ class FinanzasSummaryMetricCard extends StatelessWidget {
         ? CrossAxisAlignment.center
         : CrossAxisAlignment.start;
     final textAlign = centered ? TextAlign.center : TextAlign.start;
+    final hasSubtitle = subtitle != null && subtitle!.trim().isNotEmpty;
     return FinanzasGlassPanel(
       width: width,
       padding: padding,
@@ -384,43 +386,81 @@ class FinanzasSummaryMetricCard extends StatelessWidget {
                 ),
               ),
             ),
-            if (subtitle != null && subtitle!.trim().isNotEmpty) ...[
+            if (hasSubtitle || progress != null) ...[
               const SizedBox(height: 10),
-              Text(
-                subtitle!,
-                maxLines: subtitleMaxLines,
-                overflow: TextOverflow.ellipsis,
-                textAlign: textAlign,
-                style: TextStyle(
-                  fontSize: subtitleFontSize,
-                  fontWeight: FontWeight.w700,
-                  color: kFinanzasMutedInk,
-                  height: 1.3,
-                ),
-              ),
-            ],
-            if (progress != null) ...[
-              const Spacer(),
-              Container(
-                height: 6,
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(999),
-                  color: kFinanzasBgWarm.withValues(alpha: 0.88),
-                ),
-                child: FractionallySizedBox(
-                  alignment: Alignment.centerLeft,
-                  widthFactor: progress!.clamp(0.0, 1.0),
-                  child: DecoratedBox(
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(999),
-                      gradient: LinearGradient(
-                        colors: [
-                          resolvedAccent.withValues(alpha: 0.58),
-                          resolvedAccent.withValues(alpha: 0.92),
+              Expanded(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final hasProgress = progress != null;
+                    final progressBlockHeight = hasProgress ? 10.0 : 0.0;
+                    final subtitleLineHeight = subtitleFontSize * 1.3;
+                    final availableSubtitleHeight =
+                        constraints.maxHeight - progressBlockHeight;
+                    final resolvedSubtitleMaxLines = !hasSubtitle
+                        ? 0
+                        : math.max(
+                            1,
+                            math.min(
+                              subtitleMaxLines,
+                              math.max(
+                                1,
+                                (availableSubtitleHeight / subtitleLineHeight)
+                                    .floor(),
+                              ),
+                            ),
+                          );
+                    return Column(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      crossAxisAlignment: alignment,
+                      children: [
+                        if (hasSubtitle)
+                          Expanded(
+                            child: Align(
+                              alignment: centered
+                                  ? Alignment.topCenter
+                                  : Alignment.topLeft,
+                              child: Text(
+                                subtitle!,
+                                maxLines: resolvedSubtitleMaxLines,
+                                overflow: TextOverflow.ellipsis,
+                                textAlign: textAlign,
+                                style: TextStyle(
+                                  fontSize: subtitleFontSize,
+                                  fontWeight: FontWeight.w700,
+                                  color: kFinanzasMutedInk,
+                                  height: 1.3,
+                                ),
+                              ),
+                            ),
+                          ),
+                        if (hasProgress) ...[
+                          if (hasSubtitle) const SizedBox(height: 4),
+                          Container(
+                            height: 6,
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(999),
+                              color: kFinanzasBgWarm.withValues(alpha: 0.88),
+                            ),
+                            child: FractionallySizedBox(
+                              alignment: Alignment.centerLeft,
+                              widthFactor: progress!.clamp(0.0, 1.0),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(999),
+                                  gradient: LinearGradient(
+                                    colors: [
+                                      resolvedAccent.withValues(alpha: 0.58),
+                                      resolvedAccent.withValues(alpha: 0.92),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
                         ],
-                      ),
-                    ),
-                  ),
+                      ],
+                    );
+                  },
                 ),
               ),
             ],

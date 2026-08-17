@@ -48,6 +48,30 @@ enum _ProviderAccountsTab {
   const _ProviderAccountsTab(this.label);
 }
 
+DateTime _agreementInvoiceAnchorDate(FinanzasSupplierInvoiceRecord invoice) {
+  final anchor = invoice.dueDate ?? invoice.invoiceDate;
+  return DateUtils.dateOnly(anchor);
+}
+
+int _compareAgreementInvoices(
+  FinanzasSupplierInvoiceRecord a,
+  FinanzasSupplierInvoiceRecord b,
+) {
+  final anchorCompare = _agreementInvoiceAnchorDate(
+    a,
+  ).compareTo(_agreementInvoiceAnchorDate(b));
+  if (anchorCompare != 0) return anchorCompare;
+  final invoiceDateCompare = DateUtils.dateOnly(
+    a.invoiceDate,
+  ).compareTo(DateUtils.dateOnly(b.invoiceDate));
+  if (invoiceDateCompare != 0) return invoiceDateCompare;
+  final folioCompare = a.folio.trim().toLowerCase().compareTo(
+    b.folio.trim().toLowerCase(),
+  );
+  if (folioCompare != 0) return folioCompare;
+  return a.id.compareTo(b.id);
+}
+
 class FinanzasProviderAccountsPage extends StatefulWidget {
   final bool instantOpen;
 
@@ -271,6 +295,9 @@ class _FinanzasProviderAccountsPageState
             () => <FinanzasSupplierAgreementInvoiceRecord>[],
           )
           .add(link);
+    }
+    for (final rows in agreementInvoiceLinksByAgreementId.values) {
+      rows.sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber));
     }
     final evidencesByInvoiceId = <String, List<FinanzasEvidenceRecord>>{};
     for (final evidence in invoiceEvidences) {
@@ -2193,10 +2220,12 @@ class _FinanzasProviderAccountsPageState
     final account = _selectedAccount;
     if (account == null) return;
     final metrics = _computeProviderAccountMetrics(account);
-    final eligibleInvoices = account.invoices
-        .map((row) => row.invoice)
-        .where((invoice) => invoice.status != 'PAGADA')
-        .toList(growable: false);
+    final eligibleInvoices =
+        account.invoices
+            .map((row) => row.invoice)
+            .where((invoice) => invoice.status != 'PAGADA')
+            .toList(growable: false)
+          ..sort(_compareAgreementInvoices);
     final draft = await showDialog<_AgreementDraftResult>(
       context: context,
       barrierDismissible: true,
@@ -2243,9 +2272,11 @@ class _FinanzasProviderAccountsPageState
     final invoiceLinks = <FinanzasSupplierAgreementInvoiceRecord>[];
     double totalAmount = 0;
     if (draft.agreementType == 'POR_FACTURAS') {
-      final selectedInvoices = eligibleInvoices
-          .where((invoice) => draft.selectedInvoiceIds.contains(invoice.id))
-          .toList(growable: false);
+      final selectedInvoices =
+          eligibleInvoices
+              .where((invoice) => draft.selectedInvoiceIds.contains(invoice.id))
+              .toList(growable: false)
+            ..sort(_compareAgreementInvoices);
       if (selectedInvoices.isEmpty) {
         _toast('Selecciona al menos una factura para este convenio.');
         return null;

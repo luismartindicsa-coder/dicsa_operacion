@@ -171,10 +171,15 @@ class FinanzasPaymentLearningStore {
 
   static Future<void> saveLogs(List<FinanzasPaymentLearningRecord> rows) async {
     if (rows.isEmpty) return;
+    final deduped = <String, FinanzasPaymentLearningRecord>{
+      for (final row in rows) row.id: row,
+    };
     await Supabase.instance.client
         .from(_kFinPaymentLearningTable)
         .upsert(
-          rows.map((row) => row.toUpsertJson()).toList(growable: false),
+          deduped.values
+              .map((row) => row.toUpsertJson())
+              .toList(growable: false),
           onConflict: 'id',
         );
   }

@@ -47,6 +47,10 @@ buildFinanzasPaymentCenterOperationalSnapshot(
     fixedPayments: source.fixedPayments,
     balances: reserveSummary.accountAvailableBalances,
   );
+  applyFinanzasPaymentCenterNearTermLiquidityGuard(
+    items: items,
+    balances: reserveSummary.accountAvailableBalances,
+  );
   _applyGlobalReserveCapToOperationalItems(
     items: items,
     totalAllowedAfterBlocking: reserveSummary.availableAfterBlocking,
@@ -548,6 +552,94 @@ buildFinanzasPaymentCenterOperationalItems({
   }
 
   return items;
+}
+
+void applyFinanzasPaymentCenterNearTermLiquidityGuard({
+  required List<FinanzasPaymentCenterOperationalItem> items,
+  required Map<String, double> balances,
+  DateTime? today,
+  int protectedHorizonDays = 1,
+}) {
+  final effectiveToday = _dateOnly(today ?? DateTime.now());
+  final horizonEnd = effectiveToday.add(Duration(days: protectedHorizonDays));
+  final itemsByAccount = <String, List<FinanzasPaymentCenterOperationalItem>>{};
+
+  for (final item in items) {
+    final accountKey = buildFinBankAccountKey(
+      company: item.targetCompany,
+      branch: item.targetBranch,
+    );
+    itemsByAccount
+        .putIfAbsent(accountKey, () => <FinanzasPaymentCenterOperationalItem>[])
+        .add(item);
+  }
+
+  for (final entry in itemsByAccount.entries) {
+    final available = (balances[entry.key] ?? 0)
+        .clamp(0, double.infinity)
+        .toDouble();
+    final protectedFutureAmount = entry.value.fold<double>(0, (sum, item) {
+      final dueOnly = item.dueDate == null ? null : _dateOnly(item.dueDate!);
+      if (dueOnly == null ||
+          !dueOnly.isAfter(effectiveToday) ||
+          dueOnly.isAfter(horizonEnd)) {
+        return sum;
+      }
+      return sum + item.amountSuggested.clamp(0, double.infinity).toDouble();
+    });
+    var remainingTodayBudget = (available - protectedFutureAmount)
+        .clamp(0, double.infinity)
+        .toDouble();
+
+    final todayCandidates =
+        entry.value
+            .where((item) {
+              if (item.executionAmount <= 0.009) return false;
+              final dueOnly = item.dueDate == null
+                  ? null
+                  : _dateOnly(item.dueDate!);
+              return dueOnly == null || !dueOnly.isAfter(effectiveToday);
+            })
+            .toList(growable: false)
+          ..sort(_compareOperationalItemsForNearTermBudget);
+
+    for (final item in entry.value) {
+      final dueOnly = item.dueDate == null ? null : _dateOnly(item.dueDate!);
+      final isProtectedFuture =
+          dueOnly != null &&
+          dueOnly.isAfter(effectiveToday) &&
+          !dueOnly.isAfter(horizonEnd);
+      if (!isProtectedFuture || item.executionAmount <= 0.009) continue;
+      item.canPayNow = false;
+      item.executionDecision = FinanzasPaymentCenterExecutionDecision.esperar;
+      item.executionAmount = 0;
+      item.executionSummary =
+          'Se protege flujo para compromisos ya visibles del siguiente dia antes de adelantar este movimiento.';
+    }
+
+    for (final item in todayCandidates) {
+      final desiredAmount = item.executionAmount.clamp(0, double.infinity);
+      if (desiredAmount <= 0.009) continue;
+      if (remainingTodayBudget >= desiredAmount - 0.009) {
+        remainingTodayBudget -= desiredAmount;
+        continue;
+      }
+      if (remainingTodayBudget > 0.009 && item.allowPartialPayment) {
+        item.canPayNow = true;
+        item.executionDecision = FinanzasPaymentCenterExecutionDecision.abonar;
+        item.executionAmount = remainingTodayBudget;
+        item.executionSummary =
+            'Se recorta al margen real de hoy despues de proteger los compromisos inmediatos siguientes.';
+        remainingTodayBudget = 0;
+        continue;
+      }
+      item.canPayNow = false;
+      item.executionDecision = FinanzasPaymentCenterExecutionDecision.esperar;
+      item.executionAmount = 0;
+      item.executionSummary =
+          'Hoy no cabe sin comprometer pagos inmediatos ya visibles del siguiente dia.';
+    }
+  }
 }
 
 FinanzasPaymentCenterBudgetTodaySummary
@@ -1277,6 +1369,29 @@ int _compareOperationalItemsForBudget(
   final priorityCompare = b.priorityScore.compareTo(a.priorityScore);
   if (priorityCompare != 0) return priorityCompare;
   final amountCompare = b.amountSuggested.compareTo(a.amountSuggested);
+  if (amountCompare != 0) return amountCompare;
+  return a.providerName.toLowerCase().compareTo(b.providerName.toLowerCase());
+}
+
+int _compareOperationalItemsForNearTermBudget(
+  FinanzasPaymentCenterOperationalItem a,
+  FinanzasPaymentCenterOperationalItem b,
+) {
+  final aDue = a.dueDate == null ? null : _dateOnly(a.dueDate!);
+  final bDue = b.dueDate == null ? null : _dateOnly(b.dueDate!);
+  if (aDue != null && bDue == null) return -1;
+  if (aDue == null && bDue != null) return 1;
+  if (aDue != null && bDue != null) {
+    final dueCompare = aDue.compareTo(bDue);
+    if (dueCompare != 0) return dueCompare;
+  }
+  final priorityCompare = b.priorityScore.compareTo(a.priorityScore);
+  if (priorityCompare != 0) return priorityCompare;
+  final closableCompare = a.allowPartialPayment == b.allowPartialPayment
+      ? 0
+      : (a.allowPartialPayment ? 1 : -1);
+  if (closableCompare != 0) return closableCompare;
+  final amountCompare = a.executionAmount.compareTo(b.executionAmount);
   if (amountCompare != 0) return amountCompare;
   return a.providerName.toLowerCase().compareTo(b.providerName.toLowerCase());
 }

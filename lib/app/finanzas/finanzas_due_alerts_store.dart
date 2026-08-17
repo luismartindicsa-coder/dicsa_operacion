@@ -97,6 +97,7 @@ class FinanzasDueAlertsStore {
       FinanzasFixedPaymentsStore.loadPayments(),
       FinanzasProviderAccountsStore.loadAgreements(),
       FinanzasProviderAccountsStore.loadAgreementInstallments(),
+      FinanzasProviderAccountsStore.loadAgreementInvoices(),
     ]);
 
     final invoices = results[0] as List<FinanzasSupplierInvoiceRecord>;
@@ -104,11 +105,37 @@ class FinanzasDueAlertsStore {
     final agreements = results[2] as List<FinanzasSupplierAgreementRecord>;
     final installments =
         results[3] as List<FinanzasSupplierAgreementInstallmentRecord>;
+    final agreementInvoiceLinks =
+        results[4] as List<FinanzasSupplierAgreementInvoiceRecord>;
 
     final today = DateUtils.dateOnly(DateTime.now());
     final agreementById = <String, FinanzasSupplierAgreementRecord>{
       for (final row in agreements) row.id: row,
     };
+    final actionableInstallmentIds = <String>{};
+    for (final installment in installments) {
+      final pendingAmount = (installment.amount - installment.paidAmount).clamp(
+        0.0,
+        double.infinity,
+      );
+      if (pendingAmount <= 0.009 ||
+          installment.status == 'PAGADO' ||
+          installment.status == 'CANCELADO') {
+        continue;
+      }
+      final agreement = agreementById[installment.agreementId];
+      if (agreement == null ||
+          agreement.status == 'CANCELADO' ||
+          agreement.remainingAmount <= 0.009) {
+        continue;
+      }
+      actionableInstallmentIds.add(installment.id);
+    }
+    final coveredInvoiceIds = agreementInvoiceLinks
+        .where((link) => actionableInstallmentIds.contains(link.installmentId))
+        .map((link) => link.invoiceId.trim())
+        .where((invoiceId) => invoiceId.isNotEmpty)
+        .toSet();
 
     final items = <FinanzasDueAlertItem>[];
 
@@ -116,6 +143,7 @@ class FinanzasDueAlertsStore {
       if (invoice.balanceAmount <= 0.009 || invoice.status == 'PAGADA') {
         continue;
       }
+      if (coveredInvoiceIds.contains(invoice.id)) continue;
       final dueDate = invoice.dueDate;
       if (dueDate == null) continue;
       final normalizedDue = DateUtils.dateOnly(dueDate);
@@ -128,7 +156,7 @@ class FinanzasDueAlertsStore {
           id: 'invoice-${invoice.id}-${meta.$1}',
           sourceType: 'FACTURA',
           title: invoice.providerNameSnapshot,
-          subtitle: 'Factura $folio · ${meta.$2}',
+          subtitle: 'Factura $folio · fuera de convenio · ${meta.$2}',
           dueDate: normalizedDue,
           amount: invoice.balanceAmount,
           daysUntilDue: daysUntilDue,
@@ -164,15 +192,23 @@ class FinanzasDueAlertsStore {
         0.0,
         double.infinity,
       );
-      if (pendingAmount <= 0.009) continue;
+      if (pendingAmount <= 0.009 ||
+          installment.status == 'PAGADO' ||
+          installment.status == 'CANCELADO') {
+        continue;
+      }
       final normalizedDue = DateUtils.dateOnly(installment.dueDate);
       final daysUntilDue = normalizedDue.difference(today).inDays;
       final meta = _reminderMeta(daysUntilDue);
       if (meta == null) continue;
       final agreement = agreementById[installment.agreementId];
-      final providerName =
-          agreement?.providerNameSnapshot.trim().isNotEmpty == true
-          ? agreement!.providerNameSnapshot
+      if (agreement == null ||
+          agreement.status == 'CANCELADO' ||
+          agreement.remainingAmount <= 0.009) {
+        continue;
+      }
+      final providerName = agreement.providerNameSnapshot.trim().isNotEmpty
+          ? agreement.providerNameSnapshot
           : 'Convenio proveedor';
       items.add(
         FinanzasDueAlertItem(

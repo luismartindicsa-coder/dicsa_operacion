@@ -145,39 +145,37 @@ class FinanzasCompanyDirectoryStore {
   static Future<List<FinanzasCompanyDirectoryRecord>> loadDirectory() async {
     final catalog = await FinanzasDataStore.loadCatalogSnapshot();
     final remoteByCompanyId = await _loadRemoteByCompanyId();
-    final rowsToSync = <FinanzasCompanyDirectoryRecord>[];
-
-    final merged =
-        catalog.companies
-            .map((company) {
-              final remote = remoteByCompanyId[company.id];
-              final record = FinanzasCompanyDirectoryRecord(
-                companyId: company.id,
-                companyName: company.name,
-                source: company.source,
-                linkedName: company.linkedName,
-                operationalContact: remote?.operationalContact ?? '',
-                phone: remote?.phone ?? '',
-                location: remote?.location ?? '',
-                hasContainers: remote?.hasContainers ?? false,
-                containerCount: remote?.hasContainers == true
-                    ? remote!.containerCount
-                    : 0,
-                creditDays: remote?.creditDays ?? 0,
-                paymentStage: remote?.paymentStage ?? 'AL_CORRIENTE',
-                active: company.active,
-                paymentNotes: remote?.paymentNotes ?? '',
-                manualPriority: remote?.manualPriority ?? 'NORMAL',
-                priorityNote: remote?.priorityNote ?? '',
-                updatedAt: remote?.updatedAt,
-              );
-              if (_needsSync(record, remote)) {
-                rowsToSync.add(record);
-              }
-              return record;
-            })
-            .toList(growable: false)
-          ..sort((a, b) => compareMayoreoAlpha(a.companyName, b.companyName));
+    final mergedByCompanyId = <String, FinanzasCompanyDirectoryRecord>{};
+    for (final company in catalog.companies) {
+      final remote = remoteByCompanyId[company.id];
+      mergedByCompanyId[company.id] = FinanzasCompanyDirectoryRecord(
+        companyId: company.id,
+        companyName: company.name,
+        source: company.source,
+        linkedName: company.linkedName,
+        operationalContact: remote?.operationalContact ?? '',
+        phone: remote?.phone ?? '',
+        location: remote?.location ?? '',
+        hasContainers: remote?.hasContainers ?? false,
+        containerCount: remote?.hasContainers == true
+            ? remote!.containerCount
+            : 0,
+        creditDays: remote?.creditDays ?? 0,
+        paymentStage: remote?.paymentStage ?? 'AL_CORRIENTE',
+        active: company.active,
+        paymentNotes: remote?.paymentNotes ?? '',
+        manualPriority: remote?.manualPriority ?? 'NORMAL',
+        priorityNote: remote?.priorityNote ?? '',
+        updatedAt: remote?.updatedAt,
+      );
+    }
+    final merged = mergedByCompanyId.values.toList(growable: false)
+      ..sort((a, b) => compareMayoreoAlpha(a.companyName, b.companyName));
+    final rowsToSync = merged
+        .where(
+          (record) => _needsSync(record, remoteByCompanyId[record.companyId]),
+        )
+        .toList(growable: false);
 
     if (rowsToSync.isNotEmpty) {
       try {
@@ -200,10 +198,15 @@ class FinanzasCompanyDirectoryStore {
     List<FinanzasCompanyDirectoryRecord> records,
   ) async {
     if (records.isEmpty) return;
+    final deduped = <String, FinanzasCompanyDirectoryRecord>{
+      for (final row in records) row.companyId: row,
+    };
     await Supabase.instance.client
         .from(_kFinDirectoryTable)
         .upsert(
-          records.map((row) => row.toUpsertJson()).toList(growable: false),
+          deduped.values
+              .map((row) => row.toUpsertJson())
+              .toList(growable: false),
           onConflict: 'company_id',
         );
   }

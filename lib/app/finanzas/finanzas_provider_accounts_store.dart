@@ -555,11 +555,14 @@ class FinanzasProviderAccountsStore {
       <Map<String, dynamic>>[resolvedInvoice.toUpsertJson()],
       onConflict: 'id',
     );
-    if (tickets.isNotEmpty) {
+    final dedupedTickets = <String, ComprasTicketRecord>{
+      for (final ticket in tickets) ticket.id: ticket,
+    }.values.toList(growable: false);
+    if (dedupedTickets.isNotEmpty) {
       await Supabase.instance.client
           .from(_kFinSupplierInvoiceTicketsTable)
           .upsert(
-            tickets
+            dedupedTickets
                 .map(
                   (ticket) => FinanzasSupplierInvoiceTicketRecord(
                     id: 'fin-inv-ticket-${resolvedInvoice.id}-${ticket.id}-${DateTime.now().microsecondsSinceEpoch}',
@@ -574,7 +577,7 @@ class FinanzasProviderAccountsStore {
             onConflict: 'ticket_id',
           );
       await ComprasTicketsStore.saveTickets(
-        tickets
+        dedupedTickets
             .map((ticket) => ticket.copyWith(facturaStatus: 'FACTURADO'))
             .toList(growable: false),
       );
@@ -643,6 +646,9 @@ class FinanzasProviderAccountsStore {
     final addedTickets = tickets
         .where((row) => !currentTicketIds.contains(row.id))
         .toList(growable: false);
+    final dedupedAddedTickets = <String, ComprasTicketRecord>{
+      for (final ticket in addedTickets) ticket.id: ticket,
+    }.values.toList(growable: false);
 
     if (removedTicketIds.isNotEmpty) {
       await client
@@ -652,11 +658,11 @@ class FinanzasProviderAccountsStore {
           .inFilter('ticket_id', removedTicketIds.toList(growable: false));
     }
 
-    if (addedTickets.isNotEmpty) {
+    if (dedupedAddedTickets.isNotEmpty) {
       await client
           .from(_kFinSupplierInvoiceTicketsTable)
           .upsert(
-            addedTickets
+            dedupedAddedTickets
                 .map(
                   (ticket) => FinanzasSupplierInvoiceTicketRecord(
                     id: 'fin-inv-ticket-${resolvedInvoice.id}-${ticket.id}-${DateTime.now().microsecondsSinceEpoch}',
@@ -866,18 +872,30 @@ class FinanzasProviderAccountsStore {
       <Map<String, dynamic>>[resolvedAgreement.toUpsertJson()],
       onConflict: 'id',
     );
-    if (installments.isEmpty) return;
+    final dedupedInstallments =
+        <String, FinanzasSupplierAgreementInstallmentRecord>{
+          for (final row in installments) row.id: row,
+        }.values.toList(growable: false);
+    final dedupedInvoiceLinks =
+        <String, FinanzasSupplierAgreementInvoiceRecord>{
+          for (final row in invoiceLinks) row.id: row,
+        }.values.toList(growable: false);
+    if (dedupedInstallments.isEmpty) return;
     await Supabase.instance.client
         .from(_kFinSupplierAgreementInstallmentsTable)
         .upsert(
-          installments.map((row) => row.toUpsertJson()).toList(growable: false),
+          dedupedInstallments
+              .map((row) => row.toUpsertJson())
+              .toList(growable: false),
           onConflict: 'id',
         );
-    if (invoiceLinks.isEmpty) return;
+    if (dedupedInvoiceLinks.isEmpty) return;
     await Supabase.instance.client
         .from(_kFinSupplierAgreementInvoicesTable)
         .upsert(
-          invoiceLinks.map((row) => row.toUpsertJson()).toList(growable: false),
+          dedupedInvoiceLinks
+              .map((row) => row.toUpsertJson())
+              .toList(growable: false),
           onConflict: 'id',
         );
   }
@@ -913,6 +931,14 @@ class FinanzasProviderAccountsStore {
         const <FinanzasSupplierAgreementInvoiceRecord>[],
   }) async {
     await saveAgreement(agreement);
+    final dedupedInstallments =
+        <String, FinanzasSupplierAgreementInstallmentRecord>{
+          for (final row in installments) row.id: row,
+        }.values.toList(growable: false);
+    final dedupedInvoiceLinks =
+        <String, FinanzasSupplierAgreementInvoiceRecord>{
+          for (final row in invoiceLinks) row.id: row,
+        }.values.toList(growable: false);
     await Supabase.instance.client
         .from(_kFinSupplierAgreementInvoicesTable)
         .delete()
@@ -921,21 +947,21 @@ class FinanzasProviderAccountsStore {
         .from(_kFinSupplierAgreementInstallmentsTable)
         .delete()
         .eq('agreement_id', agreement.id);
-    if (installments.isNotEmpty) {
+    if (dedupedInstallments.isNotEmpty) {
       await Supabase.instance.client
           .from(_kFinSupplierAgreementInstallmentsTable)
           .upsert(
-            installments
+            dedupedInstallments
                 .map((row) => row.toUpsertJson())
                 .toList(growable: false),
             onConflict: 'id',
           );
     }
-    if (invoiceLinks.isNotEmpty) {
+    if (dedupedInvoiceLinks.isNotEmpty) {
       await Supabase.instance.client
           .from(_kFinSupplierAgreementInvoicesTable)
           .upsert(
-            invoiceLinks
+            dedupedInvoiceLinks
                 .map((row) => row.toUpsertJson())
                 .toList(growable: false),
             onConflict: 'id',
@@ -988,11 +1014,15 @@ class FinanzasProviderAccountsStore {
           ),
         )
         .toList(growable: false);
-    if (pendingInstallments.isEmpty) return;
+    final dedupedPendingInstallments =
+        <String, FinanzasSupplierAgreementInstallmentRecord>{
+          for (final row in pendingInstallments) row.id: row,
+        }.values.toList(growable: false);
+    if (dedupedPendingInstallments.isEmpty) return;
     await Supabase.instance.client
         .from(_kFinSupplierAgreementInstallmentsTable)
         .upsert(
-          pendingInstallments
+          dedupedPendingInstallments
               .map((row) => row.toUpsertJson())
               .toList(growable: false),
           onConflict: 'id',
@@ -1194,10 +1224,14 @@ class FinanzasProviderAccountsStore {
             .toList(growable: false);
       }
 
+      final dedupedUpdatedInstallments =
+          <String, FinanzasSupplierAgreementInstallmentRecord>{
+            for (final row in updatedInstallments) row.id: row,
+          }.values.toList(growable: false);
       await Supabase.instance.client
           .from(_kFinSupplierAgreementInstallmentsTable)
           .upsert(
-            updatedInstallments
+            dedupedUpdatedInstallments
                 .map((row) => row.toUpsertJson())
                 .toList(growable: false),
             onConflict: 'id',
@@ -1205,7 +1239,7 @@ class FinanzasProviderAccountsStore {
 
       final agreementSummary = recomputeAgreementSummary(
         currentStatus: agreement.status,
-        installments: updatedInstallments
+        installments: dedupedUpdatedInstallments
             .map(
               (row) => AgreementInstallmentSnapshot(
                 sequenceNumber: row.sequenceNumber,

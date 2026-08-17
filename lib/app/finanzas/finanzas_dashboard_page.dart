@@ -10,6 +10,9 @@ import '../compras/compras_area_chrome.dart';
 import '../compras/compras_tickets_store.dart';
 import '../compras/compras_dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
+import '../management_reports/management_reports_registry.dart';
+import '../management_reports/management_reports_widgets.dart';
+import '../management_reports/management_supervision_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
@@ -192,6 +195,16 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
     );
   }
 
+  Future<void> _openManagementSupervision() async {
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const ManagementSupervisionPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   Future<void> _openDirectionDashboard() async {
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const GeneralDashboardPage(instantOpen: true)),
@@ -287,6 +300,7 @@ class _FinanzasDashboardPageState extends State<FinanzasDashboardPage> {
                 loading: _loading,
                 summary: _summary,
                 onRefresh: () => _loadDashboard(silent: false),
+                onOpenManagementSupervision: _openManagementSupervision,
               ),
               Positioned.fill(
                 child: IgnorePointer(
@@ -333,11 +347,13 @@ class _FinanzasDashboardBody extends StatelessWidget {
   final bool loading;
   final _FinanzasDashboardSummary summary;
   final Future<void> Function() onRefresh;
+  final Future<void> Function() onOpenManagementSupervision;
 
   const _FinanzasDashboardBody({
     required this.loading,
     required this.summary,
     required this.onRefresh,
+    required this.onOpenManagementSupervision,
   });
 
   @override
@@ -355,6 +371,14 @@ class _FinanzasDashboardBody extends StatelessWidget {
                 loading: loading,
                 summary: summary,
                 onRefresh: onRefresh,
+              ),
+              const SizedBox(height: 18),
+              ManagementAreaReportPanel(
+                areaKey: ManagementAreaKey.finanzas,
+                subtitleOverride:
+                    'El responsable de Finanzas debe generar aquí sus cortes, estudiarlos y llegar a la junta con pagos urgentes, presión de caja y decisiones propuestas.',
+                showOpenHubButton: true,
+                onOpenSupervisionHub: onOpenManagementSupervision,
               ),
               const SizedBox(height: 18),
               _FinanceMetricCardsRow(loading: loading, summary: summary),
@@ -1881,6 +1905,15 @@ class _FinanzasDueNotificationDialogState
   @override
   Widget build(BuildContext context) {
     final primaryItem = widget.visibleItems.first;
+    final agreementItems = widget.visibleItems
+        .where((item) => item.sourceType == 'CONVENIO')
+        .toList(growable: false);
+    final invoiceItems = widget.visibleItems
+        .where((item) => item.sourceType == 'FACTURA')
+        .toList(growable: false);
+    final fixedPaymentItems = widget.visibleItems
+        .where((item) => item.sourceType == 'PAGO_FIJO')
+        .toList(growable: false);
     final accent = switch (primaryItem.severity) {
       FinanzasDueAlertSeverity.critical => kFinanzasCoral,
       FinanzasDueAlertSeverity.warning => kFinanzasAmber,
@@ -1996,7 +2029,7 @@ class _FinanzasDueNotificationDialogState
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          'Compromisos prioritarios',
+                          'Compromisos prioritarios por origen',
                           style: TextStyle(
                             color: Colors.white,
                             fontSize: 15,
@@ -2015,17 +2048,30 @@ class _FinanzasDueNotificationDialogState
                               controller: _commitmentsScrollController,
                               child: Column(
                                 children: [
-                                  for (
-                                    var index = 0;
-                                    index < widget.visibleItems.length;
-                                    index++
-                                  ) ...[
-                                    _FinanzasDueNotificationItemCard(
-                                      item: widget.visibleItems[index],
+                                  if (agreementItems.isNotEmpty)
+                                    _FinanzasDueNotificationSection(
+                                      title: 'Convenios por vencer',
+                                      items: agreementItems,
                                       accent: accent,
                                     ),
-                                    if (index != widget.visibleItems.length - 1)
-                                      const SizedBox(height: 10),
+                                  if (invoiceItems.isNotEmpty) ...[
+                                    if (agreementItems.isNotEmpty)
+                                      const SizedBox(height: 14),
+                                    _FinanzasDueNotificationSection(
+                                      title: 'Facturas fuera de convenio',
+                                      items: invoiceItems,
+                                      accent: accent,
+                                    ),
+                                  ],
+                                  if (fixedPaymentItems.isNotEmpty) ...[
+                                    if (agreementItems.isNotEmpty ||
+                                        invoiceItems.isNotEmpty)
+                                      const SizedBox(height: 14),
+                                    _FinanzasDueNotificationSection(
+                                      title: 'Pagos fijos por vencer',
+                                      items: fixedPaymentItems,
+                                      accent: accent,
+                                    ),
                                   ],
                                 ],
                               ),
@@ -2075,6 +2121,40 @@ class _FinanzasDueNotificationDialogState
           ),
         ),
       ),
+    );
+  }
+}
+
+class _FinanzasDueNotificationSection extends StatelessWidget {
+  final String title;
+  final List<FinanzasDueAlertItem> items;
+  final Color accent;
+
+  const _FinanzasDueNotificationSection({
+    required this.title,
+    required this.items,
+    required this.accent,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            color: accent,
+            fontSize: 12.5,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+        const SizedBox(height: 8),
+        for (var index = 0; index < items.length; index++) ...[
+          _FinanzasDueNotificationItemCard(item: items[index], accent: accent),
+          if (index != items.length - 1) const SizedBox(height: 10),
+        ],
+      ],
     );
   }
 }
@@ -2181,11 +2261,11 @@ String _finanzasDueDialogHeadline(FinanzasDueAlertsSummary summary) {
 String _finanzasAlertSourceLabel(FinanzasDueAlertItem item) {
   switch (item.sourceType) {
     case 'FACTURA':
-      return 'Factura proveedor';
+      return 'Factura fuera de convenio';
     case 'PAGO_FIJO':
       return 'Pago fijo';
     case 'CONVENIO':
-      return 'Convenio';
+      return 'Convenio activo';
     default:
       return 'Compromiso';
   }

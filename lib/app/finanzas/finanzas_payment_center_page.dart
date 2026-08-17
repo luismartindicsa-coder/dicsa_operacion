@@ -6,7 +6,6 @@ import '../auth/auth_navigation.dart';
 import '../compras/compras_dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
-import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
@@ -447,109 +446,117 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
                   vertical: 28,
                 ),
                 child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 640),
-                  child: ContractGlassCard(
-                    borderRadius: BorderRadius.circular(30),
-                    padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Registrar decisión',
-                          style: TextStyle(
-                            fontSize: 24,
-                            fontWeight: FontWeight.w900,
-                            color: tokens.primaryStrong,
+                  constraints: const BoxConstraints(
+                    maxWidth: 640,
+                    maxHeight: 560,
+                  ),
+                  child: SingleChildScrollView(
+                    child: ContractGlassCard(
+                      borderRadius: BorderRadius.circular(30),
+                      padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Registrar decisión',
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w900,
+                              color: tokens.primaryStrong,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          row.providerName,
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w800,
-                            color: kFinanzasMutedInk,
+                          const SizedBox(height: 6),
+                          Text(
+                            row.providerName,
+                            style: TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w800,
+                              color: kFinanzasMutedInk,
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            for (final action in const <String>[
-                              'PAGAR_COMPLETO',
-                              'ABONAR',
-                              'ESPERAR',
-                            ])
-                              ChoiceChip(
-                                label: Text(_learningActionDisplay(action)),
-                                selected: selectedAction == action,
-                                onSelected: (_) => setLocalState(
-                                  () => selectedAction = action,
+                          const SizedBox(height: 16),
+                          Wrap(
+                            spacing: 10,
+                            runSpacing: 10,
+                            children: [
+                              for (final action in const <String>[
+                                'PAGAR_COMPLETO',
+                                'ABONAR',
+                                'ESPERAR',
+                              ])
+                                ChoiceChip(
+                                  label: Text(_learningActionDisplay(action)),
+                                  selected: selectedAction == action,
+                                  onSelected: (_) => setLocalState(
+                                    () => selectedAction = action,
+                                  ),
                                 ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          TextField(
+                            controller: amountC,
+                            keyboardType: const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                            decoration: const InputDecoration(
+                              labelText: 'Monto ejecutado',
+                            ),
+                          ),
+                          const SizedBox(height: 14),
+                          TextField(
+                            controller: notesC,
+                            minLines: 2,
+                            maxLines: 4,
+                            decoration: const InputDecoration(
+                              labelText: 'Notas',
+                            ),
+                          ),
+                          const SizedBox(height: 18),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: saving
+                                    ? null
+                                    : () => Navigator.of(
+                                        dialogContext,
+                                      ).pop(false),
+                                child: const Text('Cancelar'),
                               ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
-                        TextField(
-                          controller: amountC,
-                          keyboardType: const TextInputType.numberWithOptions(
-                            decimal: true,
+                              const SizedBox(width: 10),
+                              FilledButton(
+                                onPressed: saving
+                                    ? null
+                                    : () async {
+                                        setLocalState(() => saving = true);
+                                        final parsedAmount =
+                                            double.tryParse(
+                                              amountC.text
+                                                  .replaceAll(',', '')
+                                                  .trim(),
+                                            ) ??
+                                            0;
+                                        final updated = row.copyWith(
+                                          status: 'REGISTRADO',
+                                          executedAction: selectedAction,
+                                          executedAmount: parsedAmount,
+                                          notes: notesC.text.trim(),
+                                        );
+                                        await FinanzasPaymentLearningStore.saveLog(
+                                          updated,
+                                        );
+                                        if (dialogContext.mounted) {
+                                          Navigator.of(dialogContext).pop(true);
+                                        }
+                                      },
+                                child: const Text('Guardar'),
+                              ),
+                            ],
                           ),
-                          decoration: const InputDecoration(
-                            labelText: 'Monto ejecutado',
-                          ),
-                        ),
-                        const SizedBox(height: 14),
-                        TextField(
-                          controller: notesC,
-                          minLines: 2,
-                          maxLines: 4,
-                          decoration: const InputDecoration(labelText: 'Notas'),
-                        ),
-                        const SizedBox(height: 18),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            TextButton(
-                              onPressed: saving
-                                  ? null
-                                  : () =>
-                                        Navigator.of(dialogContext).pop(false),
-                              child: const Text('Cancelar'),
-                            ),
-                            const SizedBox(width: 10),
-                            FilledButton(
-                              onPressed: saving
-                                  ? null
-                                  : () async {
-                                      setLocalState(() => saving = true);
-                                      final parsedAmount =
-                                          double.tryParse(
-                                            amountC.text
-                                                .replaceAll(',', '')
-                                                .trim(),
-                                          ) ??
-                                          0;
-                                      final updated = row.copyWith(
-                                        status: 'REGISTRADO',
-                                        executedAction: selectedAction,
-                                        executedAmount: parsedAmount,
-                                        notes: notesC.text.trim(),
-                                      );
-                                      await FinanzasPaymentLearningStore.saveLog(
-                                        updated,
-                                      );
-                                      if (dialogContext.mounted) {
-                                        Navigator.of(dialogContext).pop(true);
-                                      }
-                                    },
-                              child: const Text('Guardar'),
-                            ),
-                          ],
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -933,6 +940,7 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
     final reserveAccountPressureCount = _reserveSummary.accountPressureCount;
     final reserveGlobalCount = _reserveSummary.globalReserveCount;
     final budgetToday = _budgetToday;
+    final budgetWeek = _budgetWeek;
     final budgetAccounts =
         budgetToday?.accounts ??
         const <FinanzasPaymentCenterBudgetAccountSummary>[];
@@ -940,8 +948,6 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
         .expand((account) => account.providers)
         .toList(growable: false);
     final budgetMinimumToday = budgetToday?.minimumTodayAmount ?? 0;
-    final budgetRecommendedAdditional =
-        budgetToday?.recommendedAdditionalAmount ?? 0;
     final budgetRecommendedToday = budgetToday?.recommendedTodayAmount ?? 0;
     final budgetAvailableAmount = budgetToday?.availableBudgetAmount ?? 0;
     final budgetPlannedToday = budgetToday?.plannedTodayAmount ?? 0;
@@ -949,79 +955,61 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
         budgetToday?.freeMarginAfterPlanned ?? 0;
     final budgetUncoveredMinimumToday =
         budgetToday?.uncoveredMinimumTodayAmount ?? 0;
-    final budgetRiskReviewAmount = budgetToday?.riskReviewAmount ?? 0;
-    final budgetRecommendedMovementCount = budgetMovements
-        .where((provider) => provider.recommendedAdditionalAmount > 0.009)
+    FinanzasPaymentCenterBudgetWeekDaySummary? budgetTomorrowSummary;
+    if (budgetToday != null && budgetWeek != null) {
+      final todayDate = DateUtils.dateOnly(budgetToday.today);
+      for (final day in budgetWeek.days) {
+        final dayDate = DateUtils.dateOnly(day.date);
+        if (dayDate.isAfter(todayDate)) {
+          budgetTomorrowSummary = day;
+          break;
+        }
+      }
+    }
+    final budgetTodayDateLabel = _dateLabel(budgetToday?.today);
+    final budgetTomorrowDateLabel = _dateLabel(budgetTomorrowSummary?.date);
+    final budgetTomorrowCommittedAmount =
+        budgetTomorrowSummary?.committedAmount ?? 0;
+    final budgetTomorrowPressureAmount =
+        budgetTomorrowSummary?.pressureAmount ?? 0;
+    final budgetTomorrowRemainingAfterCommitted =
+        budgetTomorrowSummary?.remainingAfterCommitted ?? 0;
+    final budgetMinimumMovementCount = budgetMovements
+        .where((provider) => provider.minimumTodayAmount > 0.009)
         .length;
     final budgetPlannedMovementCount = budgetMovements
         .where((provider) => provider.plannedTodayAmount > 0.009)
-        .length;
-    final budgetMinimumShortfallMovementCount = budgetMovements
-        .where((provider) => provider.uncoveredMinimumTodayAmount > 0.009)
-        .length;
-    final budgetAccountsWithPressure = budgetAccounts
-        .where(
-          (account) =>
-              account.minimumTodayAmount > 0.009 ||
-              account.recommendedAdditionalAmount > 0.009 ||
-              account.riskReviewAmount > 0.009,
-        )
         .length;
 
     List<Widget> buildMetricCards(double cardWidth) {
       switch (_activeMode) {
         case _PaymentCenterMode.presupuesto:
+          final mustPayTone = budgetMinimumToday > 0.009
+              ? kFinanzasCoral
+              : kFinanzasSage;
           final plannedTone = budgetPlannedToday > 0.009
               ? kFinanzasSage
               : kFinanzasAmber;
-          final shortfallTone = budgetUncoveredMinimumToday > 0.009
-              ? kFinanzasCoral
-              : kFinanzasSage;
-          final recommendedTone = budgetRecommendedAdditional > 0.009
-              ? kFinanzasAmber
-              : kFinanzasSage;
           final freeMarginTone = budgetFreeMarginAfterPlanned >= 0
               ? kFinanzasSage
               : kFinanzasCoral;
+          final tomorrowTone = budgetTomorrowCommittedAmount > 0.009
+              ? kFinanzasAmber
+              : kFinanzasSage;
           return <Widget>[
             SizedBox(
               width: cardWidth,
               child: _CenterMetricCard(
-                label: 'Saldo real en bancos',
-                value: _money(
-                  budgetToday?.realTotalBalance ?? realTotalAvailable,
-                ),
-                subtitle: 'Caja viva al miércoles 12/08/2026',
-                icon: Icons.account_balance_wallet_rounded,
-                tone: finanzasAreaTokens.primaryStrong,
-                progress: 0.84,
-              ),
-            ),
-            SizedBox(
-              width: cardWidth,
-              child: _CenterMetricCard(
-                label: 'Reservas protegidas',
-                value: _money(budgetToday?.protectedReserveTotal ?? 0),
-                subtitle:
-                    '$reserveBlockingCount bloqueantes · ${_money(_reserveSummary.globalBlockingTotal)} globales',
-                icon: Icons.shield_moon_outlined,
-                tone: kFinanzasCoral,
-                progress: _reserveSummary.blockingReserveTotal <= 0.009
-                    ? 0.12
-                    : 0.82,
-              ),
-            ),
-            SizedBox(
-              width: cardWidth,
-              child: _CenterMetricCard(
-                label: 'Disponible presupuestable',
-                value: _money(budgetAvailableAmount),
-                subtitle: '$budgetAccountsWithPressure cuentas con presión hoy',
-                icon: Icons.radar_rounded,
-                tone: kFinanzasSage,
-                progress: realTotalAvailable <= 0.009
+                label: 'Presion visible hoy',
+                value: _money(budgetMinimumToday),
+                subtitle: budgetUncoveredMinimumToday > 0.009
+                    ? '$budgetMinimumMovementCount movimientos vencidos o del dia para $budgetTodayDateLabel; no todo alcanza a salir hoy y siguen cortos ${_money(budgetUncoveredMinimumToday)}.'
+                    : '$budgetMinimumMovementCount movimientos vencidos o del dia para $budgetTodayDateLabel.',
+                icon: Icons.assignment_turned_in_rounded,
+                tone: mustPayTone,
+                progress: budgetRecommendedToday <= 0.009
                     ? 0
-                    : (budgetAvailableAmount / realTotalAvailable).clamp(
+                    : (budgetMinimumToday / budgetRecommendedToday).clamp(
                         0.0,
                         1.0,
                       ),
@@ -1030,10 +1018,10 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
             SizedBox(
               width: cardWidth,
               child: _CenterMetricCard(
-                label: 'Qué pagar hoy',
+                label: 'Que si pago hoy',
                 value: _money(budgetPlannedToday),
                 subtitle:
-                    '$budgetPlannedMovementCount movimientos sí caben hoy con la caja protegida',
+                    '$budgetPlannedMovementCount movimientos ya quedan fondeados con caja protegida al $budgetTodayDateLabel.',
                 icon: Icons.priority_high_rounded,
                 tone: plannedTone,
                 progress: budgetAvailableAmount <= 0.009
@@ -1047,47 +1035,32 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
             SizedBox(
               width: cardWidth,
               child: _CenterMetricCard(
-                label: 'Brecha mínima hoy',
-                value: _money(budgetUncoveredMinimumToday),
+                label: 'Asi cierro hoy en bancos',
+                value: _money(budgetFreeMarginAfterPlanned),
                 subtitle:
-                    '$budgetMinimumShortfallMovementCount movimientos mínimos siguen sin fondeo hoy',
-                icon: Icons.warning_amber_rounded,
-                tone: shortfallTone,
-                progress: budgetMinimumToday <= 0.009
-                    ? 0
-                    : (budgetUncoveredMinimumToday / budgetMinimumToday).clamp(
-                        0.0,
-                        1.0,
-                      ),
-              ),
-            ),
-            SizedBox(
-              width: cardWidth,
-              child: _CenterMetricCard(
-                label: 'Presión adicional sugerida',
-                value: _money(budgetRecommendedAdditional),
-                subtitle:
-                    '$budgetRecommendedMovementCount movimientos extra · mínimo visible ${_money(budgetMinimumToday)}',
-                icon: Icons.fact_check_outlined,
-                tone: recommendedTone,
+                    'Despues del plan de hoy y ${_money(budgetToday?.protectedReserveTotal ?? 0)} de reservas protegidas.',
+                icon: Icons.account_balance_wallet_rounded,
+                tone: freeMarginTone,
                 progress: budgetAvailableAmount <= 0.009
                     ? 0
-                    : (budgetRecommendedAdditional / budgetAvailableAmount)
+                    : (budgetFreeMarginAfterPlanned / budgetAvailableAmount)
                           .clamp(0.0, 1.0),
               ),
             ),
             SizedBox(
               width: cardWidth,
               child: _CenterMetricCard(
-                label: 'Margen tras plan de hoy',
-                value: _money(budgetFreeMarginAfterPlanned),
-                subtitle:
-                    'Presión total visible ${_money(budgetRecommendedToday)} · riesgo ${_money(budgetRiskReviewAmount)}',
-                icon: Icons.show_chart_rounded,
-                tone: freeMarginTone,
-                progress: budgetAvailableAmount <= 0.009
+                label: 'Manana ya pide',
+                value: _money(budgetTomorrowCommittedAmount),
+                subtitle: budgetTomorrowSummary == null
+                    ? 'Todavia no hay compromisos visibles para el siguiente dia en la ventana semanal.'
+                    : 'Para $budgetTomorrowDateLabel arrancas con ${_money(budgetTomorrowRemainingAfterCommitted)} libres despues de lo comprometido.',
+                icon: Icons.today_rounded,
+                tone: tomorrowTone,
+                progress: budgetTomorrowPressureAmount <= 0.009
                     ? 0
-                    : (budgetFreeMarginAfterPlanned / budgetAvailableAmount)
+                    : (budgetTomorrowCommittedAmount /
+                              budgetTomorrowPressureAmount)
                           .clamp(0.0, 1.0),
               ),
             ),
@@ -1295,15 +1268,17 @@ class _FinanzasPaymentCenterPageState extends State<FinanzasPaymentCenterPage> {
               background: const _FinPaymentCenterBackground(),
               animateBody: !widget.instantOpen,
               wrapBodyInGlass: false,
+              animateHeaderSlots: false,
               headerBodySpacing: 8,
               padding: const EdgeInsets.fromLTRB(28, 14, 20, 18),
-              leadingBuilder: (_, _) => _FinCenterHeaderButton(
+              leadingBuilder: (_, _) => FinanzasPageHeaderButton(
                 label: _menuOpen ? 'Cerrar panel' : 'Navegación',
                 icon: _menuOpen ? Icons.close_rounded : Icons.menu_rounded,
                 onTapSync: () => setState(() => _menuOpen = !_menuOpen),
               ),
-              centerBuilder: (_, _) => const _FinPaymentCenterHeaderBrand(),
-              trailingBuilder: (_, _) => _FinCenterHeaderButton(
+              centerBuilder: (_, _) =>
+                  const FinanzasPageHeaderBrand(title: 'Centro de pagos'),
+              trailingBuilder: (_, _) => FinanzasPageHeaderButton(
                 label: 'Cerrar sesión',
                 icon: Icons.logout_rounded,
                 onTap: _logout,
@@ -1650,9 +1625,39 @@ class _PaymentCenterBudgetTodayView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final accountsWithProviders = summary.accounts
-        .where((account) => account.providers.isNotEmpty)
-        .toList(growable: false);
+    FinanzasPaymentCenterBudgetWeekDaySummary? tomorrowSummary;
+    final todayDate = DateUtils.dateOnly(summary.today);
+    for (final day in weekSummary.days) {
+      final dayDate = DateUtils.dateOnly(day.date);
+      if (dayDate.isAfter(todayDate)) {
+        tomorrowSummary = day;
+        break;
+      }
+    }
+    final plannedAccountsWithProviders =
+        summary.accounts
+            .map(
+              (account) => _filterBudgetAccountSummaryForFocus(
+                account,
+                focus: _PaymentCenterBudgetSectionFocus.plannedToday,
+                includeProvider: _hasPlannedMovementProvider,
+              ),
+            )
+            .whereType<FinanzasPaymentCenterBudgetAccountSummary>()
+            .toList(growable: false)
+          ..sort(_compareBudgetPlannedAccountSummaries);
+    final pendingAccountsWithPressure =
+        summary.accounts
+            .map(
+              (account) => _filterBudgetAccountSummaryForFocus(
+                account,
+                focus: _PaymentCenterBudgetSectionFocus.pendingPressure,
+                includeProvider: _hasPendingPressureProvider,
+              ),
+            )
+            .whereType<FinanzasPaymentCenterBudgetAccountSummary>()
+            .toList(growable: false)
+          ..sort(_compareBudgetPendingAccountSummaries);
     final weekAccountsWithPressure = weekSummary.accounts
         .where(
           (account) =>
@@ -1661,24 +1666,17 @@ class _PaymentCenterBudgetTodayView extends StatelessWidget {
               account.outsideWindowAmount > 0.009,
         )
         .toList(growable: false);
-    final movementCount = accountsWithProviders.fold<int>(
+    final movementCount = plannedAccountsWithProviders.fold<int>(
       0,
       (sum, account) => sum + account.providers.length,
     );
-    final plannedMovementCount = accountsWithProviders.fold<int>(
+    final plannedMovementCount = movementCount;
+    final uncoveredMinimumMovementCount = pendingAccountsWithPressure.fold<int>(
       0,
       (sum, account) =>
           sum +
           account.providers
-              .where((provider) => provider.plannedTodayAmount > 0.009)
-              .length,
-    );
-    final uncoveredMinimumMovementCount = accountsWithProviders.fold<int>(
-      0,
-      (sum, account) =>
-          sum +
-          account.providers
-              .where((provider) => provider.uncoveredMinimumTodayAmount > 0.009)
+              .where((provider) => provider.pendingVisibleTodayAmount > 0.009)
               .length,
     );
     final riskCount = summary.riskItems.length;
@@ -1705,7 +1703,7 @@ class _PaymentCenterBudgetTodayView extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Corte del ${_headlineDate()}. Aqui se separa lo que si cabe pagar hoy con caja real, la presion minima que sigue abierta y lo adicional sugerido sin tocar otras pantallas.',
+                      'Corte del ${_headlineDate()}. Primero responde que si se tiene que pagar hoy, que si cabe mover hoy con caja real y con cuanto se cierra para entrar a manana.',
                       style: const TextStyle(
                         fontSize: 13.5,
                         fontWeight: FontWeight.w700,
@@ -1753,23 +1751,25 @@ class _PaymentCenterBudgetTodayView extends StatelessWidget {
               children: [
                 _TinyChip(
                   label:
-                      'Planeado hoy ${moneyFormatter(summary.plannedTodayAmount)}',
-                  tone: kFinanzasSage,
-                ),
-                _TinyChip(
-                  label: '$movementCount movimientos en tablero',
-                  tone: finanzasAreaTokens.primaryStrong,
-                ),
-                _TinyChip(
-                  label:
-                      'Presión mínima ${moneyFormatter(summary.minimumTodayAmount)}',
+                      'Debe hoy ${moneyFormatter(summary.minimumTodayAmount)}',
                   tone: kFinanzasCoral,
                 ),
                 _TinyChip(
                   label:
-                      'Adicional ${moneyFormatter(summary.recommendedAdditionalAmount)}',
-                  tone: kFinanzasAmber,
+                      'Si cabe hoy ${moneyFormatter(summary.plannedTodayAmount)}',
+                  tone: kFinanzasSage,
                 ),
+                _TinyChip(
+                  label:
+                      'Cierre libre ${moneyFormatter(summary.freeMarginAfterPlanned)}',
+                  tone: finanzasAreaTokens.primaryStrong,
+                ),
+                if (tomorrowSummary != null)
+                  _TinyChip(
+                    label:
+                        'Manana ${dateFormatter(tomorrowSummary.date)} pide ${moneyFormatter(tomorrowSummary.committedAmount)}',
+                    tone: kFinanzasAmber,
+                  ),
                 if (reserveSummary.globalBlockingTotal > 0.009)
                   _TinyChip(
                     label:
@@ -1787,10 +1787,12 @@ class _PaymentCenterBudgetTodayView extends StatelessWidget {
           const SizedBox(height: 18),
           _PaymentCenterTodayFocusPanel(
             summary: summary,
+            tomorrowSummary: tomorrowSummary,
             plannedMovementCount: plannedMovementCount,
             uncoveredMinimumMovementCount: uncoveredMinimumMovementCount,
             riskCount: riskCount,
             moneyFormatter: moneyFormatter,
+            dateFormatter: dateFormatter,
           ),
           const SizedBox(height: 18),
           if (summary.accounts.isEmpty)
@@ -1801,7 +1803,7 @@ class _PaymentCenterBudgetTodayView extends StatelessWidget {
             )
           else ...[
             Text(
-              'Qué se movería hoy',
+              'Pagos a mover hoy',
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w900,
@@ -1810,7 +1812,7 @@ class _PaymentCenterBudgetTodayView extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Empieza por aqui. Primero revisa lo que si tiene cabida hoy y despues la caja que sostiene esa decision.',
+              'Aqui solo vive la instruccion del dia: facturas y movimientos que si quedaron fondeados con caja real.',
               style: TextStyle(
                 fontSize: 12.8,
                 fontWeight: FontWeight.w700,
@@ -1819,14 +1821,14 @@ class _PaymentCenterBudgetTodayView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 10),
-            if (accountsWithProviders.isEmpty)
+            if (plannedAccountsWithProviders.isEmpty)
               FinanzasGlassPanel(
                 borderRadius: BorderRadius.circular(24),
                 padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
                 fillColor: kFinanzasPanelSurfaceStrong,
                 borderColor: tokens.border.withValues(alpha: 0.34),
                 child: const Text(
-                  'Las cuentas tienen saldo, pero no hay movimientos con presión activa para este corte.',
+                  'Hoy no hay movimientos fondeados. Lo pendiente queda abajo para revision o para manana, sin mezclarlo con la orden real del dia.',
                   style: TextStyle(
                     fontSize: 13.5,
                     fontWeight: FontWeight.w700,
@@ -1838,17 +1840,62 @@ class _PaymentCenterBudgetTodayView extends StatelessWidget {
             else
               Column(
                 children: [
-                  for (var i = 0; i < accountsWithProviders.length; i++) ...[
+                  for (
+                    var i = 0;
+                    i < plannedAccountsWithProviders.length;
+                    i++
+                  ) ...[
                     _PaymentCenterBudgetAccountSection(
-                      summary: accountsWithProviders[i],
+                      summary: plannedAccountsWithProviders[i],
+                      focus: _PaymentCenterBudgetSectionFocus.plannedToday,
                       moneyFormatter: moneyFormatter,
                       dateFormatter: dateFormatter,
                     ),
-                    if (i != accountsWithProviders.length - 1)
+                    if (i != plannedAccountsWithProviders.length - 1)
                       const SizedBox(height: 16),
                   ],
                 ],
               ),
+            if (pendingAccountsWithPressure.isNotEmpty) ...[
+              const SizedBox(height: 18),
+              Text(
+                'Pendiente para manana o revision',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                  color: tokens.primaryStrong,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Esta parte no es la orden de pago de hoy. Aqui se queda lo que sigue visible, pero no alcanzo a entrar al plan o necesita revision.',
+                style: TextStyle(
+                  fontSize: 12.8,
+                  fontWeight: FontWeight.w700,
+                  color: kFinanzasMutedInk,
+                  height: 1.35,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Column(
+                children: [
+                  for (
+                    var i = 0;
+                    i < pendingAccountsWithPressure.length;
+                    i++
+                  ) ...[
+                    _PaymentCenterBudgetAccountSection(
+                      summary: pendingAccountsWithPressure[i],
+                      focus: _PaymentCenterBudgetSectionFocus.pendingPressure,
+                      moneyFormatter: moneyFormatter,
+                      dateFormatter: dateFormatter,
+                    ),
+                    if (i != pendingAccountsWithPressure.length - 1)
+                      const SizedBox(height: 16),
+                  ],
+                ],
+              ),
+            ],
             const SizedBox(height: 18),
             Text(
               'Caja por cuenta',
@@ -1903,19 +1950,142 @@ class _PaymentCenterBudgetTodayView extends StatelessWidget {
   }
 }
 
+enum _PaymentCenterBudgetSectionFocus { plannedToday, pendingPressure }
+
+bool _hasPlannedMovementProvider(
+  FinanzasPaymentCenterBudgetProviderSummary provider,
+) => provider.plannedTodayAmount > 0.009;
+
+bool _hasPendingPressureProvider(
+  FinanzasPaymentCenterBudgetProviderSummary provider,
+) =>
+    provider.pendingVisibleTodayAmount > 0.009 ||
+    provider.riskReviewAmount > 0.009;
+
+FinanzasPaymentCenterBudgetAccountSummary? _filterBudgetAccountSummaryForFocus(
+  FinanzasPaymentCenterBudgetAccountSummary summary, {
+  required _PaymentCenterBudgetSectionFocus focus,
+  required bool Function(FinanzasPaymentCenterBudgetProviderSummary provider)
+  includeProvider,
+}) {
+  final providers = summary.providers
+      .where(includeProvider)
+      .toList(growable: false);
+  if (providers.isEmpty) return null;
+  final sortedProviders =
+      List<FinanzasPaymentCenterBudgetProviderSummary>.from(providers)..sort(
+        focus == _PaymentCenterBudgetSectionFocus.plannedToday
+            ? _compareBudgetPlannedProviderSummaries
+            : _compareBudgetPendingProviderSummaries,
+      );
+  return FinanzasPaymentCenterBudgetAccountSummary(
+    accountKey: summary.accountKey,
+    targetCompany: summary.targetCompany,
+    targetBranch: summary.targetBranch,
+    realBalance: summary.realBalance,
+    reserveAmount: summary.reserveAmount,
+    availableBalance: summary.availableBalance,
+    minimumTodayAmount: sortedProviders.fold<double>(
+      0,
+      (sum, provider) => sum + provider.minimumTodayAmount,
+    ),
+    recommendedAdditionalAmount: sortedProviders.fold<double>(
+      0,
+      (sum, provider) => sum + provider.recommendedAdditionalAmount,
+    ),
+    postergableAmount: sortedProviders.fold<double>(
+      0,
+      (sum, provider) => sum + provider.postergableAmount,
+    ),
+    riskReviewAmount: sortedProviders.fold<double>(
+      0,
+      (sum, provider) => sum + provider.riskReviewAmount,
+    ),
+    plannedTodayAmount: sortedProviders.fold<double>(
+      0,
+      (sum, provider) => sum + provider.plannedTodayAmount,
+    ),
+    providers: sortedProviders,
+  );
+}
+
+int _compareBudgetPlannedProviderSummaries(
+  FinanzasPaymentCenterBudgetProviderSummary a,
+  FinanzasPaymentCenterBudgetProviderSummary b,
+) {
+  final plannedCompare = b.plannedTodayAmount.compareTo(a.plannedTodayAmount);
+  if (plannedCompare != 0) return plannedCompare;
+  final pendingCompare = b.pendingVisibleTodayAmount.compareTo(
+    a.pendingVisibleTodayAmount,
+  );
+  if (pendingCompare != 0) return pendingCompare;
+  final priorityCompare = b.priorityScore.compareTo(a.priorityScore);
+  if (priorityCompare != 0) return priorityCompare;
+  return a.providerName.toLowerCase().compareTo(b.providerName.toLowerCase());
+}
+
+int _compareBudgetPendingProviderSummaries(
+  FinanzasPaymentCenterBudgetProviderSummary a,
+  FinanzasPaymentCenterBudgetProviderSummary b,
+) {
+  final pendingCompare = b.pendingVisibleTodayAmount.compareTo(
+    a.pendingVisibleTodayAmount,
+  );
+  if (pendingCompare != 0) return pendingCompare;
+  final riskCompare = b.riskReviewAmount.compareTo(a.riskReviewAmount);
+  if (riskCompare != 0) return riskCompare;
+  final priorityCompare = b.priorityScore.compareTo(a.priorityScore);
+  if (priorityCompare != 0) return priorityCompare;
+  return a.providerName.toLowerCase().compareTo(b.providerName.toLowerCase());
+}
+
+int _compareBudgetPlannedAccountSummaries(
+  FinanzasPaymentCenterBudgetAccountSummary a,
+  FinanzasPaymentCenterBudgetAccountSummary b,
+) {
+  final plannedCompare = b.plannedTodayAmount.compareTo(a.plannedTodayAmount);
+  if (plannedCompare != 0) return plannedCompare;
+  final pendingCompare = b.pendingVisibleTodayAmount.compareTo(
+    a.pendingVisibleTodayAmount,
+  );
+  if (pendingCompare != 0) return pendingCompare;
+  final availableCompare = b.availableBalance.compareTo(a.availableBalance);
+  if (availableCompare != 0) return availableCompare;
+  return a.accountKey.compareTo(b.accountKey);
+}
+
+int _compareBudgetPendingAccountSummaries(
+  FinanzasPaymentCenterBudgetAccountSummary a,
+  FinanzasPaymentCenterBudgetAccountSummary b,
+) {
+  final pendingCompare = b.pendingVisibleTodayAmount.compareTo(
+    a.pendingVisibleTodayAmount,
+  );
+  if (pendingCompare != 0) return pendingCompare;
+  final riskCompare = b.riskReviewAmount.compareTo(a.riskReviewAmount);
+  if (riskCompare != 0) return riskCompare;
+  final availableCompare = b.availableBalance.compareTo(a.availableBalance);
+  if (availableCompare != 0) return availableCompare;
+  return a.accountKey.compareTo(b.accountKey);
+}
+
 class _PaymentCenterTodayFocusPanel extends StatelessWidget {
   final FinanzasPaymentCenterBudgetTodaySummary summary;
+  final FinanzasPaymentCenterBudgetWeekDaySummary? tomorrowSummary;
   final int plannedMovementCount;
   final int uncoveredMinimumMovementCount;
   final int riskCount;
   final String Function(double value) moneyFormatter;
+  final String Function(DateTime? value) dateFormatter;
 
   const _PaymentCenterTodayFocusPanel({
     required this.summary,
+    required this.tomorrowSummary,
     required this.plannedMovementCount,
     required this.uncoveredMinimumMovementCount,
     required this.riskCount,
     required this.moneyFormatter,
+    required this.dateFormatter,
   });
 
   String _headline() {
@@ -1933,21 +2103,20 @@ class _PaymentCenterTodayFocusPanel extends StatelessWidget {
   }
 
   String _narrative() {
+    final tomorrowLine = tomorrowSummary == null
+        ? ''
+        : ' Manana ${dateFormatter(tomorrowSummary!.date)} ya aparece comprometido ${moneyFormatter(tomorrowSummary!.committedAmount)}.';
     if (summary.plannedTodayAmount > 0.009 &&
         summary.uncoveredMinimumTodayAmount > 0.009) {
-      return 'La caja protegida de hoy alcanza para programar ${moneyFormatter(summary.plannedTodayAmount)}, pero todavía deja ${moneyFormatter(summary.uncoveredMinimumTodayAmount)} de mínimo visible sin fondeo.';
-    }
-    if (summary.plannedTodayAmount > 0.009 &&
-        summary.recommendedAdditionalAmount > 0.009) {
-      return 'Lo mínimo visible ya encuentra salida hoy. Lo que sigue aparece como presión adicional y se revisa solo si sobra margen.';
+      return 'Hoy se tiene que pagar ${moneyFormatter(summary.minimumTodayAmount)} y si cabe mover ${moneyFormatter(summary.plannedTodayAmount)}. El resto minimo que no alcanzo hoy es ${moneyFormatter(summary.uncoveredMinimumTodayAmount)} y se va a manana o revision.$tomorrowLine';
     }
     if (summary.plannedTodayAmount > 0.009) {
-      return 'Lo que ves aqui ya cabe con la caja real y las reservas protegidas del dia.';
+      return 'Hoy se tiene que pagar ${moneyFormatter(summary.minimumTodayAmount)} y si cabe mover ${moneyFormatter(summary.plannedTodayAmount)}. Despues de eso quedan ${moneyFormatter(summary.freeMarginAfterPlanned)} libres.$tomorrowLine';
     }
     if (summary.minimumTodayAmount > 0.009) {
-      return 'La pantalla detecta presión mínima, pero hoy no hay caja suficiente para convertirla en plan de pago real.';
+      return 'Hoy se tiene que pagar ${moneyFormatter(summary.minimumTodayAmount)}, pero con la caja protegida no alcanza para aterrizar un plan real.$tomorrowLine';
     }
-    return 'La caja de hoy no trae una instrucción inmediata de salida. Puedes usar la semana como contexto sin perder el foco del día.';
+    return 'Hoy no aparece una salida obligatoria inmediata. La caja queda libre para revisar manana y el resto de la semana sin perder el foco del dia.';
   }
 
   @override
@@ -1994,20 +2163,25 @@ class _PaymentCenterTodayFocusPanel extends StatelessWidget {
             runSpacing: 10,
             children: [
               _MiniInfoPill(
-                label: 'Qué pagar hoy',
+                label: 'Presiona hoy',
+                value: moneyFormatter(summary.minimumTodayAmount),
+              ),
+              _MiniInfoPill(
+                label: 'Que si pago hoy',
                 value: moneyFormatter(summary.plannedTodayAmount),
               ),
               _MiniInfoPill(
-                label: 'Brecha mínima',
-                value: moneyFormatter(summary.uncoveredMinimumTodayAmount),
-              ),
-              _MiniInfoPill(
-                label: 'Margen tras plan',
+                label: 'Me deja libre',
                 value: moneyFormatter(summary.freeMarginAfterPlanned),
               ),
               _MiniInfoPill(
-                label: 'Adicional sugerido',
-                value: moneyFormatter(summary.recommendedAdditionalAmount),
+                label: tomorrowSummary == null
+                    ? 'Sigue pendiente'
+                    : 'Manana ya pide',
+                value: moneyFormatter(
+                  tomorrowSummary?.committedAmount ??
+                      summary.uncoveredMinimumTodayAmount,
+                ),
               ),
             ],
           ),
@@ -2804,11 +2978,13 @@ class _PaymentCenterBudgetAccountCard extends StatelessWidget {
 
 class _PaymentCenterBudgetAccountSection extends StatelessWidget {
   final FinanzasPaymentCenterBudgetAccountSummary summary;
+  final _PaymentCenterBudgetSectionFocus focus;
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
 
   const _PaymentCenterBudgetAccountSection({
     required this.summary,
+    required this.focus,
     required this.moneyFormatter,
     required this.dateFormatter,
   });
@@ -2816,12 +2992,18 @@ class _PaymentCenterBudgetAccountSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final isPlannedFocus =
+        focus == _PaymentCenterBudgetSectionFocus.plannedToday;
+    final headlineTone = isPlannedFocus ? kFinanzasSage : kFinanzasCopper;
+    final supportLine = isPlannedFocus
+        ? 'Se mueve hoy ${moneyFormatter(summary.plannedTodayAmount)} · sigue visible ${moneyFormatter(summary.pendingVisibleTodayAmount)}'
+        : 'Sigue visible ${moneyFormatter(summary.pendingVisibleTodayAmount)} · libre ${moneyFormatter(summary.availableBalance)}';
     return FinanzasGlassPanel(
       borderRadius: BorderRadius.circular(26),
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       fillColor: kFinanzasPanelSurfaceStrong,
       borderColor: tokens.border.withValues(alpha: 0.34),
-      glowColor: kFinanzasCopper.withValues(alpha: 0.12),
+      glowColor: headlineTone.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2842,7 +3024,7 @@ class _PaymentCenterBudgetAccountSection extends StatelessWidget {
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      'Disponible libre ${moneyFormatter(summary.availableBalance)} · margen final ${moneyFormatter(summary.marginAfterRecommended)}',
+                      supportLine,
                       style: const TextStyle(
                         fontSize: 12.8,
                         fontWeight: FontWeight.w700,
@@ -2858,21 +3040,38 @@ class _PaymentCenterBudgetAccountSection extends StatelessWidget {
                 spacing: 8,
                 runSpacing: 8,
                 children: [
-                  _TinyChip(
-                    label:
-                        'Mínimo ${moneyFormatter(summary.minimumTodayAmount)}',
-                    tone: kFinanzasCoral,
-                  ),
-                  _TinyChip(
-                    label:
-                        'Recomendado ${moneyFormatter(summary.recommendedTodayAmount)}',
-                    tone: kFinanzasAmber,
-                  ),
-                  _TinyChip(
-                    label:
-                        'Postergable ${moneyFormatter(summary.postergableAmount)}',
-                    tone: kFinanzasSage,
-                  ),
+                  if (isPlannedFocus)
+                    _TinyChip(
+                      label:
+                          'Mover hoy ${moneyFormatter(summary.plannedTodayAmount)}',
+                      tone: kFinanzasSage,
+                    )
+                  else ...[
+                    _TinyChip(
+                      label:
+                          'Mínimo ${moneyFormatter(summary.minimumTodayAmount)}',
+                      tone: kFinanzasCoral,
+                    ),
+                    _TinyChip(
+                      label:
+                          'Recomendado ${moneyFormatter(summary.recommendedTodayAmount)}',
+                      tone: kFinanzasAmber,
+                    ),
+                    if (summary.postergableAmount > 0.009)
+                      _TinyChip(
+                        label:
+                            'Postergable ${moneyFormatter(summary.postergableAmount)}',
+                        tone: kFinanzasSage,
+                      ),
+                  ],
+                  if (summary.pendingVisibleTodayAmount > 0.009)
+                    _TinyChip(
+                      label:
+                          'Sigue pendiente ${moneyFormatter(summary.pendingVisibleTodayAmount)}',
+                      tone: kFinanzasCoral,
+                    ),
+                  if (summary.riskReviewAmount > 0.009)
+                    _TinyChip(label: 'Riesgo', tone: kFinanzasAmber),
                 ],
               ),
             ],
@@ -2883,6 +3082,7 @@ class _PaymentCenterBudgetAccountSection extends StatelessWidget {
               for (var i = 0; i < summary.providers.length; i++) ...[
                 _PaymentCenterBudgetProviderCard(
                   summary: summary.providers[i],
+                  focus: focus,
                   moneyFormatter: moneyFormatter,
                   dateFormatter: dateFormatter,
                 ),
@@ -2899,11 +3099,13 @@ class _PaymentCenterBudgetAccountSection extends StatelessWidget {
 
 class _PaymentCenterBudgetProviderCard extends StatelessWidget {
   final FinanzasPaymentCenterBudgetProviderSummary summary;
+  final _PaymentCenterBudgetSectionFocus focus;
   final String Function(double value) moneyFormatter;
   final String Function(DateTime? value) dateFormatter;
 
   const _PaymentCenterBudgetProviderCard({
     required this.summary,
+    required this.focus,
     required this.moneyFormatter,
     required this.dateFormatter,
   });
@@ -2918,14 +3120,20 @@ class _PaymentCenterBudgetProviderCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
-    final tone = _headlineTone();
+    final isPlannedFocus =
+        focus == _PaymentCenterBudgetSectionFocus.plannedToday;
+    final tone = isPlannedFocus ? kFinanzasSage : _headlineTone();
     final primaryItem = summary.primaryActionItem;
-    final headlineAmount = summary.plannedTodayAmount > 0.009
+    final headlineAmount = isPlannedFocus
+        ? summary.plannedTodayAmount
+        : summary.plannedTodayAmount > 0.009
         ? summary.plannedTodayAmount
         : summary.minimumTodayAmount > 0.009
         ? summary.minimumTodayAmount
         : summary.recommendedTodayAmount;
-    final headlineLabel = summary.plannedTodayAmount > 0.009
+    final headlineLabel = isPlannedFocus
+        ? 'Mover hoy'
+        : summary.plannedTodayAmount > 0.009
         ? 'Plan de hoy'
         : summary.minimumTodayAmount > 0.009
         ? 'Presión mínima'
@@ -2961,7 +3169,9 @@ class _PaymentCenterBudgetProviderCard extends StatelessWidget {
                     Text(
                       primaryItem != null && summary.itemCount == 1
                           ? '${primaryItem.itemType} · ${primaryItem.sourceLabel} · abierto ${moneyFormatter(summary.totalOpenAmount)}'
-                          : '${summary.itemCount} movimientos · abierto ${moneyFormatter(summary.totalOpenAmount)}',
+                          : isPlannedFocus
+                          ? '${summary.itemCount} movimientos fondeados · abierto ${moneyFormatter(summary.totalOpenAmount)}'
+                          : '${summary.itemCount} movimientos visibles · abierto ${moneyFormatter(summary.totalOpenAmount)}',
                       style: const TextStyle(
                         fontSize: 12.4,
                         fontWeight: FontWeight.w700,
@@ -3001,24 +3211,31 @@ class _PaymentCenterBudgetProviderCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
-              if (summary.minimumTodayAmount > 0.009)
+              if (isPlannedFocus)
+                _TinyChip(
+                  label:
+                      'Planeado ${moneyFormatter(summary.plannedTodayAmount)}',
+                  tone: kFinanzasSage,
+                ),
+              if (!isPlannedFocus && summary.minimumTodayAmount > 0.009)
                 _TinyChip(label: 'Minimo hoy', tone: kFinanzasCoral),
-              if (summary.recommendedAdditionalAmount > 0.009)
+              if (!isPlannedFocus &&
+                  summary.recommendedAdditionalAmount > 0.009)
                 _TinyChip(
                   label:
                       'Extra sugerido ${moneyFormatter(summary.recommendedAdditionalAmount)}',
                   tone: kFinanzasAmber,
                 ),
-              if (summary.postergableAmount > 0.009)
+              if (!isPlannedFocus && summary.postergableAmount > 0.009)
                 _TinyChip(label: 'Postergable', tone: kFinanzasSage),
-              if (summary.riskReviewAmount > 0.009)
-                _TinyChip(label: 'Riesgo a revisar', tone: kFinanzasAmber),
-              if (summary.plannedTodayAmount > 0.009)
+              if (summary.pendingVisibleTodayAmount > 0.009)
                 _TinyChip(
                   label:
-                      'Planeado ${moneyFormatter(summary.plannedTodayAmount)}',
-                  tone: finanzasAreaTokens.primaryStrong,
+                      'Sigue pendiente ${moneyFormatter(summary.pendingVisibleTodayAmount)}',
+                  tone: kFinanzasCoral,
                 ),
+              if (summary.riskReviewAmount > 0.009)
+                _TinyChip(label: 'Riesgo a revisar', tone: kFinanzasAmber),
             ],
           ),
           const SizedBox(height: 10),
@@ -3027,17 +3244,30 @@ class _PaymentCenterBudgetProviderCard extends StatelessWidget {
             runSpacing: 8,
             children: [
               _MiniInfoPill(
-                label: 'Mínimo hoy',
-                value: moneyFormatter(summary.minimumTodayAmount),
+                label: isPlannedFocus ? 'Mover hoy' : 'Mínimo hoy',
+                value: moneyFormatter(
+                  isPlannedFocus
+                      ? summary.plannedTodayAmount
+                      : summary.minimumTodayAmount,
+                ),
               ),
               _MiniInfoPill(
-                label: 'Recomendado hoy',
-                value: moneyFormatter(summary.recommendedTodayAmount),
+                label: isPlannedFocus ? 'Abierto' : 'Recomendado hoy',
+                value: moneyFormatter(
+                  isPlannedFocus
+                      ? summary.totalOpenAmount
+                      : summary.recommendedTodayAmount,
+                ),
               ),
-              _MiniInfoPill(
-                label: 'Postergable',
-                value: moneyFormatter(summary.postergableAmount),
-              ),
+              if (isPlannedFocus || summary.postergableAmount > 0.009)
+                _MiniInfoPill(
+                  label: isPlannedFocus ? 'Sigue pendiente' : 'Postergable',
+                  value: moneyFormatter(
+                    isPlannedFocus
+                        ? summary.pendingVisibleTodayAmount
+                        : summary.postergableAmount,
+                  ),
+                ),
               if (summary.riskReviewAmount > 0.009)
                 _MiniInfoPill(
                   label: 'Riesgo',
@@ -5152,160 +5382,6 @@ class _FinPaymentCenterBackground extends StatelessWidget {
   Widget build(BuildContext context) => const FinanzasAreaBackground();
 }
 
-class _FinPaymentCenterHeaderBrand extends StatelessWidget {
-  const _FinPaymentCenterHeaderBrand();
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: kFinanzasPanelSurfaceStrong.withValues(alpha: 0.82),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: kFinanzasBorder.withValues(alpha: 0.92)),
-            boxShadow: [
-              BoxShadow(
-                color: tokens.glow.withValues(alpha: 0.24),
-                blurRadius: 28,
-                spreadRadius: 1,
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: const Center(child: DicsaLogoD(size: 40, progress: 1)),
-        ),
-        const SizedBox(width: 20),
-        Text(
-          'Centro de pagos',
-          maxLines: 1,
-          style: const TextStyle(
-            fontSize: 28,
-            fontWeight: FontWeight.w900,
-            letterSpacing: 0.25,
-            height: 1.0,
-            color: kFinanzasInk,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _FinCenterHeaderButton extends StatefulWidget {
-  final String label;
-  final IconData icon;
-  final Future<void> Function()? onTap;
-  final VoidCallback? onTapSync;
-
-  const _FinCenterHeaderButton({
-    required this.label,
-    required this.icon,
-    this.onTap,
-    this.onTapSync,
-  });
-
-  @override
-  State<_FinCenterHeaderButton> createState() => _FinCenterHeaderButtonState();
-}
-
-class _FinCenterHeaderButtonState extends State<_FinCenterHeaderButton> {
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    final enabled = widget.onTap != null || widget.onTapSync != null;
-    final contentColor = enabled
-        ? tokens.onGlass
-        : tokens.onGlass.withValues(alpha: 0.46);
-    final borderColor = tokens.border.withValues(alpha: enabled ? 0.90 : 0.42);
-    return MouseRegion(
-      cursor: enabled ? SystemMouseCursors.click : MouseCursor.defer,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          overlayColor: WidgetStateProperty.all(Colors.transparent),
-          splashColor: Colors.transparent,
-          hoverColor: Colors.transparent,
-          highlightColor: Colors.transparent,
-          splashFactory: NoSplash.splashFactory,
-          onTap: !enabled
-              ? null
-              : () async {
-                  if (widget.onTap != null) {
-                    await widget.onTap!();
-                  } else {
-                    widget.onTapSync?.call();
-                  }
-                },
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 180),
-            curve: Curves.easeOutCubic,
-            width: 176,
-            height: 56,
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Color.alphaBlend(
-                    tokens.primaryStrong.withValues(alpha: 0.24),
-                    kFinanzasPanelSurfaceStrong.withValues(alpha: 0.92),
-                  ),
-                  Color.alphaBlend(
-                    tokens.accent.withValues(alpha: 0.18),
-                    kFinanzasPanelSurface.withValues(alpha: 0.88),
-                  ),
-                ],
-              ),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: borderColor),
-              boxShadow: [
-                BoxShadow(
-                  blurRadius: 16,
-                  color: tokens.glow.withValues(alpha: enabled ? 0.14 : 0.06),
-                  offset: const Offset(0, 8),
-                ),
-                BoxShadow(
-                  blurRadius: 10,
-                  color: tokens.glow.withValues(alpha: enabled ? 0.05 : 0.02),
-                ),
-              ],
-            ),
-            child: Row(
-              children: [
-                Icon(widget.icon, size: 20, color: contentColor),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      widget.label,
-                      maxLines: 1,
-                      softWrap: false,
-                      style: TextStyle(
-                        color: contentColor,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _FinPaymentCenterSidePanel extends StatelessWidget {
   final bool canReturnToDirection;
   final bool canAccessComprasArea;
@@ -5318,18 +5394,12 @@ class _FinPaymentCenterSidePanel extends StatelessWidget {
   });
 
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 320,
-      margin: const EdgeInsets.fromLTRB(28, 56, 0, 56),
-      child: FinanzasAreaSidePanel(
-        currentLabel: 'Centro de pagos',
-        canReturnToDirection: canReturnToDirection,
-        canAccessComprasArea: canAccessComprasArea,
-        onNavigate: onNavigate,
-      ),
-    );
-  }
+  Widget build(BuildContext context) => FinanzasAreaSidePanel(
+    currentLabel: 'Centro de pagos',
+    canReturnToDirection: canReturnToDirection,
+    canAccessComprasArea: canAccessComprasArea,
+    onNavigate: onNavigate,
+  );
 }
 
 Color _paymentCenterBucketTone(FinanzasPaymentCenterPriorityBucket bucket) {

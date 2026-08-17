@@ -5,6 +5,9 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../dashboard/general_dashboard_page.dart';
 import '../logistica/logistics_dashboard_page.dart';
+import '../management_reports/management_supervision_page.dart';
+import '../management_reports/management_reports_registry.dart';
+import '../management_reports/management_reports_widgets.dart';
 import '../maintenance/maintenance_page.dart';
 import '../maintenance/purchase_orders_page.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
@@ -282,6 +285,16 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
     );
   }
 
+  Future<void> _openManagementSupervision() async {
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const ManagementSupervisionPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return EmptyAreaDashboardPage(
@@ -301,6 +314,12 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
             icon: Icons.stacked_line_chart_rounded,
             onTap: _openWeeklyTracking,
           ),
+          DashboardNavAction(
+            title: 'Supervisión por Áreas',
+            subtitle: 'Reportes diarios y viernes para junta',
+            icon: Icons.fact_check_rounded,
+            onTap: _openManagementSupervision,
+          ),
         ],
         workspaceBuilder: (context, config, width) => _GerenciaWorkspace(
           width: width,
@@ -316,6 +335,7 @@ class _GerenciaDashboardPageState extends State<GerenciaDashboardPage> {
           onOpenWeeklyTracking: _openWeeklyTracking,
           onOpenMaintenanceViewer: _openMaintenanceViewer,
           onOpenPurchaseOrdersViewer: _openPurchaseOrdersViewer,
+          onOpenManagementSupervision: _openManagementSupervision,
         ),
       ),
     );
@@ -351,6 +371,7 @@ class _GerenciaWorkspace extends StatelessWidget {
   final Future<void> Function() onOpenWeeklyTracking;
   final Future<void> Function() onOpenMaintenanceViewer;
   final Future<void> Function() onOpenPurchaseOrdersViewer;
+  final Future<void> Function() onOpenManagementSupervision;
 
   const _GerenciaWorkspace({
     required this.width,
@@ -366,6 +387,7 @@ class _GerenciaWorkspace extends StatelessWidget {
     required this.onOpenWeeklyTracking,
     required this.onOpenMaintenanceViewer,
     required this.onOpenPurchaseOrdersViewer,
+    required this.onOpenManagementSupervision,
   });
 
   @override
@@ -506,6 +528,14 @@ class _GerenciaWorkspace extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             const LogisticsManagementExecutiveSection(),
+            const SizedBox(height: 18),
+            ManagementAreaReportPanel(
+              areaKey: ManagementAreaKey.gerencia,
+              subtitleOverride:
+                  'Desde aquí Gerencia puede generar el corte semanal del área y modelar el ritual que después replicarán los encargados.',
+              showOpenHubButton: true,
+              onOpenSupervisionHub: onOpenManagementSupervision,
+            ),
             const SizedBox(height: 18),
             _OperationsViewerAccessSection(
               width: width,

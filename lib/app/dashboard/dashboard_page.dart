@@ -8,6 +8,9 @@ import 'package:url_launcher/url_launcher_string.dart';
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
+import '../management_reports/management_reports_registry.dart';
+import '../management_reports/management_reports_widgets.dart';
+import '../management_reports/management_supervision_page.dart';
 import '../maintenance/maintenance_page.dart';
 import '../maintenance/maintenance_statuses.dart';
 import '../menudeo/menudeo_dashboard_page.dart';
@@ -153,6 +156,17 @@ class _DashboardPageState extends State<DashboardPage> {
     await Navigator.of(
       context,
     ).push(appPageRoute(page: const OperationDirectoryPage()));
+  }
+
+  Future<void> _openManagementSupervision() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      appPageRoute(
+        page: const ManagementSupervisionPage(instantOpen: true),
+        duration: const Duration(milliseconds: 320),
+        reverseDuration: const Duration(milliseconds: 240),
+      ),
+    );
   }
 
   Future<void> _logout(BuildContext context) async {
@@ -406,10 +420,75 @@ class _DashboardPageState extends State<DashboardPage> {
                     ),
                   ],
                 ),
+              const SizedBox(height: 16),
+              _OperationsSupervisionSection(
+                onOpenManagementSupervision: _openManagementSupervision,
+              ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _OperationsSupervisionSection extends StatelessWidget {
+  final Future<void> Function() onOpenManagementSupervision;
+
+  const _OperationsSupervisionSection({
+    required this.onOpenManagementSupervision,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'REPORTES DE SUPERVISION',
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 2.0,
+            color: Color(0xFF0B2B2B),
+          ),
+        ),
+        const SizedBox(height: 12),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final split = constraints.maxWidth >= 960;
+            final width = split
+                ? (constraints.maxWidth - 16) / 2
+                : constraints.maxWidth;
+            return Wrap(
+              spacing: 16,
+              runSpacing: 16,
+              children: [
+                SizedBox(
+                  width: width,
+                  child: ManagementAreaReportPanel(
+                    areaKey: ManagementAreaKey.operaciones,
+                    subtitleOverride:
+                        'Desde Operación puedes generar el corte diario y el cierre de viernes para OTs, producción e incidencias.',
+                    showOpenHubButton: true,
+                    onOpenSupervisionHub: onOpenManagementSupervision,
+                  ),
+                ),
+                SizedBox(
+                  width: width,
+                  child: ManagementAreaReportPanel(
+                    areaKey: ManagementAreaKey.bascula,
+                    subtitleOverride:
+                        'Desde Báscula puedes generar el cierre semanal de entradas, salidas, tickets y errores de captura.',
+                    showOpenHubButton: true,
+                    onOpenSupervisionHub: onOpenManagementSupervision,
+                  ),
+                ),
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 }

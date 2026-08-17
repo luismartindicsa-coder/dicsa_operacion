@@ -223,6 +223,11 @@ class FinanzasPaymentCenterBudgetProviderSummary {
   double get recommendedTodayAmount =>
       minimumTodayAmount + recommendedAdditionalAmount;
 
+  double get pendingVisibleTodayAmount =>
+      (recommendedTodayAmount - plannedTodayAmount)
+          .clamp(0, double.infinity)
+          .toDouble();
+
   double get uncoveredMinimumTodayAmount =>
       (minimumTodayAmount - plannedTodayAmount)
           .clamp(0, double.infinity)
@@ -260,6 +265,11 @@ class FinanzasPaymentCenterBudgetAccountSummary {
 
   double get recommendedTodayAmount =>
       minimumTodayAmount + recommendedAdditionalAmount;
+
+  double get pendingVisibleTodayAmount =>
+      (recommendedTodayAmount - plannedTodayAmount)
+          .clamp(0, double.infinity)
+          .toDouble();
 
   double get marginAfterMinimum => availableBalance - minimumTodayAmount;
 
@@ -303,6 +313,11 @@ class FinanzasPaymentCenterBudgetTodaySummary {
 
   double get recommendedTodayAmount =>
       minimumTodayAmount + recommendedAdditionalAmount;
+
+  double get pendingVisibleTodayAmount =>
+      (recommendedTodayAmount - plannedTodayAmount)
+          .clamp(0, double.infinity)
+          .toDouble();
 
   double get freeMarginAfterMinimum =>
       availableBudgetAmount - minimumTodayAmount;
