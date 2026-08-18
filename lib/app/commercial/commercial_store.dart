@@ -6,6 +6,7 @@ import '../shared/utils/number_formatters.dart';
 const String _kCommercialAccountsTable = 'commercial_accounts';
 const String _kCommercialContactsTable = 'commercial_account_contacts';
 const String _kCommercialFollowUpsTable = 'commercial_follow_ups';
+const String _kCommercialAgendaTable = 'commercial_agenda_entries';
 const String _kCommercialUnifiedCounterpartiesView =
     'v_commercial_unified_counterparties';
 const String _kCommercialMaterialSnapshotView =
@@ -79,6 +80,20 @@ const List<String> kCommercialFollowUpStatusOptions = <String>[
   'hecho',
   'pospuesto',
   'sin_respuesta',
+];
+
+const List<String> kCommercialAgendaTypeOptions = <String>[
+  'cita',
+  'reunion',
+  'foro',
+  'convencion',
+  'otro',
+];
+
+const List<String> kCommercialAgendaStatusOptions = <String>[
+  'programado',
+  'realizado',
+  'cancelado',
 ];
 
 class CommercialKpiSummary {
@@ -351,6 +366,42 @@ class CommercialFollowUpRecord {
       nextAction: (row['next_action'] ?? '').toString(),
       nextFollowUpAt: _tryParseDateTime(row['next_follow_up_at'] as String?),
       status: (row['status'] ?? '').toString(),
+    );
+  }
+}
+
+class CommercialAgendaEntryRecord {
+  final String id;
+  final String title;
+  final String eventType;
+  final DateTime startsAt;
+  final DateTime? endsAt;
+  final String location;
+  final String notes;
+  final String status;
+
+  const CommercialAgendaEntryRecord({
+    required this.id,
+    required this.title,
+    required this.eventType,
+    required this.startsAt,
+    required this.endsAt,
+    required this.location,
+    required this.notes,
+    required this.status,
+  });
+
+  factory CommercialAgendaEntryRecord.fromRow(Map<String, dynamic> row) {
+    return CommercialAgendaEntryRecord(
+      id: (row['id'] ?? '').toString(),
+      title: (row['title'] ?? '').toString(),
+      eventType: (row['event_type'] ?? 'otro').toString(),
+      startsAt:
+          _tryParseDateTime(row['starts_at'] as String?) ?? DateTime.now(),
+      endsAt: _tryParseDateTime(row['ends_at'] as String?),
+      location: (row['location'] ?? '').toString(),
+      notes: (row['notes'] ?? '').toString(),
+      status: (row['status'] ?? 'programado').toString(),
     );
   }
 }
@@ -1074,6 +1125,53 @@ class CommercialStore {
       followUpsByAccountId: followUpsByAccountId,
       alertsByAccountId: alertsByAccountId,
     );
+  }
+
+  static Future<List<CommercialAgendaEntryRecord>> loadAgenda() async {
+    final rows = await _selectAllRows(
+      _kCommercialAgendaTable,
+      orderColumn: 'starts_at',
+      ascending: true,
+    );
+    return rows
+        .map(CommercialAgendaEntryRecord.fromRow)
+        .toList(growable: false);
+  }
+
+  static Future<void> saveAgendaEntry({
+    String? entryId,
+    required String title,
+    required String eventType,
+    required DateTime startsAt,
+    DateTime? endsAt,
+    required String location,
+    required String notes,
+    required String status,
+  }) async {
+    await _supa.from(_kCommercialAgendaTable).upsert(<String, dynamic>{
+      if (entryId != null && entryId.trim().isNotEmpty) 'id': entryId,
+      'title': title.trim(),
+      'event_type': eventType,
+      'starts_at': startsAt.toUtc().toIso8601String(),
+      'ends_at': endsAt?.toUtc().toIso8601String(),
+      'location': _nullableText(location),
+      'notes': _nullableText(notes),
+      'status': status,
+    });
+  }
+
+  static Future<void> updateAgendaStatus({
+    required String entryId,
+    required String status,
+  }) async {
+    await _supa
+        .from(_kCommercialAgendaTable)
+        .update(<String, dynamic>{'status': status})
+        .eq('id', entryId);
+  }
+
+  static Future<void> deleteAgendaEntry(String entryId) async {
+    await _supa.from(_kCommercialAgendaTable).delete().eq('id', entryId);
   }
 
   static Future<String> saveManualAccount({

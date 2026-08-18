@@ -378,6 +378,7 @@ class _FinanzasDashboardBody extends StatelessWidget {
                 subtitleOverride:
                     'El responsable de Finanzas debe generar aquí sus cortes, estudiarlos y llegar a la junta con pagos urgentes, presión de caja y decisiones propuestas.',
                 showOpenHubButton: true,
+                showReportActions: false,
                 onOpenSupervisionHub: onOpenManagementSupervision,
               ),
               const SizedBox(height: 18),

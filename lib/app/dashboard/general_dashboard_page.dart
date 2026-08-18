@@ -7,7 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_navigation.dart';
-import '../commercial/commercial_dashboard_page.dart';
+import '../commercial/commercial_development_dashboard_page.dart';
 import '../commercial/commercial_store.dart';
 import '../contabilidad/contabilidad_dashboard_page.dart';
 import '../contabilidad/contabilidad_trade_analysis_page.dart';
@@ -252,7 +252,7 @@ class _GeneralDashboardPageState extends State<GeneralDashboardPage> {
     if (!mounted) return;
     await Navigator.of(context).push(
       appPageRoute(
-        page: const CommercialDashboardPage(instantOpen: true),
+        page: const CommercialDevelopmentDashboardPage(instantOpen: true),
         duration: const Duration(milliseconds: 320),
         reverseDuration: const Duration(milliseconds: 240),
       ),
@@ -6280,7 +6280,7 @@ class _GeneralDashboardSideMenu extends StatelessWidget {
                     _MenuActionItem(
                       icon: Icons.radar_rounded,
                       title: 'Desarrollo Comercial',
-                      subtitle: 'Radar y directorio comercial',
+                      subtitle: 'Dashboard, radar, directorio y agenda',
                       onTap: onOpenCommercial,
                     ),
                   ],

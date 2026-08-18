@@ -21,6 +21,7 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
 import 'human_resources_prenomina_page.dart';
@@ -385,6 +386,13 @@ class _HumanResourcesAttendanceIncidentsPageState
     );
   }
 
+  Future<void> _openNomina() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesNominaPage(instantOpen: true)),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return AreaThemeScope(
@@ -435,88 +443,25 @@ class _HumanResourcesAttendanceIncidentsPageState
                 ),
               ),
             ),
-            Positioned.fill(
-              child: IgnorePointer(
-                ignoring: !_menuOpen,
-                child: AnimatedOpacity(
-                  duration: const Duration(milliseconds: 180),
-                  opacity: _menuOpen ? 1 : 0,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.opaque,
-                    onTap: () => setState(() => _menuOpen = false),
-                    child: Container(
-                      color: Colors.black.withValues(alpha: 0.12),
-                    ),
-                  ),
-                ),
+            HumanResourcesAreaNavigationOverlay(
+              menuOpen: _menuOpen,
+              onDismiss: () => setState(() => _menuOpen = false),
+              canReturnToDirection: _canReturnToDirection,
+              sections: buildHumanResourcesAreaSections(
+                activeScreen: HumanResourcesAreaScreen.importConciliation,
+                openPersonnel: _openPersonnel,
+                openAttendance: _openAttendance,
+                openImportConciliation: () async {},
+                openVacations: _openVacations,
+                openPermissions: _openPermissions,
+                openPrenomina: _openPrenomina,
+                openNomina: _openNomina,
               ),
-            ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              left: _menuOpen ? 0 : -332,
-              top: 0,
-              bottom: 0,
-              width: 320,
-              child: IgnorePointer(
-                ignoring: !_menuOpen,
-                child: HumanResourcesAreaSidePanel(
-                  label: 'Recursos Humanos',
-                  canReturnToDirection: _canReturnToDirection,
-                  areaItems: [
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.space_dashboard_rounded,
-                      title: 'Dashboard RH',
-                      subtitle: 'Resumen y contexto del área',
-                      onTap: _openDashboard,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.badge_outlined,
-                      title: 'Personal',
-                      subtitle: 'Expediente operativo y adscripción',
-                      onTap: _openPersonnel,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.fact_check_outlined,
-                      title: 'Asistencia',
-                      subtitle: 'Cierre editable semanal por colaborador',
-                      onTap: _openAttendance,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.beach_access_rounded,
-                      title: 'Vacaciones',
-                      subtitle: 'Derecho, aplicación y saldo por ejercicio',
-                      onTap: _openVacations,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.assignment_turned_in_outlined,
-                      title: 'Permisos',
-                      subtitle: 'Ledger operativo por periodo y colaborador',
-                      onTap: _openPermissions,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.payments_outlined,
-                      title: 'Prenómina',
-                      subtitle: 'Corrida borrador semanal por colaborador',
-                      onTap: _openPrenomina,
-                    ),
-                    const HumanResourcesAreaNavEntry(
-                      icon: Icons.schedule_rounded,
-                      title: 'Importación y conciliación',
-                      subtitle: 'Lectura y cruce de NGTeco y CONTPAQ',
-                      accented: true,
-                    ),
-                  ],
-                  accessItems: [
-                    if (_canReturnToDirection)
-                      HumanResourcesAreaNavEntry(
-                        icon: Icons.assessment_outlined,
-                        title: 'Dashboard Dirección',
-                        subtitle: 'Vista ejecutiva multiarea',
-                        onTap: _openDirectionDashboard,
-                      ),
-                  ],
-                ),
+              accessItems: buildHumanResourcesAccessItems(
+                activeScreen: HumanResourcesAreaScreen.importConciliation,
+                openDashboard: _openDashboard,
+                canReturnToDirection: _canReturnToDirection,
+                openDirectionDashboard: _openDirectionDashboard,
               ),
             ),
           ],
@@ -3002,6 +2947,9 @@ class _HrAttendanceImportedEntry {
   final String overtime;
   final String vacations;
   final String absenceDeduction;
+  final String imss;
+  final String infonavit;
+  final String fonacot;
 
   const _HrAttendanceImportedEntry({
     required this.employeeId,
@@ -3014,6 +2962,9 @@ class _HrAttendanceImportedEntry {
     this.overtime = '',
     this.vacations = '',
     this.absenceDeduction = '',
+    this.imss = '',
+    this.infonavit = '',
+    this.fonacot = '',
   });
 
   Map<String, dynamic> toJson() => {
@@ -3027,6 +2978,9 @@ class _HrAttendanceImportedEntry {
     'overtime': overtime,
     'vacations': vacations,
     'absence_deduction': absenceDeduction,
+    'imss': imss,
+    'infonavit': infonavit,
+    'fonacot': fonacot,
   };
 
   static _HrAttendanceImportedEntry fromJson(Map<String, dynamic> json) {
@@ -3041,6 +2995,9 @@ class _HrAttendanceImportedEntry {
       overtime: (json['overtime'] ?? '').toString(),
       vacations: (json['vacations'] ?? '').toString(),
       absenceDeduction: (json['absence_deduction'] ?? '').toString(),
+      imss: (json['imss'] ?? '').toString(),
+      infonavit: (json['infonavit'] ?? '').toString(),
+      fonacot: (json['fonacot'] ?? '').toString(),
     );
   }
 }
@@ -3878,6 +3835,9 @@ _HrAttendanceImportLot _parseContpaqImportLot(
   final absenceDeductionIndex = header.indexOf(
     'Falta sin obligacion empresarial',
   );
+  final imssIndex = header.indexOf('I.M.S.S.');
+  final infonavitIndex = header.indexOf('Préstamo infonavit (CF)');
+  final fonacotIndex = header.indexOf('Préstamo FONACOT');
 
   var validRows = 0;
   var rejectedRows = 0;
@@ -3911,6 +3871,15 @@ _HrAttendanceImportLot _parseContpaqImportLot(
         absenceDeductionIndex >= 0 && absenceDeductionIndex < row.length
         ? _formatContpaqAmount(row[absenceDeductionIndex].trim())
         : '';
+    final imss = imssIndex >= 0 && imssIndex < row.length
+        ? _formatContpaqAmount(row[imssIndex].trim())
+        : '';
+    final infonavit = infonavitIndex >= 0 && infonavitIndex < row.length
+        ? _formatContpaqAmount(row[infonavitIndex].trim())
+        : '';
+    final fonacot = fonacotIndex >= 0 && fonacotIndex < row.length
+        ? _formatContpaqAmount(row[fonacotIndex].trim())
+        : '';
     if (employeeId.isEmpty || name.isEmpty) {
       rejectedRows += 1;
       continue;
@@ -3924,6 +3893,9 @@ _HrAttendanceImportLot _parseContpaqImportLot(
       if (_parseHrDecimalAmount(absenceDeduction) > 0)
         'Falta $absenceDeduction',
       if (_parseHrDecimalAmount(overtime) > 0) 'Extras $overtime',
+      if (_parseHrDecimalAmount(imss) > 0) 'IMSS $imss',
+      if (_parseHrDecimalAmount(infonavit) > 0) 'INFONAVIT $infonavit',
+      if (_parseHrDecimalAmount(fonacot) > 0) 'FONACOT $fonacot',
     ];
     entries.add(
       _HrAttendanceImportedEntry(
@@ -3935,6 +3907,9 @@ _HrAttendanceImportLot _parseContpaqImportLot(
         overtime: overtime,
         vacations: vacations,
         absenceDeduction: absenceDeduction,
+        imss: imss,
+        infonavit: infonavit,
+        fonacot: fonacot,
       ),
     );
     if (preview.length < 6) {
@@ -3954,6 +3929,11 @@ _HrAttendanceImportLot _parseContpaqImportLot(
   if (absenceDeductionIndex == -1) {
     issues.add('Falta columna Falta sin obligacion empresarial');
   }
+  if (imssIndex == -1) issues.add('Falta columna I.M.S.S.');
+  if (infonavitIndex == -1) {
+    issues.add('Falta columna Préstamo infonavit (CF)');
+  }
+  if (fonacotIndex == -1) issues.add('Falta columna Préstamo FONACOT');
 
   return _HrAttendanceImportLot(
     id: 'contpaq_${DateTime.now().microsecondsSinceEpoch}',

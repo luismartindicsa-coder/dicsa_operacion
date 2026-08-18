@@ -15,6 +15,7 @@ class ManagementAreaReportPanel extends StatefulWidget {
   final String? subtitleOverride;
   final Future<void> Function()? onOpenSupervisionHub;
   final bool showOpenHubButton;
+  final bool showReportActions;
 
   const ManagementAreaReportPanel({
     super.key,
@@ -23,6 +24,7 @@ class ManagementAreaReportPanel extends StatefulWidget {
     this.subtitleOverride,
     this.onOpenSupervisionHub,
     this.showOpenHubButton = false,
+    this.showReportActions = true,
   });
 
   @override
@@ -166,7 +168,10 @@ class _ManagementAreaReportPanelState extends State<ManagementAreaReportPanel> {
       ManagementReportFrequency.weeklyFriday,
     );
     final canGenerateDaily = dailyReports.isNotEmpty;
-    final accent = _area.accent;
+    final showActions = widget.showReportActions;
+    final accentBase = _area.accent;
+    final accent = _managementAccentInk(accentBase);
+    final accentOn = _managementAccentForeground(accentBase);
 
     return ContractGlassCard(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -181,9 +186,9 @@ class _ManagementAreaReportPanelState extends State<ManagementAreaReportPanel> {
                 width: 48,
                 height: 48,
                 decoration: BoxDecoration(
-                  color: accent.withValues(alpha: 0.14),
+                  color: accentBase.withValues(alpha: 0.14),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: accent.withValues(alpha: 0.28)),
+                  border: Border.all(color: accentBase.withValues(alpha: 0.28)),
                 ),
                 child: Icon(_area.icon, color: accent, size: 24),
               ),
@@ -269,86 +274,112 @@ class _ManagementAreaReportPanelState extends State<ManagementAreaReportPanel> {
               if (canGenerateDaily)
                 _StatusChip(
                   label: '${dailyReports.length} reportes diarios',
-                  color: accent,
+                  color: accentBase,
                 ),
             ],
           ),
           const SizedBox(height: 14),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final canSplit = constraints.maxWidth >= 760;
-              final cardWidth = canSplit
-                  ? (constraints.maxWidth - 12) / 2
-                  : constraints.maxWidth;
-              return Wrap(
-                spacing: 12,
-                runSpacing: 12,
-                children: [
-                  if (canGenerateDaily)
+          if (showActions) ...[
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final canSplit = constraints.maxWidth >= 760;
+                final cardWidth = canSplit
+                    ? (constraints.maxWidth - 12) / 2
+                    : constraints.maxWidth;
+                return Wrap(
+                  spacing: 12,
+                  runSpacing: 12,
+                  children: [
+                    if (canGenerateDaily)
+                      SizedBox(
+                        width: cardWidth,
+                        child: _CutCard(
+                          title: 'Corte diario',
+                          countLabel: '${dailyReports.length} reportes',
+                          lastGenerated: _loadingHistory
+                              ? 'Cargando historial...'
+                              : _latestLabel(_lastDaily),
+                          primaryLabel:
+                              _exporting == ManagementReportFrequency.daily
+                              ? 'Generando...'
+                              : 'Generar diario',
+                          onPrimaryTap: _exporting == null
+                              ? () => _export(ManagementReportFrequency.daily)
+                              : null,
+                          accent: accentBase,
+                          accentInk: accent,
+                          accentOn: accentOn,
+                          reportTitles: dailyReports
+                              .map((row) => row.title)
+                              .toList(growable: false),
+                        ),
+                      ),
                     SizedBox(
                       width: cardWidth,
                       child: _CutCard(
-                        title: 'Corte diario',
-                        countLabel: '${dailyReports.length} reportes',
+                        title: 'Junta de viernes',
+                        countLabel: '${weeklyReports.length} reportes',
                         lastGenerated: _loadingHistory
                             ? 'Cargando historial...'
-                            : _latestLabel(_lastDaily),
+                            : _latestLabel(_lastWeekly),
                         primaryLabel:
-                            _exporting == ManagementReportFrequency.daily
+                            _exporting == ManagementReportFrequency.weeklyFriday
                             ? 'Generando...'
-                            : 'Generar diario',
+                            : 'Generar viernes',
                         onPrimaryTap: _exporting == null
-                            ? () => _export(ManagementReportFrequency.daily)
+                            ? () => _export(
+                                ManagementReportFrequency.weeklyFriday,
+                              )
                             : null,
-                        accent: accent,
-                        reportTitles: dailyReports
+                        accent: accentBase,
+                        accentInk: accent,
+                        accentOn: accentOn,
+                        reportTitles: weeklyReports
                             .map((row) => row.title)
                             .toList(growable: false),
                       ),
                     ),
-                  SizedBox(
-                    width: cardWidth,
-                    child: _CutCard(
-                      title: 'Junta de viernes',
-                      countLabel: '${weeklyReports.length} reportes',
-                      lastGenerated: _loadingHistory
-                          ? 'Cargando historial...'
-                          : _latestLabel(_lastWeekly),
-                      primaryLabel:
-                          _exporting == ManagementReportFrequency.weeklyFriday
-                          ? 'Generando...'
-                          : 'Generar viernes',
-                      onPrimaryTap: _exporting == null
-                          ? () =>
-                                _export(ManagementReportFrequency.weeklyFriday)
-                          : null,
-                      accent: accent,
-                      reportTitles: weeklyReports
-                          .map((row) => row.title)
-                          .toList(growable: false),
-                    ),
+                  ],
+                );
+              },
+            ),
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: OutlinedButton.icon(
+                onPressed: _openHistory,
+                icon: const Icon(Icons.history_rounded, size: 18),
+                label: const Text('Ver historial'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: tokens.onGlass,
+                  side: BorderSide(color: accent.withValues(alpha: 0.34)),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
                   ),
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 14),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: OutlinedButton.icon(
-              onPressed: _openHistory,
-              icon: const Icon(Icons.history_rounded, size: 18),
-              label: const Text('Ver historial'),
-              style: OutlinedButton.styleFrom(
-                foregroundColor: tokens.onGlass,
-                side: BorderSide(color: accent.withValues(alpha: 0.34)),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 14,
-                  vertical: 12,
                 ),
               ),
             ),
-          ),
+          ] else ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              decoration: BoxDecoration(
+                color: accent.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(color: accent.withValues(alpha: 0.22)),
+              ),
+              child: Text(
+                'La generación y descarga de reportes vive solo en Supervisión por Áreas. Desde este dashboard se conserva contexto del corte y acceso al hub central.',
+                style: TextStyle(
+                  fontSize: 12.8,
+                  fontWeight: FontWeight.w700,
+                  color: tokens.onGlass.withValues(alpha: 0.78),
+                  height: 1.35,
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -375,6 +406,8 @@ class _CutCard extends StatelessWidget {
   final String primaryLabel;
   final VoidCallback? onPrimaryTap;
   final Color accent;
+  final Color accentInk;
+  final Color accentOn;
   final List<String> reportTitles;
 
   const _CutCard({
@@ -384,6 +417,8 @@ class _CutCard extends StatelessWidget {
     required this.primaryLabel,
     required this.onPrimaryTap,
     required this.accent,
+    required this.accentInk,
+    required this.accentOn,
     required this.reportTitles,
   });
 
@@ -414,7 +449,7 @@ class _CutCard extends StatelessWidget {
             style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w800,
-              color: accent,
+              color: accentInk,
             ),
           ),
           const SizedBox(height: 8),
@@ -456,7 +491,7 @@ class _CutCard extends StatelessWidget {
             label: Text(primaryLabel),
             style: FilledButton.styleFrom(
               backgroundColor: accent,
-              foregroundColor: Colors.white,
+              foregroundColor: accentOn,
               padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
             ),
           ),
@@ -474,21 +509,32 @@ class _StatusChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final ink = _managementAccentInk(color);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.12),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withValues(alpha: 0.24)),
+        border: Border.all(color: ink.withValues(alpha: 0.24)),
       ),
       child: Text(
         label,
         style: TextStyle(
-          color: color,
+          color: ink,
           fontSize: 11.5,
           fontWeight: FontWeight.w800,
         ),
       ),
     );
   }
+}
+
+Color _managementAccentInk(Color color) {
+  return color;
+}
+
+Color _managementAccentForeground(Color color) {
+  return color.computeLuminance() > 0.58
+      ? const Color(0xFF4A3600)
+      : Colors.white;
 }

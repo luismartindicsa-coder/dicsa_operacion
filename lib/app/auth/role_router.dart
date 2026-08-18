@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'auth_access.dart';
 import '../maintenance/maintenance_page.dart';
 import '../maintenance/purchase_orders_page.dart';
-import '../commercial/commercial_dashboard_page.dart';
+import '../commercial/commercial_development_dashboard_page.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../finanzas/finanzas_dashboard_page.dart';
 import '../gerencia/gerencia_dashboard_page.dart';
@@ -49,7 +49,7 @@ class _RoleRouterState extends State<RoleRouter> {
       case 'human_resources_dashboard':
         return const HumanResourcesDashboardPage();
       case 'commercial_dashboard':
-        return const CommercialDashboardPage();
+        return const CommercialDevelopmentDashboardPage();
       case 'logistics_dashboard':
         return const LogisticsDashboardPage();
       case 'logistics_control_daily':

@@ -61,6 +61,78 @@ Future<Uint8List> buildManagementReportPdfBytes({
       generatedBy: generatedBy,
     );
   }
+  if (area.key == ManagementAreaKey.finanzas &&
+      frequency == ManagementReportFrequency.daily) {
+    return buildFinanceDailySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
+  if (area.key == ManagementAreaKey.gastos &&
+      frequency == ManagementReportFrequency.daily) {
+    return buildExpensesDailySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
+  if (area.key == ManagementAreaKey.ventas &&
+      frequency == ManagementReportFrequency.daily) {
+    return buildSalesDailySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
+  if (area.key == ManagementAreaKey.ventas &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildSalesWeeklySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
+  if (area.key == ManagementAreaKey.finanzas &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildFinanceWeeklySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
+  if (area.key == ManagementAreaKey.menudeo &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildMenudeoWeeklySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
+  if (area.key == ManagementAreaKey.bascula &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildBasculaWeeklySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
+  if (area.key == ManagementAreaKey.logistica &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildLogisticsWeeklySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
+  if (area.key == ManagementAreaKey.operaciones &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildOperationsWeeklySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
 
   final reports = area.reportsFor(frequency);
   final readyCount = area.countByStatus(
@@ -75,9 +147,10 @@ Future<Uint8List> buildManagementReportPdfBytes({
     frequency,
     ManagementReportDataStatus.pending,
   );
-  final accent = _pdfColorFromFlutter(area.accent);
-  final accentSoft = _pdfColorFromFlutter(_blendWithWhite(area.accent, 0.88));
-  final accentBorder = _pdfColorFromFlutter(_blendWithWhite(area.accent, 0.72));
+  final accentBase = area.accent;
+  final accent = _pdfColorFromFlutter(_managementAccentInk(accentBase));
+  final accentSoft = _pdfColorFromFlutter(_blendWithWhite(accentBase, 0.88));
+  final accentBorder = _pdfColorFromFlutter(_blendWithWhite(accentBase, 0.72));
   final title = switch (frequency) {
     ManagementReportFrequency.daily => 'Corte diario de supervision',
     ManagementReportFrequency.weeklyFriday =>
@@ -514,4 +587,8 @@ Color _blendWithWhite(Color color, double amount) {
   final nextGreen = green + ((255 - green) * clamped).round();
   final nextBlue = blue + ((255 - blue) * clamped).round();
   return Color.fromARGB(255, nextRed, nextGreen, nextBlue);
+}
+
+Color _managementAccentInk(Color color) {
+  return color;
 }

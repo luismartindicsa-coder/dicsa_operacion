@@ -117,7 +117,8 @@ class CommercialAreaHeaderButton extends StatefulWidget {
       _CommercialAreaHeaderButtonState();
 }
 
-class _CommercialAreaHeaderButtonState extends State<CommercialAreaHeaderButton> {
+class _CommercialAreaHeaderButtonState
+    extends State<CommercialAreaHeaderButton> {
   bool _hovered = false;
 
   @override
@@ -154,7 +155,11 @@ class _CommercialAreaHeaderButtonState extends State<CommercialAreaHeaderButton>
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 180),
               curve: Curves.easeOutCubic,
-              transform: Matrix4.translationValues(0, highlighted ? -2.5 : 0, 0),
+              transform: Matrix4.translationValues(
+                0,
+                highlighted ? -2.5 : 0,
+                0,
+              ),
               width: widget.compact ? 56 : 186,
               height: 56,
               padding: EdgeInsets.symmetric(
@@ -167,7 +172,9 @@ class _CommercialAreaHeaderButtonState extends State<CommercialAreaHeaderButton>
                   end: Alignment.bottomRight,
                   colors: [
                     Colors.white.withValues(alpha: highlighted ? 0.18 : 0.10),
-                    tokens.surfaceTint.withValues(alpha: highlighted ? 0.22 : 0.14),
+                    tokens.surfaceTint.withValues(
+                      alpha: highlighted ? 0.22 : 0.14,
+                    ),
                   ],
                 ),
                 borderRadius: BorderRadius.circular(18),
@@ -179,19 +186,24 @@ class _CommercialAreaHeaderButtonState extends State<CommercialAreaHeaderButton>
                 boxShadow: [
                   BoxShadow(
                     blurRadius: highlighted ? 28 : 16,
-                    color: Colors.black.withValues(alpha: highlighted ? 0.16 : 0.08),
+                    color: Colors.black.withValues(
+                      alpha: highlighted ? 0.16 : 0.08,
+                    ),
                     offset: Offset(0, highlighted ? 14 : 8),
                   ),
                   BoxShadow(
                     blurRadius: highlighted ? 20 : 10,
-                    color: tokens.glow.withValues(alpha: highlighted ? 0.14 : 0.05),
+                    color: tokens.glow.withValues(
+                      alpha: highlighted ? 0.14 : 0.05,
+                    ),
                   ),
                 ],
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.max,
-                mainAxisAlignment:
-                    widget.compact ? MainAxisAlignment.center : MainAxisAlignment.start,
+                mainAxisAlignment: widget.compact
+                    ? MainAxisAlignment.center
+                    : MainAxisAlignment.start,
                 children: [
                   Icon(widget.icon, size: 20, color: tokens.onGlass),
                   if (!widget.compact) ...[
@@ -214,6 +226,142 @@ class _CommercialAreaHeaderButtonState extends State<CommercialAreaHeaderButton>
                     ),
                   ],
                 ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class CommercialAreaDialogShell extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final Widget child;
+  final VoidCallback onSave;
+  final String saveLabel;
+
+  const CommercialAreaDialogShell({
+    super.key,
+    required this.title,
+    required this.subtitle,
+    required this.child,
+    required this.onSave,
+    this.saveLabel = 'Guardar',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final areaTheme = buildCommercialAreaTheme(Theme.of(context));
+    return Theme(
+      data: areaTheme.copyWith(
+        textTheme: areaTheme.textTheme.apply(
+          bodyColor: kCommercialInk,
+          displayColor: kCommercialInk,
+          decorationColor: kCommercialInk,
+        ),
+      ),
+      child: DefaultTextStyle.merge(
+        style: const TextStyle(color: kCommercialInk),
+        child: IconTheme(
+          data: const IconThemeData(color: kCommercialInk),
+          child: Dialog(
+            backgroundColor: Colors.transparent,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 680),
+              child: Container(
+                padding: const EdgeInsets.fromLTRB(24, 22, 24, 22),
+                decoration: BoxDecoration(
+                  color: const Color(0xF018211D),
+                  borderRadius: BorderRadius.circular(30),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.16),
+                  ),
+                  boxShadow: const [
+                    BoxShadow(
+                      color: Color(0x5A000000),
+                      blurRadius: 54,
+                      offset: Offset(0, 20),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  title,
+                                  style: const TextStyle(
+                                    color: kCommercialInk,
+                                    fontSize: 28,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  subtitle,
+                                  style: const TextStyle(
+                                    color: Color(0xD9F3F1E8),
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          IconButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            icon: const Icon(Icons.close_rounded),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 18),
+                      child,
+                      const SizedBox(height: 18),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton(
+                            onPressed: () => Navigator.of(context).pop(),
+                            child: const Text(
+                              'Cancelar',
+                              style: TextStyle(color: Color(0xD9F3F1E8)),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          FilledButton.icon(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xFF183826),
+                              foregroundColor: const Color(0xFFF3F1E8),
+                              side: const BorderSide(color: Color(0xFF2D6E49)),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 18,
+                                vertical: 14,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(18),
+                              ),
+                            ),
+                            onPressed: onSave,
+                            icon: const Icon(
+                              Icons.save_rounded,
+                              color: Color(0xFF41D978),
+                            ),
+                            label: Text(saveLabel),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
               ),
             ),
           ),
@@ -273,7 +421,9 @@ class CommercialAreaSidePanel extends StatelessWidget {
                 decoration: BoxDecoration(
                   color: tokens.glassSurface.withValues(alpha: 0.72),
                   borderRadius: BorderRadius.circular(22),
-                  border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.10),
+                  ),
                 ),
                 child: Column(
                   children: [
@@ -285,7 +435,8 @@ class CommercialAreaSidePanel extends StatelessWidget {
                         accented: areaItems[index].accented,
                         onTap: areaItems[index].onTap,
                       ),
-                      if (index != areaItems.length - 1) const SizedBox(height: 8),
+                      if (index != areaItems.length - 1)
+                        const SizedBox(height: 8),
                     ],
                   ],
                 ),
@@ -370,7 +521,9 @@ class CommercialAreaNavItem extends StatelessWidget {
           child: Ink(
             padding: const EdgeInsets.all(14),
             decoration: BoxDecoration(
-              gradient: accented ? kCommercialHeroGradient : kCommercialPanelGradient,
+              gradient: accented
+                  ? kCommercialHeroGradient
+                  : kCommercialPanelGradient,
               borderRadius: BorderRadius.circular(24),
               border: Border.all(
                 color: accented

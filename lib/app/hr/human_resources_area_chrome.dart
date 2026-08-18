@@ -19,6 +19,154 @@ class HumanResourcesAreaNavEntry {
   });
 }
 
+enum HumanResourcesAreaScreen {
+  dashboard,
+  personnel,
+  attendance,
+  importConciliation,
+  vacations,
+  permissions,
+  prenomina,
+  nomina,
+}
+
+class HumanResourcesAreaNavSection {
+  final String label;
+  final List<HumanResourcesAreaNavEntry> items;
+
+  const HumanResourcesAreaNavSection({
+    required this.label,
+    required this.items,
+  });
+}
+
+List<HumanResourcesAreaNavSection> buildHumanResourcesAreaSections({
+  required HumanResourcesAreaScreen activeScreen,
+  required Future<void> Function() openPersonnel,
+  required Future<void> Function() openAttendance,
+  required Future<void> Function() openImportConciliation,
+  required Future<void> Function() openVacations,
+  required Future<void> Function() openPermissions,
+  required Future<void> Function() openPrenomina,
+  required Future<void> Function() openNomina,
+}) {
+  HumanResourcesAreaNavEntry buildEntry({
+    required HumanResourcesAreaScreen screen,
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required Future<void> Function() onTap,
+  }) {
+    final isActive = screen == activeScreen;
+    return HumanResourcesAreaNavEntry(
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      accented: isActive,
+      onTap: isActive ? null : onTap,
+    );
+  }
+
+  return [
+    HumanResourcesAreaNavSection(
+      label: 'BASE',
+      items: [
+        buildEntry(
+          screen: HumanResourcesAreaScreen.importConciliation,
+          icon: Icons.schedule_rounded,
+          title: 'Importación y conciliación',
+          subtitle: 'Lectura y cruce de NGTeco y CONTPAQ',
+          onTap: openImportConciliation,
+        ),
+        buildEntry(
+          screen: HumanResourcesAreaScreen.personnel,
+          icon: Icons.badge_outlined,
+          title: 'Personal',
+          subtitle: 'Grid homologado de expediente base',
+          onTap: openPersonnel,
+        ),
+      ],
+    ),
+    HumanResourcesAreaNavSection(
+      label: 'OPERACIÓN',
+      items: [
+        buildEntry(
+          screen: HumanResourcesAreaScreen.vacations,
+          icon: Icons.beach_access_rounded,
+          title: 'Vacaciones',
+          subtitle: 'Derecho, aplicación y saldo por ejercicio',
+          onTap: openVacations,
+        ),
+        buildEntry(
+          screen: HumanResourcesAreaScreen.permissions,
+          icon: Icons.assignment_turned_in_outlined,
+          title: 'Permisos',
+          subtitle: 'Ledger operativo por periodo y colaborador',
+          onTap: openPermissions,
+        ),
+        buildEntry(
+          screen: HumanResourcesAreaScreen.attendance,
+          icon: Icons.fact_check_outlined,
+          title: 'Asistencia',
+          subtitle: 'Cierre editable semanal por colaborador',
+          onTap: openAttendance,
+        ),
+      ],
+    ),
+    HumanResourcesAreaNavSection(
+      label: 'PAGO',
+      items: [
+        buildEntry(
+          screen: HumanResourcesAreaScreen.prenomina,
+          icon: Icons.payments_outlined,
+          title: 'Prenómina',
+          subtitle: 'Corrida borrador semanal por colaborador',
+          onTap: openPrenomina,
+        ),
+        HumanResourcesAreaNavEntry(
+          icon: Icons.receipt_long_rounded,
+          title: 'Nómina',
+          subtitle: 'Pantalla futura de corrida final y cierre fiscal',
+          accented: activeScreen == HumanResourcesAreaScreen.nomina,
+          onTap: activeScreen == HumanResourcesAreaScreen.nomina
+              ? null
+              : openNomina,
+        ),
+      ],
+    ),
+  ];
+}
+
+List<HumanResourcesAreaNavEntry> buildHumanResourcesAccessItems({
+  required HumanResourcesAreaScreen activeScreen,
+  required Future<void> Function() openDashboard,
+  required bool canReturnToDirection,
+  required Future<void> Function() openDirectionDashboard,
+}) {
+  final items = <HumanResourcesAreaNavEntry>[
+    HumanResourcesAreaNavEntry(
+      icon: Icons.space_dashboard_rounded,
+      title: 'Dashboard RH',
+      subtitle: 'Resumen y contexto del área',
+      accented: activeScreen == HumanResourcesAreaScreen.dashboard,
+      onTap: activeScreen == HumanResourcesAreaScreen.dashboard
+          ? null
+          : openDashboard,
+    ),
+  ];
+  if (canReturnToDirection) {
+    items.add(
+      HumanResourcesAreaNavEntry(
+        icon: Icons.assessment_outlined,
+        title: 'Dashboard Dirección',
+        subtitle: 'Vista ejecutiva multiarea',
+        onTap: openDirectionDashboard,
+      ),
+    );
+  }
+  return items;
+}
+
 class HumanResourcesAreaBackground extends StatelessWidget {
   const HumanResourcesAreaBackground({super.key});
 
@@ -237,14 +385,14 @@ class _HumanResourcesAreaHeaderButtonState
 class HumanResourcesAreaSidePanel extends StatelessWidget {
   final String label;
   final bool canReturnToDirection;
-  final List<HumanResourcesAreaNavEntry> areaItems;
+  final List<HumanResourcesAreaNavSection> sections;
   final List<HumanResourcesAreaNavEntry> accessItems;
 
   const HumanResourcesAreaSidePanel({
     super.key,
     required this.label,
     required this.canReturnToDirection,
-    required this.areaItems,
+    required this.sections,
     required this.accessItems,
   });
 
@@ -268,57 +416,147 @@ class HumanResourcesAreaSidePanel extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 16),
-              if (canReturnToDirection && accessItems.isNotEmpty) ...[
-                HumanResourcesAreaNavItem(
-                  icon: Icons.arrow_back_rounded,
-                  title: 'Volver a Dirección',
-                  subtitle: 'Regresar a la vista ejecutiva',
-                  onTap: accessItems.first.onTap,
+              for (
+                var sectionIndex = 0;
+                sectionIndex < sections.length;
+                sectionIndex++
+              ) ...[
+                _HumanResourcesAreaSectionHeader(
+                  label: sections[sectionIndex].label,
                 ),
-                const SizedBox(height: 10),
-              ],
-              const _HumanResourcesAreaSectionHeader(label: 'AREA'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: const Color(0x99432A65),
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.08),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0x99432A65),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      for (
+                        var itemIndex = 0;
+                        itemIndex < sections[sectionIndex].items.length;
+                        itemIndex++
+                      ) ...[
+                        HumanResourcesAreaNavItem(
+                          icon: sections[sectionIndex].items[itemIndex].icon,
+                          title: sections[sectionIndex].items[itemIndex].title,
+                          subtitle:
+                              sections[sectionIndex].items[itemIndex].subtitle,
+                          accented:
+                              sections[sectionIndex].items[itemIndex].accented,
+                          onTap: sections[sectionIndex].items[itemIndex].onTap,
+                        ),
+                        if (itemIndex !=
+                            sections[sectionIndex].items.length - 1)
+                          const SizedBox(height: 8),
+                      ],
+                    ],
                   ),
                 ),
-                child: Column(
-                  children: [
-                    for (var index = 0; index < areaItems.length; index++) ...[
-                      HumanResourcesAreaNavItem(
-                        icon: areaItems[index].icon,
-                        title: areaItems[index].title,
-                        subtitle: areaItems[index].subtitle,
-                        accented: areaItems[index].accented,
-                        onTap: areaItems[index].onTap,
-                      ),
-                      if (index != areaItems.length - 1)
-                        const SizedBox(height: 8),
+                if (sectionIndex != sections.length - 1)
+                  const SizedBox(height: 14),
+              ],
+              if (accessItems.isNotEmpty) ...[
+                if (sections.isNotEmpty) const SizedBox(height: 14),
+                const _HumanResourcesAreaSectionHeader(label: 'ACCESOS'),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: const Color(0x99432A65),
+                    borderRadius: BorderRadius.circular(22),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.08),
+                    ),
+                  ),
+                  child: Column(
+                    children: [
+                      for (
+                        var index = 0;
+                        index < accessItems.length;
+                        index++
+                      ) ...[
+                        HumanResourcesAreaNavItem(
+                          icon: accessItems[index].icon,
+                          title: accessItems[index].title,
+                          subtitle: accessItems[index].subtitle,
+                          accented: accessItems[index].accented,
+                          onTap: accessItems[index].onTap,
+                        ),
+                        if (index != accessItems.length - 1)
+                          const SizedBox(height: 8),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
-              const SizedBox(height: 14),
-              const _HumanResourcesAreaSectionHeader(label: 'ACCESOS'),
-              const SizedBox(height: 8),
-              for (var index = 0; index < accessItems.length; index++) ...[
-                HumanResourcesAreaNavItem(
-                  icon: accessItems[index].icon,
-                  title: accessItems[index].title,
-                  subtitle: accessItems[index].subtitle,
-                  onTap: accessItems[index].onTap,
-                ),
-                if (index != accessItems.length - 1) const SizedBox(height: 8),
               ],
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class HumanResourcesAreaNavigationOverlay extends StatelessWidget {
+  final bool menuOpen;
+  final VoidCallback onDismiss;
+  final bool canReturnToDirection;
+  final List<HumanResourcesAreaNavSection> sections;
+  final List<HumanResourcesAreaNavEntry> accessItems;
+  final String label;
+
+  const HumanResourcesAreaNavigationOverlay({
+    super.key,
+    required this.menuOpen,
+    required this.onDismiss,
+    required this.canReturnToDirection,
+    required this.sections,
+    required this.accessItems,
+    this.label = 'Recursos Humanos',
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox.expand(
+      child: Stack(
+        children: [
+          Positioned.fill(
+            child: IgnorePointer(
+              ignoring: !menuOpen,
+              child: AnimatedOpacity(
+                duration: const Duration(milliseconds: 180),
+                opacity: menuOpen ? 1 : 0,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: onDismiss,
+                  child: Container(color: Colors.black.withValues(alpha: 0.12)),
+                ),
+              ),
+            ),
+          ),
+          AnimatedPositioned(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            left: menuOpen ? 0 : -332,
+            top: 0,
+            bottom: 0,
+            width: 320,
+            child: IgnorePointer(
+              ignoring: !menuOpen,
+              child: HumanResourcesAreaSidePanel(
+                label: label,
+                canReturnToDirection: canReturnToDirection,
+                sections: sections,
+                accessItems: accessItems,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

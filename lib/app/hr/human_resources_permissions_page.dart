@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -15,6 +16,7 @@ import '../shared/archetypes/grid_editable/filters/grid_filter_state.dart';
 import '../shared/archetypes/grid_editable/grid_editable_shell.dart';
 import '../shared/archetypes/grid_editable/grid_keyboard_shell.dart';
 import '../shared/archetypes/grid_editable/grid_navigation_controller.dart';
+import '../shared/archetypes/grid_editable/grid_scroll_visibility_coordinator.dart';
 import '../shared/archetypes/grid_editable/grid_selection_controller.dart';
 import '../shared/archetypes/grid_editable/row/editable_row_actions_button.dart';
 import '../shared/dicsa_logo_mark.dart';
@@ -28,6 +30,7 @@ import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_nomina_page.dart';
 import 'human_resources_personnel_page.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
@@ -85,6 +88,14 @@ class _HumanResourcesPermissionsPageState
       GridNavigationController();
   final GridSelectionController _selectionController =
       GridSelectionController();
+  final ScrollController _rowsScrollController = ScrollController();
+  final GridScrollVisibilityCoordinator _gridVisibilityCoordinator =
+      GridScrollVisibilityCoordinator();
+  final GlobalKey _rowsViewportKey = GlobalKey();
+  final Map<String, GlobalKey> _rowKeys = <String, GlobalKey>{};
+  Offset? _dragPointerGlobal;
+  double _dragAutoScrollVelocity = 0;
+  Timer? _dragAutoScrollTimer;
 
   List<_HrPermissionEmployeeMaster> _employees =
       const <_HrPermissionEmployeeMaster>[];
@@ -113,6 +124,8 @@ class _HumanResourcesPermissionsPageState
     _selectionController
       ..removeListener(_handleSelectionChanged)
       ..dispose();
+    _rowsScrollController.dispose();
+    _dragAutoScrollTimer?.cancel();
     super.dispose();
   }
 
@@ -129,6 +142,9 @@ class _HumanResourcesPermissionsPageState
           rowIndex: position.rowIndex,
         );
       }
+      unawaited(
+        _gridVisibilityCoordinator.ensureGridRowVisible(position.rowIndex),
+      );
       if (!mounted) return;
       setState(() => _selectedRowId = row.employeeId);
       return;
@@ -152,6 +168,17 @@ class _HumanResourcesPermissionsPageState
           .employeeId;
     }
     setState(() => _selectedRowId = nextSelectedRowId);
+    _ensureSelectedRowVisible(nextSelectedRowId);
+  }
+
+  void _ensureSelectedRowVisible(String? rowId) {
+    if (rowId == null) return;
+    final rowIndex = _visibleRows.indexWhere((row) => row.employeeId == rowId);
+    if (rowIndex < 0) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      unawaited(_gridVisibilityCoordinator.ensureGridRowVisible(rowIndex));
+    });
   }
 
   Future<void> _resolveNavigationAccess() async {
@@ -339,6 +366,12 @@ class _HumanResourcesPermissionsPageState
   Future<void> _openPrenomina() async {
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const HumanResourcesPrenominaPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openNomina() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesNominaPage(instantOpen: true)),
     );
   }
 
@@ -760,6 +793,7 @@ class _HumanResourcesPermissionsPageState
           .sublist(start, end + 1)
           .map((row) => row.employeeId)
           .toList(growable: false),
+      visibilityCoordinator: _gridVisibilityCoordinator,
     );
     _navigationController.focusGridCell(rowIndex: rowIndex, columnIndex: 0);
     setState(() => _dragSelectionMoved = false);
@@ -806,6 +840,7 @@ class _HumanResourcesPermissionsPageState
       _dragSelectionIds = visibleIds;
       _dragSelectionAnchorId = rowId;
       _selectedRowId = rowId;
+      _dragPointerGlobal = null;
     });
     _selectionController.selectRange(nextIds, anchorRowIndex: rowIndex);
     _navigationController.focusGridCell(rowIndex: rowIndex, columnIndex: 0);
@@ -844,7 +879,121 @@ class _HumanResourcesPermissionsPageState
       _dragSelectionIds = const <String>[];
       _dragSelectionAnchorId = null;
       _dragSelectionBaseIds = <String>{};
+      _dragPointerGlobal = null;
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
     });
+  }
+
+  int? _visibleRowIndexAtGlobalPosition(
+    Offset globalPosition,
+    List<String> visibleIds,
+  ) {
+    for (var i = 0; i < visibleIds.length; i++) {
+      final box =
+          _rowKeys[visibleIds[i]]?.currentContext?.findRenderObject()
+              as RenderBox?;
+      if (box == null || !box.hasSize) continue;
+      final rect = box.localToGlobal(Offset.zero) & box.size;
+      if (rect.contains(globalPosition)) return i;
+    }
+    return null;
+  }
+
+  int? _mountedEdgeRowIndex(List<String> visibleIds, {required bool last}) {
+    final indexes = <int>[];
+    for (var i = 0; i < visibleIds.length; i++) {
+      final box =
+          _rowKeys[visibleIds[i]]?.currentContext?.findRenderObject()
+              as RenderBox?;
+      if (box != null && box.hasSize) indexes.add(i);
+    }
+    if (indexes.isEmpty) return null;
+    return last ? indexes.last : indexes.first;
+  }
+
+  void _handleRowsPointerMove(PointerMoveEvent event, List<String> visibleIds) {
+    if (!_dragSelectionActive) return;
+    _dragPointerGlobal = event.position;
+    _updateDragAutoScroll(visibleIds);
+    final visibleIndex = _visibleRowIndexAtGlobalPosition(
+      event.position,
+      visibleIds,
+    );
+    if (visibleIndex == null) return;
+    _updateDragSelection(visibleIds[visibleIndex]);
+  }
+
+  void _updateDragAutoScroll(List<String> visibleIds) {
+    if (!_dragSelectionActive || _dragPointerGlobal == null) {
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    final box =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null || !box.hasSize) {
+      _dragAutoScrollVelocity = 0;
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    const edge = 36.0;
+    const maxStep = 18.0;
+    final local = box.globalToLocal(_dragPointerGlobal!);
+    final y = local.dy;
+    if (y < edge) {
+      _dragAutoScrollVelocity = -((edge - y) / edge).clamp(0.0, 1.0) * maxStep;
+    } else if (y > box.size.height - edge) {
+      _dragAutoScrollVelocity =
+          ((y - (box.size.height - edge)) / edge).clamp(0.0, 1.0) * maxStep;
+    } else {
+      _dragAutoScrollVelocity = 0;
+    }
+    if (_dragAutoScrollVelocity == 0) {
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    _dragAutoScrollTimer ??= Timer.periodic(
+      const Duration(milliseconds: 16),
+      (_) => _performDragAutoScroll(visibleIds),
+    );
+  }
+
+  void _performDragAutoScroll(List<String> visibleIds) {
+    if (!_dragSelectionActive ||
+        _dragAutoScrollVelocity == 0 ||
+        !_rowsScrollController.hasClients) {
+      _dragAutoScrollTimer?.cancel();
+      _dragAutoScrollTimer = null;
+      return;
+    }
+    final position = _rowsScrollController.position;
+    final next = (position.pixels + _dragAutoScrollVelocity).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    if ((next - position.pixels).abs() < 0.5) return;
+    _rowsScrollController.jumpTo(next);
+    final pointer = _dragPointerGlobal;
+    final viewportBox =
+        _rowsViewportKey.currentContext?.findRenderObject() as RenderBox?;
+    if (pointer == null || viewportBox == null || !viewportBox.hasSize) return;
+    final visibleIndex = _visibleRowIndexAtGlobalPosition(pointer, visibleIds);
+    int? targetIndex = visibleIndex;
+    if (targetIndex == null) {
+      final local = viewportBox.globalToLocal(pointer);
+      if (local.dy < 0) {
+        targetIndex = _mountedEdgeRowIndex(visibleIds, last: false);
+      } else if (local.dy > viewportBox.size.height) {
+        targetIndex = _mountedEdgeRowIndex(visibleIds, last: true);
+      }
+    }
+    if (targetIndex == null) return;
+    _updateDragSelection(visibleIds[targetIndex]);
   }
 
   Future<void> _openRowMenu(
@@ -929,6 +1078,9 @@ class _HumanResourcesPermissionsPageState
     _rebuildRows();
     _rowsFocusNode.requestFocus();
   }
+
+  GlobalKey _rowKeyForId(String rowId) =>
+      _rowKeys.putIfAbsent(rowId, () => GlobalKey());
 
   void _handleEscape() {
     if (_menuOpen) {
@@ -1021,8 +1173,13 @@ class _HumanResourcesPermissionsPageState
                           hoveredRowId: _hoveredRowId,
                           navigationController: _navigationController,
                           selectionController: _selectionController,
+                          rowsScrollController: _rowsScrollController,
+                          visibilityCoordinator: _gridVisibilityCoordinator,
+                          rowsViewportKey: _rowsViewportKey,
                           rowsFocusNode: _rowsFocusNode,
                           selectedRowId: _selectedRowId,
+                          rowKeyForId: _rowKeyForId,
+                          onRowsPointerMove: _handleRowsPointerMove,
                           onTapRow: _handleTapRow,
                           onPrepareRowActions:
                               _prepareRowSelectionForActionsFromRow,
@@ -1082,72 +1239,25 @@ class _HumanResourcesPermissionsPageState
                 ),
               ),
             ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              left: _menuOpen ? 0 : -332,
-              top: 0,
-              bottom: 0,
-              width: 320,
-              child: IgnorePointer(
-                ignoring: !_menuOpen,
-                child: HumanResourcesAreaSidePanel(
-                  label: 'Recursos Humanos',
-                  canReturnToDirection: _canReturnToDirection,
-                  areaItems: [
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.space_dashboard_rounded,
-                      title: 'Dashboard RH',
-                      subtitle: 'Resumen y contexto del área',
-                      onTap: _openDashboard,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.badge_outlined,
-                      title: 'Personal',
-                      subtitle: 'Grid homologado de expediente base',
-                      onTap: _openPersonnel,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.fact_check_outlined,
-                      title: 'Asistencia',
-                      subtitle: 'Cierre editable por colaborador y periodo',
-                      onTap: _openAttendance,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.schedule_rounded,
-                      title: 'Importación y conciliación',
-                      subtitle: 'Lectura y cruce de NGTeco y CONTPAQ',
-                      onTap: _openImportConciliation,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.beach_access_rounded,
-                      title: 'Vacaciones',
-                      subtitle: 'Derecho, aplicación y saldo por ejercicio',
-                      onTap: _openVacations,
-                    ),
-                    const HumanResourcesAreaNavEntry(
-                      icon: Icons.assignment_turned_in_outlined,
-                      title: 'Permisos',
-                      subtitle: 'Ledger operativo por periodo y colaborador',
-                      accented: true,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.payments_outlined,
-                      title: 'Prenómina',
-                      subtitle: 'Corrida borrador semanal por colaborador',
-                      onTap: _openPrenomina,
-                    ),
-                  ],
-                  accessItems: [
-                    if (_canReturnToDirection)
-                      HumanResourcesAreaNavEntry(
-                        icon: Icons.assessment_outlined,
-                        title: 'Dashboard Dirección',
-                        subtitle: 'Vista ejecutiva multiarea',
-                        onTap: _openDirectionDashboard,
-                      ),
-                  ],
-                ),
+            HumanResourcesAreaNavigationOverlay(
+              menuOpen: _menuOpen,
+              onDismiss: () => setState(() => _menuOpen = false),
+              canReturnToDirection: _canReturnToDirection,
+              sections: buildHumanResourcesAreaSections(
+                activeScreen: HumanResourcesAreaScreen.permissions,
+                openPersonnel: _openPersonnel,
+                openAttendance: _openAttendance,
+                openImportConciliation: _openImportConciliation,
+                openVacations: _openVacations,
+                openPermissions: () async {},
+                openPrenomina: _openPrenomina,
+                openNomina: _openNomina,
+              ),
+              accessItems: buildHumanResourcesAccessItems(
+                activeScreen: HumanResourcesAreaScreen.permissions,
+                openDashboard: _openDashboard,
+                canReturnToDirection: _canReturnToDirection,
+                openDirectionDashboard: _openDirectionDashboard,
               ),
             ),
           ],
@@ -1173,8 +1283,14 @@ class _HrPermissionWorkspace extends StatelessWidget {
   final String? hoveredRowId;
   final GridNavigationController navigationController;
   final GridSelectionController selectionController;
+  final ScrollController rowsScrollController;
+  final GridScrollVisibilityCoordinator visibilityCoordinator;
+  final GlobalKey rowsViewportKey;
   final FocusNode rowsFocusNode;
   final String? selectedRowId;
+  final GlobalKey Function(String rowId) rowKeyForId;
+  final void Function(PointerMoveEvent event, List<String> visibleIds)
+  onRowsPointerMove;
   final void Function(_HrPermissionSummaryRow row, int rowIndex) onTapRow;
   final void Function(_HrPermissionSummaryRow row, int rowIndex)
   onPrepareRowActions;
@@ -1215,8 +1331,13 @@ class _HrPermissionWorkspace extends StatelessWidget {
     required this.hoveredRowId,
     required this.navigationController,
     required this.selectionController,
+    required this.rowsScrollController,
+    required this.visibilityCoordinator,
+    required this.rowsViewportKey,
     required this.rowsFocusNode,
     required this.selectedRowId,
+    required this.rowKeyForId,
+    required this.onRowsPointerMove,
     required this.onTapRow,
     required this.onPrepareRowActions,
     required this.onBeginDragSelection,
@@ -1262,6 +1383,16 @@ class _HrPermissionWorkspace extends StatelessWidget {
           onEscape: onEscape,
           onConfirm: () => unawaited(onOpenSelectedRow()),
           onOpenActiveCell: onOpenActiveCell,
+          onNavigated: (position) {
+            if (position.zone != GridNavigationZone.grid) return;
+            unawaited(
+              visibilityCoordinator.ensureGridRowVisible(
+                position.rowIndex,
+                alignment: 0.5,
+                allowSkipIfFullyVisible: false,
+              ),
+            );
+          },
           child: GridEditableShell(
             topBar: _HrPermissionModuleTopBar(
               totalRows: totalRows,
@@ -1279,6 +1410,11 @@ class _HrPermissionWorkspace extends StatelessWidget {
               selectedRowId: selectedRowId,
               navigationController: navigationController,
               selectionController: selectionController,
+              rowsScrollController: rowsScrollController,
+              visibilityCoordinator: visibilityCoordinator,
+              rowsViewportKey: rowsViewportKey,
+              rowKeyForId: rowKeyForId,
+              onRowsPointerMove: onRowsPointerMove,
               onTapRow: onTapRow,
               onPrepareRowActions: onPrepareRowActions,
               onBeginDragSelection: onBeginDragSelection,
@@ -1314,6 +1450,12 @@ class _HrPermissionGrid extends StatelessWidget {
   final String? selectedRowId;
   final GridNavigationController navigationController;
   final GridSelectionController selectionController;
+  final ScrollController rowsScrollController;
+  final GridScrollVisibilityCoordinator visibilityCoordinator;
+  final GlobalKey rowsViewportKey;
+  final GlobalKey Function(String rowId) rowKeyForId;
+  final void Function(PointerMoveEvent event, List<String> visibleIds)
+  onRowsPointerMove;
   final void Function(_HrPermissionSummaryRow row, int rowIndex) onTapRow;
   final void Function(_HrPermissionSummaryRow row, int rowIndex)
   onPrepareRowActions;
@@ -1342,6 +1484,11 @@ class _HrPermissionGrid extends StatelessWidget {
     required this.selectedRowId,
     required this.navigationController,
     required this.selectionController,
+    required this.rowsScrollController,
+    required this.visibilityCoordinator,
+    required this.rowsViewportKey,
+    required this.rowKeyForId,
+    required this.onRowsPointerMove,
     required this.onTapRow,
     required this.onPrepareRowActions,
     required this.onBeginDragSelection,
@@ -1376,57 +1523,110 @@ class _HrPermissionGrid extends StatelessWidget {
                   ),
                   Expanded(
                     child: Listener(
+                      onPointerMove: (event) => onRowsPointerMove(
+                        event,
+                        rows
+                            .map((row) => row.employeeId)
+                            .toList(growable: false),
+                      ),
                       onPointerUp: (_) => onEndDragSelection(),
                       onPointerCancel: (_) => onEndDragSelection(),
-                      child: rows.isEmpty
-                          ? const _HrPermissionEmptyState()
-                          : ListView.separated(
-                              itemCount: rows.length,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 6,
-                                vertical: 8,
+                      child: Container(
+                        key: rowsViewportKey,
+                        child: SingleChildScrollView(
+                          controller: rowsScrollController,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: math.max(
+                                0,
+                                constraints.maxHeight - 68,
                               ),
-                              separatorBuilder: (_, _) =>
-                                  const SizedBox(height: 4),
-                              itemBuilder: (context, index) {
-                                final row = rows[index];
-                                final active =
-                                    navigationController.active.zone ==
-                                        GridNavigationZone.grid &&
-                                    navigationController.active.rowIndex ==
-                                        index;
-                                final selected =
-                                    selectedRowId == row.employeeId ||
-                                    selectionController.isSelected(
-                                      row.employeeId,
-                                    );
-                                return _HrPermissionGridRow(
-                                  row: row,
-                                  rowIndex: index,
-                                  hovered: hoveredRowId == row.employeeId,
-                                  active: active,
-                                  selected: selected,
-                                  onTap: () => onTapRow(row, index),
-                                  onOpen: () => onOpenRow(row),
-                                  onPrepareActionsMenu: () =>
-                                      onPrepareRowActions(row, index),
-                                  onPrimaryPointerDown: (additive) =>
-                                      onBeginDragSelection(
-                                        row.employeeId,
-                                        rows
-                                            .map((item) => item.employeeId)
-                                            .toList(growable: false),
-                                        additive: additive,
-                                      ),
-                                  onDragEnter: () =>
-                                      onUpdateDragSelection(row.employeeId),
-                                  onPointerEnd: onEndDragSelection,
-                                  onSecondaryTapDown: (details) =>
-                                      onRowContextMenu(details, row, index),
-                                  onHoverChanged: onHoverRowChanged,
-                                );
-                              },
                             ),
+                            child: Column(
+                              children: [
+                                if (rows.isEmpty)
+                                  const _HrPermissionEmptyState()
+                                else
+                                  for (
+                                    var index = 0;
+                                    index < rows.length;
+                                    index++
+                                  )
+                                    Padding(
+                                      padding: EdgeInsets.fromLTRB(
+                                        6,
+                                        index == 0 ? 8 : 2,
+                                        6,
+                                        index == rows.length - 1 ? 8 : 2,
+                                      ),
+                                      child: KeyedSubtree(
+                                        key: rowKeyForId(
+                                          rows[index].employeeId,
+                                        ),
+                                        child: _HrPermissionGridRow(
+                                          key: visibilityCoordinator.keyForCell(
+                                            zone: GridNavigationZone.grid,
+                                            rowIndex: index,
+                                            columnIndex: 0,
+                                          ),
+                                          row: rows[index],
+                                          rowIndex: index,
+                                          hovered:
+                                              hoveredRowId ==
+                                              rows[index].employeeId,
+                                          active:
+                                              navigationController
+                                                      .active
+                                                      .zone ==
+                                                  GridNavigationZone.grid &&
+                                              navigationController
+                                                      .active
+                                                      .rowIndex ==
+                                                  index,
+                                          selected:
+                                              selectedRowId ==
+                                                  rows[index].employeeId ||
+                                              selectionController.isSelected(
+                                                rows[index].employeeId,
+                                              ),
+                                          onTap: () =>
+                                              onTapRow(rows[index], index),
+                                          onOpen: () => onOpenRow(rows[index]),
+                                          onPrepareActionsMenu: () =>
+                                              onPrepareRowActions(
+                                                rows[index],
+                                                index,
+                                              ),
+                                          onPrimaryPointerDown: (additive) =>
+                                              onBeginDragSelection(
+                                                rows[index].employeeId,
+                                                rows
+                                                    .map(
+                                                      (item) => item.employeeId,
+                                                    )
+                                                    .toList(growable: false),
+                                                additive: additive,
+                                              ),
+                                          onDragEnter: () =>
+                                              onUpdateDragSelection(
+                                                rows[index].employeeId,
+                                              ),
+                                          onPointerEnd: onEndDragSelection,
+                                          onSecondaryTapDown: (details) =>
+                                              onRowContextMenu(
+                                                details,
+                                                rows[index],
+                                                index,
+                                              ),
+                                          onHoverChanged: onHoverRowChanged,
+                                        ),
+                                      ),
+                                    ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -1669,6 +1869,7 @@ class _HrPermissionGridRow extends StatelessWidget {
   final ValueChanged<String?> onHoverChanged;
 
   const _HrPermissionGridRow({
+    super.key,
     required this.row,
     required this.rowIndex,
     required this.hovered,

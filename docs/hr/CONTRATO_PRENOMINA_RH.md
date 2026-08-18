@@ -172,6 +172,11 @@ Debe resumir:
 - registros visibles
 - colaboradores listos
 - colaboradores en revisión RH
+- retardo acumulado
+- horas extra acumuladas
+- vacaciones visibles en el borrador
+- permisos visibles en el borrador
+- subtotal preliminar visible del periodo
 - vacaciones con huella fiscal
 - permisos con huella pendiente
 
@@ -188,6 +193,12 @@ La primera versión debe mostrar estas columnas:
 - `Estado`
 - `Acciones`
 
+Regla visual adicional:
+
+- la columna `Sueldo` puede mostrar una segunda línea informativa con la `Base visible` del borrador semanal
+- esa segunda línea no sustituye el sueldo; solo adelanta la lectura nominal operativa
+- cuando exista una corrida preliminar visible, esa segunda línea puede mostrar el subtotal preliminar RH
+
 ## Contrato del diálogo
 
 El diálogo mantiene:
@@ -202,6 +213,9 @@ El diálogo mantiene:
 ### Secciones mínimas del diálogo
 
 - `Resumen fuente`
+- `Lectura base RH`
+- `Corrida preliminar RH`
+- `Conceptos del borrador`
 - `Vacaciones y permisos`
 - `Borrador RH`
 
@@ -221,5 +235,21 @@ Debe consolidar fuentes reales ya existentes y permitir solo:
 - estatus semanal RH
 - ajuste manual controlado
 - observación RH
+
+La lectura visible del borrador semanal debe dejar explícito:
+
+- salario semanal
+- salario percibido semanal
+- ajuste manual RH
+- base visible del borrador
+- subtotal preliminar del borrador
+- desglose operativo por conceptos fuente
+
+La `Corrida preliminar RH` sí puede mostrar supuestos operativos visibles, siempre que:
+
+- se expliquen en texto
+- no se presenten como nómina final
+- no oculten fórmulas
+- dejen claro cuándo un concepto sigue pendiente de fórmula definitiva
 
 La fórmula final completa de nómina vendrá después, sobre esta base ya limpia.

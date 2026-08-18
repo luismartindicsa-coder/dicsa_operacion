@@ -33,6 +33,7 @@ import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
 import 'human_resources_prenomina_page.dart';
@@ -449,6 +450,12 @@ class _HumanResourcesVacationsPageState
   Future<void> _openPrenomina() async {
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const HumanResourcesPrenominaPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openNomina() async {
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const HumanResourcesNominaPage(instantOpen: true)),
     );
   }
 
@@ -1337,72 +1344,25 @@ class _HumanResourcesVacationsPageState
                 ),
               ),
             ),
-            AnimatedPositioned(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOutCubic,
-              left: _menuOpen ? 0 : -332,
-              top: 0,
-              bottom: 0,
-              width: 320,
-              child: IgnorePointer(
-                ignoring: !_menuOpen,
-                child: HumanResourcesAreaSidePanel(
-                  label: 'Recursos Humanos',
-                  canReturnToDirection: _canReturnToDirection,
-                  areaItems: [
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.space_dashboard_rounded,
-                      title: 'Dashboard RH',
-                      subtitle: 'Resumen y contexto del área',
-                      onTap: _openDashboard,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.badge_outlined,
-                      title: 'Personal',
-                      subtitle: 'Grid homologado de expediente base',
-                      onTap: _openPersonnel,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.fact_check_outlined,
-                      title: 'Asistencia',
-                      subtitle: 'Cierre editable por colaborador y periodo',
-                      onTap: _openAttendance,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.schedule_rounded,
-                      title: 'Importación y conciliación',
-                      subtitle: 'Lectura y cruce de NGTeco y CONTPAQ',
-                      onTap: _openImportConciliation,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.assignment_turned_in_outlined,
-                      title: 'Permisos',
-                      subtitle: 'Ledger operativo por periodo y colaborador',
-                      onTap: _openPermissions,
-                    ),
-                    HumanResourcesAreaNavEntry(
-                      icon: Icons.payments_outlined,
-                      title: 'Prenómina',
-                      subtitle: 'Corrida borrador semanal por colaborador',
-                      onTap: _openPrenomina,
-                    ),
-                    const HumanResourcesAreaNavEntry(
-                      icon: Icons.beach_access_rounded,
-                      title: 'Vacaciones',
-                      subtitle: 'Derecho, aplicación y pago por ejercicio',
-                      accented: true,
-                    ),
-                  ],
-                  accessItems: [
-                    if (_canReturnToDirection)
-                      HumanResourcesAreaNavEntry(
-                        icon: Icons.assessment_outlined,
-                        title: 'Dashboard Dirección',
-                        subtitle: 'Vista ejecutiva multiarea',
-                        onTap: _openDirectionDashboard,
-                      ),
-                  ],
-                ),
+            HumanResourcesAreaNavigationOverlay(
+              menuOpen: _menuOpen,
+              onDismiss: () => setState(() => _menuOpen = false),
+              canReturnToDirection: _canReturnToDirection,
+              sections: buildHumanResourcesAreaSections(
+                activeScreen: HumanResourcesAreaScreen.vacations,
+                openPersonnel: _openPersonnel,
+                openAttendance: _openAttendance,
+                openImportConciliation: _openImportConciliation,
+                openVacations: () async {},
+                openPermissions: _openPermissions,
+                openPrenomina: _openPrenomina,
+                openNomina: _openNomina,
+              ),
+              accessItems: buildHumanResourcesAccessItems(
+                activeScreen: HumanResourcesAreaScreen.vacations,
+                openDashboard: _openDashboard,
+                canReturnToDirection: _canReturnToDirection,
+                openDirectionDashboard: _openDirectionDashboard,
               ),
             ),
           ],
@@ -1536,6 +1496,16 @@ class _HrVacationWorkspace extends StatelessWidget {
           onEscape: onEscape,
           onConfirm: () => unawaited(onOpenSelectedRow()),
           onOpenActiveCell: onOpenActiveCell,
+          onNavigated: (position) {
+            if (position.zone != GridNavigationZone.grid) return;
+            unawaited(
+              visibilityCoordinator.ensureGridRowVisible(
+                position.rowIndex,
+                alignment: 0.5,
+                allowSkipIfFullyVisible: false,
+              ),
+            );
+          },
           child: GridEditableShell(
             topBar: _HrVacationModuleTopBar(
               totalRows: totalRows,

@@ -11,9 +11,13 @@ import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import 'commercial_area_chrome.dart';
+import 'commercial_agenda_page.dart';
 import 'commercial_dashboard_page.dart';
+import 'commercial_development_dashboard_page.dart';
 import 'commercial_store.dart';
 import 'commercial_theme.dart';
+
+enum _DirectorySourceFilter { all, commercialCreated, external }
 
 class CommercialDirectoryPage extends StatefulWidget {
   final bool instantOpen;
@@ -31,6 +35,7 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
   bool _saving = false;
   bool _canReturnToDirection = false;
   bool _onlyAlerts = false;
+  _DirectorySourceFilter _sourceFilter = _DirectorySourceFilter.all;
   String _query = '';
   CommercialDirectoryBundle? _bundle;
   String? _selectedId;
@@ -197,6 +202,22 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
     );
   }
 
+  Future<void> _openDevelopmentDashboard() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const CommercialDevelopmentDashboardPage(instantOpen: true),
+      ),
+    );
+  }
+
+  Future<void> _openAgenda() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const CommercialAgendaPage(instantOpen: true)),
+    );
+  }
+
   Future<void> _openDirectionDashboard() async {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
@@ -212,6 +233,7 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
     final rows = allRows
         .where((row) {
           final q = _query.trim().toUpperCase();
+          if (!_matchesSourceFilter(row, _sourceFilter)) return false;
           if (_onlyAlerts && row.activeAlertCount <= 0) return false;
           if (q.isEmpty) return true;
           return row.displayName.toUpperCase().contains(q) ||
@@ -295,13 +317,15 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
                       child: Column(
                         children: [
                           _DirectoryTopBar(
-                            visibleCount: rows.length,
-                            alertCount: allRows
-                                .where((row) => row.activeAlertCount > 0)
-                                .length,
                             onlyAlerts: _onlyAlerts,
                             onToggleAlerts: () =>
                                 setState(() => _onlyAlerts = !_onlyAlerts),
+                            sourceFilter: _sourceFilter,
+                            commercialCreatedCount: allRows
+                                .where(_isCommercialCreatedAccount)
+                                .length,
+                            onSourceFilterChanged: (value) =>
+                                setState(() => _sourceFilter = value),
                             onCreateAccount: _saving
                                 ? null
                                 : _createManualAccount,
@@ -411,6 +435,12 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
                           subtitle: 'Cuentas, contactos y seguimiento',
                           accented: true,
                         ),
+                        CommercialAreaNavEntry(
+                          icon: Icons.calendar_month_rounded,
+                          title: 'Agenda Comercial',
+                          subtitle: 'Citas, reuniones y eventos',
+                          onTap: _openAgenda,
+                        ),
                       ],
                       accessItems: [
                         if (_canReturnToDirection)
@@ -420,6 +450,12 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
                             subtitle: 'Vista ejecutiva multiarea',
                             onTap: _openDirectionDashboard,
                           ),
+                        CommercialAreaNavEntry(
+                          icon: Icons.dashboard_outlined,
+                          title: 'Dashboard Comercial',
+                          subtitle: 'Resumen de desarrollo comercial',
+                          onTap: _openDevelopmentDashboard,
+                        ),
                       ],
                     ),
                   ),
@@ -433,61 +469,21 @@ class _CommercialDirectoryPageState extends State<CommercialDirectoryPage> {
   }
 }
 
-class _MiniMetric extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color tone;
+bool _isCommercialCreatedAccount(CommercialDirectoryAccountRecord row) {
+  return row.sourceArea.trim().toLowerCase() == 'manual' ||
+      row.sourceRecordId.trim().isEmpty;
+}
 
-  const _MiniMetric({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.tone,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Container(
-      width: 140,
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0x99202F27),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 34,
-            height: 34,
-            decoration: BoxDecoration(
-              color: tone.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: tone.withValues(alpha: 0.26)),
-            ),
-            child: Icon(icon, color: tone, size: 18),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            value,
-            style: TextStyle(
-              color: tokens.onGlass,
-              fontWeight: FontWeight.w900,
-              fontSize: 24,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: TextStyle(color: tokens.badgeText, fontSize: 11.5),
-          ),
-        ],
-      ),
-    );
-  }
+bool _matchesSourceFilter(
+  CommercialDirectoryAccountRecord row,
+  _DirectorySourceFilter filter,
+) {
+  final createdInCommercial = _isCommercialCreatedAccount(row);
+  return switch (filter) {
+    _DirectorySourceFilter.all => true,
+    _DirectorySourceFilter.commercialCreated => createdInCommercial,
+    _DirectorySourceFilter.external => !createdInCommercial,
+  };
 }
 
 class _CommercialDirectoryHeaderBrand extends StatelessWidget {
@@ -564,18 +560,20 @@ class _CommercialDirectoryHeaderBrand extends StatelessWidget {
 }
 
 class _DirectoryTopBar extends StatelessWidget {
-  final int visibleCount;
-  final int alertCount;
   final bool onlyAlerts;
   final VoidCallback onToggleAlerts;
+  final _DirectorySourceFilter sourceFilter;
+  final int commercialCreatedCount;
+  final ValueChanged<_DirectorySourceFilter> onSourceFilterChanged;
   final Future<void> Function()? onCreateAccount;
   final ValueChanged<String> onQueryChanged;
 
   const _DirectoryTopBar({
-    required this.visibleCount,
-    required this.alertCount,
     required this.onlyAlerts,
     required this.onToggleAlerts,
+    required this.sourceFilter,
+    required this.commercialCreatedCount,
+    required this.onSourceFilterChanged,
     required this.onCreateAccount,
     required this.onQueryChanged,
   });
@@ -584,7 +582,7 @@ class _DirectoryTopBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
         color: const Color(0xB814231C),
         borderRadius: BorderRadius.circular(22),
@@ -597,114 +595,172 @@ class _DirectoryTopBar extends StatelessWidget {
           ),
         ],
       ),
-      child: Column(
-        children: [
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final stacked = constraints.maxWidth < 1180;
-              final searchField = TextField(
-                onChanged: onQueryChanged,
-                style: const TextStyle(color: Color(0xFFF3F1E8)),
-                decoration: InputDecoration(
-                  hintText: 'Buscar cuenta, segmento o tipo comercial',
-                  hintStyle: const TextStyle(color: Color(0xADF3F1E8)),
-                  prefixIcon: const Icon(
-                    Icons.search_rounded,
-                    color: Color(0xADF3F1E8),
-                  ),
-                  filled: true,
-                  fillColor: const Color(0x4D101713),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide(color: tokens.border),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(18),
-                    borderSide: BorderSide(color: tokens.border),
-                  ),
-                ),
-              );
-              final metrics = [
-                _MiniMetric(
-                  label: 'Cuentas visibles',
-                  value: '$visibleCount',
-                  icon: Icons.business_center_outlined,
-                  tone: const Color(0xFF56CCF2),
-                ),
-                _MiniMetric(
-                  label: 'Con alertas',
-                  value: '$alertCount',
-                  icon: Icons.warning_amber_rounded,
-                  tone: const Color(0xFFFF5B4D),
-                ),
-                const _MiniMetric(
-                  label: 'Solo lectura origen',
-                  value: 'SI',
-                  icon: Icons.lock_outline_rounded,
-                  tone: Color(0xFFF2C94C),
-                ),
-              ];
-              final cta = _DirectoryPrimaryButton(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final compact = constraints.maxWidth < 760;
+          final searchField = TextField(
+            onChanged: onQueryChanged,
+            style: const TextStyle(color: Color(0xFFF3F1E8)),
+            decoration: InputDecoration(
+              hintText: 'Buscar cuenta',
+              hintStyle: const TextStyle(color: Color(0xADF3F1E8)),
+              prefixIcon: const Icon(
+                Icons.search_rounded,
+                color: Color(0xADF3F1E8),
+              ),
+              filled: true,
+              fillColor: const Color(0x4D101713),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: tokens.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: BorderSide(color: tokens.border),
+              ),
+            ),
+          );
+          final actions = Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              _DirectorySourceFilterButton(
+                value: sourceFilter,
+                commercialCreatedCount: commercialCreatedCount,
+                onChanged: onSourceFilterChanged,
+              ),
+              FilterChip(
+                label: const Text('Con alertas'),
+                selected: onlyAlerts,
+                onSelected: (_) => onToggleAlerts(),
+              ),
+              _DirectoryPrimaryButton(
                 label: 'Nueva cuenta',
                 icon: Icons.add_rounded,
                 onTap: onCreateAccount == null
                     ? null
                     : () => unawaited(onCreateAccount!()),
-              );
-              if (stacked) {
-                return Column(
-                  children: [
-                    searchField,
-                    const SizedBox(height: 16),
-                    Wrap(
-                      spacing: 12,
-                      runSpacing: 12,
-                      children: [
-                        for (final metric in metrics)
-                          SizedBox(width: 160, child: metric),
-                        cta,
-                      ],
-                    ),
-                  ],
-                );
-              }
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(flex: 50, child: searchField),
-                  const SizedBox(width: 16),
-                  ...[
-                    for (final metric in metrics) ...[
-                      SizedBox(width: 150, child: metric),
-                      const SizedBox(width: 12),
-                    ],
-                  ],
-                  cta,
-                ],
-              );
-            },
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Text(
-                'Solo con alertas',
-                style: TextStyle(
-                  color: tokens.onGlass,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Switch.adaptive(
-                value: onlyAlerts,
-                activeThumbColor: const Color(0xFF41D978),
-                activeTrackColor: const Color(0x6641D978),
-                onChanged: (_) => onToggleAlerts(),
               ),
             ],
-          ),
-        ],
+          );
+          if (compact) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [searchField, const SizedBox(height: 12), actions],
+            );
+          }
+          return Row(
+            children: [
+              Expanded(child: searchField),
+              const SizedBox(width: 12),
+              actions,
+            ],
+          );
+        },
       ),
+    );
+  }
+}
+
+class _DirectorySourceFilterButton extends StatelessWidget {
+  final _DirectorySourceFilter value;
+  final int commercialCreatedCount;
+  final ValueChanged<_DirectorySourceFilter> onChanged;
+
+  const _DirectorySourceFilterButton({
+    required this.value,
+    required this.commercialCreatedCount,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final label = switch (value) {
+      _DirectorySourceFilter.all => 'Todas las fuentes',
+      _DirectorySourceFilter.commercialCreated => 'Creadas en Desarrollo',
+      _DirectorySourceFilter.external => 'Otras fuentes',
+    };
+    return PopupMenuButton<_DirectorySourceFilter>(
+      tooltip: 'Filtrar por procedencia',
+      onSelected: onChanged,
+      color: const Color(0xFF1A2A21),
+      itemBuilder: (context) => [
+        const PopupMenuItem(
+          value: _DirectorySourceFilter.all,
+          child: _DirectorySourceFilterMenuItem(
+            icon: Icons.account_tree_outlined,
+            label: 'Todas las fuentes',
+          ),
+        ),
+        PopupMenuItem(
+          value: _DirectorySourceFilter.commercialCreated,
+          child: _DirectorySourceFilterMenuItem(
+            icon: Icons.person_add_alt_1_outlined,
+            label: 'Creadas en Desarrollo ($commercialCreatedCount)',
+          ),
+        ),
+        const PopupMenuItem(
+          value: _DirectorySourceFilter.external,
+          child: _DirectorySourceFilterMenuItem(
+            icon: Icons.sync_alt_rounded,
+            label: 'Generadas en otras fuentes',
+          ),
+        ),
+      ],
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
+        decoration: BoxDecoration(
+          color: tokens.primaryStrong.withValues(alpha: 0.14),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: tokens.primaryStrong.withValues(alpha: 0.42),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.filter_list_rounded,
+              color: tokens.primaryStrong,
+              size: 18,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'Origen: $label',
+              style: TextStyle(
+                color: tokens.onGlass,
+                fontWeight: FontWeight.w800,
+                fontSize: 12.5,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(Icons.expand_more_rounded, color: tokens.onGlass, size: 18),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DirectorySourceFilterMenuItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _DirectorySourceFilterMenuItem({
+    required this.icon,
+    required this.label,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Icon(icon, color: const Color(0xFF41D978), size: 18),
+        const SizedBox(width: 10),
+        Text(label),
+      ],
     );
   }
 }
@@ -813,7 +869,7 @@ class _AccountTile extends StatelessWidget {
       borderRadius: BorderRadius.circular(20),
       onTap: onTap,
       child: Ink(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         decoration: BoxDecoration(
           color: selected ? const Color(0x99202F27) : const Color(0x7A1B2520),
           borderRadius: BorderRadius.circular(20),
@@ -857,29 +913,14 @@ class _AccountTile extends StatelessWidget {
                       fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(height: 3),
                   Text(
-                    '${row.kind == 'supplier' ? 'Proveedor' : 'Cuenta'} · ${row.businessGroup}',
+                    '${row.channel} · ${row.status}${row.contactCount > 0 ? ' · ${row.contactCount} contactos' : ''}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       color: tokens.badgeText,
                       fontWeight: FontWeight.w700,
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _pill(row.channel),
-                      _pill(commercialFlowLabel(row.flow)),
-                      _pill(commercialPriorityLabel(row.priority)),
-                      _pill(row.status),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Text(
-                    '${row.contactCount} contactos · ${row.followUpCount} seguimientos',
-                    style: TextStyle(color: tokens.badgeText),
                   ),
                 ],
               ),
@@ -893,7 +934,6 @@ class _AccountTile extends StatelessWidget {
                     '${row.activeAlertCount} alertas',
                     row.highestAlertSeverity,
                   ),
-                const SizedBox(height: 28),
                 Icon(
                   Icons.chevron_right_rounded,
                   color: tokens.badgeText,
@@ -904,29 +944,6 @@ class _AccountTile extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-
-  Widget _pill(String label) {
-    return Builder(
-      builder: (context) {
-        final tokens = AreaThemeScope.of(context);
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: tokens.badgeBackground,
-            borderRadius: BorderRadius.circular(999),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              color: tokens.badgeText,
-              fontSize: 11,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -1098,59 +1115,21 @@ class _DirectoryDetail extends StatelessWidget {
                   ),
                 ],
                 const SizedBox(height: 18),
-                LayoutBuilder(
-                  builder: (context, metricConstraints) {
-                    final width = metricConstraints.maxWidth;
-                    final metricWidth = compact
-                        ? (width - 20) / 2
-                        : (width - 50) / 6;
-                    final metrics = [
-                      _OperationalMetricCard(
-                        label: 'Canal',
-                        value: row.channel,
-                        icon: Icons.layers_outlined,
-                        tone: const Color(0xFF56CCF2),
-                      ),
-                      _OperationalMetricCard(
-                        label: 'Flujo',
-                        value: commercialFlowLabel(row.flow),
-                        icon: Icons.swap_horiz_rounded,
-                        tone: const Color(0xFF5AD1E6),
-                      ),
-                      _OperationalMetricCard(
-                        label: 'Prioridad',
-                        value: commercialPriorityLabel(row.priority),
-                        icon: Icons.flag_outlined,
-                        tone: const Color(0xFFF2C94C),
-                      ),
-                      _OperationalMetricCard(
-                        label: 'Estado',
-                        value: row.status,
-                        icon: Icons.check_circle_outline_rounded,
-                        tone: const Color(0xFF41D978),
-                      ),
-                      _OperationalMetricCard(
-                        label: 'Origen',
-                        value: row.sourceArea,
-                        icon: Icons.source_outlined,
-                        tone: const Color(0xFF7AB6FF),
-                      ),
-                      _OperationalMetricCard(
-                        label: 'Alertas activas',
-                        value: '${row.activeAlertCount} activas',
-                        icon: Icons.warning_amber_rounded,
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    _detailPill('Canal: ${row.channel}'),
+                    _detailPill('Estado: ${row.status}'),
+                    _detailPill(
+                      'Prioridad: ${commercialPriorityLabel(row.priority)}',
+                    ),
+                    if (row.activeAlertCount > 0)
+                      _detailPill(
+                        '${row.activeAlertCount} alertas',
                         tone: const Color(0xFFFF5B4D),
                       ),
-                    ];
-                    return Wrap(
-                      spacing: 10,
-                      runSpacing: 10,
-                      children: [
-                        for (final metric in metrics)
-                          SizedBox(width: metricWidth, child: metric),
-                      ],
-                    );
-                  },
+                  ],
                 ),
                 const SizedBox(height: 20),
                 LayoutBuilder(
@@ -1321,60 +1300,28 @@ class _DirectoryDetail extends StatelessWidget {
   }
 }
 
-class _OperationalMetricCard extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final Color tone;
-
-  const _OperationalMetricCard({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.tone,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0x99202F27),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Container(
-            width: 32,
-            height: 32,
-            decoration: BoxDecoration(
-              color: tone.withValues(alpha: 0.14),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: tone.withValues(alpha: 0.24)),
-            ),
-            child: Icon(icon, color: tone, size: 17),
+Widget _detailPill(String label, {Color? tone}) {
+  return Builder(
+    builder: (context) {
+      final tokens = AreaThemeScope.of(context);
+      final foreground = tone ?? tokens.badgeText;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: foreground.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: foreground,
+            fontSize: 11.5,
+            fontWeight: FontWeight.w800,
           ),
-          const SizedBox(height: 10),
-          Text(
-            label,
-            style: TextStyle(color: tokens.badgeText, fontSize: 11.5),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              color: tone,
-              fontWeight: FontWeight.w900,
-              fontSize: 16,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+        ),
+      );
+    },
+  );
 }
 
 class _InfoSectionCard extends StatelessWidget {
@@ -1714,10 +1661,10 @@ class _CommercialAccountDialogState extends State<_CommercialAccountDialog> {
   late final TextEditingController _notesC;
   String _kind = 'prospect';
   String _channel = 'menudeo';
-  String _businessType = 'prospect';
-  String _businessGroup = 'manual_prospect';
-  String _status = 'prospecto';
-  String _priority = 'media';
+  final String _businessType = 'prospect';
+  final String _businessGroup = 'manual_prospect';
+  final String _status = 'prospecto';
+  final String _priority = 'media';
 
   @override
   void initState() {
@@ -1754,8 +1701,7 @@ class _CommercialAccountDialogState extends State<_CommercialAccountDialog> {
   Widget build(BuildContext context) {
     return _CommercialDialogShell(
       title: 'Nueva cuenta comercial',
-      subtitle:
-          'Crea una ficha propia de Desarrollo Comercial sin tocar el origen operativo.',
+      subtitle: 'Registra el prospecto y agrega el contexto que necesites.',
       onSave: _save,
       child: Column(
         children: [
@@ -1788,57 +1734,11 @@ class _CommercialAccountDialogState extends State<_CommercialAccountDialog> {
             ],
           ),
           const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _dialogDropdown(
-                  label: 'Tipo comercial',
-                  value: _businessType,
-                  items: kCommercialBusinessTypeOptions,
-                  onChanged: (value) => setState(() => _businessType = value),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _dialogDropdown(
-                  label: 'Grupo comparable',
-                  value: _businessGroup,
-                  items: kCommercialBusinessGroupOptions,
-                  onChanged: (value) => setState(() => _businessGroup = value),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _dialogDropdown(
-                  label: 'Estado',
-                  value: _status,
-                  items: kCommercialAccountStatusOptions,
-                  onChanged: (value) => setState(() => _status = value),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _dialogDropdown(
-                  label: 'Prioridad',
-                  value: _priority,
-                  items: kCommercialPriorityOptions,
-                  labelBuilder: commercialPriorityLabel,
-                  onChanged: (value) => setState(() => _priority = value),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
           _dialogTextField(
             controller: _notesC,
-            label: 'Nota comercial',
-            hintText:
-                'Contexto, oportunidad, perfil de negociación, siguiente ángulo.',
-            maxLines: 5,
+            label: 'Nota (opcional)',
+            hintText: 'Contexto u oportunidad comercial.',
+            maxLines: 3,
           ),
         ],
       ),

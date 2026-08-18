@@ -24,6 +24,7 @@ class GridScrollVisibilityCoordinator {
     Duration duration = const Duration(milliseconds: 90),
     Curve curve = Curves.easeOutCubic,
     double alignment = 0.45,
+    bool allowSkipIfFullyVisible = true,
   }) async {
     final id = _cellId(
       zone: position.zone,
@@ -34,7 +35,9 @@ class GridScrollVisibilityCoordinator {
     if (context == null) return;
     final renderObject = context.findRenderObject();
     final scrollableState = Scrollable.maybeOf(context);
-    if (renderObject is RenderObject && scrollableState != null) {
+    if (allowSkipIfFullyVisible &&
+        renderObject is RenderObject &&
+        scrollableState != null) {
       final viewport = RenderAbstractViewport.maybeOf(renderObject);
       final position = scrollableState.position;
       if (viewport != null &&
@@ -63,6 +66,7 @@ class GridScrollVisibilityCoordinator {
     Duration duration = const Duration(milliseconds: 90),
     Curve curve = Curves.easeOutCubic,
     double alignment = 0.45,
+    bool allowSkipIfFullyVisible = true,
   }) {
     return ensureVisible(
       GridCellPosition(
@@ -73,6 +77,7 @@ class GridScrollVisibilityCoordinator {
       duration: duration,
       curve: curve,
       alignment: alignment,
+      allowSkipIfFullyVisible: allowSkipIfFullyVisible,
     );
   }
 

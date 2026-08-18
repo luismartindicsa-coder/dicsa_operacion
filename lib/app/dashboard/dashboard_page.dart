@@ -471,6 +471,7 @@ class _OperationsSupervisionSection extends StatelessWidget {
                     subtitleOverride:
                         'Desde Operación puedes generar el corte diario y el cierre de viernes para OTs, producción e incidencias.',
                     showOpenHubButton: true,
+                    showReportActions: false,
                     onOpenSupervisionHub: onOpenManagementSupervision,
                   ),
                 ),
@@ -481,6 +482,7 @@ class _OperationsSupervisionSection extends StatelessWidget {
                     subtitleOverride:
                         'Desde Báscula puedes generar el cierre semanal de entradas, salidas, tickets y errores de captura.',
                     showOpenHubButton: true,
+                    showReportActions: false,
                     onOpenSupervisionHub: onOpenManagementSupervision,
                   ),
                 ),

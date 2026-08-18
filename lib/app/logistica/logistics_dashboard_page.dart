@@ -394,6 +394,7 @@ class _LogisticsDashboardWorkspace extends StatelessWidget {
                     subtitleOverride:
                         'El encargado de Logística debe generar aquí su corte semanal, estudiarlo antes de la junta y llegar con explicación de costos, viajes y complicaciones.',
                     showOpenHubButton: true,
+                    showReportActions: false,
                     onOpenSupervisionHub: onOpenSupervisionHub,
                   ),
                 ],

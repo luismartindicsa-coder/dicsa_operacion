@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../finanzas/finanzas_theme.dart';
+import '../shared/app_ui/app_ui_widgets.dart';
+
 enum ManagementAreaKey {
   operaciones,
   bascula,
@@ -456,7 +459,7 @@ managementAreaCatalog = <ManagementAreaDefinition>[
     ownerLabel: 'Responsable Comercial de Ventas',
     subtitle:
         'Cobranza, facturación pendiente, precios y seguimiento comercial por institucionalizar.',
-    accent: Color(0xFF5A4ED3),
+    accent: Color(0xFFFBC20F),
     icon: Icons.sell_rounded,
     reports: <ManagementReportDefinition>[
       ManagementReportDefinition(
@@ -470,11 +473,12 @@ managementAreaCatalog = <ManagementAreaDefinition>[
       ),
       ManagementReportDefinition(
         key: 'sales_pending_invoice',
-        title: 'Ventas pendientes de facturar o relacionar',
+        title: 'Ventas pendientes de relacionar o documentar',
         frequency: ManagementReportFrequency.daily,
-        dataStatus: ManagementReportDataStatus.partial,
-        sourceLabel: 'Ventas mayoreo',
-        followUpPrompt: 'Qué venta quedó colgada hoy y qué impide cerrarla.',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'Mayoreo + cuentas mayoreo',
+        followUpPrompt:
+            'Qué venta quedó colgada hoy y qué impide relacionarla o documentarla.',
       ),
       ManagementReportDefinition(
         key: 'sales_yard_delays',
@@ -520,14 +524,14 @@ managementAreaCatalog = <ManagementAreaDefinition>[
     ownerLabel: 'Responsable de Compras y Gastos',
     subtitle:
         'Urgencias, flujo de compras y mezcla de gasto operativo con foco diario y semanal.',
-    accent: Color(0xFFE67E22),
+    accent: kOperationalMetricAccent,
     icon: Icons.receipt_long_rounded,
     reports: <ManagementReportDefinition>[
       ManagementReportDefinition(
         key: 'expenses_urgent_purchases',
         title: 'Compras urgentes',
         frequency: ManagementReportFrequency.daily,
-        dataStatus: ManagementReportDataStatus.partial,
+        dataStatus: ManagementReportDataStatus.ready,
         sourceLabel: 'Compras + OT',
         followUpPrompt:
             'Qué compra de hoy fue realmente urgente y cuál vino de mala previsión.',
@@ -545,7 +549,7 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'expenses_ot_linked',
         title: 'Compras ligadas a OTs',
         frequency: ManagementReportFrequency.daily,
-        dataStatus: ManagementReportDataStatus.partial,
+        dataStatus: ManagementReportDataStatus.ready,
         sourceLabel: 'Compras OT',
         followUpPrompt:
             'Qué compra quedó ligada a una OT y si sí era la solución correcta.',
@@ -641,7 +645,7 @@ managementAreaCatalog = <ManagementAreaDefinition>[
     ownerLabel: 'Responsable de Finanzas',
     subtitle:
         'Presupuesto, pagos urgentes, vencimientos y flujo bancario con lectura diaria y semanal.',
-    accent: Color(0xFFB85F22),
+    accent: kFinanzasOrange,
     icon: Icons.account_balance_wallet_rounded,
     reports: <ManagementReportDefinition>[
       ManagementReportDefinition(

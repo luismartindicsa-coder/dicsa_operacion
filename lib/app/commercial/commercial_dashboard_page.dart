@@ -13,6 +13,8 @@ import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/number_formatters.dart';
 import 'commercial_area_chrome.dart';
+import 'commercial_agenda_page.dart';
+import 'commercial_development_dashboard_page.dart';
 import 'commercial_directory_page.dart';
 import 'commercial_store.dart';
 import 'commercial_theme.dart';
@@ -66,6 +68,22 @@ class _CommercialDashboardPageState extends State<CommercialDashboardPage> {
     if (!mounted) return;
     await Navigator.of(context).pushReplacement(
       appPageRoute(page: const CommercialDirectoryPage(instantOpen: true)),
+    );
+  }
+
+  Future<void> _openDevelopmentDashboard() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(
+        page: const CommercialDevelopmentDashboardPage(instantOpen: true),
+      ),
+    );
+  }
+
+  Future<void> _openAgenda() async {
+    if (!mounted) return;
+    await Navigator.of(context).pushReplacement(
+      appPageRoute(page: const CommercialAgendaPage(instantOpen: true)),
     );
   }
 
@@ -156,7 +174,6 @@ class _CommercialDashboardPageState extends State<CommercialDashboardPage> {
                         generalCounterparties: generalCounterparties,
                         catalogPriceRows: catalogPriceRows,
                         onOpenDirectory: _openDirectory,
-                        onReload: _loadDashboard,
                       ),
                     ),
                   ),
@@ -202,6 +219,12 @@ class _CommercialDashboardPageState extends State<CommercialDashboardPage> {
                           subtitle: 'Cuentas, contactos y seguimiento',
                           onTap: _openDirectory,
                         ),
+                        CommercialAreaNavEntry(
+                          icon: Icons.calendar_month_rounded,
+                          title: 'Agenda Comercial',
+                          subtitle: 'Citas, reuniones y eventos',
+                          onTap: _openAgenda,
+                        ),
                       ],
                       accessItems: [
                         if (_canReturnToDirection)
@@ -211,6 +234,12 @@ class _CommercialDashboardPageState extends State<CommercialDashboardPage> {
                             subtitle: 'Vista ejecutiva multiarea',
                             onTap: _openDirectionDashboard,
                           ),
+                        CommercialAreaNavEntry(
+                          icon: Icons.dashboard_outlined,
+                          title: 'Dashboard Comercial',
+                          subtitle: 'Resumen de desarrollo comercial',
+                          onTap: _openDevelopmentDashboard,
+                        ),
                       ],
                     ),
                   ),
@@ -237,7 +266,6 @@ class _CommercialDashboardBody extends StatefulWidget {
   final List<CommercialGeneralCounterpartyActivityRecord> generalCounterparties;
   final List<CommercialCatalogPriceReferenceRecord> catalogPriceRows;
   final Future<void> Function() onOpenDirectory;
-  final Future<void> Function() onReload;
 
   const _CommercialDashboardBody({
     required this.loading,
@@ -248,7 +276,6 @@ class _CommercialDashboardBody extends StatefulWidget {
     required this.generalCounterparties,
     required this.catalogPriceRows,
     required this.onOpenDirectory,
-    required this.onReload,
   });
 
   @override
@@ -346,7 +373,6 @@ class _CommercialDashboardBodyState extends State<_CommercialDashboardBody> {
               flow: _flow,
               selectedMaterial: _selectedMaterial,
               onlyComparable: _onlyComparable,
-              onReload: widget.onReload,
               onOpenDirectory: widget.onOpenDirectory,
               onChannelChanged: (value) => setState(() => _channel = value),
               onFlowChanged: (value) => setState(() => _flow = value),
@@ -366,6 +392,12 @@ class _CommercialDashboardBodyState extends State<_CommercialDashboardBody> {
             if (stacked)
               Column(
                 children: [
+                  _AlertsPanel(
+                    loading: widget.loading,
+                    alerts: filteredAlerts,
+                    onOpenDirectory: widget.onOpenDirectory,
+                  ),
+                  const SizedBox(height: 14),
                   _PriceRadarCard(
                     loading: widget.loading,
                     flow: _flow,
@@ -386,7 +418,16 @@ class _CommercialDashboardBodyState extends State<_CommercialDashboardBody> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    flex: 7,
+                    flex: 4,
+                    child: _AlertsPanel(
+                      loading: widget.loading,
+                      alerts: filteredAlerts,
+                      onOpenDirectory: widget.onOpenDirectory,
+                    ),
+                  ),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    flex: 8,
                     child: _PriceRadarCard(
                       loading: widget.loading,
                       flow: _flow,
@@ -395,30 +436,21 @@ class _CommercialDashboardBodyState extends State<_CommercialDashboardBody> {
                       onOpenDirectory: widget.onOpenDirectory,
                     ),
                   ),
-                  const SizedBox(width: 14),
-                  Expanded(
-                    flex: 5,
-                    child: _PricePositioningCard(
-                      loading: widget.loading,
-                      rows: positioningRows,
-                      selectedMaterial: _selectedMaterial,
-                    ),
-                  ),
                 ],
               ),
             const SizedBox(height: 14),
             if (stacked)
               Column(
                 children: [
+                  _PricePositioningCard(
+                    loading: widget.loading,
+                    rows: positioningRows,
+                    selectedMaterial: _selectedMaterial,
+                  ),
+                  const SizedBox(height: 14),
                   _RecentReferencesCard(
                     loading: widget.loading,
                     rows: recentMaterialChanges,
-                  ),
-                  const SizedBox(height: 14),
-                  _AlertsPanel(
-                    loading: widget.loading,
-                    alerts: filteredAlerts,
-                    onOpenDirectory: widget.onOpenDirectory,
                   ),
                 ],
               )
@@ -427,19 +459,19 @@ class _CommercialDashboardBodyState extends State<_CommercialDashboardBody> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Expanded(
-                    flex: 8,
-                    child: _RecentReferencesCard(
+                    flex: 5,
+                    child: _PricePositioningCard(
                       loading: widget.loading,
-                      rows: recentMaterialChanges,
+                      rows: positioningRows,
+                      selectedMaterial: _selectedMaterial,
                     ),
                   ),
                   const SizedBox(width: 14),
                   Expanded(
-                    flex: 4,
-                    child: _AlertsPanel(
+                    flex: 7,
+                    child: _RecentReferencesCard(
                       loading: widget.loading,
-                      alerts: filteredAlerts,
-                      onOpenDirectory: widget.onOpenDirectory,
+                      rows: recentMaterialChanges,
                     ),
                   ),
                 ],
@@ -541,7 +573,6 @@ class _CommercialFiltersBar extends StatelessWidget {
   final _CommercialFlowFilter flow;
   final String? selectedMaterial;
   final bool onlyComparable;
-  final Future<void> Function() onReload;
   final Future<void> Function() onOpenDirectory;
   final ValueChanged<_CommercialChannelFilter> onChannelChanged;
   final ValueChanged<_CommercialFlowFilter> onFlowChanged;
@@ -554,7 +585,6 @@ class _CommercialFiltersBar extends StatelessWidget {
     required this.flow,
     required this.selectedMaterial,
     required this.onlyComparable,
-    required this.onReload,
     required this.onOpenDirectory,
     required this.onChannelChanged,
     required this.onFlowChanged,
@@ -632,14 +662,9 @@ class _CommercialFiltersBar extends StatelessWidget {
                 icon: Icons.filter_alt_outlined,
                 onTap: onComparableChanged,
               ),
-              _ActionOutlineChip(
-                label: 'Recargar',
-                icon: Icons.refresh_rounded,
-                onTap: onReload,
-              ),
               _ActionFilledChip(
-                label: 'Nueva cuenta',
-                icon: Icons.add_rounded,
+                label: 'Directorio',
+                icon: Icons.badge_outlined,
                 onTap: onOpenDirectory,
               ),
             ],
@@ -681,92 +706,64 @@ class _CommercialInsightsCard extends StatelessWidget {
     return _DashboardSectionCard(
       title: 'Lectura ejecutiva',
       subtitle:
-          'Radar comercial inspirado en Mercado, con menudeo y mayoreo separados',
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final stacked = constraints.maxWidth < 1180;
-          final metricCards = [
-            _ExecutiveMetricCard(
-              label: 'Materiales con referencia',
-              value: '${insights.materialsWithReference}',
-              icon: Icons.inventory_2_outlined,
-              tone: const Color(0xFF78DA7A),
-              subtitle: 'Con datos comparables',
-            ),
-            _ExecutiveMetricCard(
-              label: 'Cruces comparables',
-              value: '${insights.comparableSegments}',
-              icon: Icons.hub_outlined,
-              tone: const Color(0xFF5CCEE6),
-              subtitle: 'Oportunidades de cruce',
-            ),
-            _ExecutiveMetricCard(
-              label: 'Alertas activas',
-              value: '${insights.activeAlerts}',
-              icon: Icons.warning_amber_rounded,
-              tone: const Color(0xFFEA6C47),
-              subtitle: 'A revisar hoy',
-            ),
-            _ExecutiveMetricCard(
-              label: 'Contrapartes con precio',
-              value: '${insights.counterpartiesWithReference}',
-              icon: Icons.groups_2_outlined,
-              tone: const Color(0xFF68D3B4),
-              subtitle: 'Proveedores y clientes',
-            ),
-          ];
-          final metrics = GridView.builder(
-            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: stacked ? 2 : 4,
-              crossAxisSpacing: 12,
-              mainAxisSpacing: 12,
-              mainAxisExtent: stacked ? 198 : 186,
-            ),
-            itemCount: metricCards.length,
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            itemBuilder: (context, index) => metricCards[index],
-          );
-          final bullets = loading
-              ? const _PanelLoading(label: 'Preparando lectura ejecutiva...')
-              : Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+          'Resumen de la vista seleccionada y señales que requieren atención',
+      child: loading
+          ? const _PanelLoading(label: 'Preparando lectura comercial...')
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 18,
+                  runSpacing: 10,
                   children: [
-                    _InsightBullet(
-                      text:
-                          'Vista actual: ${_channelFilterLabel(channel)} · ${_flowFilterLabel(flow)}.',
-                      tone: tone.badgeText,
+                    _ExecutiveMetricCard(
+                      label: 'Referencias',
+                      value: '${insights.materialsWithReference}',
+                      icon: Icons.inventory_2_outlined,
+                      tone: const Color(0xFF78DA7A),
+                      subtitle: 'materiales',
                     ),
-                    _InsightBullet(
-                      text: insights.primaryMessage,
-                      tone: const Color(0xFFF0C247),
+                    _ExecutiveMetricCard(
+                      label: 'Cruces',
+                      value: '${insights.comparableSegments}',
+                      icon: Icons.hub_outlined,
+                      tone: const Color(0xFF5CCEE6),
+                      subtitle: 'comparables',
                     ),
-                    _InsightBullet(
-                      text: insights.secondaryMessage,
-                      tone: const Color(0xFF8FDC84),
+                    _ExecutiveMetricCard(
+                      label: 'Alertas',
+                      value: '${insights.activeAlerts}',
+                      icon: Icons.warning_amber_rounded,
+                      tone: const Color(0xFFEA6C47),
+                      subtitle: 'activas',
                     ),
-                    _InsightBullet(
-                      text: insights.tertiaryMessage,
-                      tone: tone.badgeText,
+                    _ExecutiveMetricCard(
+                      label: 'Cuentas',
+                      value: '${insights.counterpartiesWithReference}',
+                      icon: Icons.groups_2_outlined,
+                      tone: const Color(0xFF68D3B4),
+                      subtitle: 'con precio',
                     ),
                   ],
-                );
-          if (stacked) {
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [metrics, const SizedBox(height: 14), bullets],
-            );
-          }
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(flex: 7, child: metrics),
-              const SizedBox(width: 18),
-              Expanded(flex: 5, child: bullets),
-            ],
-          );
-        },
-      ),
+                ),
+                const SizedBox(height: 14),
+                _InsightBullet(
+                  text:
+                      'Vista: ${_channelFilterLabel(channel)} · ${_flowFilterLabel(flow)}. ${insights.primaryMessage}',
+                  tone: const Color(0xFFF0C247),
+                ),
+                const SizedBox(height: 7),
+                _InsightBullet(
+                  text: insights.secondaryMessage,
+                  tone: const Color(0xFF8FDC84),
+                ),
+                const SizedBox(height: 7),
+                _InsightBullet(
+                  text: insights.tertiaryMessage,
+                  tone: tone.badgeText,
+                ),
+              ],
+            ),
     );
   }
 }
@@ -1470,52 +1467,6 @@ class _ActionFilledChip extends StatelessWidget {
   }
 }
 
-class _ActionOutlineChip extends StatelessWidget {
-  final String label;
-  final IconData icon;
-  final Future<void> Function() onTap;
-
-  const _ActionOutlineChip({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final tokens = AreaThemeScope.of(context);
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(18),
-        onTap: () => unawaited(onTap()),
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
-          decoration: BoxDecoration(
-            color: const Color(0x4D101713),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(icon, color: tokens.badgeText, size: 18),
-              const SizedBox(width: 10),
-              Text(
-                label,
-                style: TextStyle(
-                  color: tokens.badgeText,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _ExecutiveMetricCard extends StatelessWidget {
   final String label;
   final String value;
@@ -1535,56 +1486,51 @@ class _ExecutiveMetricCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
     return Container(
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+      width: 150,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
       decoration: BoxDecoration(
         color: const Color(0x99202F27),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white.withValues(alpha: 0.10)),
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
           Container(
-            width: 42,
-            height: 42,
+            width: 34,
+            height: 34,
             decoration: BoxDecoration(
               color: tone.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(14),
+              borderRadius: BorderRadius.circular(11),
               border: Border.all(color: tone.withValues(alpha: 0.22)),
             ),
-            child: Icon(icon, color: tone),
+            child: Icon(icon, color: tone, size: 18),
           ),
-          const SizedBox(height: 12),
-          Text(
-            label,
-            style: TextStyle(
-              color: const Color(0xADF3F1E8),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+          const SizedBox(width: 9),
+          Expanded(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  value,
+                  style: TextStyle(
+                    color: tokens.onGlass,
+                    fontSize: 19,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                Text(
+                  '$label · $subtitle',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Color(0xADF3F1E8),
+                    fontSize: 10.5,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: TextStyle(
-              color: tokens.onGlass,
-              fontSize: 22,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: TextStyle(
-              color: const Color(0xADF3F1E8),
-              fontSize: 11.5,
-              fontWeight: FontWeight.w700,
-            ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
           ),
         ],
       ),
@@ -2115,9 +2061,15 @@ Color _sparklineToneForRow(_PriceRadarRow row) {
 
 List<double> _sparklineValuesForRow(_PriceRadarRow row) {
   final baseline = row.mayoreoPrice ?? row.menudeoPrice ?? 1.0;
+  // A low unit price can be below the visual minimum contrast. Keep the
+  // clamp bounds ordered so the price radar remains renderable for it.
+  final minimumContrast = baseline < 0.12 ? baseline : 0.12;
   final contrast = row.menudeoPrice == null || row.mayoreoPrice == null
       ? baseline * 0.32
-      : (row.mayoreoPrice! - row.menudeoPrice!).abs().clamp(0.12, baseline);
+      : (row.mayoreoPrice! - row.menudeoPrice!).abs().clamp(
+          minimumContrast,
+          baseline,
+        );
   return [
     baseline * 0.62,
     baseline * 0.64,

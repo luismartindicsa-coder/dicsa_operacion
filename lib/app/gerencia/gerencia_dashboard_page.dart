@@ -534,6 +534,7 @@ class _GerenciaWorkspace extends StatelessWidget {
               subtitleOverride:
                   'Desde aquí Gerencia puede generar el corte semanal del área y modelar el ritual que después replicarán los encargados.',
               showOpenHubButton: true,
+              showReportActions: false,
               onOpenSupervisionHub: onOpenManagementSupervision,
             ),
             const SizedBox(height: 18),

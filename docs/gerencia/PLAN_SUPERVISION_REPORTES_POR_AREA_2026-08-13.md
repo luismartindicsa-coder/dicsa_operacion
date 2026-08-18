@@ -316,6 +316,110 @@ Campos fijos recomendados en encabezado:
 - usuario que lo genero
 - estado de confiabilidad del dato
 
+### Contrato visual del PDF
+
+El PDF de supervision no debe sentirse como poster ni como dashboard impreso.
+
+Debe sentirse como:
+
+- ficha ejecutiva limpia
+- hoja blanca estable
+- lectura rapida para junta
+- identidad clara del area
+
+Reglas obligatorias:
+
+- fondo general blanco liso
+- portada corta
+- encabezado dentro de una tarjeta blanca con borde suave
+- nombre del reporte visible desde arriba
+- area y fecha de corte visibles desde arriba
+- badges de contexto compactos y legibles
+- jerarquia visual sobria antes que decorativa
+
+El encabezado debe incluir:
+
+- leyenda corta tipo `Reporte de seguimiento`
+- nombre del area
+- nombre especifico del reporte
+- subtitulo de una sola idea
+- fecha o rango de corte
+- fecha y hora de generacion
+- responsable del area
+
+Elementos prohibidos:
+
+- usar isotipos, logos o ilustraciones como fondo de pagina
+- meter arte decorativo gigante detras del contenido
+- convertir la portada en una composicion visual pesada
+- usar recursos que puedan escalarse de forma impredecible y romper la hoja
+
+Aprendizaje operativo consolidado el lunes `2026-08-17`:
+
+- el logo o wordmark, si existe, debe vivir solo dentro del header
+- nunca debe funcionar como background
+- cualquier recurso grafico del header debe tener caja fija y tamano controlado
+
+### Regla de color por area
+
+Todos los reportes de supervision deben diferenciarse visualmente por area sin cambiar el arquetipo base del PDF.
+
+Esto significa:
+
+- la estructura del PDF permanece homologada
+- lo que cambia entre areas es el color acento del reporte
+
+El color del area debe vivir en:
+
+- eyebrow o etiqueta superior
+- borde o acento del header
+- badges de contexto
+- headers de tabla
+- tarjetas KPI
+- detalles de resaltado y alertas cuando aplique
+
+Lo que no debe cambiar por area:
+
+- fondo general
+- layout
+- radios base
+- espaciado
+- patron de secciones
+- comportamiento de tablas
+
+Regla practica:
+
+- si alguien ve el PDF de lejos, debe distinguir rapido de que area es por el color
+- si alguien compara dos PDFs, debe reconocer que ambos pertenecen al mismo sistema porque comparten exactamente el mismo arquetipo
+
+Fuente de verdad para el color del reporte:
+
+- el accent oficial del area en `management_reports_registry.dart`
+- o el token homologado del area cuando exista contrato mas formal
+
+No se permite:
+
+- inventar una paleta nueva solo para un reporte aislado
+- usar un color que contradiga la identidad visual del area
+- compensar con background decorativo lo que debe resolverse con un acento claro y controlado
+
+### Regla de detalle ejecutivo
+
+El PDF debe resumir todo el universo del corte, pero no esta obligado a imprimir todas las filas visibles si eso destruye la lectura ejecutiva.
+
+Se permite:
+
+- mostrar top areas
+- mostrar top equipos
+- mostrar solo los casos mas riesgosos
+- resumir el resto en KPIs y notas de trazabilidad
+
+Esto debe quedar explicitado cuando aplique:
+
+- cuantas filas se muestran
+- cuantas filas totales existen
+- que el resto ya esta resumido en KPIs, alertas o agregados
+
 ## Capa 5. Estado de confiabilidad
 
 Cada reporte debe llevar semaforo de calidad:
@@ -928,6 +1032,15 @@ Reusar el patron ya existente de PDFs dentro de la app:
 - `finanzas_provider_accounts_page.dart`
 - `maintenance_page.dart`
 - `mayoreo_accounts_page.dart`
+
+Y ademas respetar este contrato:
+
+- mismo arquetipo ejecutivo
+- fondo blanco limpio
+- header compacto
+- identidad del area por color acento
+- sin fondos graficos gigantes
+- sin logos usados como background
 
 ## Paso 5. Agregar historial
 

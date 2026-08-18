@@ -270,6 +270,9 @@ class _GerenciaBaleWeeklyTrackingPageState
                           focusNode: productionFocusNode,
                           controller: productionController,
                           keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) =>
+                              Navigator.of(dialogContext).pop(true),
                           decoration: const InputDecoration(
                             labelText: 'Meta producción',
                             hintText: 'Pacas de producción',
@@ -280,6 +283,9 @@ class _GerenciaBaleWeeklyTrackingPageState
                           focusNode: shipmentFocusNode,
                           controller: shipmentController,
                           keyboardType: TextInputType.number,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) =>
+                              Navigator.of(dialogContext).pop(true),
                           decoration: const InputDecoration(
                             labelText: 'Meta embarque',
                             hintText: 'Pacas de embarque',
@@ -291,6 +297,9 @@ class _GerenciaBaleWeeklyTrackingPageState
                           controller: notesController,
                           minLines: 2,
                           maxLines: 4,
+                          textInputAction: TextInputAction.done,
+                          onSubmitted: (_) =>
+                              Navigator.of(dialogContext).pop(true),
                           decoration: const InputDecoration(
                             labelText: 'Nota',
                             hintText: 'Comentario ejecutivo opcional',
@@ -330,14 +339,25 @@ class _GerenciaBaleWeeklyTrackingPageState
         );
       },
     );
+
+    // A dialog route can still rebuild its fields for the remainder of the
+    // frame in which it is popped. Dispose the nodes only after that frame so
+    // EditableText never subscribes to an already-disposed FocusNode.
+    final productionText = productionController.text;
+    final shipmentText = shipmentController.text;
+    final notesText = notesController.text;
+    await WidgetsBinding.instance.endOfFrame;
     productionFocusNode.dispose();
     shipmentFocusNode.dispose();
     notesFocusNode.dispose();
     cancelFocusNode.dispose();
     saveFocusNode.dispose();
+    productionController.dispose();
+    shipmentController.dispose();
+    notesController.dispose();
     if (result != true) return;
-    final productionTarget = int.tryParse(productionController.text.trim());
-    final shipmentTarget = int.tryParse(shipmentController.text.trim());
+    final productionTarget = int.tryParse(productionText.trim());
+    final shipmentTarget = int.tryParse(shipmentText.trim());
     if (productionTarget == null ||
         productionTarget < 0 ||
         shipmentTarget == null ||
@@ -354,7 +374,7 @@ class _GerenciaBaleWeeklyTrackingPageState
       line,
       productionTargetBales: productionTarget,
       shipmentTargetBales: shipmentTarget,
-      notes: notesController.text,
+      notes: notesText,
     );
     await _load();
   }

@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../dashboard/general_dashboard_page.dart';
 import '../shared/archetypes/dashboard/empty_area_dashboard.dart';
 import '../shared/page_routes.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
+import 'human_resources_area_chrome.dart';
+import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
 import 'human_resources_prenomina_page.dart';
@@ -157,6 +160,18 @@ class HumanResourcesDashboardPage extends StatelessWidget {
       );
     }
 
+    Future<void> openNomina() async {
+      await Navigator.of(context).push(
+        appPageRoute(page: const HumanResourcesNominaPage(instantOpen: true)),
+      );
+    }
+
+    Future<void> openDirectionDashboard() async {
+      await Navigator.of(context).pushReplacement(
+        appPageRoute(page: const GeneralDashboardPage(instantOpen: true)),
+      );
+    }
+
     return EmptyAreaDashboardPage(
       instantOpen: instantOpen,
       config: _config.copyWith(
@@ -168,7 +183,30 @@ class HumanResourcesDashboardPage extends StatelessWidget {
           onOpenVacations: openVacations,
           onOpenPermissions: openPermissions,
           onOpenPrenomina: openPrenomina,
+          onOpenNomina: openNomina,
         ),
+        sidePanelBuilder:
+            (context, config, canReturnToDirection, accessItems, areaItems) =>
+                HumanResourcesAreaSidePanel(
+                  label: 'Recursos Humanos',
+                  canReturnToDirection: canReturnToDirection,
+                  sections: buildHumanResourcesAreaSections(
+                    activeScreen: HumanResourcesAreaScreen.dashboard,
+                    openPersonnel: openPersonnel,
+                    openAttendance: openAttendance,
+                    openImportConciliation: openImportConciliation,
+                    openVacations: openVacations,
+                    openPermissions: openPermissions,
+                    openPrenomina: openPrenomina,
+                    openNomina: openNomina,
+                  ),
+                  accessItems: buildHumanResourcesAccessItems(
+                    activeScreen: HumanResourcesAreaScreen.dashboard,
+                    openDashboard: _noop,
+                    canReturnToDirection: canReturnToDirection,
+                    openDirectionDashboard: openDirectionDashboard,
+                  ),
+                ),
         showHeroPanel: false,
         showContractPanel: false,
         showPlaceholderCards: false,
@@ -216,6 +254,12 @@ class HumanResourcesDashboardPage extends StatelessWidget {
             icon: Icons.payments_outlined,
             onTap: openPrenomina,
           ),
+          DashboardNavAction(
+            title: 'Nómina',
+            subtitle: 'Cierre comparativo final del periodo',
+            icon: Icons.receipt_long_rounded,
+            onTap: openNomina,
+          ),
         ],
       ),
     );
@@ -232,6 +276,7 @@ class _HrDashboardWorkspace extends StatelessWidget {
   final Future<void> Function() onOpenVacations;
   final Future<void> Function() onOpenPermissions;
   final Future<void> Function() onOpenPrenomina;
+  final Future<void> Function() onOpenNomina;
 
   const _HrDashboardWorkspace({
     required this.width,
@@ -241,6 +286,7 @@ class _HrDashboardWorkspace extends StatelessWidget {
     required this.onOpenVacations,
     required this.onOpenPermissions,
     required this.onOpenPrenomina,
+    required this.onOpenNomina,
   });
 
   @override
@@ -283,6 +329,12 @@ class _HrDashboardWorkspace extends StatelessWidget {
               title: 'Prenómina',
               subtitle: 'Corrida borrador semanal por colaborador',
               onTap: onOpenPrenomina,
+            ),
+            _HrDashboardSimpleShortcutCard(
+              icon: Icons.receipt_long_rounded,
+              title: 'Nómina',
+              subtitle: 'Cierre comparativo final y validación',
+              onTap: onOpenNomina,
             ),
           ],
         ),
