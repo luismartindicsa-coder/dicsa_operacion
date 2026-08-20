@@ -774,7 +774,7 @@ managementAreaCatalog = <ManagementAreaDefinition>[
     title: 'Desarrollo Comercial',
     ownerLabel: 'Responsable de Desarrollo Comercial',
     subtitle:
-        'Prospectos, visitas y seguimiento comercial aún sin CRM homologado dentro de la app.',
+        'Prospectos, contactos, agenda y seguimiento comercial para supervisión semanal orientada a crecimiento.',
     accent: Color(0xFF7C4DFF),
     icon: Icons.radar_rounded,
     reports: <ManagementReportDefinition>[
@@ -782,8 +782,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'commercial_visits',
         title: 'Reporte de visitas',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'CRM pendiente',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'commercial_follow_ups',
         followUpPrompt:
             'A quién se visitó, qué resultado dejó y qué seguimiento quedó pactado.',
       ),
@@ -791,8 +791,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'commercial_10_prospects',
         title: 'Meta 10 prospectos nuevos a la semana',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'CRM pendiente',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'commercial_accounts',
         followUpPrompt:
             'Cuántos prospectos se abrieron y qué calidad real tienen.',
       ),
@@ -800,8 +800,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'commercial_conventions',
         title: 'Agenda de convenciones',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'CRM pendiente',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'commercial_agenda_entries',
         followUpPrompt:
             'Qué evento conviene atender y cuál aporta más contactos útiles.',
       ),
@@ -809,8 +809,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'commercial_contacts',
         title: 'Agenda de nuevos contactos',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'CRM pendiente',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'commercial_account_contacts',
         followUpPrompt:
             'Qué contactos nuevos aparecieron y qué siguiente paso tiene cada uno.',
       ),
@@ -818,8 +818,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'commercial_followup',
         title: 'Seguimiento a prospectos',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'CRM pendiente',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'commercial_accounts + commercial_follow_ups',
         followUpPrompt:
             'Qué prospectos se movieron y cuáles siguen sin empuje.',
       ),
@@ -827,8 +827,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'commercial_parts_sales',
         title: 'Seguimiento de ventas de piezas',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'CRM pendiente',
+        dataStatus: ManagementReportDataStatus.partial,
+        sourceLabel: 'v_commercial_market_events (provisional)',
         followUpPrompt:
             'Qué venta de piezas cerró y qué canal está funcionando mejor.',
       ),

@@ -3,6 +3,7 @@ import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../commercial/commercial_store.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
 import '../finanzas/finanzas_due_alerts_store.dart';
 import '../finanzas/finanzas_payment_center_budget_engine.dart';
@@ -69,6 +70,31 @@ const String _kExpensesPurchaseOrderLineFields =
 
 const String _kExpensesLinkedOtFields =
     'id,ot_folio,status,area_label,equipment_label';
+
+const String _kCommercialWeeklyAccountFields =
+    'id,display_name,kind,counterparty_business_type,'
+    'counterparty_business_group,source_area,source_record_id,'
+    'primary_channel,status,priority,notes,is_active,created_at,updated_at';
+
+const String _kCommercialWeeklyContactFields =
+    'id,account_id,name,role,phone,email,preferred_channel,is_primary,'
+    'is_active,created_at,updated_at';
+
+const String _kCommercialWeeklyFollowUpFields =
+    'id,account_id,contact_id,interaction_at,interaction_type,summary,'
+    'next_action,next_follow_up_at,material_interest_snapshot,'
+    'estimated_volume_snapshot,price_reference_snapshot,status,created_at,'
+    'updated_at';
+
+const String _kCommercialWeeklyAgendaFields =
+    'id,title,event_type,starts_at,ends_at,location,notes,status,created_at,'
+    'updated_at';
+
+const String _kCommercialWeeklySalesSignalFields =
+    'source_area,source_event_id,event_at,channel,flow,source_record_id,'
+    'counterparty_name,kind,counterparty_business_type,'
+    'counterparty_business_group,material_key,material_label,volume_kg,'
+    'amount_total,unit_price';
 
 const Map<String, String> _kPriorityLabels = <String, String>{
   'alta': 'Alta',
@@ -2552,6 +2578,443 @@ Future<Uint8List> buildSalesWeeklySupervisionPdfBytes({
                 ? 'Se muestran ${visibleCollectedRows.length} movimientos cobrados de ${insights.collectedWeekRows.length}; el resto ya queda reflejado en los KPIs.'
                 : null,
           ),
+          pw.SizedBox(height: 14),
+          _pdfSection(
+            title: 'Cierre gerencial',
+            accent: accent,
+            child: _pdfBulletList(insights.closeoutPrompts),
+          ),
+        ];
+      },
+    ),
+  );
+
+  return pdf.save();
+}
+
+Future<Uint8List> buildCommercialDevelopmentWeeklySupervisionPdfBytes({
+  required ManagementAreaDefinition area,
+  required DateTime generatedAt,
+  required String generatedBy,
+}) async {
+  final cut = _resolveCommercialDevelopmentWeeklyCut(generatedAt);
+  final source = await _loadCommercialDevelopmentWeeklySourceBundle(cut);
+  final insights = _buildCommercialDevelopmentWeeklyInsights(source, cut);
+  final logoImage = await _tryLoadManagementReportLogo();
+  final accentBase = area.accent;
+  final accent = _pdfColorFromFlutter(_managementAccentInk(accentBase));
+  final accentSoft = _pdfColorFromFlutter(_blendWithWhite(accentBase, 0.9));
+  final accentBorder = _pdfColorFromFlutter(_blendWithWhite(accentBase, 0.74));
+  final visibleFocusRows = insights.focusRows.take(14).toList(growable: false);
+  final visibleNewProspectRows = insights.newProspectRows
+      .take(18)
+      .toList(growable: false);
+  final visibleContactRows = insights.contactRows
+      .take(18)
+      .toList(growable: false);
+  final visibleVisitRows = insights.visitRows.take(24).toList(growable: false);
+  final visibleTrackingRows = insights.trackingRows
+      .take(24)
+      .toList(growable: false);
+  final visibleAgendaRows = insights.agendaRows
+      .take(18)
+      .toList(growable: false);
+  final visibleSalesSignalRows = insights.salesSignalRows
+      .take(18)
+      .toList(growable: false);
+  final hiddenFocusCount = insights.focusRows.length - visibleFocusRows.length;
+  final hiddenNewProspectCount =
+      insights.newProspectRows.length - visibleNewProspectRows.length;
+  final hiddenContactCount =
+      insights.contactRows.length - visibleContactRows.length;
+  final hiddenVisitCount = insights.visitRows.length - visibleVisitRows.length;
+  final hiddenTrackingCount =
+      insights.trackingRows.length - visibleTrackingRows.length;
+  final hiddenAgendaCount =
+      insights.agendaRows.length - visibleAgendaRows.length;
+  final hiddenSalesSignalCount =
+      insights.salesSignalRows.length - visibleSalesSignalRows.length;
+  final meta10Note = insights.newProspectCount >= insights.weeklyProspectGoal
+      ? 'Meta alcanzada'
+      : 'Faltan ${insights.weeklyProspectGoal - insights.newProspectCount}';
+
+  final pdf = pw.Document();
+  pdf.addPage(
+    pw.MultiPage(
+      pageTheme: _managementReportPdfPageTheme(PdfPageFormat.a4.landscape),
+      maxPages: 80,
+      build: (context) {
+        return <pw.Widget>[
+          _pdfHeader(
+            logoImage: logoImage,
+            eyebrow: 'REPORTE DE SEGUIMIENTO',
+            title: 'Desarrollo Comercial · prospectos y agenda semanal',
+            subtitle:
+                'Area Desarrollo Comercial · corte semanal para revisar prospectos nuevos, contactos, visitas, seguimientos y agenda comercial con lectura honesta de cobertura.',
+            badges: <MapEntry<String, String>>[
+              MapEntry('Area', area.title),
+              MapEntry(
+                'Corte',
+                '${_formatShortDate(cut.weekStart)} - ${_formatShortDate(cut.friday)}',
+              ),
+              MapEntry('Responsable', area.ownerLabel),
+              MapEntry('Generado', _formatDateTimeShort(generatedAt)),
+            ],
+            accent: accent,
+            accentSoft: accentSoft,
+            accentBorder: accentBorder,
+          ),
+          pw.SizedBox(height: 14),
+          _pdfSection(
+            title: 'Alcance del corte',
+            accent: accent,
+            child: pw.Column(
+              crossAxisAlignment: pw.CrossAxisAlignment.start,
+              children: <pw.Widget>[
+                _pdfBullet(
+                  'Reporte real incluido hoy: prospectos desde commercial_accounts, contactos desde commercial_account_contacts, seguimientos y visitas desde commercial_follow_ups, agenda desde commercial_agenda_entries y senal provisional de ventas desde v_commercial_market_events.',
+                ),
+                _pdfBullet(
+                  'La junta del viernes cubre ${_formatLongDateSpanish(cut.weekStart)} al ${_formatLongDateSpanish(cut.friday)} y esta observada unicamente hasta ${_formatDateTimeShort(cut.cutoffAt)}.',
+                ),
+                _pdfBullet(
+                  'La agenda estrategica se extiende hasta ${_formatLongDateSpanish(cut.agendaHorizonEnd)} para no perder convenciones y eventos cercanos al cierre.',
+                ),
+                _pdfBullet(
+                  'El bloque de ventas de piezas sigue parcial: hoy solo existe una senal provisional por material/evento; todavia no hay un flujo homologado por pieza dentro de la app.',
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 14),
+          _pdfSection(
+            title: 'Resumen ejecutivo',
+            accent: accent,
+            child: _pdfBulletList(insights.executiveSummary),
+          ),
+          pw.SizedBox(height: 14),
+          _pdfSection(
+            title: 'KPIs semanales de desarrollo comercial',
+            accent: accent,
+            child: _pdfKpiGrid(
+              accent: accent,
+              accentSoft: accentSoft,
+              items: <_PdfKpiItem>[
+                _PdfKpiItem(
+                  'Prospectos activos',
+                  '${insights.totalActiveProspectCount}',
+                ),
+                _PdfKpiItem(
+                  'Prospectos nuevos',
+                  '${insights.newProspectCount}',
+                  note: 'Semana actual',
+                ),
+                _PdfKpiItem(
+                  'Meta 10',
+                  '${insights.newProspectCount}/${insights.weeklyProspectGoal}',
+                  note: meta10Note,
+                ),
+                _PdfKpiItem('Contactos nuevos', '${insights.newContactCount}'),
+                _PdfKpiItem(
+                  'Seguimientos',
+                  '${insights.weekFollowUpCount}',
+                  note: 'Interacciones registradas',
+                ),
+                _PdfKpiItem(
+                  'Visitas',
+                  '${insights.visitCount}',
+                  note: 'Tipo visita',
+                ),
+                _PdfKpiItem(
+                  'Agenda visible',
+                  '${insights.agendaRows.length}',
+                  note: 'Hasta ${_formatShortDate(cut.agendaHorizonEnd)}',
+                ),
+                _PdfKpiItem(
+                  'Convenciones',
+                  '${insights.upcomingConventionCount}',
+                  note: 'Programadas / realizadas',
+                ),
+                _PdfKpiItem(
+                  'Prospectos vencidos',
+                  '${insights.overdueProspectCount}',
+                ),
+                _PdfKpiItem(
+                  'Sin contacto',
+                  '${insights.noContactProspectCount}',
+                ),
+              ],
+            ),
+          ),
+          if (insights.alerts.isNotEmpty) ...<pw.Widget>[
+            pw.SizedBox(height: 14),
+            _pdfSection(
+              title: 'Alertas automaticas',
+              accent: accent,
+              child: _pdfBulletList(insights.alerts),
+            ),
+          ],
+          pw.SizedBox(height: 14),
+          _pdfSection(
+            title: 'Foco semanal',
+            accent: accent,
+            child: _pdfTableWithOptionalNote(
+              note: hiddenFocusCount > 0
+                  ? 'Se muestran los ${visibleFocusRows.length} prospectos/cuentas con mayor riesgo visible de ${insights.focusRows.length}.'
+                  : null,
+              child: _pdfSimpleTable(
+                headers: const <String>[
+                  'Prospecto / cuenta',
+                  'Canal',
+                  'Prioridad',
+                  'Contactos',
+                  'Ultimo mov.',
+                  'Prox. paso',
+                  'Motivo',
+                ],
+                rows: visibleFocusRows
+                    .map(
+                      (row) => <String>[
+                        _sanitizePdfText(row.accountName),
+                        row.channelLabel,
+                        row.priorityLabel,
+                        '${row.contactCount}',
+                        _formatOptionalDate(row.latestInteractionAt),
+                        _formatOptionalDate(row.nextFollowUpAt),
+                        _sanitizePdfText(row.focusReason(cut)),
+                      ],
+                    )
+                    .toList(growable: false),
+                emptyLabel:
+                    'No hay prospectos o cuentas con foco especial en este corte.',
+                headerColor: accent,
+              ),
+            ),
+          ),
+          pw.SizedBox(height: 14),
+          _pdfSection(
+            title: 'Prospectos nuevos de la semana',
+            accent: accent,
+            child: _pdfTableWithOptionalNote(
+              note: hiddenNewProspectCount > 0
+                  ? 'Se muestran ${visibleNewProspectRows.length} altas recientes de ${insights.newProspectRows.length}.'
+                  : null,
+              child: _pdfSimpleTable(
+                headers: const <String>[
+                  'Prospecto',
+                  'Canal',
+                  'Fuente',
+                  'Alta',
+                  'Contactos',
+                  'Seguim. sem.',
+                  'Lectura',
+                ],
+                rows: visibleNewProspectRows
+                    .map(
+                      (row) => <String>[
+                        _sanitizePdfText(row.accountName),
+                        row.channelLabel,
+                        row.sourceLabel,
+                        _formatShortDate(row.createdAt),
+                        '${row.contactCount}',
+                        '${row.weekFollowUpCount}',
+                        _sanitizePdfText(_truncate(row.statusNote, 52)),
+                      ],
+                    )
+                    .toList(growable: false),
+                emptyLabel:
+                    'No hay prospectos nuevos capturados dentro de esta semana.',
+                headerColor: accent,
+              ),
+            ),
+          ),
+          pw.SizedBox(height: 14),
+          _pdfSection(
+            title: 'Contactos nuevos de la semana',
+            accent: accent,
+            child: _pdfTableWithOptionalNote(
+              note: hiddenContactCount > 0
+                  ? 'Se muestran ${visibleContactRows.length} contactos recientes de ${insights.contactRows.length}.'
+                  : null,
+              child: _pdfSimpleTable(
+                headers: const <String>[
+                  'Cuenta',
+                  'Contacto',
+                  'Rol',
+                  'Creado',
+                  'Canal',
+                  'Lectura',
+                ],
+                rows: visibleContactRows
+                    .map(
+                      (row) => <String>[
+                        _sanitizePdfText(row.accountName),
+                        _sanitizePdfText(row.contactName),
+                        _sanitizePdfText(row.roleLabel),
+                        _formatShortDate(row.createdAt),
+                        row.channelLabel,
+                        _sanitizePdfText(_truncate(row.note, 46)),
+                      ],
+                    )
+                    .toList(growable: false),
+                emptyLabel:
+                    'No hay contactos nuevos capturados dentro de esta semana.',
+                headerColor: accent,
+              ),
+            ),
+          ),
+          ..._pdfChunkedTableSections(
+            title: 'Visitas registradas de la semana',
+            accent: accent,
+            headers: const <String>[
+              'Fecha',
+              'Cuenta',
+              'Canal',
+              'Resumen',
+              'Siguiente paso',
+              'Estatus',
+            ],
+            rows: visibleVisitRows
+                .map(
+                  (row) => <String>[
+                    _formatDateTimeShort(row.interactionAt),
+                    _sanitizePdfText(row.accountName),
+                    row.channelLabel,
+                    _sanitizePdfText(_truncate(row.summary, 40)),
+                    _sanitizePdfText(_truncate(row.nextAction, 34)),
+                    row.statusLabel,
+                  ],
+                )
+                .toList(growable: false),
+            emptyLabel:
+                'No hay visitas capturadas como seguimiento dentro de esta semana.',
+            headerColor: accent,
+            compact: true,
+            maxRowsPerSection: 12,
+            introNote: hiddenVisitCount > 0
+                ? 'Se muestran ${visibleVisitRows.length} visitas de ${insights.visitRows.length}; el resto ya queda contabilizado en los KPIs.'
+                : null,
+          ),
+          ..._pdfChunkedTableSections(
+            title: 'Seguimiento activo a prospectos',
+            accent: accent,
+            headers: const <String>[
+              'Prospecto',
+              'Prioridad',
+              'Ultimo mov.',
+              'Prox. paso',
+              'Seguim. sem.',
+              'Visitas',
+              'Lectura',
+            ],
+            rows: visibleTrackingRows
+                .map(
+                  (row) => <String>[
+                    _sanitizePdfText(row.accountName),
+                    row.priorityLabel,
+                    _formatOptionalDate(row.latestInteractionAt),
+                    _formatOptionalDate(row.nextFollowUpAt),
+                    '${row.weekFollowUpCount}',
+                    '${row.weekVisitCount}',
+                    _sanitizePdfText(_truncate(row.statusNote, 46)),
+                  ],
+                )
+                .toList(growable: false),
+            emptyLabel:
+                'No hay prospectos activos con seguimiento visible en este momento.',
+            headerColor: accent,
+            compact: true,
+            maxRowsPerSection: 12,
+            introNote: hiddenTrackingCount > 0
+                ? 'Se muestran ${visibleTrackingRows.length} cuentas/prospectos de ${insights.trackingRows.length}; el resto ya queda resumido en foco y KPIs.'
+                : null,
+          ),
+          pw.SizedBox(height: 14),
+          _pdfSection(
+            title: 'Agenda comercial y convenciones',
+            accent: accent,
+            child: _pdfTableWithOptionalNote(
+              note: hiddenAgendaCount > 0
+                  ? 'Se muestran ${visibleAgendaRows.length} eventos de ${insights.agendaRows.length} visibles hasta ${_formatShortDate(cut.agendaHorizonEnd)}.'
+                  : null,
+              child: _pdfSimpleTable(
+                headers: const <String>[
+                  'Fecha',
+                  'Tipo',
+                  'Titulo',
+                  'Ubicacion',
+                  'Estatus',
+                  'Lectura',
+                ],
+                rows: visibleAgendaRows
+                    .map(
+                      (row) => <String>[
+                        _formatDateTimeShort(row.startsAt),
+                        row.typeLabel,
+                        _sanitizePdfText(row.title),
+                        _sanitizePdfText(row.locationLabel),
+                        row.statusLabel,
+                        _sanitizePdfText(_truncate(row.note, 42)),
+                      ],
+                    )
+                    .toList(growable: false),
+                emptyLabel:
+                    'No hay eventos de agenda visibles en el horizonte estrategico actual.',
+                headerColor: accent,
+              ),
+            ),
+          ),
+          pw.SizedBox(height: 14),
+          _pdfSection(
+            title: 'Senal provisional de ventas por material',
+            accent: accent,
+            child: _pdfTableWithOptionalNote(
+              note:
+                  'Bloque transitorio mientras se homologa el seguimiento especifico de ventas de piezas dentro de Desarrollo Comercial.',
+              child: _pdfSimpleTable(
+                headers: const <String>[
+                  'Canal',
+                  'Material',
+                  'Eventos',
+                  'Clientes',
+                  'KG',
+                  'Importe',
+                  'Precio medio',
+                ],
+                rows: visibleSalesSignalRows
+                    .map(
+                      (row) => <String>[
+                        row.channelLabel,
+                        _sanitizePdfText(row.materialLabel),
+                        '${row.eventCount}',
+                        '${row.counterpartyCount}',
+                        '${_formatQuantity(row.volumeKg)} KG',
+                        _formatCurrency(row.amountTotal),
+                        _formatCurrency(row.averagePrice),
+                      ],
+                    )
+                    .toList(growable: false),
+                emptyLabel:
+                    'No hay eventos de venta visibles en esta semana para construir una senal provisional.',
+                headerColor: accent,
+              ),
+            ),
+          ),
+          if (hiddenSalesSignalCount > 0) ...<pw.Widget>[
+            pw.SizedBox(height: 6),
+            pw.Text(
+              'Se muestran ${visibleSalesSignalRows.length} materiales de ${insights.salesSignalRows.length}; el resto queda fuera por relevancia economica.',
+              style: _mutedStyle(fontSize: 9.5),
+            ),
+          ],
+          if (insights.coverageNotes.isNotEmpty) ...<pw.Widget>[
+            pw.SizedBox(height: 14),
+            _pdfSection(
+              title: 'Cobertura pendiente y honestidad del corte',
+              accent: accent,
+              child: _pdfBulletList(insights.coverageNotes),
+            ),
+          ],
           pw.SizedBox(height: 14),
           _pdfSection(
             title: 'Cierre gerencial',
@@ -8798,6 +9261,1317 @@ class _SalesWeeklyCollectionInsights {
     required this.alerts,
     required this.closeoutPrompts,
   });
+}
+
+class _CommercialDevelopmentWeeklyCut {
+  final DateTime weekStart;
+  final DateTime friday;
+  final DateTime cutoffAt;
+  final DateTime agendaHorizonEnd;
+
+  const _CommercialDevelopmentWeeklyCut({
+    required this.weekStart,
+    required this.friday,
+    required this.cutoffAt,
+    required this.agendaHorizonEnd,
+  });
+}
+
+class _CommercialWeeklySourceBundle {
+  final List<_CommercialWeeklyAccountRow> accounts;
+  final List<_CommercialWeeklyContactRow> contacts;
+  final List<_CommercialWeeklyFollowUpRow> followUps;
+  final List<_CommercialWeeklyAgendaEntryRow> agendaRows;
+  final List<_CommercialWeeklyMarketEventRow> salesEventRows;
+
+  const _CommercialWeeklySourceBundle({
+    required this.accounts,
+    required this.contacts,
+    required this.followUps,
+    required this.agendaRows,
+    required this.salesEventRows,
+  });
+}
+
+class _CommercialWeeklyAccountRow {
+  final String id;
+  final String displayName;
+  final String kind;
+  final String businessType;
+  final String businessGroup;
+  final String sourceArea;
+  final String sourceRecordId;
+  final String primaryChannel;
+  final String status;
+  final String priority;
+  final String notes;
+  final bool isActive;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const _CommercialWeeklyAccountRow({
+    required this.id,
+    required this.displayName,
+    required this.kind,
+    required this.businessType,
+    required this.businessGroup,
+    required this.sourceArea,
+    required this.sourceRecordId,
+    required this.primaryChannel,
+    required this.status,
+    required this.priority,
+    required this.notes,
+    required this.isActive,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory _CommercialWeeklyAccountRow.fromJson(Map<String, dynamic> json) {
+    final createdAt =
+        DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+        DateTime.now();
+    return _CommercialWeeklyAccountRow(
+      id: _stringOrFallback(json['id'], 'sin-id'),
+      displayName: _stringOrFallback(json['display_name'], 'Sin cuenta'),
+      kind: _normalizeTag(json['kind']),
+      businessType: _normalizeTag(json['counterparty_business_type']),
+      businessGroup: _normalizeTag(json['counterparty_business_group']),
+      sourceArea: _normalizeTag(json['source_area']),
+      sourceRecordId: _cleanString(json['source_record_id']),
+      primaryChannel: _normalizeTag(json['primary_channel']),
+      status: _normalizeTag(json['status']),
+      priority: _normalizeTag(json['priority']),
+      notes: _cleanString(json['notes']),
+      isActive: json['is_active'] as bool? ?? true,
+      createdAt: createdAt,
+      updatedAt:
+          DateTime.tryParse((json['updated_at'] ?? '').toString()) ?? createdAt,
+    );
+  }
+
+  bool get isProspect =>
+      kind == 'prospect' ||
+      status == 'prospecto' ||
+      businessType == 'prospect' ||
+      businessGroup == 'manual_prospect';
+
+  bool get isActiveProspect => isActive && isProspect && status != 'cerrado';
+
+  bool isCreatedWithin(_CommercialDevelopmentWeeklyCut cut) {
+    final day = _pdfDateOnly(createdAt);
+    return !day.isBefore(cut.weekStart) &&
+        !day.isAfter(_pdfDateOnly(cut.cutoffAt));
+  }
+
+  String get channelLabel => _commercialChannelLabel(primaryChannel);
+  String get priorityLabel => commercialPriorityLabel(priority);
+  String get sourceLabel =>
+      _commercialAccountSourceLabel(sourceArea, sourceRecordId);
+}
+
+class _CommercialWeeklyContactRow {
+  final String id;
+  final String accountId;
+  final String name;
+  final String role;
+  final String phone;
+  final String email;
+  final String preferredChannel;
+  final bool isPrimary;
+  final bool isActive;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const _CommercialWeeklyContactRow({
+    required this.id,
+    required this.accountId,
+    required this.name,
+    required this.role,
+    required this.phone,
+    required this.email,
+    required this.preferredChannel,
+    required this.isPrimary,
+    required this.isActive,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory _CommercialWeeklyContactRow.fromJson(Map<String, dynamic> json) {
+    final createdAt =
+        DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+        DateTime.now();
+    return _CommercialWeeklyContactRow(
+      id: _stringOrFallback(json['id'], 'sin-id'),
+      accountId: _cleanString(json['account_id']),
+      name: _stringOrFallback(json['name'], 'Sin contacto'),
+      role: _cleanString(json['role']),
+      phone: _cleanString(json['phone']),
+      email: _cleanString(json['email']),
+      preferredChannel: _normalizeTag(json['preferred_channel']),
+      isPrimary: json['is_primary'] as bool? ?? false,
+      isActive: json['is_active'] as bool? ?? true,
+      createdAt: createdAt,
+      updatedAt:
+          DateTime.tryParse((json['updated_at'] ?? '').toString()) ?? createdAt,
+    );
+  }
+
+  bool isCreatedWithin(_CommercialDevelopmentWeeklyCut cut) {
+    final day = _pdfDateOnly(createdAt);
+    return !day.isBefore(cut.weekStart) &&
+        !day.isAfter(_pdfDateOnly(cut.cutoffAt));
+  }
+}
+
+class _CommercialWeeklyFollowUpRow {
+  final String id;
+  final String accountId;
+  final String contactId;
+  final DateTime interactionAt;
+  final String interactionType;
+  final String summary;
+  final String nextAction;
+  final DateTime? nextFollowUpAt;
+  final String materialInterestSnapshot;
+  final double? estimatedVolumeSnapshot;
+  final double? priceReferenceSnapshot;
+  final String status;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const _CommercialWeeklyFollowUpRow({
+    required this.id,
+    required this.accountId,
+    required this.contactId,
+    required this.interactionAt,
+    required this.interactionType,
+    required this.summary,
+    required this.nextAction,
+    required this.nextFollowUpAt,
+    required this.materialInterestSnapshot,
+    required this.estimatedVolumeSnapshot,
+    required this.priceReferenceSnapshot,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory _CommercialWeeklyFollowUpRow.fromJson(Map<String, dynamic> json) {
+    final createdAt =
+        DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+        DateTime.now();
+    final interactionAt =
+        DateTime.tryParse((json['interaction_at'] ?? '').toString()) ??
+        createdAt;
+    return _CommercialWeeklyFollowUpRow(
+      id: _stringOrFallback(json['id'], 'sin-id'),
+      accountId: _cleanString(json['account_id']),
+      contactId: _cleanString(json['contact_id']),
+      interactionAt: interactionAt,
+      interactionType: _normalizeTag(json['interaction_type']),
+      summary: _stringOrFallback(json['summary'], 'Sin resumen'),
+      nextAction: _cleanString(json['next_action']),
+      nextFollowUpAt: DateTime.tryParse(
+        (json['next_follow_up_at'] ?? '').toString(),
+      ),
+      materialInterestSnapshot: _cleanString(
+        json['material_interest_snapshot'],
+      ),
+      estimatedVolumeSnapshot: _toNullableDouble(
+        json['estimated_volume_snapshot'],
+      ),
+      priceReferenceSnapshot: _toNullableDouble(
+        json['price_reference_snapshot'],
+      ),
+      status: _normalizeTag(json['status']),
+      createdAt: createdAt,
+      updatedAt:
+          DateTime.tryParse((json['updated_at'] ?? '').toString()) ?? createdAt,
+    );
+  }
+
+  bool get isVisit => interactionType == 'visita';
+  bool get isOpen => status != 'hecho';
+
+  bool isInteractionWithin(_CommercialDevelopmentWeeklyCut cut) {
+    final day = _pdfDateOnly(interactionAt);
+    return !day.isBefore(cut.weekStart) &&
+        !day.isAfter(_pdfDateOnly(cut.cutoffAt));
+  }
+
+  bool isOverdueAt(DateTime referenceDate) {
+    if (!isOpen || nextFollowUpAt == null) return false;
+    return !_pdfDateOnly(nextFollowUpAt!).isAfter(_pdfDateOnly(referenceDate));
+  }
+
+  String get statusLabel => _commercialFollowUpStatusLabel(status);
+
+  String get materialSnapshotLabel {
+    final parts = <String>[];
+    if (materialInterestSnapshot.trim().isNotEmpty) {
+      parts.add(materialInterestSnapshot.trim());
+    }
+    if (estimatedVolumeSnapshot != null && estimatedVolumeSnapshot! > 0) {
+      parts.add('${_formatQuantity(estimatedVolumeSnapshot!)} KG');
+    }
+    if (priceReferenceSnapshot != null && priceReferenceSnapshot! > 0) {
+      parts.add(_formatCurrency(priceReferenceSnapshot!));
+    }
+    return parts.join(' | ');
+  }
+
+  String get nextActionLabel {
+    if (nextAction.trim().isNotEmpty) return nextAction.trim();
+    if (nextFollowUpAt != null) {
+      return 'Revisar ${_formatShortDate(nextFollowUpAt!)}';
+    }
+    return 'Sin siguiente paso';
+  }
+}
+
+class _CommercialWeeklyAgendaEntryRow {
+  final String id;
+  final String title;
+  final String eventType;
+  final DateTime startsAt;
+  final DateTime? endsAt;
+  final String location;
+  final String notes;
+  final String status;
+  final DateTime createdAt;
+  final DateTime updatedAt;
+
+  const _CommercialWeeklyAgendaEntryRow({
+    required this.id,
+    required this.title,
+    required this.eventType,
+    required this.startsAt,
+    required this.endsAt,
+    required this.location,
+    required this.notes,
+    required this.status,
+    required this.createdAt,
+    required this.updatedAt,
+  });
+
+  factory _CommercialWeeklyAgendaEntryRow.fromJson(Map<String, dynamic> json) {
+    final createdAt =
+        DateTime.tryParse((json['created_at'] ?? '').toString()) ??
+        DateTime.now();
+    final startsAt =
+        DateTime.tryParse((json['starts_at'] ?? '').toString()) ?? createdAt;
+    return _CommercialWeeklyAgendaEntryRow(
+      id: _stringOrFallback(json['id'], 'sin-id'),
+      title: _stringOrFallback(json['title'], 'Sin titulo'),
+      eventType: _normalizeTag(json['event_type']),
+      startsAt: startsAt,
+      endsAt: DateTime.tryParse((json['ends_at'] ?? '').toString()),
+      location: _cleanString(json['location']),
+      notes: _cleanString(json['notes']),
+      status: _normalizeTag(json['status']),
+      createdAt: createdAt,
+      updatedAt:
+          DateTime.tryParse((json['updated_at'] ?? '').toString()) ?? createdAt,
+    );
+  }
+
+  bool get isConvention => eventType == 'convencion';
+
+  bool isWithinHorizon(_CommercialDevelopmentWeeklyCut cut) {
+    final day = _pdfDateOnly(startsAt);
+    return !day.isBefore(cut.weekStart) &&
+        !day.isAfter(_pdfDateOnly(cut.agendaHorizonEnd));
+  }
+
+  String get typeLabel => _commercialAgendaTypeLabel(eventType);
+  String get statusLabel => _commercialAgendaStatusLabel(status);
+  String get locationLabel =>
+      location.trim().isEmpty ? 'Sin ubicacion' : location.trim();
+
+  String get noteLabel {
+    if (notes.trim().isNotEmpty) return notes.trim();
+    if (isConvention) return 'Convencion registrada en agenda';
+    return '$typeLabel ${statusLabel.toLowerCase()}';
+  }
+}
+
+class _CommercialWeeklyMarketEventRow {
+  final String sourceArea;
+  final String sourceEventId;
+  final DateTime eventAt;
+  final String channel;
+  final String sourceRecordId;
+  final String counterpartyName;
+  final String materialKey;
+  final String materialLabel;
+  final double volumeKg;
+  final double amountTotal;
+  final double unitPrice;
+
+  const _CommercialWeeklyMarketEventRow({
+    required this.sourceArea,
+    required this.sourceEventId,
+    required this.eventAt,
+    required this.channel,
+    required this.sourceRecordId,
+    required this.counterpartyName,
+    required this.materialKey,
+    required this.materialLabel,
+    required this.volumeKg,
+    required this.amountTotal,
+    required this.unitPrice,
+  });
+
+  factory _CommercialWeeklyMarketEventRow.fromJson(Map<String, dynamic> json) {
+    return _CommercialWeeklyMarketEventRow(
+      sourceArea: _normalizeTag(json['source_area']),
+      sourceEventId: _stringOrFallback(json['source_event_id'], 'sin-evento'),
+      eventAt:
+          DateTime.tryParse((json['event_at'] ?? '').toString()) ??
+          DateTime.now(),
+      channel: _normalizeTag(json['channel']),
+      sourceRecordId: _cleanString(json['source_record_id']),
+      counterpartyName: _stringOrFallback(
+        json['counterparty_name'],
+        'Sin contraparte',
+      ),
+      materialKey: _cleanString(json['material_key']),
+      materialLabel: _stringOrFallback(json['material_label'], 'Sin material'),
+      volumeKg: _toNullableDouble(json['volume_kg']) ?? 0,
+      amountTotal: _toNullableDouble(json['amount_total']) ?? 0,
+      unitPrice: _toNullableDouble(json['unit_price']) ?? 0,
+    );
+  }
+
+  String get channelLabel => _commercialChannelLabel(channel);
+}
+
+class _CommercialWeeklyProspectFocusRow {
+  final String accountId;
+  final String accountName;
+  final String channelLabel;
+  final String sourceLabel;
+  final String priorityKey;
+  final String priorityLabel;
+  final DateTime createdAt;
+  final int contactCount;
+  final int totalFollowUpCount;
+  final int weekFollowUpCount;
+  final int weekVisitCount;
+  final int openFollowUpCount;
+  final DateTime? latestInteractionAt;
+  final DateTime? nextFollowUpAt;
+  final String latestFollowUpStatus;
+  final String latestSummary;
+  final bool missingContact;
+  final bool missingNextStep;
+  final bool isOverdue;
+  final String statusNote;
+
+  const _CommercialWeeklyProspectFocusRow({
+    required this.accountId,
+    required this.accountName,
+    required this.channelLabel,
+    required this.sourceLabel,
+    required this.priorityKey,
+    required this.priorityLabel,
+    required this.createdAt,
+    required this.contactCount,
+    required this.totalFollowUpCount,
+    required this.weekFollowUpCount,
+    required this.weekVisitCount,
+    required this.openFollowUpCount,
+    required this.latestInteractionAt,
+    required this.nextFollowUpAt,
+    required this.latestFollowUpStatus,
+    required this.latestSummary,
+    required this.missingContact,
+    required this.missingNextStep,
+    required this.isOverdue,
+    required this.statusNote,
+  });
+
+  bool isCreatedWithin(_CommercialDevelopmentWeeklyCut cut) {
+    final day = _pdfDateOnly(createdAt);
+    return !day.isBefore(cut.weekStart) &&
+        !day.isAfter(_pdfDateOnly(cut.cutoffAt));
+  }
+
+  int focusScore(_CommercialDevelopmentWeeklyCut cut) {
+    var score = _commercialPriorityRank(priorityKey) * 2;
+    if (missingContact) score += 6;
+    if (missingNextStep) score += 5;
+    if (isOverdue) score += 7;
+    if (latestFollowUpStatus == 'sin_respuesta') score += 4;
+    if (weekFollowUpCount == 0) score += 3;
+    if (weekVisitCount == 0 && _commercialPriorityRank(priorityKey) >= 3) {
+      score += 1;
+    }
+    if (isCreatedWithin(cut) && weekFollowUpCount == 0) score += 4;
+    if (latestInteractionAt == null) score += 3;
+    return score;
+  }
+
+  String focusReason(_CommercialDevelopmentWeeklyCut cut) {
+    final reasons = <String>[];
+    if (isOverdue) reasons.add('Siguiente paso vencido');
+    if (missingContact) reasons.add('Sin contacto');
+    if (missingNextStep) reasons.add('Sin fecha siguiente');
+    if (latestFollowUpStatus == 'sin_respuesta') reasons.add('Sin respuesta');
+    if (isCreatedWithin(cut) && weekFollowUpCount == 0) {
+      reasons.add('Alta sin primer seguimiento');
+    } else if (weekFollowUpCount == 0) {
+      reasons.add('Sin movimiento esta semana');
+    }
+    if (reasons.isEmpty && weekVisitCount == 0) {
+      reasons.add('Seguir empujando');
+    }
+    if (reasons.isEmpty) reasons.add('Seguimiento');
+    return reasons.join(' | ');
+  }
+}
+
+class _CommercialWeeklyContactViewRow {
+  final String accountName;
+  final String contactName;
+  final String roleLabel;
+  final DateTime createdAt;
+  final String channelLabel;
+  final String note;
+
+  const _CommercialWeeklyContactViewRow({
+    required this.accountName,
+    required this.contactName,
+    required this.roleLabel,
+    required this.createdAt,
+    required this.channelLabel,
+    required this.note,
+  });
+}
+
+class _CommercialWeeklyVisitViewRow {
+  final DateTime interactionAt;
+  final String accountName;
+  final String channelLabel;
+  final String summary;
+  final String nextAction;
+  final String statusLabel;
+
+  const _CommercialWeeklyVisitViewRow({
+    required this.interactionAt,
+    required this.accountName,
+    required this.channelLabel,
+    required this.summary,
+    required this.nextAction,
+    required this.statusLabel,
+  });
+}
+
+class _CommercialWeeklyAgendaViewRow {
+  final DateTime startsAt;
+  final String typeLabel;
+  final String title;
+  final String locationLabel;
+  final String statusLabel;
+  final String note;
+
+  const _CommercialWeeklyAgendaViewRow({
+    required this.startsAt,
+    required this.typeLabel,
+    required this.title,
+    required this.locationLabel,
+    required this.statusLabel,
+    required this.note,
+  });
+}
+
+class _CommercialWeeklySalesSignalRow {
+  final String channelLabel;
+  final String materialLabel;
+  final int eventCount;
+  final int counterpartyCount;
+  final double volumeKg;
+  final double amountTotal;
+  final double averagePrice;
+
+  const _CommercialWeeklySalesSignalRow({
+    required this.channelLabel,
+    required this.materialLabel,
+    required this.eventCount,
+    required this.counterpartyCount,
+    required this.volumeKg,
+    required this.amountTotal,
+    required this.averagePrice,
+  });
+}
+
+class _CommercialDevelopmentWeeklyInsights {
+  final int totalActiveProspectCount;
+  final int weeklyProspectGoal;
+  final int newProspectCount;
+  final int newContactCount;
+  final int weekFollowUpCount;
+  final int visitCount;
+  final int upcomingConventionCount;
+  final int overdueProspectCount;
+  final int noContactProspectCount;
+  final int noNextStepProspectCount;
+  final List<_CommercialWeeklyProspectFocusRow> focusRows;
+  final List<_CommercialWeeklyProspectFocusRow> newProspectRows;
+  final List<_CommercialWeeklyProspectFocusRow> trackingRows;
+  final List<_CommercialWeeklyContactViewRow> contactRows;
+  final List<_CommercialWeeklyVisitViewRow> visitRows;
+  final List<_CommercialWeeklyAgendaViewRow> agendaRows;
+  final List<_CommercialWeeklySalesSignalRow> salesSignalRows;
+  final List<String> executiveSummary;
+  final List<String> alerts;
+  final List<String> closeoutPrompts;
+  final List<String> coverageNotes;
+
+  const _CommercialDevelopmentWeeklyInsights({
+    required this.totalActiveProspectCount,
+    required this.weeklyProspectGoal,
+    required this.newProspectCount,
+    required this.newContactCount,
+    required this.weekFollowUpCount,
+    required this.visitCount,
+    required this.upcomingConventionCount,
+    required this.overdueProspectCount,
+    required this.noContactProspectCount,
+    required this.noNextStepProspectCount,
+    required this.focusRows,
+    required this.newProspectRows,
+    required this.trackingRows,
+    required this.contactRows,
+    required this.visitRows,
+    required this.agendaRows,
+    required this.salesSignalRows,
+    required this.executiveSummary,
+    required this.alerts,
+    required this.closeoutPrompts,
+    required this.coverageNotes,
+  });
+}
+
+_CommercialDevelopmentWeeklyCut _resolveCommercialDevelopmentWeeklyCut(
+  DateTime generatedAt,
+) {
+  final friday = _nextOrSameFriday(generatedAt);
+  final weekStart = friday.subtract(const Duration(days: 4));
+  final fridayEnd = DateTime(
+    friday.year,
+    friday.month,
+    friday.day,
+    23,
+    59,
+    59,
+    999,
+  );
+  final cutoffAt = generatedAt.isAfter(fridayEnd) ? fridayEnd : generatedAt;
+  final agendaHorizonEnd = friday.add(const Duration(days: 21));
+  return _CommercialDevelopmentWeeklyCut(
+    weekStart: weekStart,
+    friday: friday,
+    cutoffAt: cutoffAt,
+    agendaHorizonEnd: agendaHorizonEnd,
+  );
+}
+
+Future<_CommercialWeeklySourceBundle>
+_loadCommercialDevelopmentWeeklySourceBundle(
+  _CommercialDevelopmentWeeklyCut cut,
+) async {
+  final supa = Supabase.instance.client;
+  final salesWindowStart = cut.weekStart.toUtc().toIso8601String();
+  final salesWindowEnd = cut.cutoffAt
+      .add(const Duration(seconds: 1))
+      .toUtc()
+      .toIso8601String();
+  final results = await Future.wait<dynamic>(<Future<dynamic>>[
+    fetchAllSupabaseRows(
+      (from, to) => supa
+          .from('commercial_accounts')
+          .select(_kCommercialWeeklyAccountFields)
+          .order('updated_at', ascending: false)
+          .range(from, to),
+      pageSize: 500,
+    ),
+    fetchAllSupabaseRows(
+      (from, to) => supa
+          .from('commercial_account_contacts')
+          .select(_kCommercialWeeklyContactFields)
+          .order('created_at', ascending: false)
+          .range(from, to),
+      pageSize: 500,
+    ),
+    fetchAllSupabaseRows(
+      (from, to) => supa
+          .from('commercial_follow_ups')
+          .select(_kCommercialWeeklyFollowUpFields)
+          .order('interaction_at', ascending: false)
+          .range(from, to),
+      pageSize: 500,
+    ),
+    fetchAllSupabaseRows(
+      (from, to) => supa
+          .from('commercial_agenda_entries')
+          .select(_kCommercialWeeklyAgendaFields)
+          .order('starts_at', ascending: true)
+          .range(from, to),
+      pageSize: 500,
+    ),
+    fetchAllSupabaseRows(
+      (from, to) => supa
+          .from('v_commercial_market_events')
+          .select(_kCommercialWeeklySalesSignalFields)
+          .eq('flow', 'sale')
+          .gte('event_at', salesWindowStart)
+          .lt('event_at', salesWindowEnd)
+          .order('event_at', ascending: false)
+          .range(from, to),
+      pageSize: 500,
+    ),
+  ]);
+
+  return _CommercialWeeklySourceBundle(
+    accounts: _decodeSupabaseRows(
+      results[0],
+    ).map(_CommercialWeeklyAccountRow.fromJson).toList(growable: false),
+    contacts: _decodeSupabaseRows(
+      results[1],
+    ).map(_CommercialWeeklyContactRow.fromJson).toList(growable: false),
+    followUps: _decodeSupabaseRows(
+      results[2],
+    ).map(_CommercialWeeklyFollowUpRow.fromJson).toList(growable: false),
+    agendaRows: _decodeSupabaseRows(
+      results[3],
+    ).map(_CommercialWeeklyAgendaEntryRow.fromJson).toList(growable: false),
+    salesEventRows: _decodeSupabaseRows(
+      results[4],
+    ).map(_CommercialWeeklyMarketEventRow.fromJson).toList(growable: false),
+  );
+}
+
+_CommercialDevelopmentWeeklyInsights _buildCommercialDevelopmentWeeklyInsights(
+  _CommercialWeeklySourceBundle source,
+  _CommercialDevelopmentWeeklyCut cut,
+) {
+  const weeklyProspectGoal = 10;
+  final accountById = <String, _CommercialWeeklyAccountRow>{};
+  for (final row in source.accounts) {
+    if (row.id.trim().isEmpty) continue;
+    accountById[row.id] = row;
+  }
+
+  final contactsByAccountId = <String, List<_CommercialWeeklyContactRow>>{};
+  for (final row in source.contacts) {
+    if (!row.isActive || row.accountId.trim().isEmpty) continue;
+    contactsByAccountId
+        .putIfAbsent(row.accountId, () => <_CommercialWeeklyContactRow>[])
+        .add(row);
+  }
+  for (final rows in contactsByAccountId.values) {
+    rows.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+  }
+
+  final followUpsByAccountId = <String, List<_CommercialWeeklyFollowUpRow>>{};
+  for (final row in source.followUps) {
+    if (row.accountId.trim().isEmpty) continue;
+    followUpsByAccountId
+        .putIfAbsent(row.accountId, () => <_CommercialWeeklyFollowUpRow>[])
+        .add(row);
+  }
+  for (final rows in followUpsByAccountId.values) {
+    rows.sort((a, b) => b.interactionAt.compareTo(a.interactionAt));
+  }
+
+  final prospectAccounts = source.accounts
+      .where((row) => row.isActiveProspect)
+      .toList(growable: false);
+  final trackingRows = <_CommercialWeeklyProspectFocusRow>[];
+  for (final account in prospectAccounts) {
+    final accountContacts =
+        contactsByAccountId[account.id] ??
+        const <_CommercialWeeklyContactRow>[];
+    final accountFollowUps =
+        followUpsByAccountId[account.id] ??
+        const <_CommercialWeeklyFollowUpRow>[];
+    final latestFollowUp = accountFollowUps.isEmpty
+        ? null
+        : accountFollowUps.first;
+    DateTime? nextFollowUpAt;
+    for (final row in accountFollowUps) {
+      if (!row.isOpen || row.nextFollowUpAt == null) continue;
+      if (nextFollowUpAt == null ||
+          row.nextFollowUpAt!.isBefore(nextFollowUpAt)) {
+        nextFollowUpAt = row.nextFollowUpAt;
+      }
+    }
+    final weekFollowUpCount = accountFollowUps
+        .where((row) => row.isInteractionWithin(cut))
+        .length;
+    final weekVisitCount = accountFollowUps
+        .where((row) => row.isInteractionWithin(cut) && row.isVisit)
+        .length;
+    final openFollowUpCount = accountFollowUps
+        .where((row) => row.isOpen)
+        .length;
+    final missingContact = accountContacts.isEmpty;
+    final missingNextStep = nextFollowUpAt == null;
+    final isOverdue =
+        nextFollowUpAt != null &&
+        !_pdfDateOnly(nextFollowUpAt).isAfter(_pdfDateOnly(cut.cutoffAt));
+    trackingRows.add(
+      _CommercialWeeklyProspectFocusRow(
+        accountId: account.id,
+        accountName: account.displayName,
+        channelLabel: account.channelLabel,
+        sourceLabel: account.sourceLabel,
+        priorityKey: account.priority,
+        priorityLabel: account.priorityLabel,
+        createdAt: account.createdAt,
+        contactCount: accountContacts.length,
+        totalFollowUpCount: accountFollowUps.length,
+        weekFollowUpCount: weekFollowUpCount,
+        weekVisitCount: weekVisitCount,
+        openFollowUpCount: openFollowUpCount,
+        latestInteractionAt: latestFollowUp?.interactionAt,
+        nextFollowUpAt: nextFollowUpAt,
+        latestFollowUpStatus: latestFollowUp?.status ?? '',
+        latestSummary: latestFollowUp?.summary ?? '',
+        missingContact: missingContact,
+        missingNextStep: missingNextStep,
+        isOverdue: isOverdue,
+        statusNote: _buildCommercialProspectStatusNote(
+          account: account,
+          contacts: accountContacts,
+          followUps: accountFollowUps,
+          cut: cut,
+          latestFollowUp: latestFollowUp,
+          nextFollowUpAt: nextFollowUpAt,
+        ),
+      ),
+    );
+  }
+
+  final focusRows = [...trackingRows]
+    ..sort((a, b) {
+      final scoreCompare = b.focusScore(cut).compareTo(a.focusScore(cut));
+      if (scoreCompare != 0) return scoreCompare;
+      final nextCompare = _compareNullableDateAsc(
+        a.nextFollowUpAt,
+        b.nextFollowUpAt,
+      );
+      if (nextCompare != 0) return nextCompare;
+      final priorityCompare = _commercialPriorityRank(
+        b.priorityKey,
+      ).compareTo(_commercialPriorityRank(a.priorityKey));
+      if (priorityCompare != 0) return priorityCompare;
+      return a.accountName.toLowerCase().compareTo(b.accountName.toLowerCase());
+    });
+
+  final newProspectRows =
+      trackingRows
+          .where((row) => row.isCreatedWithin(cut))
+          .toList(growable: false)
+        ..sort((a, b) {
+          final dateCompare = b.createdAt.compareTo(a.createdAt);
+          if (dateCompare != 0) return dateCompare;
+          final priorityCompare = _commercialPriorityRank(
+            b.priorityKey,
+          ).compareTo(_commercialPriorityRank(a.priorityKey));
+          if (priorityCompare != 0) return priorityCompare;
+          return a.accountName.toLowerCase().compareTo(
+            b.accountName.toLowerCase(),
+          );
+        });
+
+  final sortedTrackingRows = [...trackingRows]
+    ..sort((a, b) {
+      final overdueCompare = (b.isOverdue ? 1 : 0).compareTo(
+        a.isOverdue ? 1 : 0,
+      );
+      if (overdueCompare != 0) return overdueCompare;
+      final missingStepCompare = (b.missingNextStep ? 1 : 0).compareTo(
+        a.missingNextStep ? 1 : 0,
+      );
+      if (missingStepCompare != 0) return missingStepCompare;
+      final nextCompare = _compareNullableDateAsc(
+        a.nextFollowUpAt,
+        b.nextFollowUpAt,
+      );
+      if (nextCompare != 0) return nextCompare;
+      final priorityCompare = _commercialPriorityRank(
+        b.priorityKey,
+      ).compareTo(_commercialPriorityRank(a.priorityKey));
+      if (priorityCompare != 0) return priorityCompare;
+      return a.accountName.toLowerCase().compareTo(b.accountName.toLowerCase());
+    });
+
+  final newContactRows = <_CommercialWeeklyContactViewRow>[];
+  for (final row in source.contacts) {
+    if (!row.isActive || !row.isCreatedWithin(cut)) continue;
+    final account = accountById[row.accountId];
+    final noteParts = <String>[];
+    if (row.isPrimary) noteParts.add('Principal');
+    if (row.preferredChannel.trim().isNotEmpty) {
+      noteParts.add(_commercialHumanizeTag(row.preferredChannel));
+    }
+    if (row.phone.trim().isNotEmpty) noteParts.add('Con telefono');
+    if (row.email.trim().isNotEmpty) noteParts.add('Con correo');
+    newContactRows.add(
+      _CommercialWeeklyContactViewRow(
+        accountName: account?.displayName ?? 'Sin cuenta ligada',
+        contactName: row.name,
+        roleLabel: row.role.trim().isEmpty ? 'Sin rol' : row.role.trim(),
+        createdAt: row.createdAt,
+        channelLabel: account?.channelLabel ?? 'Sin canal',
+        note: noteParts.isEmpty
+            ? 'Contacto nuevo sin detalle adicional'
+            : noteParts.join(' | '),
+      ),
+    );
+  }
+  newContactRows.sort((a, b) {
+    final dateCompare = b.createdAt.compareTo(a.createdAt);
+    if (dateCompare != 0) return dateCompare;
+    return a.accountName.toLowerCase().compareTo(b.accountName.toLowerCase());
+  });
+
+  final weekFollowUpRows =
+      source.followUps
+          .where((row) => row.isInteractionWithin(cut))
+          .toList(growable: false)
+        ..sort((a, b) => b.interactionAt.compareTo(a.interactionAt));
+  final visitRows = <_CommercialWeeklyVisitViewRow>[];
+  for (final row in weekFollowUpRows) {
+    if (!row.isVisit) continue;
+    final account = accountById[row.accountId];
+    final summaryParts = <String>[row.summary];
+    if (row.materialSnapshotLabel.isNotEmpty) {
+      summaryParts.add(row.materialSnapshotLabel);
+    }
+    visitRows.add(
+      _CommercialWeeklyVisitViewRow(
+        interactionAt: row.interactionAt,
+        accountName: account?.displayName ?? 'Sin cuenta ligada',
+        channelLabel: account?.channelLabel ?? 'Sin canal',
+        summary: summaryParts.join(' | '),
+        nextAction: row.nextActionLabel,
+        statusLabel: row.statusLabel,
+      ),
+    );
+  }
+
+  final agendaRows =
+      source.agendaRows
+          .where((row) => row.isWithinHorizon(cut))
+          .map(
+            (row) => _CommercialWeeklyAgendaViewRow(
+              startsAt: row.startsAt,
+              typeLabel: row.typeLabel,
+              title: row.title,
+              locationLabel: row.locationLabel,
+              statusLabel: row.statusLabel,
+              note: row.noteLabel,
+            ),
+          )
+          .toList(growable: false)
+        ..sort((a, b) {
+          final dateCompare = a.startsAt.compareTo(b.startsAt);
+          if (dateCompare != 0) return dateCompare;
+          final statusCompare = _commercialAgendaStatusRank(
+            a.statusLabel,
+          ).compareTo(_commercialAgendaStatusRank(b.statusLabel));
+          if (statusCompare != 0) return statusCompare;
+          return a.title.toLowerCase().compareTo(b.title.toLowerCase());
+        });
+
+  final salesSignalRows = _buildCommercialWeeklySalesSignalRows(
+    source.salesEventRows,
+  );
+  final overdueProspectCount = trackingRows
+      .where((row) => row.isOverdue)
+      .length;
+  final noContactProspectCount = trackingRows
+      .where((row) => row.missingContact)
+      .length;
+  final noNextStepProspectCount = trackingRows
+      .where((row) => row.missingNextStep)
+      .length;
+  final noResponseWeekCount = weekFollowUpRows
+      .where((row) => row.status == 'sin_respuesta')
+      .length;
+  final staleProspectCount = trackingRows
+      .where(
+        (row) =>
+            row.latestInteractionAt == null ||
+            _pdfDateOnly(row.latestInteractionAt!).isBefore(cut.weekStart),
+      )
+      .length;
+  final upcomingConventionCount = source.agendaRows
+      .where(
+        (row) =>
+            row.isWithinHorizon(cut) &&
+            row.isConvention &&
+            row.status != 'cancelado',
+      )
+      .length;
+
+  final executiveSummary = <String>[];
+  if (prospectAccounts.isEmpty &&
+      newContactRows.isEmpty &&
+      weekFollowUpRows.isEmpty &&
+      agendaRows.isEmpty) {
+    executiveSummary.add(
+      'Al corte del ${_formatDateTimeShort(cut.cutoffAt)} no hay prospectos, contactos, seguimientos ni agenda comercial visibles dentro del modulo.',
+    );
+  } else {
+    executiveSummary.add(
+      'Al corte del ${_formatDateTimeShort(cut.cutoffAt)}, Desarrollo Comercial mantiene ${trackingRows.length} prospecto(s) activo(s); esta semana se abrieron ${newProspectRows.length} y la meta semanal sigue en $weeklyProspectGoal.',
+    );
+    executiveSummary.add(
+      'Se registraron ${newContactRows.length} contacto(s) nuevos, ${weekFollowUpRows.length} seguimiento(s) y ${visitRows.length} visita(s) dentro de la semana operativa.',
+    );
+    if (agendaRows.isNotEmpty) {
+      executiveSummary.add(
+        'La agenda visible ya trae ${agendaRows.length} evento(s) hasta ${_formatLongDateSpanish(cut.agendaHorizonEnd)}, incluyendo $upcomingConventionCount convencion(es).',
+      );
+    } else {
+      executiveSummary.add(
+        'Todavia no hay agenda visible cargada entre ${_formatLongDateSpanish(cut.weekStart)} y ${_formatLongDateSpanish(cut.agendaHorizonEnd)}.',
+      );
+    }
+    if (focusRows.isNotEmpty) {
+      executiveSummary.add(
+        '${_sanitizePdfText(focusRows.first.accountName)} aparece como foco principal: ${focusRows.first.focusReason(cut)}.',
+      );
+    }
+    executiveSummary.add(
+      'Quedan $overdueProspectCount prospecto(s) con siguiente paso vencido, $noContactProspectCount sin contacto y $noNextStepProspectCount sin fecha siguiente visible.',
+    );
+    if (salesSignalRows.isNotEmpty) {
+      executiveSummary.add(
+        'El bloque provisional de ventas por material ya detecta ${salesSignalRows.length} frente(s) con venta visible esta semana; sigue siendo una senal parcial y no un control formal de piezas.',
+      );
+    } else {
+      executiveSummary.add(
+        'El seguimiento de ventas de piezas sigue parcial y esta semana no trae senal visible de ventas por material dentro del corte observado.',
+      );
+    }
+  }
+
+  final alerts = <String>[];
+  if (newProspectRows.length < weeklyProspectGoal) {
+    alerts.add(
+      'A la fecha visible solo van ${newProspectRows.length}/$weeklyProspectGoal prospectos nuevos capturados en la semana.',
+    );
+  }
+  if (noContactProspectCount > 0) {
+    alerts.add(
+      'Hay $noContactProspectCount prospecto(s) activos sin contacto capturado.',
+    );
+  }
+  if (noNextStepProspectCount > 0) {
+    alerts.add(
+      'Hay $noNextStepProspectCount prospecto(s) sin siguiente fecha de seguimiento visible.',
+    );
+  }
+  if (overdueProspectCount > 0) {
+    alerts.add(
+      'Hay $overdueProspectCount prospecto(s) con siguiente paso ya vencido al ${_formatLongDateSpanish(_pdfDateOnly(cut.cutoffAt))}.',
+    );
+  }
+  if (noResponseWeekCount > 0) {
+    alerts.add(
+      'Hubo $noResponseWeekCount seguimiento(s) marcados como sin respuesta dentro de la semana.',
+    );
+  }
+  if (weekFollowUpRows.isEmpty && trackingRows.isNotEmpty) {
+    alerts.add(
+      'No hay seguimientos capturados esta semana aunque si existen prospectos activos en cartera.',
+    );
+  }
+  if (visitRows.isEmpty && trackingRows.isNotEmpty) {
+    alerts.add('No hay visitas registradas en la semana operativa visible.');
+  }
+  if (newContactRows.isEmpty && newProspectRows.isNotEmpty) {
+    alerts.add(
+      'Se abrieron prospectos nuevos sin alta de contactos nuevos dentro del mismo corte.',
+    );
+  }
+  if (staleProspectCount > 0) {
+    alerts.add(
+      'Hay $staleProspectCount prospecto(s) sin movimiento visible dentro de esta semana.',
+    );
+  }
+  if (agendaRows.isEmpty) {
+    alerts.add(
+      'No hay agenda comercial visible para cerrar la semana ni preparar el siguiente bloque.',
+    );
+  }
+
+  final coverageNotes = <String>[
+    'Prospectos nuevos, contactos nuevos, visitas, seguimientos y agenda ya salen de tablas reales del modulo comercial.',
+    'La meta semanal de 10 prospectos se calcula con altas visibles en commercial_accounts dentro del corte observado.',
+    'Seguimiento de ventas de piezas sigue parcial: el bloque actual usa v_commercial_market_events como senal provisional por material y cliente, no como cartera formal por pieza.',
+  ];
+  if (salesSignalRows.isEmpty) {
+    coverageNotes.add(
+      'Esta semana no hay eventos visibles de venta para alimentar la senal provisional por material.',
+    );
+  }
+
+  final closeoutPrompts = <String>[
+    'Todo prospecto nuevo debe salir de la junta con responsable, primer contacto y fecha siguiente comprometida.',
+    if (noContactProspectCount > 0)
+      'Todo prospecto sin contacto visible debe quedar con contacto principal antes del siguiente corte.',
+    if (overdueProspectCount > 0 || noNextStepProspectCount > 0)
+      'Todo seguimiento vencido o sin fecha siguiente debe reprogramarse o cerrarse explicitamente en junta.',
+    if (visitRows.isNotEmpty)
+      'Toda visita registrada debe aterrizarse en siguiente accion, fecha y responsable dentro del mismo dia.',
+    if (agendaRows.isNotEmpty)
+      'Toda convencion o evento debe regresar con captura de contactos y siguiente paso comercial en menos de 24 horas.',
+    'Definir responsable y fecha para homologar el seguimiento formal de ventas de piezas; mientras no exista, este bloque seguira siendo parcial.',
+    'Si un dato ya cambio, se corrige en el modulo comercial y se regenera el reporte; no se maquilla el PDF.',
+  ];
+
+  return _CommercialDevelopmentWeeklyInsights(
+    totalActiveProspectCount: trackingRows.length,
+    weeklyProspectGoal: weeklyProspectGoal,
+    newProspectCount: newProspectRows.length,
+    newContactCount: newContactRows.length,
+    weekFollowUpCount: weekFollowUpRows.length,
+    visitCount: visitRows.length,
+    upcomingConventionCount: upcomingConventionCount,
+    overdueProspectCount: overdueProspectCount,
+    noContactProspectCount: noContactProspectCount,
+    noNextStepProspectCount: noNextStepProspectCount,
+    focusRows: focusRows,
+    newProspectRows: newProspectRows,
+    trackingRows: sortedTrackingRows,
+    contactRows: newContactRows,
+    visitRows: visitRows,
+    agendaRows: agendaRows,
+    salesSignalRows: salesSignalRows,
+    executiveSummary: executiveSummary,
+    alerts: alerts,
+    closeoutPrompts: closeoutPrompts,
+    coverageNotes: coverageNotes,
+  );
+}
+
+String _buildCommercialProspectStatusNote({
+  required _CommercialWeeklyAccountRow account,
+  required List<_CommercialWeeklyContactRow> contacts,
+  required List<_CommercialWeeklyFollowUpRow> followUps,
+  required _CommercialDevelopmentWeeklyCut cut,
+  required _CommercialWeeklyFollowUpRow? latestFollowUp,
+  required DateTime? nextFollowUpAt,
+}) {
+  final parts = <String>[];
+  if (contacts.isEmpty) parts.add('Sin contacto');
+  if (nextFollowUpAt == null) {
+    parts.add('Sin fecha siguiente');
+  } else if (!_pdfDateOnly(
+    nextFollowUpAt,
+  ).isAfter(_pdfDateOnly(cut.cutoffAt))) {
+    parts.add('Vencido ${_formatShortDate(nextFollowUpAt)}');
+  } else {
+    parts.add('Sigue ${_formatShortDate(nextFollowUpAt)}');
+  }
+  if (latestFollowUp == null) {
+    parts.add('Sin seguimiento');
+  } else {
+    parts.add(latestFollowUp.statusLabel);
+    if (latestFollowUp.materialSnapshotLabel.isNotEmpty) {
+      parts.add(latestFollowUp.materialSnapshotLabel);
+    } else if (latestFollowUp.summary.trim().isNotEmpty) {
+      parts.add(_truncate(latestFollowUp.summary.trim(), 28));
+    }
+  }
+  if (parts.isEmpty && account.notes.trim().isNotEmpty) {
+    parts.add(_truncate(account.notes.trim(), 28));
+  }
+  return parts.join(' | ');
+}
+
+List<_CommercialWeeklySalesSignalRow> _buildCommercialWeeklySalesSignalRows(
+  List<_CommercialWeeklyMarketEventRow> rows,
+) {
+  final buckets = <String, List<_CommercialWeeklyMarketEventRow>>{};
+  for (final row in rows) {
+    final normalizedMaterial = row.materialKey.trim().isNotEmpty
+        ? row.materialKey.trim()
+        : _normalizeTag(row.materialLabel);
+    final key = '${row.channel}|$normalizedMaterial';
+    buckets
+        .putIfAbsent(key, () => <_CommercialWeeklyMarketEventRow>[])
+        .add(row);
+  }
+  final summaryRows = <_CommercialWeeklySalesSignalRow>[];
+  for (final entry in buckets.entries) {
+    final items = entry.value;
+    final volumeKg = items.fold<double>(0, (sum, row) => sum + row.volumeKg);
+    final amountTotal = items.fold<double>(
+      0,
+      (sum, row) => sum + row.amountTotal,
+    );
+    final counterpartyCount = items
+        .map((row) => row.counterpartyName.trim().toUpperCase())
+        .where((value) => value.isNotEmpty)
+        .toSet()
+        .length;
+    final materialLabel = items.first.materialLabel.trim().isEmpty
+        ? 'Sin material'
+        : items.first.materialLabel.trim();
+    final averagePrice = volumeKg > 0
+        ? amountTotal / volumeKg
+        : items.isEmpty
+        ? 0.0
+        : (items.fold<double>(0, (sum, row) => sum + row.unitPrice) /
+                  items.length)
+              .toDouble();
+    summaryRows.add(
+      _CommercialWeeklySalesSignalRow(
+        channelLabel: items.first.channelLabel,
+        materialLabel: materialLabel,
+        eventCount: items.length,
+        counterpartyCount: counterpartyCount,
+        volumeKg: volumeKg,
+        amountTotal: amountTotal,
+        averagePrice: averagePrice,
+      ),
+    );
+  }
+  summaryRows.sort((a, b) {
+    final amountCompare = b.amountTotal.compareTo(a.amountTotal);
+    if (amountCompare != 0) return amountCompare;
+    final eventCompare = b.eventCount.compareTo(a.eventCount);
+    if (eventCompare != 0) return eventCompare;
+    return a.materialLabel.toLowerCase().compareTo(
+      b.materialLabel.toLowerCase(),
+    );
+  });
+  return summaryRows;
+}
+
+List<Map<String, dynamic>> _decodeSupabaseRows(dynamic raw) {
+  if (raw is! List) return const <Map<String, dynamic>>[];
+  return raw
+      .map((row) => Map<String, dynamic>.from(row as Map))
+      .toList(growable: false);
+}
+
+int _compareNullableDateAsc(DateTime? left, DateTime? right) {
+  if (left == null && right == null) return 0;
+  if (left == null) return 1;
+  if (right == null) return -1;
+  return left.compareTo(right);
+}
+
+int _commercialPriorityRank(String value) {
+  switch (_normalizeTag(value)) {
+    case 'estrategica':
+      return 4;
+    case 'alta':
+      return 3;
+    case 'media':
+      return 2;
+    default:
+      return 1;
+  }
+}
+
+String _commercialChannelLabel(String raw) {
+  switch (_normalizeTag(raw)) {
+    case 'mayoreo':
+      return 'Mayoreo';
+    case 'menudeo':
+      return 'Menudeo';
+    default:
+      return raw.trim().isEmpty ? 'Sin canal' : _commercialHumanizeTag(raw);
+  }
+}
+
+String _commercialFollowUpStatusLabel(String raw) {
+  switch (_normalizeTag(raw)) {
+    case 'hecho':
+      return 'Hecho';
+    case 'pospuesto':
+      return 'Pospuesto';
+    case 'sin_respuesta':
+      return 'Sin respuesta';
+    default:
+      return 'Abierto';
+  }
+}
+
+String _commercialAgendaTypeLabel(String raw) {
+  switch (_normalizeTag(raw)) {
+    case 'reunion':
+      return 'Reunion';
+    case 'foro':
+      return 'Foro';
+    case 'convencion':
+      return 'Convencion';
+    case 'otro':
+      return 'Otro';
+    default:
+      return 'Cita';
+  }
+}
+
+String _commercialAgendaStatusLabel(String raw) {
+  switch (_normalizeTag(raw)) {
+    case 'realizado':
+      return 'Realizado';
+    case 'cancelado':
+      return 'Cancelado';
+    default:
+      return 'Programado';
+  }
+}
+
+int _commercialAgendaStatusRank(String value) {
+  switch (_normalizeTag(value)) {
+    case 'programado':
+      return 0;
+    case 'realizado':
+      return 1;
+    default:
+      return 2;
+  }
+}
+
+String _commercialAccountSourceLabel(String sourceArea, String sourceRecordId) {
+  switch (_normalizeTag(sourceArea)) {
+    case 'menudeo':
+      return 'Vinculado Menudeo';
+    case 'mayoreo_compras':
+      return 'Vinculado Mayoreo compras';
+    case 'mayoreo_ventas':
+      return 'Vinculado Mayoreo ventas';
+    case 'manual':
+      return 'Prospecto directo';
+    default:
+      return sourceRecordId.trim().isEmpty
+          ? 'Prospecto directo'
+          : 'Fuente mixta';
+  }
+}
+
+String _commercialHumanizeTag(String value) {
+  final normalized = value.trim().replaceAll('_', ' ');
+  if (normalized.isEmpty) return 'Sin dato';
+  return normalized
+      .split(' ')
+      .where((part) => part.trim().isNotEmpty)
+      .map((part) {
+        if (part.toLowerCase() == 'whatsapp') return 'WhatsApp';
+        return '${part[0].toUpperCase()}${part.substring(1).toLowerCase()}';
+      })
+      .join(' ');
 }
 
 _SalesDailyInsights _buildSalesDailyInsights(

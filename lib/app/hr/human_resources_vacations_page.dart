@@ -3191,7 +3191,7 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
         status: _HrVacationEventStatus.pendiente,
         startDate: DateTime(now.year, now.month, now.day),
         endDate: DateTime(now.year, now.month, now.day),
-        daysApplied: 1,
+        daysApplied: 1.0,
         attendancePeriodLabel: '',
         attendanceSyncStatus: _HrVacationSyncStatus.pendiente,
         prenominaSyncStatus: _HrVacationSyncStatus.pendiente,
@@ -3367,7 +3367,10 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
       child: ContractDialogShell(
         child: Container(
           width: 1320,
-          constraints: const BoxConstraints(maxWidth: 1320, maxHeight: 840),
+          constraints: BoxConstraints(
+            maxWidth: 1320,
+            maxHeight: MediaQuery.sizeOf(context).height - 48,
+          ),
           padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
           decoration: BoxDecoration(
             color: const Color(0xFFF8F3FF).withValues(alpha: 0.98),
@@ -3376,89 +3379,11 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
           ),
           child: Column(
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 6,
-                          ),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFEBDDFF),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(color: const Color(0x55B084FF)),
-                          ),
-                          child: const Text(
-                            'CONTROL VACACIONAL',
-                            style: TextStyle(
-                              fontSize: 10.5,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF6E47A8),
-                              letterSpacing: 0.7,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        const Text(
-                          'Vacaciones del colaborador',
-                          style: TextStyle(
-                            fontSize: 28,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF24103D),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        const Text(
-                          'Derecho, aplicación y pago editable por ejercicio antes de asistencia y prenómina.',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFF6E47A8),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _HrVacationStatusChip(
-                              label: '#${widget.row.employeeId}',
-                              complete: true,
-                            ),
-                            _HrVacationStatusChip(
-                              label: widget.row.empresa.isEmpty
-                                  ? 'Empresa pendiente'
-                                  : widget.row.empresa,
-                              complete: widget.row.empresa.isNotEmpty,
-                            ),
-                            _HrVacationStatusChip(
-                              label: 'Ejercicio ${widget.row.exerciseYear}',
-                              complete: true,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 14),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    style: IconButton.styleFrom(
-                      backgroundColor: const Color(
-                        0xFFF1E6FF,
-                      ).withValues(alpha: 0.92),
-                      foregroundColor: const Color(0xFF6E47A8),
-                      side: const BorderSide(color: Color(0x66B084FF)),
-                    ),
-                    icon: const Icon(Icons.close_rounded),
-                    tooltip: 'Cerrar',
-                  ),
-                ],
+              HumanResourcesCompactDialogHeader(
+                title: 'Vacaciones',
+                contextLabel:
+                    'Ejercicio ${widget.row.exerciseYear} · Control y aplicación vacacional',
+                onClose: () => Navigator.of(context).pop(),
               ),
               const SizedBox(height: 12),
               Flexible(
@@ -4109,35 +4034,6 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
   }
 }
 
-class _HrVacationStatusChip extends StatelessWidget {
-  final String label;
-  final bool complete;
-
-  const _HrVacationStatusChip({required this.label, required this.complete});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: complete ? const Color(0xFFDCC5FF) : const Color(0xFFF7F0FF),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: complete ? const Color(0xFF9F6BFF) : const Color(0x44B084FF),
-        ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w900,
-          color: complete ? const Color(0xFF24103D) : const Color(0xFF6E47A8),
-        ),
-      ),
-    );
-  }
-}
-
 class _HrVacationSectionCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -4215,48 +4111,45 @@ class _HrVacationMetricMiniCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 150,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFBFF),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x44B084FF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF6E47A8),
-              letterSpacing: 0.5,
+    final detail = helper?.trim();
+    return Tooltip(
+      message: detail == null || detail.isEmpty ? label : '$label\n$detail',
+      child: Container(
+        width: 144,
+        height: 64,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFBFF),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0x44B084FF)),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                label,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF6E47A8),
+                  letterSpacing: 0.35,
+                  height: 1.1,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF24103D),
-            ),
-          ),
-          if (helper != null && helper!.trim().isNotEmpty) ...[
-            const SizedBox(height: 6),
+            const SizedBox(width: 8),
             Text(
-              helper!,
+              value,
               style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFF7D62A8),
-                height: 1.2,
+                fontSize: 18,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF24103D),
               ),
             ),
           ],
-        ],
+        ),
       ),
     );
   }
@@ -4944,7 +4837,7 @@ class _HrVacationEventCard extends StatelessWidget {
                       final trimmed = value.trim();
                       draft.daysManuallyEdited = trimmed.isNotEmpty;
                       draft.daysApplied = trimmed.isEmpty
-                          ? 0
+                          ? 0.0
                           : _parseVacationNumber(
                               trimmed,
                             ).clamp(0, 9999).toDouble();
@@ -6134,7 +6027,7 @@ _HrVacationEventTotals _classifyVacationEventBuckets({
 }) {
   if (status == _HrVacationEventStatus.cancelado || daysApplied <= 0) {
     return const _HrVacationEventTotals(
-      daysPaid: 0,
+      daysPaid: 0.0,
       daysEnjoyed: 0,
       daysReserved: 0,
     );
@@ -6741,7 +6634,7 @@ void _normalizeVacationEventDraft(
     draft.daysApplied = _suggestVacationDays(draft.startDate, draft.endDate);
   }
   if (draft.daysApplied < 0) {
-    draft.daysApplied = 0;
+    draft.daysApplied = 0.0;
   }
   if (!draft.impactAttendance ||
       draft.status == _HrVacationEventStatus.cancelado) {

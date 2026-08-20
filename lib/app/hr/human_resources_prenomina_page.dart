@@ -1931,31 +1931,52 @@ class _HrPrenominaModuleTopBar extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        const Padding(
-          padding: EdgeInsets.only(left: 2, bottom: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Prenómina',
-                style: TextStyle(
-                  fontSize: 22,
-                  fontWeight: FontWeight.w900,
-                  color: Colors.white,
-                ),
+        Row(
+          children: [
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Prenómina',
+                    style: TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w900,
+                      color: Colors.white,
+                    ),
+                  ),
+                  SizedBox(height: 3),
+                  Text(
+                    'Consolidado semanal previo a nómina final y validación RH.',
+                    style: TextStyle(
+                      fontSize: 12.5,
+                      fontWeight: FontWeight.w700,
+                      color: Color(0xD9D9C7FF),
+                    ),
+                  ),
+                ],
               ),
-              SizedBox(height: 4),
-              Text(
-                'Consolidado semanal previo a nómina final y validación RH.',
-                style: TextStyle(
-                  fontSize: 12.5,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xD9D9C7FF),
+            ),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFB794FF),
+                foregroundColor: const Color(0xFF24103D),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(18),
                 ),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 12,
+                ),
+                textStyle: const TextStyle(fontWeight: FontWeight.w900),
               ),
-            ],
-          ),
+              onPressed: totalRows == 0 ? null : onOpenSelectedRow,
+              icon: const Icon(Icons.payments_outlined),
+              label: const Text('Editar borrador'),
+            ),
+          ],
         ),
+        const SizedBox(height: 10),
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -1976,132 +1997,51 @@ class _HrPrenominaModuleTopBar extends StatelessWidget {
               ),
             ],
           ),
-          padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              final leftPanel = Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          padding: const EdgeInsets.all(12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                activePeriodLabel.isEmpty
+                    ? 'Sin periodo operativo activo'
+                    : activePeriodLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w900,
+                  color: Color(0xFF24103D),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 10,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFFB794FF),
-                          foregroundColor: const Color(0xFF24103D),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(999),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 12,
-                          ),
-                          textStyle: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        onPressed: totalRows == 0 ? null : onOpenSelectedRow,
-                        icon: const Icon(Icons.payments_outlined),
-                        label: const Text('Editar borrador'),
-                      ),
-                      _HrPrenominaSoftPill(label: '$totalRows colaboradores'),
-                    ],
+                  _HrPrenominaTopMetaPill(
+                    label: 'Colaboradores',
+                    value: '$totalRows',
                   ),
-                  const SizedBox(height: 12),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                        colors: [
-                          const Color(0xFFF9F4FF).withValues(alpha: 0.88),
-                          const Color(0xFFEFE2FF).withValues(alpha: 0.80),
-                        ],
-                      ),
-                      borderRadius: BorderRadius.circular(16),
-                      border: Border.all(color: const Color(0x44B084FF)),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'Contexto del cierre',
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF6E47A8),
-                            letterSpacing: 0.5,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          activePeriodLabel.isEmpty
-                              ? 'Sin periodo operativo activo'
-                              : activePeriodLabel,
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            color: Color(0xFF24103D),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 8,
-                          runSpacing: 8,
-                          children: [
-                            _HrPrenominaTopMetaPill(
-                              label: 'Selección',
-                              value: '$selectedCount',
-                            ),
-                            if (activeCellLabel != null)
-                              _HrPrenominaTopMetaPill(
-                                label: 'Celda',
-                                value: activeCellLabel!.replaceFirst(
-                                  'Celda: ',
-                                  '',
-                                ),
-                              ),
-                            const _HrPrenominaTopMetaPill(
-                              label: 'Estado',
-                              value: 'Borrador semanal',
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
+                  _HrPrenominaTopMetaPill(
+                    label: 'Selección',
+                    value: '$selectedCount',
                   ),
+                  if (activeCellLabel != null)
+                    _HrPrenominaTopMetaPill(
+                      label: 'Celda',
+                      value: activeCellLabel!.replaceFirst('Celda: ', ''),
+                    ),
+                  const _HrPrenominaTopMetaPill(
+                    label: 'Estado',
+                    value: 'Borrador semanal',
+                  ),
+                  const _HrPrenominaSoftPill(label: 'Fuente: RH'),
                 ],
-              );
-
-              final metricPanel = _HrPrenominaMetricCard(
-                totalRows: totalRows,
-                rows: rows,
-              );
-
-              if (constraints.maxWidth < 1180) {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    leftPanel,
-                    const SizedBox(height: 14),
-                    metricPanel,
-                  ],
-                );
-              }
-
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(flex: 6, child: leftPanel),
-                  const SizedBox(width: 16),
-                  SizedBox(width: 470, child: metricPanel),
-                ],
-              );
-            },
+              ),
+              const SizedBox(height: 8),
+              _HrPrenominaMetricCard(totalRows: totalRows, rows: rows),
+            ],
           ),
         ),
         const SizedBox(height: 12),
@@ -2168,139 +2108,54 @@ class _HrPrenominaMetricCard extends StatelessWidget {
     final permissionPendingRows = rows
         .where((row) => row.permissionPendingPrenominaCount > 0)
         .length;
-    return Container(
-      constraints: const BoxConstraints(minWidth: 278),
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 14),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFFF5EEFF).withValues(alpha: 0.92),
-            const Color(0xFFEAD9FF).withValues(alpha: 0.86),
-          ],
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _HrPrenominaMetricPill(label: 'Listo: $readyRows'),
+        _HrPrenominaMetricPill(label: 'Revisión RH: $reviewRows'),
+        _HrPrenominaMetricPill(
+          label: 'Retardo: ${_formatPrenominaMinutesAsHourRatio(lateMinutes)}',
         ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0x66B084FF)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF130B22).withValues(alpha: 0.14),
-            blurRadius: 18,
-            offset: const Offset(0, 10),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE6D5FF),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: const Icon(
-                  Icons.payments_outlined,
-                  color: Color(0xFF6E47A8),
-                  size: 24,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text(
-                      'PRENÓMINA RH',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF6E47A8),
-                        letterSpacing: 0.7,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '$totalRows',
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w900,
-                        color: Color(0xFF24103D),
-                        height: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'Filtrado ($totalRows registros)',
-                      style: TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w700,
-                        color: const Color(0xFF6E47A8).withValues(alpha: 0.88),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              _HrPrenominaMetricPill(label: 'Listo: $readyRows'),
-              _HrPrenominaMetricPill(label: 'Revisión RH: $reviewRows'),
-              _HrPrenominaMetricPill(
-                label:
-                    'Retardo: ${_formatPrenominaMinutesAsHourRatio(lateMinutes)}',
-              ),
-              _HrPrenominaMetricPill(
-                label:
-                    'Horas extra: ${_formatPrenominaMinutesAsHourRatio(overtimeMinutes)}',
-              ),
-              _HrPrenominaMetricPill(
-                label: 'Vacaciones: ${_formatPrenominaDays(vacationDays)} d',
-              ),
-              _HrPrenominaMetricPill(
-                label: 'Permisos: ${_formatPrenominaDays(permissionDays)} d',
-              ),
-              _HrPrenominaMetricPill(
-                label:
-                    'Preliminar: ${_formatPrenominaMoneyZero(preliminarySubtotal)}',
-                emphasized: true,
-              ),
-              _HrPrenominaMetricPill(
-                label: 'Fiscal: ${_formatPrenominaMoneyZero(fiscalNetTotal)}',
-              ),
-              _HrPrenominaMetricPill(
-                label:
-                    'Fiscal depositado: ${_formatPrenominaMoneyZero(fiscalDepositedTotal)}',
-              ),
-              _HrPrenominaMetricPill(
-                label:
-                    'Fiscal en efectivo: ${_formatPrenominaMoneyZero(fiscalCashTotal)}',
-              ),
-              _HrPrenominaMetricPill(
-                label:
-                    'Efectivo RH: ${_formatPrenominaMoneyZero(operationalCashTotal)}',
-              ),
-              _HrPrenominaMetricPill(
-                label:
-                    'Semana: ${_formatPrenominaMoneyZero(weeklyVisibleTotal)}',
-                emphasized: true,
-              ),
-              _HrPrenominaMetricPill(label: 'Fiscal CONTPAQ: $fiscalRows'),
-              _HrPrenominaMetricPill(
-                label: 'Permisos pendientes: $permissionPendingRows',
-              ),
-            ],
-          ),
-        ],
-      ),
+        _HrPrenominaMetricPill(
+          label:
+              'Horas extra: ${_formatPrenominaMinutesAsHourRatio(overtimeMinutes)}',
+        ),
+        _HrPrenominaMetricPill(
+          label: 'Vacaciones: ${_formatPrenominaDays(vacationDays)} d',
+        ),
+        _HrPrenominaMetricPill(
+          label: 'Permisos: ${_formatPrenominaDays(permissionDays)} d',
+        ),
+        _HrPrenominaMetricPill(
+          label:
+              'Preliminar: ${_formatPrenominaMoneyZero(preliminarySubtotal)}',
+          emphasized: true,
+        ),
+        _HrPrenominaMetricPill(
+          label: 'Fiscal: ${_formatPrenominaMoneyZero(fiscalNetTotal)}',
+        ),
+        _HrPrenominaMetricPill(
+          label:
+              'Fiscal depositado: ${_formatPrenominaMoneyZero(fiscalDepositedTotal)}',
+        ),
+        _HrPrenominaMetricPill(
+          label:
+              'Fiscal en efectivo: ${_formatPrenominaMoneyZero(fiscalCashTotal)}',
+        ),
+        _HrPrenominaMetricPill(
+          label:
+              'Efectivo RH: ${_formatPrenominaMoneyZero(operationalCashTotal)}',
+        ),
+        _HrPrenominaMetricPill(
+          label: 'Semana: ${_formatPrenominaMoneyZero(weeklyVisibleTotal)}',
+          emphasized: true,
+        ),
+        _HrPrenominaMetricPill(label: 'Fiscal CONTPAQ: $fiscalRows'),
+        _HrPrenominaMetricPill(
+          label: 'Permisos pendientes: $permissionPendingRows',
+        ),
+      ],
     );
   }
 }
@@ -2551,6 +2406,7 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
   final FocusNode _dialogFocusNode = FocusNode(debugLabel: 'hrPrenominaDialog');
   late final _HrPrenominaDraftDraft _draft =
       _HrPrenominaDraftDraft.fromSummaryRow(widget.row);
+  String? _moneyValidationMessage;
 
   @override
   void initState() {
@@ -2572,6 +2428,14 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
   }
 
   void _save([_HrPrenominaEditAction action = _HrPrenominaEditAction.save]) {
+    final invalidField = _draft.firstInvalidMoneyFieldLabel;
+    if (invalidField != null) {
+      setState(() {
+        _moneyValidationMessage =
+            'Revisa "$invalidField". Captura un monto válido, por ejemplo 1250.50.';
+      });
+      return;
+    }
     Navigator.of(
       context,
     ).pop(_HrPrenominaEditResult(action: action, draft: _draft));
@@ -2614,6 +2478,10 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Container(
             width: 1080,
+            constraints: BoxConstraints(
+              maxWidth: 1080,
+              maxHeight: MediaQuery.sizeOf(context).height - 48,
+            ),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
             decoration: BoxDecoration(
               color: const Color(0xFFF6F0FF).withValues(alpha: 0.97),
@@ -2624,95 +2492,37 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE9DAFF),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: const Color(0x66B084FF),
-                              ),
-                            ),
-                            child: const Text(
-                              'BORRADOR DE PRENÓMINA',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFF6E47A8),
-                                letterSpacing: 0.7,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Prenómina del colaborador',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF24103D),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Consolidado semanal de asistencia, vacaciones y permisos antes de nómina final.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF6E47A8),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _HrPrenominaStatusChip(
-                                label: '#${widget.row.employeeId}',
-                                complete: true,
-                              ),
-                              _HrPrenominaStatusChip(
-                                label: widget.row.empresa.isEmpty
-                                    ? 'Empresa pendiente'
-                                    : widget.row.empresa,
-                                complete: widget.row.empresa.isNotEmpty,
-                              ),
-                              _HrPrenominaStatusChip(
-                                label: widget.periodLabel.isEmpty
-                                    ? 'Sin periodo activo'
-                                    : widget.periodLabel,
-                                complete: widget.periodLabel.isNotEmpty,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: IconButton.styleFrom(
-                        backgroundColor: const Color(
-                          0xFFF1E6FF,
-                        ).withValues(alpha: 0.92),
-                        foregroundColor: const Color(0xFF6E47A8),
-                        side: const BorderSide(color: Color(0x66B084FF)),
-                      ),
-                      icon: const Icon(Icons.close_rounded),
-                      tooltip: 'Cerrar',
-                    ),
-                  ],
+                HumanResourcesCompactDialogHeader(
+                  title: 'Prenómina',
+                  contextLabel: widget.periodLabel.isEmpty
+                      ? 'Borrador semanal por colaborador'
+                      : widget.periodLabel,
+                  onClose: () => Navigator.of(context).pop(),
                 ),
                 const SizedBox(height: 12),
+                if (_moneyValidationMessage != null) ...[
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFEEF2),
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: const Color(0xFFE5A1B5)),
+                    ),
+                    child: Text(
+                      _moneyValidationMessage!,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF8B2D50),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
                 Flexible(
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -3778,35 +3588,6 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
   }
 }
 
-class _HrPrenominaStatusChip extends StatelessWidget {
-  final String label;
-  final bool complete;
-
-  const _HrPrenominaStatusChip({required this.label, required this.complete});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: complete ? const Color(0xFFDCC5FF) : const Color(0xFFF7F0FF),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: complete ? const Color(0xFF9F6BFF) : const Color(0x44B084FF),
-        ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w900,
-          color: complete ? const Color(0xFF24103D) : const Color(0xFF6E47A8),
-        ),
-      ),
-    );
-  }
-}
-
 class _HrPrenominaSectionCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -3864,36 +3645,44 @@ class _HrPrenominaMetricMiniCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 150,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFBFF),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x44B084FF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF6E47A8),
-              letterSpacing: 0.5,
+    return Tooltip(
+      message: label,
+      child: Container(
+        width: 144,
+        height: 58,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFBFF),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0x44B084FF)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF6E47A8),
+                letterSpacing: 0.35,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF24103D),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF24103D),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -4965,6 +4754,35 @@ class _HrPrenominaDraftDraft {
     );
   }
 
+  String? get firstInvalidMoneyFieldLabel {
+    final fields = <(String, String)>[
+      ('Neto fiscal', fiscalNetAmountText),
+      ('IMSS fiscal', fiscalImssAmountText),
+      ('INFONAVIT fiscal', fiscalInfonavitAmountText),
+      ('FONACOT fiscal', fiscalFonacotAmountText),
+      ('Faltas fiscales', fiscalAbsenceAmountText),
+      ('Vacaciones fiscales', fiscalVacationAmountText),
+      ('Sueldo en efectivo', cashSalaryAmountText),
+      ('Vacaciones en efectivo', cashVacationAmountText),
+      ('ISR operativo', cashIsrAmountText),
+      ('Apoyo transporte', transportSupportAmountText),
+      ('Día festivo', holidayAmountText),
+      ('Horas extra monetizadas', overtimeMonetizedAmountText),
+      ('Bono manual', manualBonusAmountText),
+      ('Descuento faltas', cashAbsenceDeductionAmountText),
+      ('Descuento INFONAVIT', cashInfonavitDeductionAmountText),
+      ('Descuento FONACOT', cashFonacotDeductionAmountText),
+      ('Descuento préstamo', loanDeductionAmountText),
+      ('Fiscal en efectivo', checkAmountText),
+      ('Pago por fuera', paymentOutsideAmountText),
+      ('Ajuste nominal RH', manualAdjustmentAmountText),
+    ];
+    for (final field in fields) {
+      if (!_isPrenominaMoneyInputValid(field.$2)) return field.$1;
+    }
+    return null;
+  }
+
   Map<String, dynamic> toRow({
     required String periodLabel,
     required String employeeId,
@@ -4980,7 +4798,7 @@ class _HrPrenominaDraftDraft {
       'empresa': empresa,
       'draft_status': _draftStatusToDb(draftStatus),
       'manual_adjustment_amount':
-          double.tryParse(manualAdjustmentAmountText.trim()) ?? 0,
+          _parsePrenominaDraftText(manualAdjustmentAmountText) ?? 0.0,
       'fiscal_net_amount': _parsePrenominaDraftText(fiscalNetAmountText),
       'fiscal_imss_amount': _parsePrenominaDraftText(fiscalImssAmountText),
       'fiscal_infonavit_amount': _parsePrenominaDraftText(
@@ -5597,9 +5415,13 @@ double _parsePrenominaImportedAmount(String? raw) {
 }
 
 double? _parsePrenominaDraftText(String value) {
-  final normalized = value.trim().replaceAll(',', '');
+  final normalized = value.trim().replaceAll(r'$', '').replaceAll(',', '');
   if (normalized.isEmpty) return null;
   return double.tryParse(normalized);
+}
+
+bool _isPrenominaMoneyInputValid(String value) {
+  return value.trim().isEmpty || _parsePrenominaDraftText(value) != null;
 }
 
 DateTime? _parsePrenominaDbDate(Object? raw) {

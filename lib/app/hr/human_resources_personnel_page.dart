@@ -2793,14 +2793,15 @@ class _HumanResourcesEmployeeDialogState
     final totalRequirements = _kHrExpedienteRequirements.length;
     final progress = _hrExpedienteProgress(draft);
     final expedienteStatus = _hrExpedienteStatusLabel(progress);
-    final ingresoChip = _fechaIngreso == null
-        ? 'Ingreso pendiente'
-        : 'Ingreso: ${_fmtHrDateLabel(_fechaIngreso!)}';
     return ContractDialogShell(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Container(
           width: 1028,
+          constraints: BoxConstraints(
+            maxWidth: 1028,
+            maxHeight: MediaQuery.sizeOf(context).height - 48,
+          ),
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
           decoration: BoxDecoration(
             color: const Color(0xFFF6F0FF).withValues(alpha: 0.97),
@@ -2813,103 +2814,14 @@ class _HumanResourcesEmployeeDialogState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE9DAFF),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: const Color(0x66B084FF),
-                              ),
-                            ),
-                            child: Text(
-                              _isEditing
-                                  ? 'EDICION DE EXPEDIENTE'
-                                  : 'NUEVO EXPEDIENTE',
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFF6E47A8),
-                                letterSpacing: 0.7,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Expediente del colaborador',
-                            style: const TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF24103D),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            'Informacion administrativa y laboral del empleado.',
-                            style: const TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF6E47A8),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _HrStatusChip(
-                                label:
-                                    '#${_idController.text.trim().isEmpty ? '---' : _idController.text.trim()}',
-                                complete: true,
-                              ),
-                              _HrStatusChip(
-                                label: (_empresa ?? 'Empresa pendiente'),
-                                complete:
-                                    _empresa != null &&
-                                    _empresa!.trim().isNotEmpty,
-                              ),
-                              _HrStatusChip(
-                                label: ingresoChip,
-                                complete: _fechaIngreso != null,
-                              ),
-                              _HrStatusChip(
-                                label: expedienteStatus,
-                                complete: progress >= 1,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        IconButton(
-                          onPressed: () => Navigator.of(context).pop(),
-                          style: IconButton.styleFrom(
-                            backgroundColor: const Color(
-                              0xFFF1E6FF,
-                            ).withValues(alpha: 0.92),
-                            foregroundColor: const Color(0xFF6E47A8),
-                            side: const BorderSide(color: Color(0x66B084FF)),
-                          ),
-                          icon: const Icon(Icons.close_rounded),
-                          tooltip: 'Cerrar',
-                        ),
-                      ],
-                    ),
-                  ],
+                HumanResourcesCompactDialogHeader(
+                  title: _isEditing
+                      ? 'Expediente del colaborador'
+                      : 'Nuevo colaborador',
+                  contextLabel: _isEditing
+                      ? 'Edición administrativa y laboral'
+                      : 'Captura la información base del expediente',
+                  onClose: () => Navigator.of(context).pop(),
                 ),
                 const SizedBox(height: 12),
                 Flexible(

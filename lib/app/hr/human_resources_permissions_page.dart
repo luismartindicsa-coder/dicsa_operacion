@@ -2538,8 +2538,8 @@ class _HrPermissionEditDialogState extends State<_HrPermissionEditDialog> {
           requestUnit: _HrPermissionUnit.dia,
           startDate: _resolveInitialDialogDate(widget.periodLabel),
           endDate: _resolveInitialDialogDate(widget.periodLabel),
-          quantityDays: 1,
-          quantityHours: 0,
+          quantityDays: 1.0,
+          quantityHours: 0.0,
           attendanceSyncStatus: _HrPermissionSyncStatus.pendiente,
           prenominaSyncStatus: _HrPermissionSyncStatus.pendiente,
           impactAttendance: true,
@@ -2601,6 +2601,10 @@ class _HrPermissionEditDialogState extends State<_HrPermissionEditDialog> {
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Container(
             width: 1060,
+            constraints: BoxConstraints(
+              maxWidth: 1060,
+              maxHeight: MediaQuery.sizeOf(context).height - 48,
+            ),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
             decoration: BoxDecoration(
               color: const Color(0xFFF6F0FF).withValues(alpha: 0.97),
@@ -2611,93 +2615,12 @@ class _HrPermissionEditDialogState extends State<_HrPermissionEditDialog> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 10,
-                              vertical: 6,
-                            ),
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFE9DAFF),
-                              borderRadius: BorderRadius.circular(999),
-                              border: Border.all(
-                                color: const Color(0x66B084FF),
-                              ),
-                            ),
-                            child: const Text(
-                              'LEDGER DE PERMISOS',
-                              style: TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFF6E47A8),
-                                letterSpacing: 0.7,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 12),
-                          const Text(
-                            'Permisos del colaborador',
-                            style: TextStyle(
-                              fontSize: 22,
-                              fontWeight: FontWeight.w900,
-                              color: Color(0xFF24103D),
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            'Captura operativa de permisos administrativos antes de asistencia, prenómina y nómina.',
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF6E47A8),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 8,
-                            children: [
-                              _HrPermissionStatusChip(
-                                label: '#${widget.row.employeeId}',
-                                complete: true,
-                              ),
-                              _HrPermissionStatusChip(
-                                label: widget.row.empresa.isEmpty
-                                    ? 'Empresa pendiente'
-                                    : widget.row.empresa,
-                                complete: widget.row.empresa.isNotEmpty,
-                              ),
-                              _HrPermissionStatusChip(
-                                label: widget.periodLabel.isEmpty
-                                    ? 'Sin periodo activo'
-                                    : widget.periodLabel,
-                                complete: widget.periodLabel.isNotEmpty,
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 14),
-                    IconButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: IconButton.styleFrom(
-                        backgroundColor: const Color(
-                          0xFFF1E6FF,
-                        ).withValues(alpha: 0.92),
-                        foregroundColor: const Color(0xFF6E47A8),
-                        side: const BorderSide(color: Color(0x66B084FF)),
-                      ),
-                      icon: const Icon(Icons.close_rounded),
-                      tooltip: 'Cerrar',
-                    ),
-                  ],
+                HumanResourcesCompactDialogHeader(
+                  title: 'Permisos',
+                  contextLabel: widget.periodLabel.isEmpty
+                      ? 'Registro operativo por colaborador'
+                      : widget.periodLabel,
+                  onClose: () => Navigator.of(context).pop(),
                 ),
                 const SizedBox(height: 12),
                 Flexible(
@@ -3016,35 +2939,6 @@ class _HrPermissionEditDialogState extends State<_HrPermissionEditDialog> {
   }
 }
 
-class _HrPermissionStatusChip extends StatelessWidget {
-  final String label;
-  final bool complete;
-
-  const _HrPermissionStatusChip({required this.label, required this.complete});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: complete ? const Color(0xFFDCC5FF) : const Color(0xFFF7F0FF),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: complete ? const Color(0xFF9F6BFF) : const Color(0x44B084FF),
-        ),
-      ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w900,
-          color: complete ? const Color(0xFF24103D) : const Color(0xFF6E47A8),
-        ),
-      ),
-    );
-  }
-}
-
 class _HrPermissionSectionCard extends StatelessWidget {
   final String title;
   final String subtitle;
@@ -3117,36 +3011,44 @@ class _HrPermissionMetricMiniCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 150,
-      padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFFFFBFF),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: const Color(0x44B084FF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF6E47A8),
-              letterSpacing: 0.5,
+    return Tooltip(
+      message: label,
+      child: Container(
+        width: 144,
+        height: 58,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFBFF),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0x44B084FF)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF6E47A8),
+                letterSpacing: 0.35,
+              ),
             ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF24103D),
+            Text(
+              value,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF24103D),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -4137,8 +4039,8 @@ class _HrPermissionEventDraft {
     this.endDate,
     this.startTime = '',
     this.endTime = '',
-    this.quantityDays = 0,
-    this.quantityHours = 0,
+    this.quantityDays = 0.0,
+    this.quantityHours = 0.0,
     this.attendanceSyncStatus = _HrPermissionSyncStatus.pendiente,
     this.prenominaSyncStatus = _HrPermissionSyncStatus.pendiente,
     this.impactAttendance = true,
@@ -4643,18 +4545,18 @@ void _recalculatePermissionDraft(_HrPermissionEventDraft draft) {
   if (draft.requestUnit == _HrPermissionUnit.dia) {
     if (draft.startDate != null && draft.endDate != null) {
       final difference = draft.endDate!.difference(draft.startDate!).inDays;
-      draft.quantityDays = difference >= 0 ? difference + 1 : 0;
+      draft.quantityDays = difference >= 0 ? (difference + 1).toDouble() : 0.0;
     } else {
-      draft.quantityDays = 0;
+      draft.quantityDays = 0.0;
     }
-    draft.quantityHours = 0;
+    draft.quantityHours = 0.0;
     return;
   }
-  draft.quantityDays = 0;
+  draft.quantityDays = 0.0;
   final start = _parsePermissionTime(draft.startTime);
   final end = _parsePermissionTime(draft.endTime);
   if (start == null || end == null) {
-    draft.quantityHours = 0;
+    draft.quantityHours = 0.0;
     return;
   }
   var minutes = (end.hour * 60 + end.minute) - (start.hour * 60 + start.minute);
