@@ -37,6 +37,7 @@ import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_employee_status.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_prenomina_page.dart';
@@ -187,7 +188,41 @@ class HumanResourcesPersonnelPage extends StatefulWidget {
       _HumanResourcesPersonnelPageState();
 }
 
-enum _PersonnelRowAction { open, export, delete }
+enum _PersonnelRowAction { open, export, terminate, reactivate, delete }
+
+List<ContractMenuEntry<_PersonnelRowAction>> _personnelActionEntries(
+  _HumanResourcesEmployeeRow row,
+) {
+  return <ContractMenuEntry<_PersonnelRowAction>>[
+    const ContractMenuEntry(
+      value: _PersonnelRowAction.open,
+      label: 'Abrir expediente',
+      icon: Icons.open_in_new_rounded,
+    ),
+    const ContractMenuEntry(
+      value: _PersonnelRowAction.export,
+      label: 'Exportar fila',
+      icon: Icons.download_rounded,
+    ),
+    if (row.isTerminated)
+      const ContractMenuEntry(
+        value: _PersonnelRowAction.reactivate,
+        label: 'Reactivar colaborador',
+        icon: Icons.person_add_alt_1_rounded,
+      )
+    else
+      const ContractMenuEntry(
+        value: _PersonnelRowAction.terminate,
+        label: 'Dar de baja',
+        icon: Icons.person_off_outlined,
+      ),
+    const ContractMenuEntry(
+      value: _PersonnelRowAction.delete,
+      label: 'Eliminar registro',
+      icon: Icons.delete_outline_rounded,
+    ),
+  ];
+}
 
 class _HumanResourcesPersonnelPageState
     extends State<HumanResourcesPersonnelPage> {
@@ -972,6 +1007,8 @@ class _HumanResourcesPersonnelPageState
           'Salario percibido',
           'Calzado',
           'Talla de uniforme',
+          'Estatus',
+          'Fecha de baja',
         ].map(_csvCell).join(','),
       );
     for (final row in _visibleRows) {
@@ -993,6 +1030,8 @@ class _HumanResourcesPersonnelPageState
           row.salarioRealPercibido,
           row.calzado,
           row.tallaUniforme,
+          row.isTerminated ? 'Baja' : 'Activo',
+          row.terminationDate,
         ].map(_csvCell).join(','),
       );
     }
@@ -1054,11 +1093,77 @@ class _HumanResourcesPersonnelPageState
       case _PersonnelRowAction.export:
         await _exportSingleRowCsv(row);
         return;
+      case _PersonnelRowAction.terminate:
+        await _requestEmployeeTermination(row);
+        return;
+      case _PersonnelRowAction.reactivate:
+        await _requestEmployeeReactivation(row);
+        return;
       case _PersonnelRowAction.delete:
         await _requestDeleteRowsByIds(
           _selectedRowIds.contains(row.id) ? _selectedRowIds : <String>{row.id},
         );
         return;
+    }
+  }
+
+  Future<void> _requestEmployeeTermination(
+    _HumanResourcesEmployeeRow row,
+  ) async {
+    if (row.isTerminated) return;
+    final confirmed = await showContractConfirmationDialog(
+      context,
+      title: 'Dar de baja al colaborador',
+      content:
+          '${row.nombre} dejará de participar en Asistencia, Importación y conciliación, Vacaciones, Permisos, Prenómina y Dashboard. '
+          'Su expediente, documentos e historial se conservarán en Personal y podrá reactivarse después.',
+      confirmText: 'Confirmar baja',
+      tokens: humanResourcesAreaTokens,
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final terminated = await _HrPersonnelStore.terminateEmployee(row);
+      if (!mounted) return;
+      setState(() {
+        final index = _allRows.indexWhere((item) => item.id == row.id);
+        if (index >= 0) _allRows[index] = terminated;
+      });
+      _applyFilters();
+      _showSnack(
+        '${row.nombre} fue dado de baja. Su expediente sigue resguardado.',
+      );
+    } catch (error) {
+      if (mounted) _showSnack('No se pudo registrar la baja. $error');
+    }
+  }
+
+  Future<void> _requestEmployeeReactivation(
+    _HumanResourcesEmployeeRow row,
+  ) async {
+    if (!row.isTerminated) return;
+    final confirmed = await showContractConfirmationDialog(
+      context,
+      title: 'Reactivar colaborador',
+      content:
+          '${row.nombre} volverá a participar en los flujos operativos de RH a partir de este momento. '
+          'La información de su baja quedará conservada en el expediente.',
+      confirmText: 'Reactivar',
+      tokens: humanResourcesAreaTokens,
+    );
+    if (confirmed != true || !mounted) return;
+
+    try {
+      final reactivated = await _HrPersonnelStore.reactivateEmployee(row);
+      if (!mounted) return;
+      setState(() {
+        final index = _allRows.indexWhere((item) => item.id == row.id);
+        if (index >= 0) _allRows[index] = reactivated;
+      });
+      _applyFilters();
+      _showSnack('${row.nombre} fue reactivado para los flujos de RH.');
+    } catch (error) {
+      if (mounted) _showSnack('No se pudo reactivar al colaborador. $error');
     }
   }
 
@@ -1215,23 +1320,7 @@ class _HumanResourcesPersonnelPageState
         details.globalPosition.dx,
         details.globalPosition.dy,
       ),
-      entries: const [
-        ContractMenuEntry(
-          value: _PersonnelRowAction.open,
-          label: 'Abrir expediente',
-          icon: Icons.open_in_new_rounded,
-        ),
-        ContractMenuEntry(
-          value: _PersonnelRowAction.export,
-          label: 'Exportar fila',
-          icon: Icons.download_rounded,
-        ),
-        ContractMenuEntry(
-          value: _PersonnelRowAction.delete,
-          label: 'Eliminar registro',
-          icon: Icons.delete_outline_rounded,
-        ),
-      ],
+      entries: _personnelActionEntries(row),
     );
     if (selected != null && mounted) {
       await _handleRowAction(selected, row);
@@ -1814,6 +1903,8 @@ class _HumanResourcesGridDataRow extends StatelessWidget {
         ? const Color(0xFF9F6BFF).withValues(alpha: 0.18)
         : hoverOnly
         ? const Color(0xFFF6F0FF)
+        : row.isTerminated
+        ? const Color(0xFFF8F3F5)
         : Colors.white;
     final hoverLift = hasSelection
         ? -1.4
@@ -1874,23 +1965,7 @@ class _HumanResourcesGridDataRow extends StatelessWidget {
             tooltip: 'Acciones de expediente',
             iconColor: hasSelection ? Colors.white : const Color(0xFF6E47A8),
             onBeforeOpen: onPrepareActionsMenu,
-            entries: const [
-              ContractMenuEntry(
-                value: _PersonnelRowAction.open,
-                label: 'Abrir expediente',
-                icon: Icons.open_in_new_rounded,
-              ),
-              ContractMenuEntry(
-                value: _PersonnelRowAction.export,
-                label: 'Exportar fila',
-                icon: Icons.download_rounded,
-              ),
-              ContractMenuEntry(
-                value: _PersonnelRowAction.delete,
-                label: 'Eliminar registro',
-                icon: Icons.delete_outline_rounded,
-              ),
-            ],
+            entries: _personnelActionEntries(row),
             onSelected: onActionSelected,
           ),
         ),
@@ -1963,7 +2038,36 @@ class _HumanResourcesGridDataRow extends StatelessWidget {
                           gridFrame(
                             col: 1,
                             width: widths[1],
-                            child: _HrFitText(row.nombre),
+                            child: Row(
+                              children: [
+                                Expanded(child: _HrFitText(row.nombre)),
+                                if (row.isTerminated) ...[
+                                  const SizedBox(width: 8),
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 4,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFFFE8ED),
+                                      borderRadius: BorderRadius.circular(999),
+                                      border: Border.all(
+                                        color: const Color(0xFFD77B96),
+                                      ),
+                                    ),
+                                    child: const Text(
+                                      'BAJA',
+                                      style: TextStyle(
+                                        color: Color(0xFF9B3455),
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
                           ),
                           gridFrame(
                             col: 2,
@@ -2735,6 +2839,13 @@ class _HumanResourcesEmployeeDialogState
       ),
       calzado: _calzadoController.text.trim(),
       tallaUniforme: _tallaUniformeController.text.trim(),
+      employmentStatus:
+          widget.existing?.employmentStatus ?? kHrEmployeeStatusActive,
+      terminationDate: widget.existing?.terminationDate ?? '',
+      terminationReason: widget.existing?.terminationReason ?? '',
+      terminationNotes: widget.existing?.terminationNotes ?? '',
+      terminatedAt: widget.existing?.terminatedAt ?? '',
+      terminatedBy: widget.existing?.terminatedBy ?? '',
       photo: _photo,
       creditoDeclarado: _creditoDeclarado,
       creditoDetalle: _creditoDetalleController.text.trim(),
@@ -6164,6 +6275,12 @@ class _HumanResourcesEmployeeRow {
   final String creditoDetalle;
   final List<_HrEmployeeAttachment> requiredAttachments;
   final List<_HrEmployeeAttachment> additionalAttachments;
+  final String employmentStatus;
+  final String terminationDate;
+  final String terminationReason;
+  final String terminationNotes;
+  final String terminatedAt;
+  final String terminatedBy;
 
   const _HumanResourcesEmployeeRow({
     required this.id,
@@ -6188,7 +6305,16 @@ class _HumanResourcesEmployeeRow {
     this.creditoDetalle = '',
     this.requiredAttachments = const <_HrEmployeeAttachment>[],
     this.additionalAttachments = const <_HrEmployeeAttachment>[],
+    this.employmentStatus = kHrEmployeeStatusActive,
+    this.terminationDate = '',
+    this.terminationReason = '',
+    this.terminationNotes = '',
+    this.terminatedAt = '',
+    this.terminatedBy = '',
   });
+
+  bool get isTerminated =>
+      employmentStatus.trim().toLowerCase() == kHrEmployeeStatusTerminated;
 
   _HumanResourcesEmployeeRow copyWithColumn(String columnId, String value) {
     switch (columnId) {
@@ -6255,6 +6381,12 @@ class _HumanResourcesEmployeeRow {
     String? creditoDetalle,
     List<_HrEmployeeAttachment>? requiredAttachments,
     List<_HrEmployeeAttachment>? additionalAttachments,
+    String? employmentStatus,
+    String? terminationDate,
+    String? terminationReason,
+    String? terminationNotes,
+    String? terminatedAt,
+    String? terminatedBy,
   }) {
     return _HumanResourcesEmployeeRow(
       id: id ?? this.id,
@@ -6284,6 +6416,12 @@ class _HumanResourcesEmployeeRow {
       additionalAttachments:
           additionalAttachments ??
           List<_HrEmployeeAttachment>.of(this.additionalAttachments),
+      employmentStatus: employmentStatus ?? this.employmentStatus,
+      terminationDate: terminationDate ?? this.terminationDate,
+      terminationReason: terminationReason ?? this.terminationReason,
+      terminationNotes: terminationNotes ?? this.terminationNotes,
+      terminatedAt: terminatedAt ?? this.terminatedAt,
+      terminatedBy: terminatedBy ?? this.terminatedBy,
     );
   }
 
@@ -6498,6 +6636,14 @@ class _HrPersonnelStore {
             ),
             calzado: (row['calzado'] ?? '').toString(),
             tallaUniforme: (row['talla_uniforme'] ?? '').toString(),
+            employmentStatus:
+                (row['employment_status'] ?? kHrEmployeeStatusActive)
+                    .toString(),
+            terminationDate: (row['termination_date'] ?? '').toString(),
+            terminationReason: (row['termination_reason'] ?? '').toString(),
+            terminationNotes: (row['termination_notes'] ?? '').toString(),
+            terminatedAt: (row['terminated_at'] ?? '').toString(),
+            terminatedBy: (row['terminated_by'] ?? '').toString(),
             creditoDeclarado: row['credito_declarado'] as bool?,
             creditoDetalle: (row['credito_detalle'] ?? '').toString(),
             photo: _hrPhotoFromProfileRow(row),
@@ -6638,6 +6784,22 @@ class _HrPersonnelStore {
       'salario_real_percibido': _hrDbMoneyValue(syncedRow.salarioRealPercibido),
       'calzado': syncedRow.calzado,
       'talla_uniforme': syncedRow.tallaUniforme,
+      'employment_status': syncedRow.employmentStatus,
+      'termination_date': syncedRow.terminationDate.trim().isEmpty
+          ? null
+          : syncedRow.terminationDate,
+      'termination_reason': syncedRow.terminationReason.trim().isEmpty
+          ? null
+          : syncedRow.terminationReason.trim(),
+      'termination_notes': syncedRow.terminationNotes.trim().isEmpty
+          ? null
+          : syncedRow.terminationNotes.trim(),
+      'terminated_at': syncedRow.terminatedAt.trim().isEmpty
+          ? null
+          : syncedRow.terminatedAt,
+      'terminated_by': syncedRow.terminatedBy.trim().isEmpty
+          ? null
+          : syncedRow.terminatedBy,
       'credito_declarado': syncedRow.creditoDeclarado,
       'credito_detalle': syncedRow.creditoDetalle.trim().isEmpty
           ? null
@@ -6667,6 +6829,45 @@ class _HrPersonnelStore {
           .eq('id', sourceEmployeeId);
     }
     return syncedRow;
+  }
+
+  static Future<_HumanResourcesEmployeeRow> terminateEmployee(
+    _HumanResourcesEmployeeRow row,
+  ) async {
+    final client = Supabase.instance.client;
+    final now = DateTime.now();
+    final terminationDate = _fmtHrDbDate(now);
+    final terminatedAt = now.toIso8601String();
+    final terminatedBy = client.auth.currentUser?.id ?? '';
+    await client
+        .from(_kHrEmployeeProfilesTable)
+        .update(<String, dynamic>{
+          'employment_status': kHrEmployeeStatusTerminated,
+          'termination_date': terminationDate,
+          'termination_reason': 'Baja registrada desde Personal RH',
+          'termination_notes': null,
+          'terminated_at': terminatedAt,
+          'terminated_by': terminatedBy.isEmpty ? null : terminatedBy,
+        })
+        .eq('id', row.id);
+    return row.copyWith(
+      employmentStatus: kHrEmployeeStatusTerminated,
+      terminationDate: terminationDate,
+      terminationReason: 'Baja registrada desde Personal RH',
+      terminationNotes: '',
+      terminatedAt: terminatedAt,
+      terminatedBy: terminatedBy,
+    );
+  }
+
+  static Future<_HumanResourcesEmployeeRow> reactivateEmployee(
+    _HumanResourcesEmployeeRow row,
+  ) async {
+    await Supabase.instance.client
+        .from(_kHrEmployeeProfilesTable)
+        .update(<String, dynamic>{'employment_status': kHrEmployeeStatusActive})
+        .eq('id', row.id);
+    return row.copyWith(employmentStatus: kHrEmployeeStatusActive);
   }
 
   static Future<void> deleteEmployees(

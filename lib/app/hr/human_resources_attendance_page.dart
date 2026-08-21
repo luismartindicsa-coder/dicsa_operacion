@@ -32,6 +32,7 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_employee_status.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
@@ -208,6 +209,7 @@ class _HumanResourcesAttendancePageState
             .select(
               'id,nombre,empresa,horario,dias_labora,labor_schedules,fecha_ingreso,salario',
             )
+            .neq('employment_status', kHrEmployeeStatusTerminated)
             .order('id')
             .range(from, to),
       );
@@ -267,10 +269,28 @@ class _HumanResourcesAttendancePageState
           .map(_HrAttendanceImportLotLite.fromRow)
           .toList(growable: false);
 
-      final records = recordsResult
+      var records = recordsResult
           .map((raw) => Map<String, dynamic>.from(raw as Map))
           .map(_HrAttendanceStoredRecord.fromRow)
           .toList(growable: false);
+
+      final periodOptions = _attendancePeriodOptions(
+        lots: lots,
+        records: records,
+      );
+      final activePeriodLabel = HumanResourcesPeriodContext.resolveSelected(
+        selectedLabel: selectedPeriodLabel,
+        availableLabels: periodOptions,
+      );
+      if (activePeriodLabel.isNotEmpty) {
+        records = await _synchronizeNgtecoAttendanceBaselines(
+          client: client,
+          employees: employees,
+          lots: lots,
+          storedRecords: records,
+          periodLabel: activePeriodLabel,
+        );
+      }
 
       if (!mounted) return;
       _employees = employees;
@@ -286,6 +306,127 @@ class _HumanResourcesAttendancePageState
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
+    }
+  }
+
+  /// Persists the NGTeco baseline so Dashboard and Prenomina consume the same
+  /// reliable daily rows as Attendance. User-owned records are represented by
+  /// the summary builder as `manual` or `ajuste` and are never included here.
+  Future<List<_HrAttendanceStoredRecord>>
+  _synchronizeNgtecoAttendanceBaselines({
+    required SupabaseClient client,
+    required List<_HrAttendanceEmployeeMaster> employees,
+    required List<_HrAttendanceImportLotLite> lots,
+    required List<_HrAttendanceStoredRecord> storedRecords,
+    required String periodLabel,
+  }) async {
+    final ngtecoLot = _attendanceLotForPeriod(
+      lots,
+      _HrAttendanceImportSource.ngteco,
+      periodLabel,
+    );
+    if (ngtecoLot == null) return storedRecords;
+
+    try {
+      final contpaqLot = _attendanceLotForPeriod(
+        lots,
+        _HrAttendanceImportSource.contpaq,
+        periodLabel,
+      );
+      final summaryRows = _buildAttendanceSummaryRows(
+        employees: employees,
+        ngtecoLot: ngtecoLot,
+        contpaqLot: contpaqLot,
+        storedRecords: storedRecords,
+        periodLabel: periodLabel,
+      );
+      final periodRange = _resolveAttendanceActiveRange(
+        ngtecoLot: ngtecoLot,
+        contpaqLot: contpaqLot,
+        activePeriodLabel: periodLabel,
+      );
+      final existingByDay = <String, List<_HrAttendanceStoredRecord>>{};
+      for (final record in storedRecords.where(
+        (item) => item.periodLabel == periodLabel,
+      )) {
+        for (final key in _attendanceStoredRecordKeys(
+          record,
+          periodRange: periodRange,
+        )) {
+          existingByDay
+              .putIfAbsent(key, () => <_HrAttendanceStoredRecord>[])
+              .add(record);
+        }
+      }
+
+      final repairs = <_HrAttendanceStoredRecord>[];
+      for (final row in summaryRows) {
+        for (final day in row.days.where(
+          (item) => item.sourceMode == 'importado',
+        )) {
+          final key = _attendanceEmployeeDateKey(
+            row.employeeId,
+            day.sourceDate,
+          );
+          final existing =
+              existingByDay[key] ?? const <_HrAttendanceStoredRecord>[];
+          if (existing.isEmpty) {
+            repairs.add(
+              _attendanceStoredRecordFromDay(
+                employeeId: row.employeeId,
+                employeeName: row.displayName,
+                periodLabel: periodLabel,
+                day: day,
+              ),
+            );
+            continue;
+          }
+          for (final record in existing) {
+            if (_attendanceStoredRecordMatchesDay(record, day)) continue;
+            repairs.add(
+              _attendanceStoredRecordFromDay(
+                employeeId: row.employeeId,
+                employeeName: row.displayName,
+                periodLabel: periodLabel,
+                sourceDate: record.sourceDate,
+                day: day,
+              ),
+            );
+          }
+        }
+      }
+      if (repairs.isEmpty) return storedRecords;
+
+      await client
+          .from(_kHrAttendanceDailyRecordsTable)
+          .upsert(
+            repairs.map((item) => item.toRow()).toList(growable: false),
+            onConflict: 'period_label,employee_id,source_date',
+          );
+      final refreshedResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrAttendanceDailyRecordsTable)
+            .select()
+            .eq('period_label', periodLabel)
+            .order('source_date')
+            .order('created_at')
+            .range(from, to),
+      );
+      final refreshed = refreshedResult
+          .map((raw) => Map<String, dynamic>.from(raw))
+          .map(_HrAttendanceStoredRecord.fromRow)
+          .toList(growable: false);
+      return <_HrAttendanceStoredRecord>[
+        ...storedRecords.where((item) => item.periodLabel != periodLabel),
+        ...refreshed,
+      ];
+    } catch (error, stackTrace) {
+      // Rendering from the saved NGTeco lot remains available if an older
+      // deployment has not yet created the daily-records table. Keep the
+      // failure visible in development instead of silently losing the sync.
+      debugPrint('No se pudo sincronizar NGTeco en Asistencia: $error');
+      debugPrintStack(stackTrace: stackTrace);
+      return storedRecords;
     }
   }
 
@@ -3545,7 +3686,9 @@ class _HrAttendanceDayCard extends StatelessWidget {
                                 .toList(growable: false),
                           );
                       if (value == null) return;
+                      if (draft.status == value) return;
                       draft.status = value;
+                      _markAttendanceDraftAsUserAdjustment(draft);
                       _recalculateAttendanceDraftMetrics(draft);
                       onChanged();
                     },
@@ -3560,7 +3703,9 @@ class _HrAttendanceDayCard extends StatelessWidget {
                     initialValue: draft.firstPunch,
                     decoration: _hrAttendanceFieldDecoration(),
                     onChanged: (value) {
+                      if (draft.firstPunch == value) return;
                       draft.firstPunch = value;
+                      _markAttendanceDraftAsUserAdjustment(draft);
                       _recalculateAttendanceDraftMetrics(draft);
                       onChanged();
                     },
@@ -3575,7 +3720,9 @@ class _HrAttendanceDayCard extends StatelessWidget {
                     initialValue: draft.lastPunch,
                     decoration: _hrAttendanceFieldDecoration(),
                     onChanged: (value) {
+                      if (draft.lastPunch == value) return;
                       draft.lastPunch = value;
+                      _markAttendanceDraftAsUserAdjustment(draft);
                       _recalculateAttendanceDraftMetrics(draft);
                       onChanged();
                     },
@@ -4024,6 +4171,21 @@ enum _HrAttendanceStatus {
 
   final String label;
   const _HrAttendanceStatus(this.label);
+
+  String get databaseValue => switch (this) {
+    _HrAttendanceStatus.laboro => 'laboro',
+    _HrAttendanceStatus.falto => 'falto',
+    _HrAttendanceStatus.noAplica => 'no_aplica',
+  };
+
+  static _HrAttendanceStatus fromDatabaseValue(String raw) {
+    return switch (raw.trim()) {
+      'laboro' => _HrAttendanceStatus.laboro,
+      'falto' => _HrAttendanceStatus.falto,
+      'no_aplica' || 'noAplica' => _HrAttendanceStatus.noAplica,
+      _ => _HrAttendanceStatus.noAplica,
+    };
+  }
 }
 
 class _HrAttendanceEmployeeMaster {
@@ -4166,7 +4328,7 @@ class _HrAttendanceStoredRecord {
     'employee_name': employeeName,
     'source_date': sourceDate,
     'weekday_label': weekdayLabel,
-    'status': status.name,
+    'status': status.databaseValue,
     'source_mode': sourceMode,
     'first_punch': firstPunch,
     'last_punch': lastPunch,
@@ -4184,9 +4346,8 @@ class _HrAttendanceStoredRecord {
       employeeName: (row['employee_name'] ?? '').toString(),
       sourceDate: (row['source_date'] ?? '').toString(),
       weekdayLabel: (row['weekday_label'] ?? '').toString(),
-      status: _HrAttendanceStatus.values.firstWhere(
-        (item) => item.name == (row['status'] ?? '').toString(),
-        orElse: () => _HrAttendanceStatus.noAplica,
+      status: _HrAttendanceStatus.fromDatabaseValue(
+        (row['status'] ?? '').toString(),
       ),
       sourceMode: (row['source_mode'] ?? 'manual').toString(),
       firstPunch: (row['first_punch'] ?? '').toString(),
@@ -4431,15 +4592,17 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
     contpaqLot: contpaqLot,
     activePeriodLabel: periodLabel,
   );
-  final storedByEmployeeDate = {
-    for (final record in storedRecords.where(
-      (item) =>
-          item.periodLabel == periodLabel &&
-          _isAttendanceDateWithinRange(item.sourceDate, periodRange),
-    ))
-      '${_normalizeAttendanceEmployeeId(record.employeeId)}|${record.sourceDate}':
-          record,
-  };
+  final storedByEmployeeDate = <String, _HrAttendanceStoredRecord>{};
+  for (final record in storedRecords.where(
+    (item) => item.periodLabel == periodLabel,
+  )) {
+    for (final key in _attendanceStoredRecordKeys(
+      record,
+      periodRange: periodRange,
+    )) {
+      storedByEmployeeDate[key] = record;
+    }
+  }
 
   final rows = <_HrAttendanceSummaryRow>[];
   for (final employee in employees) {
@@ -4493,20 +4656,30 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
             schedule.start.hour,
             schedule.start.minute,
           );
-          final scheduledEndAt = DateTime(
-            importedDateTimes.last.year,
-            importedDateTimes.last.month,
-            importedDateTimes.last.day,
+          final scheduledEndAtSameDate = DateTime(
+            importedDateTimes.first.year,
+            importedDateTimes.first.month,
+            importedDateTimes.first.day,
             schedule.end.hour,
             schedule.end.minute,
           );
+          final overnightSchedule = !scheduledEndAtSameDate.isAfter(
+            scheduledStartAt,
+          );
+          final scheduledEndAt = overnightSchedule
+              ? scheduledEndAtSameDate.add(const Duration(days: 1))
+              : scheduledEndAtSameDate;
+          var lastPunchAt = importedDateTimes.last;
+          if (overnightSchedule && lastPunchAt.isBefore(scheduledStartAt)) {
+            lastPunchAt = lastPunchAt.add(const Duration(days: 1));
+          }
           lateMinutes = importedDateTimes.first
               .difference(scheduledStartAt)
               .inMinutes;
           if (lateMinutes < 0) lateMinutes = 0;
           overtimeMinutes = _resolveOvertimeMinutes(
             scheduledEndAt: scheduledEndAt,
-            lastPunchAt: importedDateTimes.last,
+            lastPunchAt: lastPunchAt,
           );
         }
       } else if (resolvedSchedule != null) {
@@ -4538,34 +4711,30 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
       );
     }
 
-    for (final stored in storedByEmployeeDate.values.where(
-      (item) =>
-          _normalizeAttendanceEmployeeId(item.employeeId) ==
-          normalizedEmployeeId,
-    )) {
-      final importedRecord = recordMap[stored.sourceDate];
-      final storedIsReplaceableTemplate =
-          stored.sourceMode == 'importado' || stored.sourceMode == 'jornada';
-      final storedHasNoPunches =
-          stored.firstPunch.trim().isEmpty &&
-          stored.lastPunch.trim().isEmpty &&
-          stored.punchTimeline.isEmpty;
-      final importedPunchesAreAvailable =
-          importedRecord?.sourceMode == 'importado' &&
-          importedRecord!.firstPunch.trim().isNotEmpty;
-      if (importedPunchesAreAvailable &&
-          (stored.sourceMode == 'jornada' ||
-              (storedIsReplaceableTemplate && storedHasNoPunches))) {
-        // A newly available NGTeco reading is more reliable than the old
-        // empty default that previous versions persisted for this day.
+    final employeeStoredRecords = <String, _HrAttendanceStoredRecord>{};
+    for (final entry in storedByEmployeeDate.entries) {
+      final stored = entry.value;
+      if (_normalizeAttendanceEmployeeId(stored.employeeId) !=
+          normalizedEmployeeId) {
         continue;
       }
-      final storedDate = _parseAttendanceDateLabel(stored.sourceDate);
+      // The same legacy record can expose both date orders while it is being
+      // normalized. Process it once, preferring the date that has NGTeco data.
+      employeeStoredRecords.putIfAbsent(stored.id, () => stored);
+    }
+    for (final stored in employeeStoredRecords.values) {
+      final storedSourceDate = _resolveAttendanceStoredDateForRecord(
+        stored: stored,
+        recordMap: recordMap,
+        periodRange: periodRange,
+      );
+      if (storedSourceDate == null) continue;
+      final storedDate = _parseAttendanceDateLabel(storedSourceDate);
       final storedWeekdayLabel = storedDate == null
           ? stored.weekdayLabel
           : _hrWeekdayLabel(storedDate.weekday);
       final storedPunchAt = _resolveAttendancePunchDateTime(
-        sourceDate: stored.sourceDate,
+        sourceDate: storedSourceDate,
         sourceTime: stored.firstPunch,
       );
       final storedSchedule = storedPunchAt != null
@@ -4578,9 +4747,27 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
               schedules: employee.workSchedules,
               weekdayLabel: storedWeekdayLabel,
             );
-      recordMap[stored.sourceDate] = _HrAttendanceDayRecord(
-        sourceDate: stored.sourceDate,
-        weekdayLabel: stored.weekdayLabel,
+      final importedRecord = recordMap[storedSourceDate];
+      final importedPunchesAreAvailable =
+          importedRecord?.sourceMode == 'importado' &&
+          (importedRecord!.firstPunch.trim().isNotEmpty ||
+              importedRecord.punchTimeline.isNotEmpty);
+      final isUserOwnedRecord =
+          stored.sourceMode == 'manual' ||
+          stored.sourceMode == 'ajuste' ||
+          _isLegacyAttendanceUserOverride(
+            stored: stored,
+            imported: importedRecord,
+          );
+      if (importedPunchesAreAvailable && !isUserOwnedRecord) {
+        // An imported row is always a refreshable NGTeco baseline. Only a
+        // manual/adjusted row, including a detectable legacy user edit, is
+        // allowed to supersede the current source import.
+        continue;
+      }
+      recordMap[storedSourceDate] = _HrAttendanceDayRecord(
+        sourceDate: storedSourceDate,
+        weekdayLabel: storedWeekdayLabel,
         status: stored.status,
         sourceMode: stored.sourceMode,
         scheduledStart: storedSchedule == null
@@ -4640,6 +4827,135 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
   return rows;
 }
 
+bool _isLegacyAttendanceUserOverride({
+  required _HrAttendanceStoredRecord stored,
+  required _HrAttendanceDayRecord? imported,
+}) {
+  if (stored.sourceMode != 'importado' || imported == null) return false;
+  if (stored.notes.trim().isNotEmpty) return true;
+
+  // Earlier versions persisted direct edits with sourceMode "importado".
+  // A legacy override is only credible when it still has a complete pair of
+  // RH-entered punches. Old import templates can contain an empty or partial
+  // timeline; those rows must be refreshed from the current NGTeco lot.
+  final storedFirst = stored.firstPunch.trim();
+  final storedLast = stored.lastPunch.trim();
+  if (storedFirst.isEmpty || storedLast.isEmpty) return false;
+
+  final importedFirst = imported.firstPunch.trim();
+  final importedLast = imported.lastPunch.trim();
+  if (importedFirst.isEmpty || importedLast.isEmpty) return false;
+
+  return stored.status != imported.status ||
+      storedFirst != importedFirst ||
+      storedLast != importedLast;
+}
+
+Iterable<String> _attendanceStoredRecordKeys(
+  _HrAttendanceStoredRecord record, {
+  DateTimeRange? periodRange,
+}) sync* {
+  for (final dateLabel in _attendanceCandidateStoredDateLabels(record)) {
+    final date = _parseAttendanceDateLabel(dateLabel);
+    if (date == null ||
+        (periodRange != null &&
+            (date.isBefore(periodRange.start) ||
+                date.isAfter(periodRange.end)))) {
+      continue;
+    }
+    yield _attendanceEmployeeDateKey(record.employeeId, dateLabel);
+  }
+}
+
+List<String> _attendanceCandidateStoredDateLabels(
+  _HrAttendanceStoredRecord record,
+) {
+  final labels = <String>{};
+  final canonical = _normalizeAttendanceStoredDateLabel(record.sourceDate);
+  if (canonical.isNotEmpty) labels.add(canonical);
+  if (record.sourceMode == 'importado') {
+    final sourceAsUsDate = _parseUsImportDate(record.sourceDate);
+    if (sourceAsUsDate != null) {
+      labels.add(_fmtAttendanceDateLabel(sourceAsUsDate));
+    }
+  }
+  return labels.toList(growable: false);
+}
+
+String? _resolveAttendanceStoredDateForRecord({
+  required _HrAttendanceStoredRecord stored,
+  required Map<String, _HrAttendanceDayRecord> recordMap,
+  required DateTimeRange? periodRange,
+}) {
+  final dateLabels = _attendanceCandidateStoredDateLabels(stored)
+      .where((label) {
+        final date = _parseAttendanceDateLabel(label);
+        return date != null &&
+            (periodRange == null ||
+                (!date.isBefore(periodRange.start) &&
+                    !date.isAfter(periodRange.end)));
+      })
+      .toList(growable: false);
+  for (final label in dateLabels) {
+    if (recordMap.containsKey(label)) return label;
+  }
+  return dateLabels.isEmpty ? null : dateLabels.first;
+}
+
+String _attendanceEmployeeDateKey(String employeeId, String sourceDate) {
+  return '${_normalizeAttendanceEmployeeId(employeeId)}|'
+      '${_normalizeAttendanceStoredDateLabel(sourceDate)}';
+}
+
+_HrAttendanceStoredRecord _attendanceStoredRecordFromDay({
+  required String employeeId,
+  required String employeeName,
+  required String periodLabel,
+  required _HrAttendanceDayRecord day,
+  String? sourceDate,
+}) {
+  return _HrAttendanceStoredRecord(
+    id: '',
+    periodLabel: periodLabel,
+    employeeId: employeeId,
+    employeeName: employeeName,
+    sourceDate: sourceDate ?? day.sourceDate,
+    weekdayLabel: day.weekdayLabel,
+    status: day.status,
+    sourceMode: day.sourceMode,
+    firstPunch: day.firstPunch,
+    lastPunch: day.lastPunch,
+    punchTimeline: day.punchTimeline,
+    lateMinutes: day.lateMinutes,
+    overtimeMinutes: day.overtimeMinutes,
+    notes: day.notes,
+  );
+}
+
+bool _attendanceStoredRecordMatchesDay(
+  _HrAttendanceStoredRecord record,
+  _HrAttendanceDayRecord day,
+) {
+  return record.weekdayLabel == day.weekdayLabel &&
+      record.status == day.status &&
+      record.sourceMode == day.sourceMode &&
+      record.firstPunch == day.firstPunch &&
+      record.lastPunch == day.lastPunch &&
+      _listEquals(record.punchTimeline, day.punchTimeline) &&
+      record.lateMinutes == day.lateMinutes &&
+      record.overtimeMinutes == day.overtimeMinutes &&
+      record.notes == day.notes;
+}
+
+bool _listEquals<T>(List<T> left, List<T> right) {
+  if (identical(left, right)) return true;
+  if (left.length != right.length) return false;
+  for (var index = 0; index < left.length; index++) {
+    if (left[index] != right[index]) return false;
+  }
+  return true;
+}
+
 List<String> _attendancePeriodOptions({
   required List<_HrAttendanceImportLotLite> lots,
   required List<_HrAttendanceStoredRecord> records,
@@ -4657,19 +4973,58 @@ _HrAttendanceImportLotLite? _attendanceLotForPeriod(
 ) {
   if (selectedPeriodLabel.trim().isEmpty) return null;
   final selectedRange = _extractDateRangeFromPeriodLabel(selectedPeriodLabel);
+  _HrAttendanceImportLotLite? bestEntryMatch;
+  var bestEntryMatchCount = 0;
   for (final lot in lots) {
     if (lot.source != source) continue;
     final described = _describeImportPeriod(lot);
     if (described == selectedPeriodLabel) return lot;
-    final lotRange = _extractDateRangeFromPeriodLabel(described);
+    final lotRange = _attendanceImportLotDateRange(lot);
     if (selectedRange != null &&
         lotRange != null &&
         selectedRange.start == lotRange.start &&
         selectedRange.end == lotRange.end) {
       return lot;
     }
+    if (selectedRange == null || source != _HrAttendanceImportSource.ngteco) {
+      continue;
+    }
+    final entriesInRange = lot.entries.where((entry) {
+      final parsed = _parseAttendanceImportedDateTime(entry);
+      if (parsed == null) return false;
+      final date = DateTime(parsed.year, parsed.month, parsed.day);
+      return !date.isBefore(selectedRange.start) &&
+          !date.isAfter(selectedRange.end);
+    }).length;
+    // The source dates are authoritative. Imported labels can be generated by
+    // older app versions and use a different date order.
+    if (entriesInRange > bestEntryMatchCount) {
+      bestEntryMatch = lot;
+      bestEntryMatchCount = entriesInRange;
+    }
   }
-  return null;
+  return bestEntryMatch;
+}
+
+DateTimeRange? _attendanceImportLotDateRange(_HrAttendanceImportLotLite lot) {
+  if (lot.source == _HrAttendanceImportSource.ngteco) {
+    final entryRange = _attendanceImportedEntriesRange(lot.entries);
+    if (entryRange != null) return entryRange;
+  }
+  return _extractDateRangeFromPeriodLabel(_describeImportPeriod(lot));
+}
+
+DateTimeRange? _attendanceImportedEntriesRange(
+  Iterable<_HrAttendanceImportedEntry> entries,
+) {
+  final dates = entries
+      .map(_parseAttendanceImportedDateTime)
+      .whereType<DateTime>()
+      .map((value) => DateTime(value.year, value.month, value.day))
+      .toList(growable: false);
+  if (dates.isEmpty) return null;
+  dates.sort();
+  return DateTimeRange(start: dates.first, end: dates.last);
 }
 
 List<DateTime> _resolveAttendancePeriodDates({
@@ -4756,13 +5111,6 @@ List<_HrAttendanceImportedEntry> _filterAttendanceEntriesToRange(
         return !day.isBefore(range.start) && !day.isAfter(range.end);
       })
       .toList(growable: false);
-}
-
-bool _isAttendanceDateWithinRange(String sourceDate, DateTimeRange? range) {
-  if (range == null) return true;
-  final parsed = _parseAttendanceDateLabel(sourceDate);
-  if (parsed == null) return false;
-  return !parsed.isBefore(range.start) && !parsed.isAfter(range.end);
 }
 
 List<String> _parseAttendanceWeekdays(Object? value) {
@@ -4920,14 +5268,25 @@ String _fmtAttendanceDateLabel(DateTime value) {
   return '$day/$month/$year';
 }
 
+String _normalizeAttendanceStoredDateLabel(String raw) {
+  final parsed = _parseAttendanceDateLabel(raw);
+  return parsed == null ? raw.trim() : _fmtAttendanceDateLabel(parsed);
+}
+
 DateTime? _parseAttendanceDateLabel(String raw) {
-  final match = RegExp(r'^(\d{2})/(\d{2})/(\d{4})$').firstMatch(raw.trim());
-  if (match == null) return null;
-  final day = int.tryParse(match.group(1)!);
-  final month = int.tryParse(match.group(2)!);
-  final year = int.tryParse(match.group(3)!);
+  final normalized = raw.trim();
+  final iso = RegExp(
+    r'^(\d{4})-(\d{1,2})-(\d{1,2})(?:[ T].*)?$',
+  ).firstMatch(normalized);
+  final slash = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$').firstMatch(normalized);
+  final year = int.tryParse(iso?.group(1) ?? slash?.group(3) ?? '');
+  final month = int.tryParse(iso?.group(2) ?? slash?.group(2) ?? '');
+  final day = int.tryParse(iso?.group(3) ?? slash?.group(1) ?? '');
   if (day == null || month == null || year == null) return null;
-  return DateTime(year, month, day);
+  final parsed = DateTime(year, month, day);
+  return parsed.year == year && parsed.month == month && parsed.day == day
+      ? parsed
+      : null;
 }
 
 DateTime? _parseUsImportDate(String raw) {
@@ -5149,6 +5508,14 @@ String _formatAttendanceScheduleOption(_HrAttendanceWorkSchedule schedule) {
   return '$dias · $horario';
 }
 
+void _markAttendanceDraftAsUserAdjustment(_HrAttendanceDayDraft draft) {
+  // Keep explicitly captured manual records manual, but protect edits to
+  // imported or schedule-generated rows from a later NGTeco refresh.
+  if (draft.sourceMode != 'manual') {
+    draft.sourceMode = 'ajuste';
+  }
+}
+
 void _recalculateAttendanceDraftMetrics(_HrAttendanceDayDraft draft) {
   if (draft.status != _HrAttendanceStatus.laboro ||
       draft.scheduledStart.trim().isEmpty ||
@@ -5321,8 +5688,12 @@ int _resolveAttendanceEffectiveWorkMinutes(
 
 String _describeImportPeriod(_HrAttendanceImportLotLite lot) {
   final raw = lot.periodLabel.trim();
-  if (raw.isEmpty) return 'Periodo no detectado';
   if (lot.source == _HrAttendanceImportSource.ngteco) {
+    final entryRange = _attendanceImportedEntriesRange(lot.entries);
+    if (entryRange != null) {
+      return '${_fmtAttendanceDateLabel(entryRange.start)} - ${_fmtAttendanceDateLabel(entryRange.end)}';
+    }
+    if (raw.isEmpty) return 'Periodo no detectado';
     final segments = raw.split('→').map((part) => part.trim()).toList();
     if (segments.length == 2) {
       final first = _parseUsImportDate(segments[0]);
@@ -5334,6 +5705,7 @@ String _describeImportPeriod(_HrAttendanceImportLotLite lot) {
     }
     return raw;
   }
+  if (raw.isEmpty) return 'Periodo no detectado';
 
   final periodMatch = RegExp(
     r'Periodo\s+(\d+)\s+al\s+\d+\s+Semanal\s+del\s+(\d{2}/\d{2}/\d{4})\s+al\s+(\d{2}/\d{2}/\d{4})(?:\s+·\s+Hora:\s+(\d{2}:\d{2}:\d{2}))?',

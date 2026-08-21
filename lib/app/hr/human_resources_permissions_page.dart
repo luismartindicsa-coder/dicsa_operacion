@@ -30,6 +30,7 @@ import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_employee_status.dart';
 import 'human_resources_event_period_impacts.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_personnel_page.dart';
@@ -206,6 +207,7 @@ class _HumanResourcesPermissionsPageState
             .select(
               'id,nombre,empresa,horario,dias_labora,labor_schedules,fecha_ingreso,fecha_alta,salario,salario_real_percibido',
             )
+            .neq('employment_status', kHrEmployeeStatusTerminated)
             .order('id')
             .range(from, to),
       );

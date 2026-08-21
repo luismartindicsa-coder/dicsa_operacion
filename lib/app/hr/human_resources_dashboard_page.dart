@@ -11,6 +11,7 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_employee_status.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
@@ -583,6 +584,10 @@ class _HrDashboardPersonnelSummaryCardState
                             (from, to) => Supabase.instance.client
                                 .from('hr_employee_profiles')
                                 .select('id')
+                                .neq(
+                                  'employment_status',
+                                  kHrEmployeeStatusTerminated,
+                                )
                                 .order('id')
                                 .range(from, to),
                           ),
@@ -698,6 +703,7 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
           (from, to) => client
               .from('hr_employee_profiles')
               .select('id,nombre,empresa')
+              .neq('employment_status', kHrEmployeeStatusTerminated)
               .order('id')
               .range(from, to),
         ),
@@ -1761,6 +1767,7 @@ class _HrDashboardRankCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final visibleRows = rows.take(4).toList(growable: false);
     return _HrDashboardPanel(
       onTap: onTap,
       child: SizedBox(
@@ -1788,75 +1795,26 @@ class _HrDashboardRankCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             Expanded(
-              child: rows.isEmpty
+              child: visibleRows.isEmpty
                   ? _HrDashboardEmptyLabel(label: emptyLabel)
-                  : ListView.separated(
-                      physics: const NeverScrollableScrollPhysics(),
-                      itemCount: math.min(rows.length, 5),
-                      separatorBuilder: (_, _) => const SizedBox(height: 8),
-                      itemBuilder: (context, index) {
-                        final row = rows[index];
-                        return Row(
-                          children: [
-                            Container(
-                              width: 24,
-                              height: 24,
-                              alignment: Alignment.center,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF4C2B71),
-                                shape: BoxShape.circle,
-                              ),
-                              child: Text(
-                                '${index + 1}',
-                                style: const TextStyle(
-                                  fontSize: 10.5,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFFE2CDFF),
-                                ),
-                              ),
+                  : Column(
+                      children: [
+                        for (
+                          var index = 0;
+                          index < visibleRows.length;
+                          index += 1
+                        ) ...[
+                          Expanded(
+                            child: _HrDashboardRankLine(
+                              rank: index + 1,
+                              row: visibleRows[index],
+                              valueLabel: valueLabel,
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    row.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 11.5,
-                                      fontWeight: FontWeight.w800,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  if (row.company.isNotEmpty)
-                                    Text(
-                                      row.company,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                        fontSize: 9.5,
-                                        fontWeight: FontWeight.w700,
-                                        color: Colors.white.withValues(
-                                          alpha: 0.54,
-                                        ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                            ),
-                            Text(
-                              valueLabel(row.value),
-                              style: const TextStyle(
-                                fontSize: 11,
-                                fontWeight: FontWeight.w900,
-                                color: Color(0xFFE0CCFF),
-                              ),
-                            ),
-                          ],
-                        );
-                      },
+                          ),
+                          if (index != visibleRows.length - 1)
+                            const SizedBox(height: 4),
+                        ],
+                      ],
                     ),
             ),
             const Align(
@@ -1873,6 +1831,82 @@ class _HrDashboardRankCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _HrDashboardRankLine extends StatelessWidget {
+  final int rank;
+  final _HrDashboardRankItem row;
+  final String Function(double value) valueLabel;
+
+  const _HrDashboardRankLine({
+    required this.rank,
+    required this.row,
+    required this.valueLabel,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Container(
+          width: 22,
+          height: 22,
+          alignment: Alignment.center,
+          decoration: const BoxDecoration(
+            color: Color(0xFF4C2B71),
+            shape: BoxShape.circle,
+          ),
+          child: Text(
+            '$rank',
+            style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w900,
+              color: Color(0xFFE2CDFF),
+            ),
+          ),
+        ),
+        const SizedBox(width: 7),
+        Expanded(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                row.name,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w800,
+                  color: Colors.white,
+                ),
+              ),
+              if (row.company.isNotEmpty)
+                Text(
+                  row.company,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    color: Colors.white.withValues(alpha: 0.54),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          valueLabel(row.value),
+          style: const TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFFE0CCFF),
+          ),
+        ),
+      ],
     );
   }
 }
@@ -2594,7 +2628,11 @@ class _HrDashboardData {
     }
 
     final activeAttendance = attendanceRecords
-        .where((row) => (row['period_label'] ?? '').toString() == activePeriod)
+        .where(
+          (row) =>
+              (row['period_label'] ?? '').toString() == activePeriod &&
+              peopleById.containsKey((row['employee_id'] ?? '').toString()),
+        )
         .toList(growable: false);
     final workedDays = activeAttendance
         .where((row) => row['status'] == 'laboro')
@@ -2629,6 +2667,10 @@ class _HrDashboardData {
         .where(
           (row) => eventBelongsToPeriod(row) && row['status'] != 'cancelado',
         )
+        .where(
+          (row) =>
+              peopleById.containsKey((row['employee_id'] ?? '').toString()),
+        )
         .toList(growable: false);
     final permissionDistribution = <String, int>{};
     for (final row in activePermissions) {
@@ -2648,6 +2690,7 @@ class _HrDashboardData {
         .where(
           (row) =>
               row['status'] != 'cancelado' &&
+              peopleById.containsKey((row['employee_id'] ?? '').toString()) &&
               (row['event_type'] == 'vacaciones_disfrutadas' ||
                   row['event_type'] == 'vacaciones_pendientes'),
         )
@@ -2695,7 +2738,11 @@ class _HrDashboardData {
         .toList(growable: false);
 
     final activeDrafts = prenominaDrafts
-        .where((row) => (row['period_label'] ?? '').toString() == activePeriod)
+        .where(
+          (row) =>
+              (row['period_label'] ?? '').toString() == activePeriod &&
+              peopleById.containsKey((row['employee_id'] ?? '').toString()),
+        )
         .toList(growable: false);
     final payroll = _HrDashboardPayroll.fromRows(activeDrafts);
     final readyCount = activeDrafts
@@ -2714,7 +2761,10 @@ class _HrDashboardData {
         .length;
     final pendingVacations = vacationEvents
         .where(
-          (row) => eventBelongsToPeriod(row) && row['status'] == 'pendiente',
+          (row) =>
+              eventBelongsToPeriod(row) &&
+              row['status'] == 'pendiente' &&
+              peopleById.containsKey((row['employee_id'] ?? '').toString()),
         )
         .length;
     final closed = periodClosures.any(

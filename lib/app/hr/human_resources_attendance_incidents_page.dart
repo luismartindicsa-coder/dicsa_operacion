@@ -21,6 +21,7 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_employee_status.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
@@ -94,6 +95,7 @@ class _HumanResourcesAttendanceIncidentsPageState
             .select(
               'id,nombre,empresa,horario,dias_labora,labor_schedules,fecha_ingreso,salario',
             )
+            .neq('employment_status', kHrEmployeeStatusTerminated)
             .order('id')
             .range(from, to),
       );
@@ -3698,7 +3700,9 @@ _HrAttendanceImportLot _parseNgtecoImportLot(String fileName, List<int> bytes) {
       entries: const [],
     );
   }
-  final header = rows.first;
+  final header = rows.first
+      .map(_normalizeHrImportHeader)
+      .toList(growable: false);
   final idIndex = header.indexOf('ID de Persona');
   final nameIndex = header.indexOf('Nombre de la Persona');
   final dateIndex = header.indexOf('Fecha de Fichaje');
@@ -3825,7 +3829,9 @@ _HrAttendanceImportLot _parseContpaqImportLot(
       entries: const [],
     );
   }
-  final header = rows[headerIndex];
+  final header = rows[headerIndex]
+      .map(_normalizeHrImportHeader)
+      .toList(growable: false);
   final idIndex = header.indexOf('Código');
   final employeeIndex = header.indexOf('Empleado');
   final salaryIndex = header.indexOf('Sueldo');
@@ -3956,6 +3962,10 @@ String _decodeImportText(List<int> bytes) {
   } catch (_) {
     return latin1.decode(bytes, allowInvalid: true);
   }
+}
+
+String _normalizeHrImportHeader(String value) {
+  return value.replaceFirst('\uFEFF', '').trim();
 }
 
 List<List<String>> _parseCsvRows(String raw) {
