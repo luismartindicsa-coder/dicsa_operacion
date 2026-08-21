@@ -30,8 +30,10 @@ import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_event_period_impacts.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_personnel_page.dart';
+import 'human_resources_period_context.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
 import 'human_resources_vacations_page.dart';
@@ -69,6 +71,8 @@ class _HumanResourcesPermissionsPageState
   bool _canReturnToDirection = false;
   bool _loading = true;
   String _activePeriodLabel = '';
+  String _selectedPeriodLabel = '';
+  List<String> _periodOptions = const <String>[];
   String? _selectedRowId;
   String? _hoveredRowId;
   int _currentPage = 0;
@@ -193,6 +197,8 @@ class _HumanResourcesPermissionsPageState
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
+      final selectedPeriodLabel =
+          await HumanResourcesPeriodContext.readSelectedLabel();
       final client = Supabase.instance.client;
       final employeesResult = await fetchAllSupabaseRows(
         (from, to) => client
@@ -251,6 +257,11 @@ class _HumanResourcesPermissionsPageState
       _employees = employees;
       _importLots = importLots;
       _events = events;
+      _selectedPeriodLabel = selectedPeriodLabel;
+      _periodOptions = _permissionPeriodOptions(
+        lots: importLots,
+        events: events,
+      );
       _rebuildRows();
     } catch (_) {
       if (!mounted) return;
@@ -259,20 +270,17 @@ class _HumanResourcesPermissionsPageState
   }
 
   void _rebuildRows() {
-    final ngtecoLot = _latestLotBySource(
-      _importLots,
-      _HrPermissionImportSource.ngteco,
+    final periodLabel = HumanResourcesPeriodContext.resolveSelected(
+      selectedLabel: _selectedPeriodLabel,
+      availableLabels: _periodOptions,
     );
-    final contpaqLot = _latestLotBySource(
-      _importLots,
-      _HrPermissionImportSource.contpaq,
-    );
-    final periodLabel = _resolveActivePermissionPeriodLabel(
-      ngtecoLot: ngtecoLot,
-      contpaqLot: contpaqLot,
-    );
+    final activeRange = HumanResourcesPeriodRange.tryParse(periodLabel);
     final periodEvents = _events
-        .where((event) => event.attendancePeriodLabel == periodLabel)
+        .where(
+          (event) =>
+              event.attendancePeriodLabel == periodLabel ||
+              _permissionEventOverlapsPeriod(event, activeRange),
+        )
         .toList(growable: false);
     final rows = _buildPermissionSummaryRows(
       employees: _employees,
@@ -313,6 +321,20 @@ class _HumanResourcesPermissionsPageState
       _navigationController.focusInsertColumn(0);
     }
     setState(() => _loading = false);
+  }
+
+  Future<void> _selectPeriod(String periodLabel) async {
+    await HumanResourcesPeriodContext.select(periodLabel);
+    if (!mounted) return;
+    _selectedPeriodLabel = periodLabel;
+    _currentPage = 0;
+    _rebuildRows();
+  }
+
+  bool _requireActivePeriod() {
+    if (_activePeriodLabel.isNotEmpty) return true;
+    _showSnack('Selecciona un periodo operativo antes de editar permisos.');
+    return false;
   }
 
   List<_HrPermissionSummaryRow> _applyPermissionFilters(
@@ -384,6 +406,7 @@ class _HumanResourcesPermissionsPageState
   Future<void> _logout() async => signOutAndRouteToLogin(context);
 
   Future<void> _openSummaryRow(_HrPermissionSummaryRow row) async {
+    if (!_requireActivePeriod()) return;
     final initialIndex = _allRows.indexWhere(
       (candidate) => candidate.employeeId == row.employeeId,
     );
@@ -435,12 +458,17 @@ class _HumanResourcesPermissionsPageState
     required _HrPermissionSummaryRow row,
     required _HrPermissionEditResult result,
   }) async {
+    if (!_requireActivePeriod()) return;
     final client = Supabase.instance.client;
     final existing = _events
         .where(
           (item) =>
               item.employeeId == row.employeeId &&
-              item.attendancePeriodLabel == _activePeriodLabel,
+              (item.attendancePeriodLabel == _activePeriodLabel ||
+                  _permissionEventOverlapsPeriod(
+                    item,
+                    HumanResourcesPeriodRange.tryParse(_activePeriodLabel),
+                  )),
         )
         .toList(growable: false);
 
@@ -483,9 +511,17 @@ class _HumanResourcesPermissionsPageState
         .map((item) => item.id)
         .where((id) => id.isNotEmpty)
         .toSet();
+    final lockedIds = existing
+        .where(
+          (item) =>
+              item.prenominaSyncStatus == _HrPermissionSyncStatus.aplicado,
+        )
+        .map((item) => item.id)
+        .where((id) => id.isNotEmpty)
+        .toSet();
 
     for (final previous in existing.where(
-      (item) => !nextIds.contains(item.id),
+      (item) => !nextIds.contains(item.id) && !lockedIds.contains(item.id),
     )) {
       if (previous.id.isEmpty) continue;
       await client
@@ -503,7 +539,9 @@ class _HumanResourcesPermissionsPageState
           );
     }
 
-    final updates = nextRecords.where((item) => item.id.isNotEmpty).toList();
+    final updates = nextRecords
+        .where((item) => item.id.isNotEmpty && !lockedIds.contains(item.id))
+        .toList();
     if (updates.isNotEmpty) {
       await client
           .from(_kHrPermissionEventsTable)
@@ -525,14 +563,33 @@ class _HumanResourcesPermissionsPageState
         .map(_HrPermissionEventRecord.fromRow)
         .toList(growable: false);
 
-    _events = [
-      for (final event in _events)
-        if (!(event.employeeId == row.employeeId &&
-            event.attendancePeriodLabel == _activePeriodLabel))
-          event,
-      ...refreshed,
-    ];
-    _rebuildRows();
+    await syncHrEventPeriodImpacts(
+      client: client,
+      eventKind: 'permiso',
+      sources: refreshed
+          .map(
+            (event) => HrEventPeriodImpactSource(
+              eventId: event.id,
+              employeeId: row.employeeId,
+              startDate: event.startDate,
+              endDate: event.endDate,
+              daysApplied: event.quantityDays,
+              additionalPaidDays: 0,
+              quantityHours: event.quantityHours,
+              impactAttendance: event.impactAttendance,
+              impactPrenomina: event.impactPrenomina,
+              isCancelled: event.status == _HrPermissionEventStatus.cancelado,
+            ),
+          )
+          .toList(growable: false),
+      knownPeriodLabels: [
+        for (final lot in _importLots) _describePermissionImportPeriod(lot),
+      ],
+      activePeriodLabel: _activePeriodLabel,
+    );
+
+    await _loadData();
+    if (!mounted) return;
     _showSnack('Permisos de ${row.displayName} actualizados.');
   }
 
@@ -542,18 +599,17 @@ class _HumanResourcesPermissionsPageState
   }) async {
     final client = Supabase.instance.client;
     final employee = _findPermissionEmployeeById(row.employeeId, _employees);
-    final ngtecoLot = _latestLotBySource(
+    final ngtecoLot = _permissionLotForPeriod(
       _importLots,
       _HrPermissionImportSource.ngteco,
+      _activePeriodLabel,
     );
-    final contpaqLot = _latestLotBySource(
+    final contpaqLot = _permissionLotForPeriod(
       _importLots,
       _HrPermissionImportSource.contpaq,
+      _activePeriodLabel,
     );
-    final activeAttendancePeriodLabel = _resolveActivePermissionPeriodLabel(
-      ngtecoLot: ngtecoLot,
-      contpaqLot: contpaqLot,
-    );
+    final activeAttendancePeriodLabel = _activePeriodLabel;
     final activeAttendanceRange = _resolvePermissionAttendanceActiveRange(
       ngtecoLot: ngtecoLot,
       contpaqLot: contpaqLot,
@@ -1170,6 +1226,7 @@ class _HumanResourcesPermissionsPageState
                           selectedCount:
                               _selectionController.selectedIds.length,
                           activePeriodLabel: _activePeriodLabel,
+                          periodOptions: _periodOptions,
                           hoveredRowId: _hoveredRowId,
                           navigationController: _navigationController,
                           selectionController: _selectionController,
@@ -1211,6 +1268,7 @@ class _HumanResourcesPermissionsPageState
                             final row = _activeRow();
                             if (row != null) await _openSummaryRow(row);
                           },
+                          onSelectPeriod: _selectPeriod,
                           onEscape: _handleEscape,
                           onOpenActiveCell: _openActiveRecord,
                           hasActiveFilter: _hasActiveFilter,
@@ -1280,6 +1338,7 @@ class _HrPermissionWorkspace extends StatelessWidget {
   final int totalRows;
   final int selectedCount;
   final String activePeriodLabel;
+  final List<String> periodOptions;
   final String? hoveredRowId;
   final GridNavigationController navigationController;
   final GridSelectionController selectionController;
@@ -1316,6 +1375,7 @@ class _HrPermissionWorkspace extends StatelessWidget {
   final VoidCallback? onNextPage;
   final ValueChanged<int> onPageSizeChanged;
   final Future<void> Function() onOpenSelectedRow;
+  final ValueChanged<String> onSelectPeriod;
   final VoidCallback onEscape;
   final VoidCallback onOpenActiveCell;
   final bool Function(String columnId) hasActiveFilter;
@@ -1328,6 +1388,7 @@ class _HrPermissionWorkspace extends StatelessWidget {
     required this.totalRows,
     required this.selectedCount,
     required this.activePeriodLabel,
+    required this.periodOptions,
     required this.hoveredRowId,
     required this.navigationController,
     required this.selectionController,
@@ -1352,6 +1413,7 @@ class _HrPermissionWorkspace extends StatelessWidget {
     required this.onNextPage,
     required this.onPageSizeChanged,
     required this.onOpenSelectedRow,
+    required this.onSelectPeriod,
     required this.onEscape,
     required this.onOpenActiveCell,
     required this.hasActiveFilter,
@@ -1402,6 +1464,8 @@ class _HrPermissionWorkspace extends StatelessWidget {
                   ? null
                   : 'Celda: $activeLabel',
               activePeriodLabel: activePeriodLabel,
+              periodOptions: periodOptions,
+              onSelectPeriod: onSelectPeriod,
               onOpenSelectedRow: () => unawaited(onOpenSelectedRow()),
             ),
             body: _HrPermissionGrid(
@@ -2091,6 +2155,8 @@ class _HrPermissionModuleTopBar extends StatelessWidget {
   final int selectedCount;
   final String? activeCellLabel;
   final String activePeriodLabel;
+  final List<String> periodOptions;
+  final ValueChanged<String> onSelectPeriod;
   final VoidCallback onOpenSelectedRow;
 
   const _HrPermissionModuleTopBar({
@@ -2099,6 +2165,8 @@ class _HrPermissionModuleTopBar extends StatelessWidget {
     required this.selectedCount,
     required this.activeCellLabel,
     required this.activePeriodLabel,
+    required this.periodOptions,
+    required this.onSelectPeriod,
     required this.onOpenSelectedRow,
   });
 
@@ -2128,6 +2196,12 @@ class _HrPermissionModuleTopBar extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             child: Row(
               children: [
+                HumanResourcesPeriodSelector(
+                  selectedLabel: activePeriodLabel,
+                  options: periodOptions,
+                  onSelected: onSelectPeriod,
+                ),
+                const SizedBox(width: 10),
                 FilledButton.icon(
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFFB794FF),
@@ -2141,7 +2215,9 @@ class _HrPermissionModuleTopBar extends StatelessWidget {
                     ),
                     textStyle: const TextStyle(fontWeight: FontWeight.w900),
                   ),
-                  onPressed: totalRows == 0 ? null : onOpenSelectedRow,
+                  onPressed: totalRows == 0 || activePeriodLabel.isEmpty
+                      ? null
+                      : onOpenSelectedRow,
                   icon: const Icon(Icons.assignment_turned_in_outlined),
                   label: const Text('Editar permisos'),
                 ),
@@ -3932,6 +4008,7 @@ class _HrPermissionEventRecord {
       'employee_name': employeeName,
       'empresa': empresa,
       'attendance_period_label': attendancePeriodLabel,
+      'payroll_period_label': attendancePeriodLabel,
       'permission_type': permissionType.name,
       'request_unit': requestUnit.name,
       'start_date': _permissionDbDate(startDate),
@@ -4193,27 +4270,45 @@ String _permissionCellValueForColumn(
   }
 }
 
-_HrPermissionImportLotLite? _latestLotBySource(
+List<String> _permissionPeriodOptions({
+  required List<_HrPermissionImportLotLite> lots,
+  required List<_HrPermissionEventRecord> events,
+}) {
+  return HumanResourcesPeriodContext.normalizedOptions([
+    for (final lot in lots) _describePermissionImportPeriod(lot),
+    for (final event in events) event.attendancePeriodLabel,
+  ]);
+}
+
+_HrPermissionImportLotLite? _permissionLotForPeriod(
   List<_HrPermissionImportLotLite> lots,
   _HrPermissionImportSource source,
+  String selectedPeriodLabel,
 ) {
+  if (selectedPeriodLabel.trim().isEmpty) return null;
   for (final lot in lots) {
-    if (lot.source == source) return lot;
+    if (lot.source != source) continue;
+    if (_permissionLotMatchesPeriod(lot, selectedPeriodLabel)) return lot;
   }
   return null;
 }
 
-String _resolveActivePermissionPeriodLabel({
-  _HrPermissionImportLotLite? ngtecoLot,
-  _HrPermissionImportLotLite? contpaqLot,
-}) {
-  if (contpaqLot != null && contpaqLot.periodLabel.trim().isNotEmpty) {
-    return _describePermissionImportPeriod(contpaqLot);
-  }
-  if (ngtecoLot != null && ngtecoLot.periodLabel.trim().isNotEmpty) {
-    return _describePermissionImportPeriod(ngtecoLot);
-  }
-  return '';
+bool _permissionLotMatchesPeriod(
+  _HrPermissionImportLotLite lot,
+  String selectedPeriodLabel,
+) {
+  final described = _describePermissionImportPeriod(lot);
+  if (described == selectedPeriodLabel) return true;
+  final selectedRange = _extractPermissionAttendanceDateRangeFromPeriodLabel(
+    selectedPeriodLabel,
+  );
+  final lotRange = _extractPermissionAttendanceDateRangeFromPeriodLabel(
+    described,
+  );
+  return selectedRange != null &&
+      lotRange != null &&
+      selectedRange.start == lotRange.start &&
+      selectedRange.end == lotRange.end;
 }
 
 List<_HrPermissionWorkSchedule> _parsePermissionWorkSchedules(
@@ -4609,14 +4704,8 @@ DateTimeRange? _resolvePermissionAttendanceActiveRange({
   required String activePeriodLabel,
 }) {
   return _extractPermissionAttendanceDateRangeFromPeriodLabel(
-        activePeriodLabel,
-      ) ??
-      _extractPermissionAttendanceDateRangeFromPeriodLabel(
-        contpaqLot?.periodLabel ?? '',
-      ) ??
-      _extractPermissionAttendanceDateRangeFromPeriodLabel(
-        ngtecoLot?.periodLabel ?? '',
-      );
+    activePeriodLabel,
+  );
 }
 
 DateTimeRange? _extractPermissionAttendanceDateRangeFromPeriodLabel(
@@ -4631,6 +4720,15 @@ DateTimeRange? _extractPermissionAttendanceDateRangeFromPeriodLabel(
   final end = _parsePermissionAttendanceDateLabel(match.group(2)!);
   if (start == null || end == null) return null;
   return DateTimeRange(start: start, end: end);
+}
+
+bool _permissionEventOverlapsPeriod(
+  _HrPermissionEventRecord event,
+  HumanResourcesPeriodRange? period,
+) {
+  if (period == null) return false;
+  return !event.endDate.isBefore(period.start) &&
+      !event.startDate.isAfter(period.end);
 }
 
 String _describePermissionImportPeriod(_HrPermissionImportLotLite lot) {

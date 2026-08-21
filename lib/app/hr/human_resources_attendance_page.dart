@@ -35,6 +35,7 @@ import 'human_resources_dashboard_page.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
+import 'human_resources_period_context.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
 import 'human_resources_vacations_page.dart';
@@ -71,6 +72,8 @@ class _HumanResourcesAttendancePageState
   bool _canReturnToDirection = false;
   bool _loading = true;
   String _activePeriodLabel = '';
+  String _selectedPeriodLabel = '';
+  List<String> _periodOptions = const <String>[];
   String? _selectedRowId;
   String? _hoveredRowId;
   int _currentPage = 0;
@@ -196,6 +199,8 @@ class _HumanResourcesAttendancePageState
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
+      final selectedPeriodLabel =
+          await HumanResourcesPeriodContext.readSelectedLabel();
       final client = Supabase.instance.client;
       final employeesResult = await fetchAllSupabaseRows(
         (from, to) => client
@@ -275,6 +280,8 @@ class _HumanResourcesAttendancePageState
       _storedRecords
         ..clear()
         ..addAll(records);
+      _selectedPeriodLabel = selectedPeriodLabel;
+      _periodOptions = _attendancePeriodOptions(lots: lots, records: records);
       _rebuildRows();
     } catch (_) {
       if (!mounted) return;
@@ -283,17 +290,19 @@ class _HumanResourcesAttendancePageState
   }
 
   void _rebuildRows() {
-    final ngtecoLot = _latestLotBySource(
+    final periodLabel = HumanResourcesPeriodContext.resolveSelected(
+      selectedLabel: _selectedPeriodLabel,
+      availableLabels: _periodOptions,
+    );
+    final ngtecoLot = _attendanceLotForPeriod(
       _importLots,
       _HrAttendanceImportSource.ngteco,
+      periodLabel,
     );
-    final contpaqLot = _latestLotBySource(
+    final contpaqLot = _attendanceLotForPeriod(
       _importLots,
       _HrAttendanceImportSource.contpaq,
-    );
-    final periodLabel = _resolveActiveAttendancePeriodLabel(
-      ngtecoLot: ngtecoLot,
-      contpaqLot: contpaqLot,
+      periodLabel,
     );
     final rows = _buildAttendanceSummaryRows(
       employees: _employees,
@@ -337,6 +346,20 @@ class _HumanResourcesAttendancePageState
       _navigationController.focusInsertColumn(0);
     }
     setState(() => _loading = false);
+  }
+
+  Future<void> _selectPeriod(String periodLabel) async {
+    await HumanResourcesPeriodContext.select(periodLabel);
+    if (!mounted) return;
+    _selectedPeriodLabel = periodLabel;
+    _currentPage = 0;
+    _rebuildRows();
+  }
+
+  bool _requireActivePeriod() {
+    if (_activePeriodLabel.isNotEmpty) return true;
+    _showSnack('Selecciona un periodo operativo antes de editar asistencia.');
+    return false;
   }
 
   List<_HrAttendanceSummaryRow> _applyAttendanceFilters(
@@ -410,6 +433,7 @@ class _HumanResourcesAttendancePageState
   Future<void> _logout() async => signOutAndRouteToLogin(context);
 
   Future<void> _openSummaryRow(_HrAttendanceSummaryRow row) async {
+    if (!_requireActivePeriod()) return;
     final initialIndex = _allRows.indexWhere(
       (candidate) => candidate.employeeId == row.employeeId,
     );
@@ -461,6 +485,7 @@ class _HumanResourcesAttendancePageState
     required _HrAttendanceSummaryRow row,
     required _HrAttendanceEditResult result,
   }) async {
+    if (!_requireActivePeriod()) return;
     final client = Supabase.instance.client;
     final existing = _storedRecords
         .where(
@@ -952,6 +977,7 @@ class _HumanResourcesAttendancePageState
                           selectedCount:
                               _selectionController.selectedIds.length,
                           activePeriodLabel: _activePeriodLabel,
+                          periodOptions: _periodOptions,
                           navigationController: _navigationController,
                           selectionController: _selectionController,
                           rowsScrollController: _rowsScrollController,
@@ -996,6 +1022,7 @@ class _HumanResourcesAttendancePageState
                             final row = _activeRow();
                             if (row != null) await _openSummaryRow(row);
                           },
+                          onSelectPeriod: _selectPeriod,
                           onEscape: _handleEscape,
                           onOpenActiveCell: _openActiveRecord,
                           hoveredRowId: _hoveredRowId,
@@ -1043,6 +1070,7 @@ class _HrAttendanceWorkspace extends StatelessWidget {
   final int totalRows;
   final int selectedCount;
   final String activePeriodLabel;
+  final List<String> periodOptions;
   final String? hoveredRowId;
   final GridNavigationController navigationController;
   final GridSelectionController selectionController;
@@ -1079,6 +1107,7 @@ class _HrAttendanceWorkspace extends StatelessWidget {
   final VoidCallback? onNextPage;
   final ValueChanged<int> onPageSizeChanged;
   final Future<void> Function() onOpenSelectedRow;
+  final ValueChanged<String> onSelectPeriod;
   final VoidCallback onEscape;
   final VoidCallback onOpenActiveCell;
   final bool Function(String columnId) hasActiveFilter;
@@ -1091,6 +1120,7 @@ class _HrAttendanceWorkspace extends StatelessWidget {
     required this.totalRows,
     required this.selectedCount,
     required this.activePeriodLabel,
+    required this.periodOptions,
     required this.hoveredRowId,
     required this.navigationController,
     required this.selectionController,
@@ -1115,6 +1145,7 @@ class _HrAttendanceWorkspace extends StatelessWidget {
     required this.onNextPage,
     required this.onPageSizeChanged,
     required this.onOpenSelectedRow,
+    required this.onSelectPeriod,
     required this.onEscape,
     required this.onOpenActiveCell,
     required this.hasActiveFilter,
@@ -1164,7 +1195,10 @@ class _HrAttendanceWorkspace extends StatelessWidget {
               activeCellLabel: activeLabel == null
                   ? null
                   : 'Celda: $activeLabel',
+              activePeriodLabel: activePeriodLabel,
+              periodOptions: periodOptions,
               onOpenSelectedRow: () => unawaited(onOpenSelectedRow()),
+              onSelectPeriod: onSelectPeriod,
             ),
             body: _HrAttendanceGrid(
               rows: rows,
@@ -1884,14 +1918,20 @@ class _HrAttendanceModuleTopBar extends StatelessWidget {
   final int totalRows;
   final int selectedCount;
   final String? activeCellLabel;
+  final String activePeriodLabel;
+  final List<String> periodOptions;
   final VoidCallback onOpenSelectedRow;
+  final ValueChanged<String> onSelectPeriod;
 
   const _HrAttendanceModuleTopBar({
     required this.rows,
     required this.totalRows,
     required this.selectedCount,
     required this.activeCellLabel,
+    required this.activePeriodLabel,
+    required this.periodOptions,
     required this.onOpenSelectedRow,
+    required this.onSelectPeriod,
   });
 
   @override
@@ -1922,9 +1962,16 @@ class _HrAttendanceModuleTopBar extends StatelessWidget {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
+                  HumanResourcesPeriodSelector(
+                    selectedLabel: activePeriodLabel,
+                    options: periodOptions,
+                    onSelected: onSelectPeriod,
+                  ),
                   FilledButton.icon(
                     style: contractPrimaryButtonStyle(context),
-                    onPressed: onOpenSelectedRow,
+                    onPressed: activePeriodLabel.isEmpty
+                        ? null
+                        : onOpenSelectedRow,
                     icon: const Icon(Icons.edit_calendar_rounded),
                     label: const Text('Editar asistencia'),
                   ),
@@ -3989,16 +4036,6 @@ String _attendanceCellValueForColumn(
   }
 }
 
-_HrAttendanceImportLotLite? _latestLotBySource(
-  List<_HrAttendanceImportLotLite> lots,
-  _HrAttendanceImportSource source,
-) {
-  for (final lot in lots) {
-    if (lot.source == source) return lot;
-  }
-  return null;
-}
-
 List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
   required List<_HrAttendanceEmployeeMaster> employees,
   required _HrAttendanceImportLotLite? ngtecoLot,
@@ -4211,17 +4248,36 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
   return rows;
 }
 
-String _resolveActiveAttendancePeriodLabel({
-  required _HrAttendanceImportLotLite? ngtecoLot,
-  required _HrAttendanceImportLotLite? contpaqLot,
+List<String> _attendancePeriodOptions({
+  required List<_HrAttendanceImportLotLite> lots,
+  required List<_HrAttendanceStoredRecord> records,
 }) {
-  if (contpaqLot != null && contpaqLot.periodLabel.trim().isNotEmpty) {
-    return _describeImportPeriod(contpaqLot);
+  return HumanResourcesPeriodContext.normalizedOptions([
+    for (final lot in lots) _describeImportPeriod(lot),
+    for (final record in records) record.periodLabel,
+  ]);
+}
+
+_HrAttendanceImportLotLite? _attendanceLotForPeriod(
+  List<_HrAttendanceImportLotLite> lots,
+  _HrAttendanceImportSource source,
+  String selectedPeriodLabel,
+) {
+  if (selectedPeriodLabel.trim().isEmpty) return null;
+  final selectedRange = _extractDateRangeFromPeriodLabel(selectedPeriodLabel);
+  for (final lot in lots) {
+    if (lot.source != source) continue;
+    final described = _describeImportPeriod(lot);
+    if (described == selectedPeriodLabel) return lot;
+    final lotRange = _extractDateRangeFromPeriodLabel(described);
+    if (selectedRange != null &&
+        lotRange != null &&
+        selectedRange.start == lotRange.start &&
+        selectedRange.end == lotRange.end) {
+      return lot;
+    }
   }
-  if (ngtecoLot != null && ngtecoLot.periodLabel.trim().isNotEmpty) {
-    return _describeImportPeriod(ngtecoLot);
-  }
-  return '';
+  return null;
 }
 
 List<DateTime> _resolveAttendancePeriodDates({
@@ -4292,9 +4348,7 @@ DateTimeRange? _resolveAttendanceActiveRange({
   required _HrAttendanceImportLotLite? contpaqLot,
   required String activePeriodLabel,
 }) {
-  return _extractDateRangeFromPeriodLabel(activePeriodLabel) ??
-      _extractDateRangeFromPeriodLabel(contpaqLot?.periodLabel ?? '') ??
-      _extractDateRangeFromPeriodLabel(ngtecoLot?.periodLabel ?? '');
+  return _extractDateRangeFromPeriodLabel(activePeriodLabel);
 }
 
 List<_HrAttendanceImportedEntry> _filterAttendanceEntriesToRange(

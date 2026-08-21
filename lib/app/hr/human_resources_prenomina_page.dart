@@ -26,13 +26,17 @@ import '../shared/ui_contract_core/dialogs/contract_menu_surface.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
+import '../shared/utils/file_download_save.dart';
+import '../shared/utils/simple_xlsx_builder.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_event_period_impacts.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
+import 'human_resources_period_context.dart';
 import 'human_resources_theme.dart';
 import 'human_resources_vacations_page.dart';
 
@@ -44,10 +48,14 @@ const String _kHrPrenominaVacationEventsTable = 'hr_employee_vacation_events';
 const String _kHrPrenominaPermissionEventsTable =
     'hr_employee_permission_events';
 const String _kHrPrenominaDraftRowsTable = 'hr_prenomina_draft_rows';
+const String _kHrPrenominaPeriodClosuresTable = 'hr_payroll_period_closures';
 
 const String _kHrPrenominaVacationSyncPrefix = 'Vacaciones RH:';
 const String _kHrPrenominaPermissionSyncPrefix = 'Permisos RH:';
 const String _kHrPrenominaContpaqReceiptPrefix = 'contpaq:';
+
+const double _kHrPrenominaHoursPerDay = 8;
+const double _kHrPrenominaOvertimeHourlyRate = 60;
 
 const double _kHrPrenominaIdW = 84;
 const double _kHrPrenominaSalaryW = 154;
@@ -75,6 +83,8 @@ class _HumanResourcesPrenominaPageState
   bool _canReturnToDirection = false;
   bool _loading = true;
   String _activePeriodLabel = '';
+  String _selectedPeriodLabel = '';
+  List<String> _periodOptions = const <String>[];
   String? _selectedRowId;
   String? _hoveredRowId;
   int _currentPage = 0;
@@ -113,8 +123,12 @@ class _HumanResourcesPrenominaPageState
       const <_HrPrenominaVacationEventRecord>[];
   List<_HrPrenominaPermissionEventRecord> _permissionEvents =
       const <_HrPrenominaPermissionEventRecord>[];
+  List<HrEventPeriodImpactRecord> _eventPeriodImpacts =
+      const <HrEventPeriodImpactRecord>[];
   List<_HrPrenominaDraftRowRecord> _draftRows =
       const <_HrPrenominaDraftRowRecord>[];
+  List<_HrPrenominaPeriodClosure> _periodClosures =
+      const <_HrPrenominaPeriodClosure>[];
   List<_HrPrenominaSummaryRow> _allRows = const <_HrPrenominaSummaryRow>[];
   List<_HrPrenominaSummaryRow> _visibleRows = const <_HrPrenominaSummaryRow>[];
 
@@ -205,6 +219,8 @@ class _HumanResourcesPrenominaPageState
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
+      final selectedPeriodLabel =
+          await HumanResourcesPeriodContext.readSelectedLabel();
       final client = Supabase.instance.client;
       final employeesResult = await fetchAllSupabaseRows(
         (from, to) => client
@@ -225,7 +241,9 @@ class _HumanResourcesPrenominaPageState
       List<dynamic> attendanceResult = const <dynamic>[];
       List<dynamic> vacationEventsResult = const <dynamic>[];
       List<dynamic> permissionEventsResult = const <dynamic>[];
+      List<dynamic> eventPeriodImpactsResult = const <dynamic>[];
       List<dynamic> draftRowsResult = const <dynamic>[];
+      List<dynamic> periodClosuresResult = const <dynamic>[];
       try {
         attendanceResult = await fetchAllSupabaseRows(
           (from, to) => client
@@ -254,11 +272,29 @@ class _HumanResourcesPrenominaPageState
         );
       } catch (_) {}
       try {
+        eventPeriodImpactsResult = await fetchAllSupabaseRows(
+          (from, to) => client
+              .from(hrEventPeriodImpactsTable)
+              .select()
+              .order('period_start_date')
+              .range(from, to),
+        );
+      } catch (_) {}
+      try {
         draftRowsResult = await fetchAllSupabaseRows(
           (from, to) => client
               .from(_kHrPrenominaDraftRowsTable)
               .select()
               .order('employee_name')
+              .range(from, to),
+        );
+      } catch (_) {}
+      try {
+        periodClosuresResult = await fetchAllSupabaseRows(
+          (from, to) => client
+              .from(_kHrPrenominaPeriodClosuresTable)
+              .select()
+              .order('created_at', ascending: false)
               .range(from, to),
         );
       } catch (_) {}
@@ -280,26 +316,89 @@ class _HumanResourcesPrenominaPageState
           .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrPrenominaImportLotLite.fromRow)
           .toList(growable: false);
+      final attendanceRecords = attendanceResult
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .map(_HrPrenominaAttendanceRecord.fromRow)
+          .toList(growable: false);
+      final vacationEvents = vacationEventsResult
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .map(_HrPrenominaVacationEventRecord.fromRow)
+          .toList(growable: false);
+      final permissionEvents = permissionEventsResult
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .map(_HrPrenominaPermissionEventRecord.fromRow)
+          .toList(growable: false);
+      final draftRows = draftRowsResult
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .map(_HrPrenominaDraftRowRecord.fromRow)
+          .toList(growable: false);
+      final periodClosures = periodClosuresResult
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .map(_HrPrenominaPeriodClosure.fromRow)
+          .toList(growable: false);
+      final initialImpacts = eventPeriodImpactsResult
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .map(HrEventPeriodImpactRecord.fromRow)
+          .toList(growable: false);
+      final availablePeriods = _prenominaPeriodOptions(
+        lots: importLots,
+        attendanceRecords: attendanceRecords,
+        vacationEvents: vacationEvents,
+        permissionEvents: permissionEvents,
+        eventPeriodImpacts: initialImpacts,
+        drafts: draftRows,
+        closures: periodClosures,
+      );
+      final activePeriod = HumanResourcesPeriodContext.resolveSelected(
+        selectedLabel: selectedPeriodLabel,
+        availableLabels: availablePeriods,
+      );
+      if (activePeriod.isNotEmpty) {
+        try {
+          await _syncPrenominaPendingEventImpacts(
+            client: client,
+            vacationEvents: vacationEvents,
+            permissionEvents: permissionEvents,
+            knownPeriodLabels: [
+              for (final lot in importLots) _describePrenominaImportPeriod(lot),
+            ],
+            activePeriodLabel: activePeriod,
+          );
+          eventPeriodImpactsResult = await fetchAllSupabaseRows(
+            (from, to) => client
+                .from(hrEventPeriodImpactsTable)
+                .select()
+                .order('period_start_date')
+                .range(from, to),
+          );
+        } catch (_) {
+          // The migration may not yet be installed during a staged rollout.
+          // Prenomina retains the legacy event reading until it is available.
+        }
+      }
 
       if (!mounted) return;
       _employees = employees;
       _importLots = importLots;
-      _attendanceRecords = attendanceResult
+      _attendanceRecords = attendanceRecords;
+      _vacationEvents = vacationEvents;
+      _permissionEvents = permissionEvents;
+      _eventPeriodImpacts = eventPeriodImpactsResult
           .map((raw) => Map<String, dynamic>.from(raw as Map))
-          .map(_HrPrenominaAttendanceRecord.fromRow)
+          .map(HrEventPeriodImpactRecord.fromRow)
           .toList(growable: false);
-      _vacationEvents = vacationEventsResult
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
-          .map(_HrPrenominaVacationEventRecord.fromRow)
-          .toList(growable: false);
-      _permissionEvents = permissionEventsResult
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
-          .map(_HrPrenominaPermissionEventRecord.fromRow)
-          .toList(growable: false);
-      _draftRows = draftRowsResult
-          .map((raw) => Map<String, dynamic>.from(raw as Map))
-          .map(_HrPrenominaDraftRowRecord.fromRow)
-          .toList(growable: false);
+      _draftRows = draftRows;
+      _periodClosures = periodClosures;
+      _selectedPeriodLabel = selectedPeriodLabel;
+      _periodOptions = _prenominaPeriodOptions(
+        lots: importLots,
+        attendanceRecords: _attendanceRecords,
+        vacationEvents: _vacationEvents,
+        permissionEvents: _permissionEvents,
+        eventPeriodImpacts: _eventPeriodImpacts,
+        drafts: _draftRows,
+        closures: _periodClosures,
+      );
       _rebuildRows();
     } catch (_) {
       if (!mounted) return;
@@ -307,29 +406,52 @@ class _HumanResourcesPrenominaPageState
     }
   }
 
+  _HrPrenominaPeriodClosure? get _activePeriodClosure {
+    for (final closure in _periodClosures) {
+      if (closure.periodLabel == _activePeriodLabel) return closure;
+    }
+    return null;
+  }
+
+  bool get _isActivePeriodClosed => _activePeriodClosure?.isClosed ?? false;
+
+  int get _activePublishedDraftCount => _draftRows
+      .where(
+        (row) =>
+            row.periodLabel == _activePeriodLabel &&
+            row.draftStatus == _HrPrenominaDraftStatus.publicado,
+      )
+      .map((row) => row.employeeId)
+      .toSet()
+      .length;
+
+  int get _activePendingDraftCount => _activePeriodLabel.isEmpty
+      ? 0
+      : math.max(0, _employees.length - _activePublishedDraftCount);
+
   void _rebuildRows() {
-    final ngtecoLot = _latestPrenominaLotBySource(
-      _importLots,
-      _HrPrenominaImportSource.ngteco,
+    final periodLabel = HumanResourcesPeriodContext.resolveSelected(
+      selectedLabel: _selectedPeriodLabel,
+      availableLabels: _periodOptions,
     );
-    final contpaqLot = _latestPrenominaLotBySource(
+    final contpaqLot = _prenominaLotForPeriod(
       _importLots,
       _HrPrenominaImportSource.contpaq,
+      periodLabel,
     );
-    final periodLabel = _resolveActivePrenominaPeriodLabel(
-      ngtecoLot: ngtecoLot,
-      contpaqLot: contpaqLot,
-    );
-    final rows = _buildPrenominaSummaryRows(
-      employees: _employees,
-      contpaqLot: contpaqLot,
-      attendanceRecords: _attendanceRecords,
-      vacationEvents: _vacationEvents,
-      permissionEvents: _permissionEvents,
-      draftRows: _draftRows,
-      activePeriodLabel: periodLabel,
-      activeContpaqRawPeriodLabel: contpaqLot?.periodLabel.trim() ?? '',
-    );
+    final rows = periodLabel.isEmpty
+        ? const <_HrPrenominaSummaryRow>[]
+        : _buildPrenominaSummaryRows(
+            employees: _employees,
+            contpaqLot: contpaqLot,
+            attendanceRecords: _attendanceRecords,
+            vacationEvents: _vacationEvents,
+            permissionEvents: _permissionEvents,
+            eventPeriodImpacts: _eventPeriodImpacts,
+            draftRows: _draftRows,
+            activePeriodLabel: periodLabel,
+            activeContpaqRawPeriodLabel: contpaqLot?.periodLabel.trim() ?? '',
+          );
     final filteredRows = _applyFilters(rows);
     final pageCount = filteredRows.isEmpty
         ? 1
@@ -365,6 +487,20 @@ class _HumanResourcesPrenominaPageState
       _navigationController.focusInsertColumn(0);
     }
     setState(() => _loading = false);
+  }
+
+  Future<void> _selectPeriod(String periodLabel) async {
+    await HumanResourcesPeriodContext.select(periodLabel);
+    if (!mounted) return;
+    _selectedPeriodLabel = periodLabel;
+    _currentPage = 0;
+    _rebuildRows();
+  }
+
+  bool _requireActivePeriod() {
+    if (_activePeriodLabel.isNotEmpty) return true;
+    _showSnack('Selecciona un periodo operativo antes de editar prenómina.');
+    return false;
   }
 
   List<_HrPrenominaSummaryRow> _applyFilters(
@@ -438,6 +574,7 @@ class _HumanResourcesPrenominaPageState
   Future<void> _logout() async => signOutAndRouteToLogin(context);
 
   Future<void> _openSummaryRow(_HrPrenominaSummaryRow row) async {
+    if (!_requireActivePeriod()) return;
     final initialIndex = _allRows.indexWhere(
       (candidate) => candidate.employeeId == row.employeeId,
     );
@@ -489,6 +626,40 @@ class _HumanResourcesPrenominaPageState
     required _HrPrenominaSummaryRow row,
     required _HrPrenominaEditResult result,
   }) async {
+    if (!_requireActivePeriod()) return;
+    if (_isActivePeriodClosed) {
+      _showSnack(
+        'El periodo ya está cerrado. Registra cualquier diferencia como ajuste RH.',
+      );
+      return;
+    }
+    final isFirstPublication =
+        result.draft.draftStatus == _HrPrenominaDraftStatus.publicado &&
+        row.draftStatus != _HrPrenominaDraftStatus.publicado;
+    if (isFirstPublication) {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: const Text('Publicar cierre semanal'),
+          content: Text(
+            'Se liquidarán los eventos de vacaciones y permisos de '
+            '${row.displayName} para este periodo. Las correcciones posteriores '
+            'deberán registrarse como ajuste, sin reabrir esta corrida.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancelar'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('Publicar cierre'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
     final client = Supabase.instance.client;
     final payload = result.draft.toRow(
       periodLabel: _activePeriodLabel,
@@ -500,6 +671,13 @@ class _HumanResourcesPrenominaPageState
     await client
         .from(_kHrPrenominaDraftRowsTable)
         .upsert(payload, onConflict: 'period_label,employee_id');
+
+    if (result.draft.draftStatus == _HrPrenominaDraftStatus.publicado) {
+      await _settleOperationalEventsForPublishedDraft(
+        client: client,
+        employeeId: row.employeeId,
+      );
+    }
 
     final refreshedResult = await client
         .from(_kHrPrenominaDraftRowsTable)
@@ -518,8 +696,205 @@ class _HumanResourcesPrenominaPageState
           item,
       ...refreshed,
     ];
-    _rebuildRows();
+    await _loadData();
+    if (!mounted) return;
     _showSnack('Borrador de prenómina de ${row.displayName} actualizado.');
+  }
+
+  Future<void> _closeActivePeriod() async {
+    if (_activePeriodLabel.trim().isEmpty) {
+      _showSnack('No hay un periodo activo para cerrar.');
+      return;
+    }
+    if (_isActivePeriodClosed) {
+      _showSnack('Este periodo ya está cerrado y listo para Nómina.');
+      return;
+    }
+    if (_employees.isEmpty) {
+      _showSnack('No hay colaboradores para validar en este periodo.');
+      return;
+    }
+    final pending = _activePendingDraftCount;
+    if (pending > 0) {
+      _showSnack(
+        'Faltan $pending colaborador(es) por publicar antes del cierre global.',
+      );
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cerrar periodo de nómina'),
+        content: Text(
+          'Se congelará $_activePeriodLabel con $_activePublishedDraftCount '
+          'colaborador(es) publicados. A partir de este momento solo se '
+          'podrán registrar ajustes RH; Nómina podrá emitir los recibos.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancelar'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Cerrar periodo'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    final now = DateTime.now();
+    final client = Supabase.instance.client;
+    await client.from(_kHrPrenominaPeriodClosuresTable).upsert(
+      <String, dynamic>{
+        'period_label': _activePeriodLabel,
+        'status': 'cerrado',
+        'closed_at': now.toIso8601String(),
+        'closed_by': client.auth.currentUser?.id,
+        'notes': 'Cierre global confirmado desde Prenómina.',
+        'summary_snapshot': <String, dynamic>{
+          'period_label': _activePeriodLabel,
+          'published_rows': _activePublishedDraftCount,
+          'employees_expected': _employees.length,
+          'closed_at': now.toIso8601String(),
+        },
+      },
+      onConflict: 'period_label',
+    );
+    await _loadData();
+    if (!mounted) return;
+    _showSnack(
+      'Periodo cerrado. Ya puedes continuar a Nómina y emitir recibos.',
+    );
+  }
+
+  Future<void> _exportCashEnvelopeXlsx() async {
+    if (_activePeriodLabel.trim().isEmpty) {
+      _showSnack('Selecciona un periodo antes de exportar los sobres.');
+      return;
+    }
+    final cashRows =
+        _allRows
+            .where((row) => row.cashEnvelopeAmount > 0)
+            .toList(growable: false)
+          ..sort((a, b) {
+            final aInt = int.tryParse(a.employeeId);
+            final bInt = int.tryParse(b.employeeId);
+            if (aInt != null && bInt != null) return aInt.compareTo(bInt);
+            return a.employeeId.compareTo(b.employeeId);
+          });
+    if (cashRows.isEmpty) {
+      _showSnack('No hay efectivo de sobre para exportar en este periodo.');
+      return;
+    }
+
+    final bytes = buildSimpleXlsx(
+      sheetName: 'Sobres efectivo',
+      headers: const <String>['NO.', 'NOMBRE', 'TOTAL'],
+      rows: cashRows
+          .map(
+            (row) => <String>[
+              row.employeeId,
+              row.displayName,
+              row.cashEnvelopeAmount.toStringAsFixed(2),
+            ],
+          )
+          .toList(growable: false),
+    );
+    final path = await saveBytesAs(
+      bytes: bytes,
+      suggestedFileName:
+          'sobres_efectivo_${_prenominaFileSafeLabel(_activePeriodLabel)}.xlsx',
+      dialogTitle: 'Guardar Excel de sobres de efectivo',
+    );
+    if (!mounted || path == null) return;
+    _showSnack('${cashRows.length} sobre(s) de efectivo exportados.');
+  }
+
+  Future<void> _settleOperationalEventsForPublishedDraft({
+    required SupabaseClient client,
+    required String employeeId,
+  }) async {
+    if (_activePeriodLabel.trim().isEmpty) return;
+    final settledAt = DateTime.now().toIso8601String();
+    final impactSettlement = <String, dynamic>{
+      'payroll_settlement_status': 'liquidado',
+      'payroll_settled_at': settledAt,
+      'prenomina_sync_status': 'aplicado',
+    };
+    final activeImpacts = _eventPeriodImpacts
+        .where(
+          (impact) =>
+              impact.employeeId == employeeId &&
+              impact.impactPrenomina &&
+              !impact.isLiquidated &&
+              impact.prenominaSyncStatus != 'omitido' &&
+              impact.matchesPeriod(_activePeriodLabel),
+        )
+        .toList(growable: false);
+    if (activeImpacts.isNotEmpty) {
+      await client
+          .from(hrEventPeriodImpactsTable)
+          .update(impactSettlement)
+          .inFilter('id', activeImpacts.map((impact) => impact.id).toList());
+    }
+
+    // Supports legacy events created before weekly impacts existed. New events
+    // are settled above by their individual period impact only.
+    final impactVacationIds = activeImpacts
+        .where((impact) => impact.eventKind == 'vacacion')
+        .map((impact) => impact.parentEventId)
+        .toSet();
+    final impactPermissionIds = activeImpacts
+        .where((impact) => impact.eventKind == 'permiso')
+        .map((impact) => impact.parentEventId)
+        .toSet();
+    final legacyVacationIds = _vacationEvents
+        .where(
+          (event) =>
+              event.employeeId == employeeId &&
+              event.impactPrenomina &&
+              event.attendancePeriodLabel == _activePeriodLabel &&
+              event.status != _HrPrenominaEventStatus.cancelado &&
+              event.prenominaSyncStatus != _HrPrenominaSyncStatus.aplicado &&
+              !impactVacationIds.contains(event.id),
+        )
+        .map((event) => event.id)
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    final legacyPermissionIds = _permissionEvents
+        .where(
+          (event) =>
+              event.employeeId == employeeId &&
+              event.impactPrenomina &&
+              event.attendancePeriodLabel == _activePeriodLabel &&
+              event.status != _HrPrenominaEventStatus.cancelado &&
+              event.prenominaSyncStatus != _HrPrenominaSyncStatus.aplicado &&
+              !impactPermissionIds.contains(event.id),
+        )
+        .map((event) => event.id)
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    final legacySettlement = <String, dynamic>{
+      'payroll_period_label': _activePeriodLabel,
+      'payroll_settlement_status': 'liquidado',
+      'payroll_settled_at': settledAt,
+      'prenomina_sync_status': 'aplicado',
+    };
+
+    if (legacyVacationIds.isNotEmpty) {
+      await client
+          .from(_kHrPrenominaVacationEventsTable)
+          .update(legacySettlement)
+          .inFilter('id', legacyVacationIds);
+    }
+    if (legacyPermissionIds.isNotEmpty) {
+      await client
+          .from(_kHrPrenominaPermissionEventsTable)
+          .update(legacySettlement)
+          .inFilter('id', legacyPermissionIds);
+    }
   }
 
   void _showSnack(String message) {
@@ -941,6 +1316,10 @@ class _HumanResourcesPrenominaPageState
                           selectedCount:
                               _selectionController.selectedIds.length,
                           activePeriodLabel: _activePeriodLabel,
+                          periodOptions: _periodOptions,
+                          isPeriodClosed: _isActivePeriodClosed,
+                          publishedDraftCount: _activePublishedDraftCount,
+                          pendingDraftCount: _activePendingDraftCount,
                           hoveredRowId: _hoveredRowId,
                           navigationController: _navigationController,
                           selectionController: _selectionController,
@@ -982,6 +1361,9 @@ class _HumanResourcesPrenominaPageState
                             final row = _activeRow();
                             if (row != null) await _openSummaryRow(row);
                           },
+                          onClosePeriod: _closeActivePeriod,
+                          onExportCashEnvelopes: _exportCashEnvelopeXlsx,
+                          onSelectPeriod: _selectPeriod,
                           onEscape: _handleEscape,
                           onOpenActiveCell: _openActiveRecord,
                           hasActiveFilter: _hasActiveFilter,
@@ -1035,6 +1417,10 @@ class _HrPrenominaWorkspace extends StatelessWidget {
   final int totalRows;
   final int selectedCount;
   final String activePeriodLabel;
+  final List<String> periodOptions;
+  final bool isPeriodClosed;
+  final int publishedDraftCount;
+  final int pendingDraftCount;
   final String? hoveredRowId;
   final GridNavigationController navigationController;
   final GridSelectionController selectionController;
@@ -1071,6 +1457,9 @@ class _HrPrenominaWorkspace extends StatelessWidget {
   final VoidCallback? onNextPage;
   final ValueChanged<int> onPageSizeChanged;
   final Future<void> Function() onOpenSelectedRow;
+  final Future<void> Function() onClosePeriod;
+  final Future<void> Function() onExportCashEnvelopes;
+  final ValueChanged<String> onSelectPeriod;
   final VoidCallback onEscape;
   final VoidCallback onOpenActiveCell;
   final bool Function(String columnId) hasActiveFilter;
@@ -1083,6 +1472,10 @@ class _HrPrenominaWorkspace extends StatelessWidget {
     required this.totalRows,
     required this.selectedCount,
     required this.activePeriodLabel,
+    required this.periodOptions,
+    required this.isPeriodClosed,
+    required this.publishedDraftCount,
+    required this.pendingDraftCount,
     required this.hoveredRowId,
     required this.navigationController,
     required this.selectionController,
@@ -1107,6 +1500,9 @@ class _HrPrenominaWorkspace extends StatelessWidget {
     required this.onNextPage,
     required this.onPageSizeChanged,
     required this.onOpenSelectedRow,
+    required this.onClosePeriod,
+    required this.onExportCashEnvelopes,
+    required this.onSelectPeriod,
     required this.onEscape,
     required this.onOpenActiveCell,
     required this.hasActiveFilter,
@@ -1157,7 +1553,14 @@ class _HrPrenominaWorkspace extends StatelessWidget {
                   ? null
                   : 'Celda: $activeLabel',
               activePeriodLabel: activePeriodLabel,
+              periodOptions: periodOptions,
+              isPeriodClosed: isPeriodClosed,
+              publishedDraftCount: publishedDraftCount,
+              pendingDraftCount: pendingDraftCount,
               onOpenSelectedRow: () => unawaited(onOpenSelectedRow()),
+              onClosePeriod: () => unawaited(onClosePeriod()),
+              onExportCashEnvelopes: () => unawaited(onExportCashEnvelopes()),
+              onSelectPeriod: onSelectPeriod,
             ),
             body: _HrPrenominaGrid(
               rows: rows,
@@ -1915,7 +2318,14 @@ class _HrPrenominaModuleTopBar extends StatelessWidget {
   final int selectedCount;
   final String? activeCellLabel;
   final String activePeriodLabel;
+  final List<String> periodOptions;
+  final bool isPeriodClosed;
+  final int publishedDraftCount;
+  final int pendingDraftCount;
   final VoidCallback onOpenSelectedRow;
+  final VoidCallback onClosePeriod;
+  final VoidCallback onExportCashEnvelopes;
+  final ValueChanged<String> onSelectPeriod;
 
   const _HrPrenominaModuleTopBar({
     required this.rows,
@@ -1923,7 +2333,14 @@ class _HrPrenominaModuleTopBar extends StatelessWidget {
     required this.selectedCount,
     required this.activeCellLabel,
     required this.activePeriodLabel,
+    required this.periodOptions,
+    required this.isPeriodClosed,
+    required this.publishedDraftCount,
+    required this.pendingDraftCount,
     required this.onOpenSelectedRow,
+    required this.onClosePeriod,
+    required this.onExportCashEnvelopes,
+    required this.onSelectPeriod,
   });
 
   @override
@@ -1957,22 +2374,85 @@ class _HrPrenominaModuleTopBar extends StatelessWidget {
                 ],
               ),
             ),
-            FilledButton.icon(
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFFB794FF),
-                foregroundColor: const Color(0xFF24103D),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                HumanResourcesPeriodSelector(
+                  selectedLabel: activePeriodLabel,
+                  options: periodOptions,
+                  onSelected: onSelectPeriod,
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    side: const BorderSide(color: Color(0xFFB794FF)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  onPressed:
+                      totalRows == 0 ||
+                          activePeriodLabel.isEmpty ||
+                          isPeriodClosed
+                      ? null
+                      : onClosePeriod,
+                  icon: Icon(
+                    isPeriodClosed
+                        ? Icons.lock_rounded
+                        : Icons.lock_outline_rounded,
+                  ),
+                  label: Text(
+                    isPeriodClosed ? 'Periodo cerrado' : 'Cerrar periodo',
+                  ),
                 ),
-                textStyle: const TextStyle(fontWeight: FontWeight.w900),
-              ),
-              onPressed: totalRows == 0 ? null : onOpenSelectedRow,
-              icon: const Icon(Icons.payments_outlined),
-              label: const Text('Editar borrador'),
+                OutlinedButton.icon(
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFF4ECFF),
+                    side: const BorderSide(color: Color(0xFFB794FF)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  onPressed: totalRows == 0 || activePeriodLabel.isEmpty
+                      ? null
+                      : onExportCashEnvelopes,
+                  icon: const Icon(Icons.print_outlined),
+                  label: const Text('Exportar sobres'),
+                ),
+                FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFB794FF),
+                    foregroundColor: const Color(0xFF24103D),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
+                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
+                  ),
+                  onPressed:
+                      totalRows == 0 ||
+                          activePeriodLabel.isEmpty ||
+                          isPeriodClosed
+                      ? null
+                      : onOpenSelectedRow,
+                  icon: const Icon(Icons.payments_outlined),
+                  label: const Text('Editar borrador'),
+                ),
+              ],
             ),
           ],
         ),
@@ -2032,10 +2512,21 @@ class _HrPrenominaModuleTopBar extends StatelessWidget {
                       label: 'Celda',
                       value: activeCellLabel!.replaceFirst('Celda: ', ''),
                     ),
-                  const _HrPrenominaTopMetaPill(
+                  _HrPrenominaTopMetaPill(
                     label: 'Estado',
-                    value: 'Borrador semanal',
+                    value: isPeriodClosed
+                        ? 'Periodo cerrado'
+                        : 'Borrador semanal',
                   ),
+                  _HrPrenominaTopMetaPill(
+                    label: 'Publicados',
+                    value: '$publishedDraftCount/$totalRows',
+                  ),
+                  if (!isPeriodClosed && pendingDraftCount > 0)
+                    _HrPrenominaTopMetaPill(
+                      label: 'Pendientes',
+                      value: '$pendingDraftCount',
+                    ),
                   const _HrPrenominaSoftPill(label: 'Fuente: RH'),
                 ],
               ),
@@ -2086,9 +2577,9 @@ class _HrPrenominaMetricCard extends StatelessWidget {
       0,
       (sum, row) => sum + row.weeklyPaymentVisibleAmount,
     );
-    final fiscalNetTotal = rows.fold<double>(
+    final fiscalTotal = rows.fold<double>(
       0,
-      (sum, row) => sum + row.fiscalNetAmount,
+      (sum, row) => sum + row.fiscalTotalAmount,
     );
     final fiscalCashTotal = rows.fold<double>(
       0,
@@ -2133,7 +2624,7 @@ class _HrPrenominaMetricCard extends StatelessWidget {
           emphasized: true,
         ),
         _HrPrenominaMetricPill(
-          label: 'Fiscal: ${_formatPrenominaMoneyZero(fiscalNetTotal)}',
+          label: 'Fiscal: ${_formatPrenominaMoneyZero(fiscalTotal)}',
         ),
         _HrPrenominaMetricPill(
           label:
@@ -2618,7 +3109,7 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                                   _HrPrenominaCompactInfoTile(
                                     label: 'Fiscal',
                                     value: _formatPrenominaMoneyZero(
-                                      widget.row.fiscalNetAmount,
+                                      widget.row.fiscalTotalAmount,
                                     ),
                                   ),
                                   _HrPrenominaCompactInfoTile(
@@ -2803,21 +3294,28 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                                       ),
                                     ),
                                     _HrPrenominaConceptLine(
-                                      concept: 'Retardo pendiente de fórmula',
+                                      concept: 'Retardo fiscal calculado',
                                       detail:
-                                          'Todavía no se monetiza automáticamente dentro de prenómina.',
-                                      value: _formatPrenominaMinutesAsHourRatio(
-                                        widget.row.lateMinutesSum,
+                                          'Salario base por hora x minutos de retardo / 60.',
+                                      value: _formatPrenominaSignedMoney(
+                                        -widget.row.fiscalLateDeductionAmount,
                                       ),
+                                      emphasized:
+                                          widget
+                                              .row
+                                              .fiscalLateDeductionAmount !=
+                                          0,
                                     ),
                                     _HrPrenominaConceptLine(
-                                      concept:
-                                          'Horas extra pendientes de fórmula',
+                                      concept: 'Horas extra en efectivo',
                                       detail:
-                                          'Se mantienen visibles, pero sin valoración automática final todavía.',
-                                      value: _formatPrenominaMinutesAsHourRatio(
-                                        widget.row.overtimeMinutesSum,
+                                          '\$60.00 por hora, proporcional a ${_formatPrenominaMinutesAsHourRatio(widget.row.overtimeMinutesSum)}.',
+                                      value: _formatPrenominaMoneyZero(
+                                        widget.row.overtimeMonetizedAmount,
                                       ),
+                                      emphasized:
+                                          widget.row.overtimeMonetizedAmount !=
+                                          0,
                                     ),
                                     _HrPrenominaConceptLine(
                                       concept: 'Subtotal preliminar RH',
@@ -3060,6 +3558,19 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                                         SizedBox(
                                           width: 210,
                                           child: _HrPrenominaLabeledField(
+                                            label: 'Retardos fiscales',
+                                            child: _HrPrenominaMoneyTextField(
+                                              initialValue: _draft
+                                                  .fiscalLateDeductionAmountText,
+                                              onChanged: (value) =>
+                                                  _draft.fiscalLateDeductionAmountText =
+                                                      value,
+                                            ),
+                                          ),
+                                        ),
+                                        SizedBox(
+                                          width: 210,
+                                          child: _HrPrenominaLabeledField(
                                             label: 'Vacaciones fiscales',
                                             child: _HrPrenominaMoneyTextField(
                                               initialValue: _draft
@@ -3076,7 +3587,7 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                                     _HrPrenominaInlineNote(
                                       icon: Icons.account_balance_outlined,
                                       message:
-                                          'Referencia automática actual: neto ${_formatPrenominaMoney(widget.row.contpaqNetAmount)}, IMSS ${_formatPrenominaMoney(widget.row.contpaqImssAmount)}, INFONAVIT ${_formatPrenominaMoney(widget.row.contpaqInfonavitAmount)} y FONACOT ${_formatPrenominaMoney(widget.row.contpaqFonacotAmount)}.',
+                                          'Retardo calculado: ${_formatPrenominaMinutesAsHourRatio(widget.row.lateMinutesSum)} x ${_formatPrenominaMoney(widget.row.fiscalHourlyRate)}/h = ${_formatPrenominaMoney(widget.row.fiscalLateDeductionAmount)}. Se descuenta del fiscal; si CONTPAQ ya lo aplicó, captura \$0.00 para no duplicarlo.',
                                     ),
                                   ],
                                 ),
@@ -3085,7 +3596,7 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                               _HrPrenominaSectionCard(
                                 title: 'Bolsa operativa RH',
                                 subtitle:
-                                    'Aquí se consolida el efectivo, bonos y descuentos que no viven dentro del neto fiscal.',
+                                    'Efectivo, bonos y descuentos fuera del neto fiscal. Las horas extra se proponen a \$60.00 por hora, proporcionales a los minutos.',
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
@@ -3100,9 +3611,12 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                                             child: _HrPrenominaMoneyTextField(
                                               initialValue:
                                                   _draft.cashSalaryAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.cashSalaryAmountText =
-                                                      value,
+                                              onChanged: (value) {
+                                                _draft.cashSalaryAmountText =
+                                                    value;
+                                                _draft.cashSalaryIsManual =
+                                                    true;
+                                              },
                                             ),
                                           ),
                                         ),
@@ -3161,7 +3675,7 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                                         SizedBox(
                                           width: 210,
                                           child: _HrPrenominaLabeledField(
-                                            label: 'Horas extra monetizadas',
+                                            label: 'Horas extra en efectivo',
                                             child: _HrPrenominaMoneyTextField(
                                               initialValue: _draft
                                                   .overtimeMonetizedAmountText,
@@ -3174,7 +3688,7 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                                         SizedBox(
                                           width: 210,
                                           child: _HrPrenominaLabeledField(
-                                            label: 'Bono manual',
+                                            label: 'Bono manual en efectivo',
                                             child: _HrPrenominaMoneyTextField(
                                               initialValue:
                                                   _draft.manualBonusAmountText,
@@ -3305,6 +3819,13 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                                         ),
                                       ],
                                     ),
+                                    const SizedBox(height: 12),
+                                    _HrPrenominaInlineNote(
+                                      icon: Icons.calculate_outlined,
+                                      message: _draft.cashSalaryIsManual
+                                          ? 'RH fijó manualmente el sueldo en efectivo para este cierre.'
+                                          : 'Sueldo en efectivo calculado: percibido menos neto fiscal. Sin incidencias, el total semanal coincide con el salario percibido.',
+                                    ),
                                   ],
                                 ),
                               ),
@@ -3361,7 +3882,8 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                                         SizedBox(
                                           width: 220,
                                           child: _HrPrenominaLabeledField(
-                                            label: 'Ajuste nominal RH',
+                                            label:
+                                                'Ajuste RH en efectivo (+/-)',
                                             child: _HrPrenominaMoneyTextField(
                                               initialValue: _draft
                                                   .manualAdjustmentAmountText,
@@ -3435,7 +3957,7 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                                           detail:
                                               'Huella semanal tomada de CONTPAQ y validada por RH.',
                                           value: _formatPrenominaMoneyZero(
-                                            widget.row.fiscalNetAmount,
+                                            widget.row.fiscalTotalAmount,
                                           ),
                                         ),
                                         _HrPrenominaConceptLine(
@@ -3455,6 +3977,19 @@ class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
                                           ),
                                           emphasized:
                                               widget.row.fiscalCashAmount != 0,
+                                        ),
+                                        _HrPrenominaConceptLine(
+                                          concept: 'Ajuste RH en efectivo',
+                                          detail:
+                                              'Diferencia excepcional positiva o negativa, fuera del fiscal.',
+                                          value: _formatPrenominaSignedMoney(
+                                            widget.row.manualAdjustmentAmount,
+                                          ),
+                                          emphasized:
+                                              widget
+                                                  .row
+                                                  .manualAdjustmentAmount !=
+                                              0,
                                         ),
                                         _HrPrenominaConceptLine(
                                           concept: 'Pago por fuera',
@@ -4215,31 +4750,46 @@ enum _HrPrenominaSyncStatus { pendiente, aplicado, omitido }
 enum _HrPrenominaEventStatus { pendiente, aprobado, aplicado, cancelado }
 
 class _HrPrenominaVacationEventRecord {
+  final String id;
   final String employeeId;
   final String attendancePeriodLabel;
   final String receiptGroupKey;
+  final DateTime startDate;
+  final DateTime endDate;
   final _HrPrenominaVacationEventType eventType;
   final _HrPrenominaEventStatus status;
   final double daysApplied;
+  final double additionalPaidDays;
   final bool impactPrenomina;
   final _HrPrenominaSyncStatus prenominaSyncStatus;
 
   const _HrPrenominaVacationEventRecord({
+    required this.id,
     required this.employeeId,
     required this.attendancePeriodLabel,
     required this.receiptGroupKey,
+    required this.startDate,
+    required this.endDate,
     required this.eventType,
     required this.status,
     required this.daysApplied,
+    required this.additionalPaidDays,
     required this.impactPrenomina,
     required this.prenominaSyncStatus,
   });
 
   factory _HrPrenominaVacationEventRecord.fromRow(Map<String, dynamic> row) {
     return _HrPrenominaVacationEventRecord(
+      id: (row['id'] ?? '').toString(),
       employeeId: (row['employee_id'] ?? '').toString(),
       attendancePeriodLabel: (row['attendance_period_label'] ?? '').toString(),
       receiptGroupKey: (row['receipt_group_key'] ?? '').toString(),
+      startDate:
+          DateTime.tryParse((row['start_date'] ?? '').toString()) ??
+          DateTime(1970),
+      endDate:
+          DateTime.tryParse((row['end_date'] ?? '').toString()) ??
+          DateTime(1970),
       eventType: _HrPrenominaVacationEventType.values.firstWhere(
         (item) =>
             item.name ==
@@ -4251,6 +4801,7 @@ class _HrPrenominaVacationEventRecord {
         orElse: () => _HrPrenominaEventStatus.pendiente,
       ),
       daysApplied: _parsePrenominaNumber(row['days_applied']),
+      additionalPaidDays: _parsePrenominaNumber(row['additional_paid_days']),
       impactPrenomina: row['impact_prenomina'] == true,
       prenominaSyncStatus: _HrPrenominaSyncStatus.values.firstWhere(
         (item) => item.name == (row['prenomina_sync_status'] ?? '').toString(),
@@ -4261,6 +4812,25 @@ class _HrPrenominaVacationEventRecord {
 
   bool get isContpaqImported =>
       receiptGroupKey.startsWith(_kHrPrenominaContpaqReceiptPrefix);
+
+  _HrPrenominaVacationEventRecord forPeriodImpact(
+    HrEventPeriodImpactRecord impact,
+  ) {
+    return _HrPrenominaVacationEventRecord(
+      id: id,
+      employeeId: employeeId,
+      attendancePeriodLabel: impact.periodLabel,
+      receiptGroupKey: receiptGroupKey,
+      startDate: impact.periodStartDate,
+      endDate: impact.periodEndDate,
+      eventType: eventType,
+      status: status,
+      daysApplied: impact.daysApplied,
+      additionalPaidDays: impact.additionalPaidDays,
+      impactPrenomina: impactPrenomina,
+      prenominaSyncStatus: _HrPrenominaSyncStatus.pendiente,
+    );
+  }
 }
 
 enum _HrPrenominaPermissionType {
@@ -4273,8 +4843,11 @@ enum _HrPrenominaPermissionType {
 enum _HrPrenominaPermissionUnit { dia, hora }
 
 class _HrPrenominaPermissionEventRecord {
+  final String id;
   final String employeeId;
   final String attendancePeriodLabel;
+  final DateTime startDate;
+  final DateTime endDate;
   final _HrPrenominaPermissionType permissionType;
   final _HrPrenominaPermissionUnit requestUnit;
   final _HrPrenominaEventStatus status;
@@ -4284,8 +4857,11 @@ class _HrPrenominaPermissionEventRecord {
   final _HrPrenominaSyncStatus prenominaSyncStatus;
 
   const _HrPrenominaPermissionEventRecord({
+    required this.id,
     required this.employeeId,
     required this.attendancePeriodLabel,
+    required this.startDate,
+    required this.endDate,
     required this.permissionType,
     required this.requestUnit,
     required this.status,
@@ -4297,8 +4873,15 @@ class _HrPrenominaPermissionEventRecord {
 
   factory _HrPrenominaPermissionEventRecord.fromRow(Map<String, dynamic> row) {
     return _HrPrenominaPermissionEventRecord(
+      id: (row['id'] ?? '').toString(),
       employeeId: (row['employee_id'] ?? '').toString(),
       attendancePeriodLabel: (row['attendance_period_label'] ?? '').toString(),
+      startDate:
+          DateTime.tryParse((row['start_date'] ?? '').toString()) ??
+          DateTime(1970),
+      endDate:
+          DateTime.tryParse((row['end_date'] ?? '').toString()) ??
+          DateTime(1970),
       permissionType: _HrPrenominaPermissionType.values.firstWhere(
         (item) =>
             item.name ==
@@ -4320,6 +4903,25 @@ class _HrPrenominaPermissionEventRecord {
         (item) => item.name == (row['prenomina_sync_status'] ?? '').toString(),
         orElse: () => _HrPrenominaSyncStatus.pendiente,
       ),
+    );
+  }
+
+  _HrPrenominaPermissionEventRecord forPeriodImpact(
+    HrEventPeriodImpactRecord impact,
+  ) {
+    return _HrPrenominaPermissionEventRecord(
+      id: id,
+      employeeId: employeeId,
+      attendancePeriodLabel: impact.periodLabel,
+      startDate: impact.periodStartDate,
+      endDate: impact.periodEndDate,
+      permissionType: permissionType,
+      requestUnit: requestUnit,
+      status: status,
+      quantityDays: impact.daysApplied,
+      quantityHours: impact.quantityHours,
+      impactPrenomina: impactPrenomina,
+      prenominaSyncStatus: _HrPrenominaSyncStatus.pendiente,
     );
   }
 }
@@ -4359,8 +4961,10 @@ class _HrPrenominaDraftRowRecord {
   final double? fiscalInfonavitAmount;
   final double? fiscalFonacotAmount;
   final double? fiscalAbsenceAmount;
+  final double? fiscalLateDeductionAmount;
   final double? fiscalVacationAmount;
   final double? cashSalaryAmount;
+  final bool cashSalaryIsManual;
   final double? cashVacationAmount;
   final double? cashIsrAmount;
   final double? transportSupportAmount;
@@ -4390,8 +4994,10 @@ class _HrPrenominaDraftRowRecord {
     required this.fiscalInfonavitAmount,
     required this.fiscalFonacotAmount,
     required this.fiscalAbsenceAmount,
+    required this.fiscalLateDeductionAmount,
     required this.fiscalVacationAmount,
     required this.cashSalaryAmount,
+    required this.cashSalaryIsManual,
     required this.cashVacationAmount,
     required this.cashIsrAmount,
     required this.transportSupportAmount,
@@ -4433,12 +5039,16 @@ class _HrPrenominaDraftRowRecord {
       fiscalAbsenceAmount: _parsePrenominaNullableNumber(
         row['fiscal_absence_amount'],
       ),
+      fiscalLateDeductionAmount: _parsePrenominaNullableNumber(
+        row['fiscal_late_deduction_amount'],
+      ),
       fiscalVacationAmount: _parsePrenominaNullableNumber(
         row['fiscal_vacation_amount'],
       ),
       cashSalaryAmount: _parsePrenominaNullableNumber(
         row['cash_salary_amount'],
       ),
+      cashSalaryIsManual: _parsePrenominaBoolean(row['cash_salary_is_manual']),
       cashVacationAmount: _parsePrenominaNullableNumber(
         row['cash_vacation_amount'],
       ),
@@ -4476,6 +5086,31 @@ class _HrPrenominaDraftRowRecord {
   }
 }
 
+class _HrPrenominaPeriodClosure {
+  final String id;
+  final String periodLabel;
+  final String status;
+  final DateTime? closedAt;
+
+  const _HrPrenominaPeriodClosure({
+    required this.id,
+    required this.periodLabel,
+    required this.status,
+    required this.closedAt,
+  });
+
+  bool get isClosed => status == 'cerrado';
+
+  factory _HrPrenominaPeriodClosure.fromRow(Map<String, dynamic> row) {
+    return _HrPrenominaPeriodClosure(
+      id: (row['id'] ?? '').toString(),
+      periodLabel: (row['period_label'] ?? '').toString(),
+      status: (row['status'] ?? '').toString(),
+      closedAt: _parsePrenominaDbDate(row['closed_at']),
+    );
+  }
+}
+
 class _HrPrenominaSummaryRow {
   final String draftId;
   final String employeeId;
@@ -4490,6 +5125,7 @@ class _HrPrenominaSummaryRow {
   final int lateMinutesSum;
   final int overtimeMinutesSum;
   final double vacationPaidDays;
+  final double vacationCalculatedAmount;
   final double vacationEnjoyedDays;
   final double vacationReservedDays;
   final double permissionWithPayDays;
@@ -4515,8 +5151,10 @@ class _HrPrenominaSummaryRow {
   final double fiscalInfonavitAmount;
   final double fiscalFonacotAmount;
   final double fiscalAbsenceAmount;
+  final double fiscalLateDeductionAmount;
   final double fiscalVacationAmount;
   final double cashSalaryAmount;
+  final bool cashSalaryIsManual;
   final double cashVacationAmount;
   final double cashIsrAmount;
   final double transportSupportAmount;
@@ -4547,6 +5185,7 @@ class _HrPrenominaSummaryRow {
     required this.lateMinutesSum,
     required this.overtimeMinutesSum,
     required this.vacationPaidDays,
+    required this.vacationCalculatedAmount,
     required this.vacationEnjoyedDays,
     required this.vacationReservedDays,
     required this.permissionWithPayDays,
@@ -4572,8 +5211,10 @@ class _HrPrenominaSummaryRow {
     required this.fiscalInfonavitAmount,
     required this.fiscalFonacotAmount,
     required this.fiscalAbsenceAmount,
+    required this.fiscalLateDeductionAmount,
     required this.fiscalVacationAmount,
     required this.cashSalaryAmount,
+    required this.cashSalaryIsManual,
     required this.cashVacationAmount,
     required this.cashIsrAmount,
     required this.transportSupportAmount,
@@ -4614,14 +5255,18 @@ class _HrPrenominaSummaryRow {
   double get permissionImpactDays =>
       permissionWithPayDays + permissionWithoutPayDays + disabilityDays;
   double get fiscalDailyRate => salaryWeekly == 0 ? 0 : salaryWeekly / 7;
+  double get fiscalHourlyRate => fiscalDailyRate / _kHrPrenominaHoursPerDay;
+  double get calculatedCashSalaryAmount => _suggestPrenominaCashSalaryAmount(
+    salaryPerceivedWeekly: salaryPerceivedWeekly,
+    fiscalNetAmount: fiscalNetAmount,
+  );
   double get perceivedDailyRate =>
       salaryPerceivedWeekly == 0 ? 0 : salaryPerceivedWeekly / 7;
   double get perceivedHourlyRate =>
       perceivedDailyRate == 0 ? 0 : perceivedDailyRate / 8;
   double get visibleDraftBaseAmount =>
       salaryPerceivedWeekly + manualAdjustmentAmount;
-  double get preliminaryVacationPayAmount =>
-      vacationPaidDays * perceivedDailyRate;
+  double get preliminaryVacationPayAmount => vacationCalculatedAmount;
   double get preliminaryWithoutPayDeductionAmount =>
       (permissionWithoutPayDays * perceivedDailyRate) +
       (permissionWithoutPayHours * perceivedHourlyRate);
@@ -4648,14 +5293,30 @@ class _HrPrenominaSummaryRow {
       loanDeductionAmount;
   double get operationalCashTotalAmount =>
       operationalCashSubtotalAmount - operationalCashDeductionsTotalAmount;
-  double get fiscalCashAmount => checkAmount;
-  double get fiscalDepositedAmount {
-    final amount = fiscalNetAmount - fiscalCashAmount;
+  double get fiscalNetAfterLateDeductionAmount {
+    final amount = fiscalNetAmount - fiscalLateDeductionAmount;
     return amount < 0 ? 0 : amount;
   }
 
+  double get fiscalTotalAmount =>
+      fiscalNetAfterLateDeductionAmount + fiscalVacationAmount;
+  double get fiscalCashAmount => checkAmount.clamp(0, fiscalTotalAmount);
+  double get fiscalDepositedAmount {
+    final amount = fiscalTotalAmount - fiscalCashAmount;
+    return amount < 0 ? 0 : amount;
+  }
+
+  double get cashEnvelopeAmount {
+    final amount =
+        fiscalCashAmount + operationalCashTotalAmount + manualAdjustmentAmount;
+    return amount > 0 ? amount : 0;
+  }
+
   double get weeklyPaymentVisibleAmount =>
-      fiscalNetAmount + paymentOutsideAmount + operationalCashTotalAmount;
+      fiscalTotalAmount +
+      paymentOutsideAmount +
+      operationalCashTotalAmount +
+      manualAdjustmentAmount;
   String get attendanceOperationalLabel =>
       attendanceReviewDays > 0 ? 'Pendiente RH' : 'Lista';
   String get statusLabel => _resolveSummaryStatus(this).label;
@@ -4670,8 +5331,10 @@ class _HrPrenominaDraftDraft {
   String fiscalInfonavitAmountText;
   String fiscalFonacotAmountText;
   String fiscalAbsenceAmountText;
+  String fiscalLateDeductionAmountText;
   String fiscalVacationAmountText;
   String cashSalaryAmountText;
+  bool cashSalaryIsManual;
   String cashVacationAmountText;
   String cashIsrAmountText;
   String transportSupportAmountText;
@@ -4697,8 +5360,10 @@ class _HrPrenominaDraftDraft {
     required this.fiscalInfonavitAmountText,
     required this.fiscalFonacotAmountText,
     required this.fiscalAbsenceAmountText,
+    required this.fiscalLateDeductionAmountText,
     required this.fiscalVacationAmountText,
     required this.cashSalaryAmountText,
+    required this.cashSalaryIsManual,
     required this.cashVacationAmountText,
     required this.cashIsrAmountText,
     required this.transportSupportAmountText,
@@ -4728,8 +5393,12 @@ class _HrPrenominaDraftDraft {
       fiscalInfonavitAmountText: _draftMoneyText(row.fiscalInfonavitAmount),
       fiscalFonacotAmountText: _draftMoneyText(row.fiscalFonacotAmount),
       fiscalAbsenceAmountText: _draftMoneyText(row.fiscalAbsenceAmount),
+      fiscalLateDeductionAmountText: _draftMoneyText(
+        row.fiscalLateDeductionAmount,
+      ),
       fiscalVacationAmountText: _draftMoneyText(row.fiscalVacationAmount),
       cashSalaryAmountText: _draftMoneyText(row.cashSalaryAmount),
+      cashSalaryIsManual: row.cashSalaryIsManual,
       cashVacationAmountText: _draftMoneyText(row.cashVacationAmount),
       cashIsrAmountText: _draftMoneyText(row.cashIsrAmount),
       transportSupportAmountText: _draftMoneyText(row.transportSupportAmount),
@@ -4761,6 +5430,7 @@ class _HrPrenominaDraftDraft {
       ('INFONAVIT fiscal', fiscalInfonavitAmountText),
       ('FONACOT fiscal', fiscalFonacotAmountText),
       ('Faltas fiscales', fiscalAbsenceAmountText),
+      ('Retardos fiscales', fiscalLateDeductionAmountText),
       ('Vacaciones fiscales', fiscalVacationAmountText),
       ('Sueldo en efectivo', cashSalaryAmountText),
       ('Vacaciones en efectivo', cashVacationAmountText),
@@ -4810,10 +5480,14 @@ class _HrPrenominaDraftDraft {
       'fiscal_absence_amount': _parsePrenominaDraftText(
         fiscalAbsenceAmountText,
       ),
+      'fiscal_late_deduction_amount': _parsePrenominaDraftText(
+        fiscalLateDeductionAmountText,
+      ),
       'fiscal_vacation_amount': _parsePrenominaDraftText(
         fiscalVacationAmountText,
       ),
       'cash_salary_amount': _parsePrenominaDraftText(cashSalaryAmountText),
+      'cash_salary_is_manual': cashSalaryIsManual,
       'cash_vacation_amount': _parsePrenominaDraftText(cashVacationAmountText),
       'cash_isr_amount': _parsePrenominaDraftText(cashIsrAmountText),
       'transport_support_amount': _parsePrenominaDraftText(
@@ -4867,27 +5541,120 @@ class _HrPrenominaGridColumn {
   const _HrPrenominaGridColumn({required this.id, required this.label});
 }
 
-_HrPrenominaImportLotLite? _latestPrenominaLotBySource(
+/// Backfills weekly impacts for pending events created before this model was
+/// introduced. Applied legacy events are deliberately left untouched.
+Future<void> _syncPrenominaPendingEventImpacts({
+  required SupabaseClient client,
+  required List<_HrPrenominaVacationEventRecord> vacationEvents,
+  required List<_HrPrenominaPermissionEventRecord> permissionEvents,
+  required Iterable<String> knownPeriodLabels,
+  required String activePeriodLabel,
+}) async {
+  await syncHrEventPeriodImpacts(
+    client: client,
+    eventKind: 'vacacion',
+    sources: vacationEvents
+        .where(
+          (event) =>
+              event.id.isNotEmpty &&
+              event.startDate.year > 1970 &&
+              event.prenominaSyncStatus != _HrPrenominaSyncStatus.aplicado,
+        )
+        .map(
+          (event) => HrEventPeriodImpactSource(
+            eventId: event.id,
+            employeeId: event.employeeId,
+            startDate: event.startDate,
+            endDate: event.endDate,
+            daysApplied: event.daysApplied,
+            additionalPaidDays: event.additionalPaidDays,
+            quantityHours: 0,
+            impactAttendance: false,
+            impactPrenomina: event.impactPrenomina,
+            isCancelled: event.status == _HrPrenominaEventStatus.cancelado,
+          ),
+        )
+        .toList(growable: false),
+    knownPeriodLabels: knownPeriodLabels,
+    activePeriodLabel: activePeriodLabel,
+  );
+  await syncHrEventPeriodImpacts(
+    client: client,
+    eventKind: 'permiso',
+    sources: permissionEvents
+        .where(
+          (event) =>
+              event.id.isNotEmpty &&
+              event.startDate.year > 1970 &&
+              event.prenominaSyncStatus != _HrPrenominaSyncStatus.aplicado,
+        )
+        .map(
+          (event) => HrEventPeriodImpactSource(
+            eventId: event.id,
+            employeeId: event.employeeId,
+            startDate: event.startDate,
+            endDate: event.endDate,
+            daysApplied: event.quantityDays,
+            additionalPaidDays: 0,
+            quantityHours: event.quantityHours,
+            impactAttendance: false,
+            impactPrenomina: event.impactPrenomina,
+            isCancelled: event.status == _HrPrenominaEventStatus.cancelado,
+          ),
+        )
+        .toList(growable: false),
+    knownPeriodLabels: knownPeriodLabels,
+    activePeriodLabel: activePeriodLabel,
+  );
+}
+
+List<String> _prenominaPeriodOptions({
+  required List<_HrPrenominaImportLotLite> lots,
+  required List<_HrPrenominaAttendanceRecord> attendanceRecords,
+  required List<_HrPrenominaVacationEventRecord> vacationEvents,
+  required List<_HrPrenominaPermissionEventRecord> permissionEvents,
+  required List<HrEventPeriodImpactRecord> eventPeriodImpacts,
+  required List<_HrPrenominaDraftRowRecord> drafts,
+  required List<_HrPrenominaPeriodClosure> closures,
+}) {
+  return HumanResourcesPeriodContext.normalizedOptions([
+    for (final lot in lots) _describePrenominaImportPeriod(lot),
+    for (final record in attendanceRecords) record.periodLabel,
+    for (final event in vacationEvents) event.attendancePeriodLabel,
+    for (final event in permissionEvents) event.attendancePeriodLabel,
+    for (final impact in eventPeriodImpacts) impact.periodLabel,
+    for (final draft in drafts) draft.periodLabel,
+    for (final closure in closures) closure.periodLabel,
+  ]);
+}
+
+_HrPrenominaImportLotLite? _prenominaLotForPeriod(
   List<_HrPrenominaImportLotLite> lots,
   _HrPrenominaImportSource source,
+  String selectedPeriodLabel,
 ) {
+  if (selectedPeriodLabel.trim().isEmpty) return null;
   for (final lot in lots) {
-    if (lot.source == source) return lot;
+    if (lot.source != source) continue;
+    if (_prenominaLotMatchesPeriod(lot, selectedPeriodLabel)) return lot;
   }
   return null;
 }
 
-String _resolveActivePrenominaPeriodLabel({
-  required _HrPrenominaImportLotLite? ngtecoLot,
-  required _HrPrenominaImportLotLite? contpaqLot,
-}) {
-  if (contpaqLot != null && contpaqLot.periodLabel.trim().isNotEmpty) {
-    return _describePrenominaImportPeriod(contpaqLot);
-  }
-  if (ngtecoLot != null && ngtecoLot.periodLabel.trim().isNotEmpty) {
-    return _describePrenominaImportPeriod(ngtecoLot);
-  }
-  return '';
+bool _prenominaLotMatchesPeriod(
+  _HrPrenominaImportLotLite lot,
+  String selectedPeriodLabel,
+) {
+  final described = _describePrenominaImportPeriod(lot);
+  if (described == selectedPeriodLabel) return true;
+  final selectedRange = _extractPrenominaDateRangeFromPeriodLabel(
+    selectedPeriodLabel,
+  );
+  final lotRange = _extractPrenominaDateRangeFromPeriodLabel(described);
+  return selectedRange != null &&
+      lotRange != null &&
+      selectedRange.start == lotRange.start &&
+      selectedRange.end == lotRange.end;
 }
 
 List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
@@ -4896,6 +5663,7 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
   required List<_HrPrenominaAttendanceRecord> attendanceRecords,
   required List<_HrPrenominaVacationEventRecord> vacationEvents,
   required List<_HrPrenominaPermissionEventRecord> permissionEvents,
+  required List<HrEventPeriodImpactRecord> eventPeriodImpacts,
   required List<_HrPrenominaDraftRowRecord> draftRows,
   required String activePeriodLabel,
   required String activeContpaqRawPeriodLabel,
@@ -4916,21 +5684,53 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
         .add(item);
   }
 
+  final activeImpacts = eventPeriodImpacts
+      .where(
+        (impact) =>
+            impact.impactPrenomina &&
+            !impact.isLiquidated &&
+            impact.prenominaSyncStatus != 'aplicado' &&
+            impact.matchesPeriod(activePeriodLabel),
+      )
+      .toList(growable: false);
+  final vacationImpactsByEvent = <String, List<HrEventPeriodImpactRecord>>{};
+  final permissionImpactsByEvent = <String, List<HrEventPeriodImpactRecord>>{};
+  for (final impact in activeImpacts) {
+    final target = impact.eventKind == 'vacacion'
+        ? vacationImpactsByEvent
+        : permissionImpactsByEvent;
+    target.putIfAbsent(impact.parentEventId, () => []).add(impact);
+  }
+
   final vacationsByEmployee = <String, List<_HrPrenominaVacationEventRecord>>{};
   for (final event in vacationEvents.where(
     (item) =>
         item.impactPrenomina &&
-        item.status != _HrPrenominaEventStatus.cancelado &&
-        (item.attendancePeriodLabel == activePeriodLabel ||
-            (activeContpaqRawPeriodLabel.isNotEmpty &&
-                item.receiptGroupKey.contains(activeContpaqRawPeriodLabel))),
+        item.status != _HrPrenominaEventStatus.cancelado,
   )) {
-    vacationsByEmployee
-        .putIfAbsent(
-          event.employeeId,
-          () => <_HrPrenominaVacationEventRecord>[],
-        )
-        .add(event);
+    final impacts = vacationImpactsByEvent[event.id];
+    if (impacts != null) {
+      for (final impact in impacts) {
+        vacationsByEmployee
+            .putIfAbsent(
+              event.employeeId,
+              () => <_HrPrenominaVacationEventRecord>[],
+            )
+            .add(event.forPeriodImpact(impact));
+      }
+      continue;
+    }
+    if (event.prenominaSyncStatus != _HrPrenominaSyncStatus.aplicado &&
+        (event.attendancePeriodLabel == activePeriodLabel ||
+            (activeContpaqRawPeriodLabel.isNotEmpty &&
+                event.receiptGroupKey.contains(activeContpaqRawPeriodLabel)))) {
+      vacationsByEmployee
+          .putIfAbsent(
+            event.employeeId,
+            () => <_HrPrenominaVacationEventRecord>[],
+          )
+          .add(event);
+    }
   }
 
   final permissionsByEmployee =
@@ -4938,15 +5738,29 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
   for (final event in permissionEvents.where(
     (item) =>
         item.impactPrenomina &&
-        item.status != _HrPrenominaEventStatus.cancelado &&
-        item.attendancePeriodLabel == activePeriodLabel,
+        item.status != _HrPrenominaEventStatus.cancelado,
   )) {
-    permissionsByEmployee
-        .putIfAbsent(
-          event.employeeId,
-          () => <_HrPrenominaPermissionEventRecord>[],
-        )
-        .add(event);
+    final impacts = permissionImpactsByEvent[event.id];
+    if (impacts != null) {
+      for (final impact in impacts) {
+        permissionsByEmployee
+            .putIfAbsent(
+              event.employeeId,
+              () => <_HrPrenominaPermissionEventRecord>[],
+            )
+            .add(event.forPeriodImpact(impact));
+      }
+      continue;
+    }
+    if (event.prenominaSyncStatus != _HrPrenominaSyncStatus.aplicado &&
+        event.attendancePeriodLabel == activePeriodLabel) {
+      permissionsByEmployee
+          .putIfAbsent(
+            event.employeeId,
+            () => <_HrPrenominaPermissionEventRecord>[],
+          )
+          .add(event);
+    }
   }
 
   final contpaqByEmployee = {
@@ -4997,6 +5811,25 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
               vacationReservedDays += event.daysApplied;
           }
         }
+        final vacationCalculatedAmount = vacations
+            .where(
+              (event) =>
+                  event.status == _HrPrenominaEventStatus.aplicado &&
+                  (event.eventType ==
+                          _HrPrenominaVacationEventType.vacacionesPagadas ||
+                      event.impactPrenomina),
+            )
+            .fold<double>(
+              0,
+              (sum, event) =>
+                  sum +
+                  _calculatePrenominaVacationAmount(
+                    event: event,
+                    perceivedDailyRate: employee.salaryPerceivedWeekly > 0
+                        ? employee.salaryPerceivedWeekly / 7
+                        : employee.salaryWeekly / 7,
+                  ),
+            );
 
         double permissionWithPayDays = 0;
         double permissionWithoutPayDays = 0;
@@ -5068,17 +5901,29 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
             draft?.fiscalFonacotAmount ?? contpaqFonacotAmount;
         final fiscalAbsenceAmount =
             draft?.fiscalAbsenceAmount ?? contpaqAbsenceAmount;
+        final fiscalLateDeductionAmount =
+            draft?.fiscalLateDeductionAmount ??
+            _calculatePrenominaFiscalLateDeduction(
+              salaryWeekly: employee.salaryWeekly,
+              lateMinutes: lateMinutesSum,
+            );
         final fiscalVacationAmount =
-            draft?.fiscalVacationAmount ?? contpaqVacationAmount;
+            draft?.fiscalVacationAmount ??
+            (contpaqVacationAmount > 0
+                ? contpaqVacationAmount
+                : _suggestPrenominaFiscalVacationAmount(
+                    vacationCalculatedAmount: vacationCalculatedAmount,
+                    fiscalWeeklyAmount: contpaqSalaryAmount > 0
+                        ? contpaqSalaryAmount
+                        : employee.salaryWeekly,
+                    perceivedWeeklyAmount: employee.salaryPerceivedWeekly,
+                  ));
         final suggestedCashSalaryAmount = _suggestPrenominaCashSalaryAmount(
           salaryPerceivedWeekly: employee.salaryPerceivedWeekly,
-          contpaqSalaryAmount: contpaqSalaryAmount,
+          fiscalNetAmount: fiscalNetAmount,
         );
         final suggestedCashVacationAmount = _suggestPrenominaCashVacationAmount(
-          vacationPaidDays: vacationPaidDays,
-          perceivedDailyRate: employee.salaryPerceivedWeekly == 0
-              ? 0
-              : employee.salaryPerceivedWeekly / 7,
+          vacationCalculatedAmount: vacationCalculatedAmount,
           fiscalVacationAmount: fiscalVacationAmount,
         );
         final suggestedCashAbsenceDeductionAmount =
@@ -5092,10 +5937,12 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
             );
         final suggestedOvertimeMonetizedAmount =
             _suggestPrenominaOvertimeMonetizedAmount(
-              contpaqOvertimeAmount: contpaqOvertimeAmount,
+              overtimeMinutes: overtimeMinutesSum,
             );
-        final cashSalaryAmount =
-            draft?.cashSalaryAmount ?? suggestedCashSalaryAmount;
+        final cashSalaryIsManual = draft?.cashSalaryIsManual ?? false;
+        final cashSalaryAmount = cashSalaryIsManual
+            ? (draft?.cashSalaryAmount ?? suggestedCashSalaryAmount)
+            : suggestedCashSalaryAmount;
         final cashVacationAmount =
             draft?.cashVacationAmount ?? suggestedCashVacationAmount;
         final cashIsrAmount = draft?.cashIsrAmount ?? 0;
@@ -5147,6 +5994,7 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
           lateMinutesSum: lateMinutesSum,
           overtimeMinutesSum: overtimeMinutesSum,
           vacationPaidDays: vacationPaidDays,
+          vacationCalculatedAmount: vacationCalculatedAmount,
           vacationEnjoyedDays: vacationEnjoyedDays,
           vacationReservedDays: vacationReservedDays,
           permissionWithPayDays: permissionWithPayDays,
@@ -5172,8 +6020,10 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
           fiscalInfonavitAmount: fiscalInfonavitAmount,
           fiscalFonacotAmount: fiscalFonacotAmount,
           fiscalAbsenceAmount: fiscalAbsenceAmount,
+          fiscalLateDeductionAmount: fiscalLateDeductionAmount,
           fiscalVacationAmount: fiscalVacationAmount,
           cashSalaryAmount: cashSalaryAmount,
+          cashSalaryIsManual: cashSalaryIsManual,
           cashVacationAmount: cashVacationAmount,
           cashIsrAmount: cashIsrAmount,
           transportSupportAmount: transportSupportAmount,
@@ -5196,22 +6046,46 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
 
 double _suggestPrenominaCashSalaryAmount({
   required double salaryPerceivedWeekly,
-  required double contpaqSalaryAmount,
+  required double fiscalNetAmount,
 }) {
   if (salaryPerceivedWeekly <= 0) return 0;
-  final amount = salaryPerceivedWeekly - contpaqSalaryAmount;
+  final amount = salaryPerceivedWeekly - fiscalNetAmount;
   return amount > 0 ? amount : 0;
 }
 
 double _suggestPrenominaCashVacationAmount({
-  required double vacationPaidDays,
-  required double perceivedDailyRate,
+  required double vacationCalculatedAmount,
   required double fiscalVacationAmount,
 }) {
-  if (vacationPaidDays <= 0 || perceivedDailyRate <= 0) return 0;
-  final operationalVacation = vacationPaidDays * perceivedDailyRate;
-  final amount = operationalVacation - fiscalVacationAmount;
+  if (vacationCalculatedAmount <= 0) return 0;
+  final amount = vacationCalculatedAmount - fiscalVacationAmount;
   return amount > 0 ? amount : 0;
+}
+
+double _suggestPrenominaFiscalVacationAmount({
+  required double vacationCalculatedAmount,
+  required double fiscalWeeklyAmount,
+  required double perceivedWeeklyAmount,
+}) {
+  if (vacationCalculatedAmount <= 0) return 0;
+  if (perceivedWeeklyAmount <= 0 || fiscalWeeklyAmount <= 0) {
+    return vacationCalculatedAmount;
+  }
+  final fiscalShare = (fiscalWeeklyAmount / perceivedWeeklyAmount)
+      .clamp(0, 1)
+      .toDouble();
+  return vacationCalculatedAmount * fiscalShare;
+}
+
+double _calculatePrenominaVacationAmount({
+  required _HrPrenominaVacationEventRecord event,
+  required double perceivedDailyRate,
+}) {
+  if (perceivedDailyRate <= 0 || event.daysApplied <= 0) return 0;
+  final salaryDays = event.daysApplied + event.additionalPaidDays;
+  final vacationPay = salaryDays * perceivedDailyRate;
+  final vacationBonus = event.daysApplied * perceivedDailyRate * 0.25;
+  return vacationPay + vacationBonus;
 }
 
 double _suggestPrenominaCashAbsenceDeductionAmount({
@@ -5230,10 +6104,25 @@ double _suggestPrenominaCashAbsenceDeductionAmount({
 }
 
 double _suggestPrenominaOvertimeMonetizedAmount({
-  required double contpaqOvertimeAmount,
+  required int overtimeMinutes,
 }) {
-  return contpaqOvertimeAmount > 0 ? contpaqOvertimeAmount : 0;
+  if (overtimeMinutes <= 0) return 0;
+  return _roundPrenominaMoney(
+    (overtimeMinutes / 60) * _kHrPrenominaOvertimeHourlyRate,
+  );
 }
+
+double _calculatePrenominaFiscalLateDeduction({
+  required double salaryWeekly,
+  required int lateMinutes,
+}) {
+  if (salaryWeekly <= 0 || lateMinutes <= 0) return 0;
+  final baseHourlyRate = salaryWeekly / 7 / _kHrPrenominaHoursPerDay;
+  return _roundPrenominaMoney(baseHourlyRate * (lateMinutes / 60));
+}
+
+double _roundPrenominaMoney(double value) =>
+    double.parse(value.toStringAsFixed(2));
 
 _HrPrenominaPaymentChannel _suggestPrenominaPaymentChannel({
   required double fiscalNetAmount,
@@ -5408,6 +6297,11 @@ double? _parsePrenominaNullableNumber(Object? raw) {
   return double.tryParse(text);
 }
 
+bool _parsePrenominaBoolean(Object? raw) {
+  if (raw is bool) return raw;
+  return raw?.toString().trim().toLowerCase() == 'true';
+}
+
 double _parsePrenominaImportedAmount(String? raw) {
   final text = (raw ?? '').trim().replaceAll(',', '');
   if (text.isEmpty) return 0;
@@ -5441,6 +6335,14 @@ int _asPrenominaInt(Object? raw) {
   if (raw is int) return raw;
   if (raw is num) return raw.toInt();
   return int.tryParse((raw ?? '').toString().trim()) ?? 0;
+}
+
+String _prenominaFileSafeLabel(String value) {
+  final normalized = value
+      .toLowerCase()
+      .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+      .replaceAll(RegExp(r'^_+|_+$'), '');
+  return normalized.isEmpty ? 'periodo' : normalized;
 }
 
 String _describePrenominaImportPeriod(_HrPrenominaImportLotLite lot) {
@@ -5482,6 +6384,28 @@ DateTime? _parsePrenominaUsImportDate(String raw) {
   final day = int.tryParse(parts[1]);
   final year = int.tryParse(parts[2]);
   if (month == null || day == null || year == null) return null;
+  return DateTime(year, month, day);
+}
+
+DateTimeRange? _extractPrenominaDateRangeFromPeriodLabel(String raw) {
+  final match = RegExp(
+    r'(?:del\s+)?(\d{2}/\d{2}/\d{4})\s+(?:al|-)\s+(\d{2}/\d{2}/\d{4})',
+    caseSensitive: false,
+  ).firstMatch(raw);
+  if (match == null) return null;
+  final start = _parsePrenominaDayFirstDate(match.group(1)!);
+  final end = _parsePrenominaDayFirstDate(match.group(2)!);
+  if (start == null || end == null) return null;
+  return DateTimeRange(start: start, end: end);
+}
+
+DateTime? _parsePrenominaDayFirstDate(String raw) {
+  final parts = raw.trim().split('/');
+  if (parts.length != 3) return null;
+  final day = int.tryParse(parts[0]);
+  final month = int.tryParse(parts[1]);
+  final year = int.tryParse(parts[2]);
+  if (day == null || month == null || year == null) return null;
   return DateTime(year, month, day);
 }
 

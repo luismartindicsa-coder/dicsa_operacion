@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../auth/auth_access.dart';
@@ -33,9 +36,11 @@ import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_dashboard_page.dart';
+import 'human_resources_event_period_impacts.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
+import 'human_resources_period_context.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
 
@@ -79,6 +84,9 @@ class _HumanResourcesVacationsPageState
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   bool _loading = true;
+  String _activePeriodLabel = '';
+  String _selectedPeriodLabel = '';
+  List<String> _periodOptions = const <String>[];
   String? _selectedRowId;
   String? _hoveredRowId;
   int _currentPage = 0;
@@ -209,6 +217,8 @@ class _HumanResourcesVacationsPageState
   Future<void> _loadData() async {
     setState(() => _loading = true);
     try {
+      final selectedPeriodLabel =
+          await HumanResourcesPeriodContext.readSelectedLabel();
       final client = Supabase.instance.client;
       final employeesResult = await fetchAllSupabaseRows(
         (from, to) => client
@@ -294,15 +304,27 @@ class _HumanResourcesVacationsPageState
           .map(_HrVacationCalculationRecord.fromRow)
           .toList(growable: false);
 
-      final contpaqSyncChanged = await _syncVacationPaidEventsFromContpaq(
-        client: client,
-        employees: employees,
-        balances: balances,
-        attendanceLots: attendanceLots,
+      final periodOptions = _vacationPeriodOptions(
+        lots: attendanceLots,
         events: events,
-        calculations: calculations,
-        exerciseYear: _exerciseYear,
       );
+      final activePeriodLabel = HumanResourcesPeriodContext.resolveSelected(
+        selectedLabel: selectedPeriodLabel,
+        availableLabels: periodOptions,
+      );
+
+      final contpaqSyncChanged = activePeriodLabel.isEmpty
+          ? false
+          : await _syncVacationPaidEventsFromContpaq(
+              client: client,
+              employees: employees,
+              balances: balances,
+              attendanceLots: attendanceLots,
+              events: events,
+              calculations: calculations,
+              exerciseYear: _exerciseYear,
+              activePeriodLabel: activePeriodLabel,
+            );
       if (contpaqSyncChanged) {
         final refreshedEventsResult = await fetchAllSupabaseRows(
           (from, to) => client
@@ -338,6 +360,11 @@ class _HumanResourcesVacationsPageState
       _balances = balances;
       _events = events;
       _calculations = calculations;
+      _selectedPeriodLabel = selectedPeriodLabel;
+      _periodOptions = _vacationPeriodOptions(
+        lots: attendanceLots,
+        events: events,
+      );
       _rebuildRows();
     } catch (_) {
       if (!mounted) return;
@@ -346,6 +373,10 @@ class _HumanResourcesVacationsPageState
   }
 
   void _rebuildRows() {
+    _activePeriodLabel = HumanResourcesPeriodContext.resolveSelected(
+      selectedLabel: _selectedPeriodLabel,
+      availableLabels: _periodOptions,
+    );
     final balanceByEmployee = {
       for (final item in _balances) item.employeeId: item,
     };
@@ -385,6 +416,20 @@ class _HumanResourcesVacationsPageState
     }
     _configureGrid();
     setState(() => _loading = false);
+  }
+
+  Future<void> _selectPeriod(String periodLabel) async {
+    await HumanResourcesPeriodContext.select(periodLabel);
+    if (!mounted) return;
+    _selectedPeriodLabel = periodLabel;
+    _currentPage = 0;
+    _rebuildRows();
+  }
+
+  bool _requireActivePeriod() {
+    if (_activePeriodLabel.isNotEmpty) return true;
+    _showSnack('Selecciona un periodo operativo antes de editar vacaciones.');
+    return false;
   }
 
   List<_HrVacationSummaryRow> _applyVacationFilters(
@@ -468,6 +513,7 @@ class _HumanResourcesVacationsPageState
   Future<void> _logout() async => signOutAndRouteToLogin(context);
 
   Future<void> _openSummaryRow(_HrVacationSummaryRow row) async {
+    if (!_requireActivePeriod()) return;
     final initialIndex = _allRows.indexWhere(
       (candidate) => candidate.employeeId == row.employeeId,
     );
@@ -522,6 +568,7 @@ class _HumanResourcesVacationsPageState
     required _HrVacationSummaryRow row,
     required _HrVacationEditResult result,
   }) async {
+    if (!_requireActivePeriod()) return;
     final client = Supabase.instance.client;
     final preparedEvents = await _prepareVacationEventsForPersistence(
       row: row,
@@ -552,15 +599,54 @@ class _HumanResourcesVacationsPageState
             Map<String, dynamic>.from(refreshedBalanceResult as Map),
           );
 
-    await client
-        .from(_kHrVacationEventsTable)
-        .delete()
-        .eq('employee_id', row.employeeId)
-        .eq('exercise_year', _exerciseYear);
+    final lockedEventIds = row.events
+        .where(
+          (event) =>
+              event.prenominaSyncStatus == _HrVacationSyncStatus.aplicado,
+        )
+        .map((event) => event.id)
+        .where((id) => id.isNotEmpty)
+        .toSet();
+    final nextEventIds = preparedEvents
+        .map((event) => event.localId)
+        .where((id) => id.isNotEmpty)
+        .toSet();
 
-    final insertedEventIds = <String>[];
-    for (var index = 0; index < preparedEvents.length; index += 1) {
-      final event = preparedEvents[index];
+    for (final existing in row.events) {
+      if (existing.id.isEmpty ||
+          lockedEventIds.contains(existing.id) ||
+          nextEventIds.contains(existing.id)) {
+        continue;
+      }
+      await client.from(_kHrVacationEventsTable).delete().eq('id', existing.id);
+    }
+
+    final existingDrafts = preparedEvents
+        .where(
+          (event) =>
+              event.hasPersistedId && !lockedEventIds.contains(event.localId),
+        )
+        .toList(growable: false);
+    if (existingDrafts.isNotEmpty) {
+      await client
+          .from(_kHrVacationEventsTable)
+          .upsert(
+            existingDrafts
+                .map(
+                  (event) => event.toRow(
+                    balanceId: refreshedBalance?.id,
+                    employeeId: row.employeeId,
+                    employeeName: row.displayName,
+                    exerciseYear: _exerciseYear,
+                  ),
+                )
+                .toList(growable: false),
+            onConflict: 'id',
+          );
+    }
+    for (final event in preparedEvents.where(
+      (event) => !event.hasPersistedId,
+    )) {
       final inserted = await client
           .from(_kHrVacationEventsTable)
           .insert(
@@ -571,21 +657,55 @@ class _HumanResourcesVacationsPageState
               exerciseYear: _exerciseYear,
             ),
           )
-          .select()
+          .select('id')
           .single();
-      insertedEventIds.add((inserted['id'] ?? '').toString());
+      event.localId = (inserted['id'] ?? '').toString();
     }
 
-    await client
-        .from(_kHrVacationCalculationsTable)
-        .delete()
-        .eq('employee_id', row.employeeId)
-        .eq('exercise_year', _exerciseYear);
+    await syncHrEventPeriodImpacts(
+      client: client,
+      eventKind: 'vacacion',
+      sources: preparedEvents
+          .map(
+            (event) => HrEventPeriodImpactSource(
+              eventId: event.localId,
+              employeeId: row.employeeId,
+              startDate: event.startDate,
+              endDate: event.endDate,
+              daysApplied: event.daysApplied,
+              additionalPaidDays: event.additionalPaidDays,
+              quantityHours: 0,
+              impactAttendance: event.impactAttendance,
+              impactPrenomina: event.impactPrenomina,
+              isCancelled: event.status == _HrVacationEventStatus.cancelado,
+            ),
+          )
+          .toList(growable: false),
+      knownPeriodLabels: [
+        for (final lot in _attendanceImportLots)
+          _describeVacationAttendancePeriod(lot),
+      ],
+      activePeriodLabel: _activePeriodLabel,
+    );
+
+    final mutableEvents = preparedEvents
+        .where((event) => !lockedEventIds.contains(event.localId))
+        .toList(growable: false);
+    final mutableExistingIds = mutableEvents
+        .map((event) => event.localId)
+        .where((id) => id.isNotEmpty)
+        .toList(growable: false);
+    if (mutableExistingIds.isNotEmpty) {
+      await client
+          .from(_kHrVacationCalculationsTable)
+          .delete()
+          .inFilter('vacation_event_id', mutableExistingIds);
+    }
 
     final calculationPayloads = <Map<String, dynamic>>[];
-    for (var index = 0; index < preparedEvents.length; index += 1) {
-      final event = preparedEvents[index];
-      final eventId = insertedEventIds[index];
+    for (final event in mutableEvents) {
+      final eventId = event.localId;
+      if (eventId.isEmpty) continue;
       final components = _buildVacationCalculationPayloads(
         eventId: eventId,
         employeeId: row.employeeId,
@@ -602,7 +722,73 @@ class _HumanResourcesVacationsPageState
     }
 
     await _loadData();
-    _showSnack('Vacaciones de ${row.displayName} actualizadas.');
+    _showSnack(
+      'Vacaciones de ${row.displayName} actualizadas. '
+      'El recibo no se genera desde el expediente; se controla después del cierre de Prenómina.',
+    );
+  }
+
+  // ignore: unused_element
+  Future<int> _generateVacationReceipts({
+    required _HrVacationSummaryRow row,
+    required _HrVacationBalanceDraft balance,
+    required List<_HrVacationEventDraft> events,
+  }) async {
+    final receiptEvents = events
+        .where(
+          (event) =>
+              event.generateReceipt &&
+              event.status == _HrVacationEventStatus.aplicado &&
+              _vacationEventHasPayrollFootprint(event),
+        )
+        .toList(growable: false);
+    if (receiptEvents.isEmpty) return 0;
+
+    final contpaqLot = _vacationLotForPeriod(
+      _attendanceImportLots,
+      _HrVacationAttendanceImportSource.contpaq,
+      _activePeriodLabel,
+    );
+    final contpaqEntry = contpaqLot?.entries
+        .cast<_HrVacationAttendanceImportedEntry?>()
+        .firstWhere(
+          (entry) => entry?.employeeId == row.employeeId,
+          orElse: () => null,
+        );
+    var generated = 0;
+    for (final event in receiptEvents) {
+      final bytes = await _buildVacationReceiptPdfBytes(
+        row: row,
+        balance: balance,
+        event: event,
+        contpaqEntry: contpaqEntry,
+        contpaqPeriodLabel: contpaqLot?.periodLabel ?? '',
+      );
+      final stamp = DateTime.now().millisecondsSinceEpoch;
+      final file = File(
+        '${Directory.systemTemp.path}/recibo_vacaciones_${_vacationFileSlug(row.displayName)}_${event.startDate.year}${event.startDate.month.toString().padLeft(2, '0')}${event.startDate.day.toString().padLeft(2, '0')}_$stamp.pdf',
+      );
+      await file.writeAsBytes(bytes, flush: true);
+      await _openVacationReceiptPdf(file.path);
+      generated += 1;
+    }
+    return generated;
+  }
+
+  Future<void> _openVacationReceiptPdf(String path) async {
+    ProcessResult result;
+    if (Platform.isMacOS) {
+      result = await Process.run('open', <String>[path]);
+    } else if (Platform.isWindows) {
+      result = await Process.run('cmd', <String>['/c', 'start', '', path]);
+    } else if (Platform.isLinux) {
+      result = await Process.run('xdg-open', <String>[path]);
+    } else {
+      throw UnsupportedError('Plataforma no soportada para abrir PDF');
+    }
+    if (result.exitCode != 0) {
+      throw Exception(result.stderr.toString().trim());
+    }
   }
 
   Future<List<_HrVacationEventDraft>> _prepareVacationEventsForPersistence({
@@ -611,19 +797,17 @@ class _HumanResourcesVacationsPageState
   }) async {
     final client = Supabase.instance.client;
     final employee = _findVacationEmployeeById(row.employeeId, _employees);
-    final ngtecoLot = _latestVacationAttendanceLotBySource(
+    final ngtecoLot = _vacationLotForPeriod(
       _attendanceImportLots,
       _HrVacationAttendanceImportSource.ngteco,
+      _activePeriodLabel,
     );
-    final contpaqLot = _latestVacationAttendanceLotBySource(
+    final contpaqLot = _vacationLotForPeriod(
       _attendanceImportLots,
       _HrVacationAttendanceImportSource.contpaq,
+      _activePeriodLabel,
     );
-    final activeAttendancePeriodLabel =
-        _resolveActiveVacationAttendancePeriodLabel(
-          ngtecoLot: ngtecoLot,
-          contpaqLot: contpaqLot,
-        );
+    final activeAttendancePeriodLabel = _activePeriodLabel;
     final activeAttendanceRange = _resolveVacationAttendanceActiveRange(
       ngtecoLot: ngtecoLot,
       contpaqLot: contpaqLot,
@@ -1298,6 +1482,8 @@ class _HumanResourcesVacationsPageState
                           totalRows: _allRows.length,
                           selectedCount:
                               _selectionController.selectedIds.length,
+                          activePeriodLabel: _activePeriodLabel,
+                          periodOptions: _periodOptions,
                           exerciseYear: _exerciseYear,
                           navigationController: _navigationController,
                           selectionController: _selectionController,
@@ -1334,6 +1520,7 @@ class _HumanResourcesVacationsPageState
                             final row = _activeRow();
                             if (row != null) await _openSummaryRow(row);
                           },
+                          onSelectPeriod: _selectPeriod,
                           onEscape: _handleEscape,
                           onOpenActiveCell: _openActiveRecord,
                           hasActiveFilter: _hasActiveFilter,
@@ -1393,6 +1580,8 @@ class _HrVacationWorkspace extends StatelessWidget {
   final int totalRows;
   final int selectedCount;
   final int exerciseYear;
+  final String activePeriodLabel;
+  final List<String> periodOptions;
   final String? hoveredRowId;
   final GridNavigationController navigationController;
   final GridSelectionController selectionController;
@@ -1429,6 +1618,7 @@ class _HrVacationWorkspace extends StatelessWidget {
   final VoidCallback? onNextPage;
   final ValueChanged<int> onPageSizeChanged;
   final Future<void> Function() onOpenSelectedRow;
+  final ValueChanged<String> onSelectPeriod;
   final VoidCallback onEscape;
   final VoidCallback onOpenActiveCell;
   final bool Function(String columnId) hasActiveFilter;
@@ -1441,6 +1631,8 @@ class _HrVacationWorkspace extends StatelessWidget {
     required this.totalRows,
     required this.selectedCount,
     required this.exerciseYear,
+    required this.activePeriodLabel,
+    required this.periodOptions,
     required this.hoveredRowId,
     required this.navigationController,
     required this.selectionController,
@@ -1465,6 +1657,7 @@ class _HrVacationWorkspace extends StatelessWidget {
     required this.onNextPage,
     required this.onPageSizeChanged,
     required this.onOpenSelectedRow,
+    required this.onSelectPeriod,
     required this.onEscape,
     required this.onOpenActiveCell,
     required this.hasActiveFilter,
@@ -1515,6 +1708,9 @@ class _HrVacationWorkspace extends StatelessWidget {
                   ? null
                   : 'Celda: $activeLabel',
               exerciseYear: exerciseYear,
+              activePeriodLabel: activePeriodLabel,
+              periodOptions: periodOptions,
+              onSelectPeriod: onSelectPeriod,
               onOpenSelectedRow: () => unawaited(onOpenSelectedRow()),
             ),
             body: _HrVacationGrid(
@@ -2249,6 +2445,9 @@ class _HrVacationModuleTopBar extends StatelessWidget {
   final int selectedCount;
   final String? activeCellLabel;
   final int exerciseYear;
+  final String activePeriodLabel;
+  final List<String> periodOptions;
+  final ValueChanged<String> onSelectPeriod;
   final VoidCallback onOpenSelectedRow;
 
   const _HrVacationModuleTopBar({
@@ -2257,6 +2456,9 @@ class _HrVacationModuleTopBar extends StatelessWidget {
     required this.selectedCount,
     required this.activeCellLabel,
     required this.exerciseYear,
+    required this.activePeriodLabel,
+    required this.periodOptions,
+    required this.onSelectPeriod,
     required this.onOpenSelectedRow,
   });
 
@@ -2288,9 +2490,16 @@ class _HrVacationModuleTopBar extends StatelessWidget {
                 runSpacing: 8,
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
+                  HumanResourcesPeriodSelector(
+                    selectedLabel: activePeriodLabel,
+                    options: periodOptions,
+                    onSelected: onSelectPeriod,
+                  ),
                   FilledButton.icon(
                     style: contractPrimaryButtonStyle(context),
-                    onPressed: onOpenSelectedRow,
+                    onPressed: activePeriodLabel.isEmpty
+                        ? null
+                        : onOpenSelectedRow,
                     icon: const Icon(Icons.beach_access_rounded),
                     label: const Text('Editar vacaciones'),
                   ),
@@ -3192,12 +3401,16 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
         startDate: DateTime(now.year, now.month, now.day),
         endDate: DateTime(now.year, now.month, now.day),
         daysApplied: 1.0,
+        additionalPaidDays: 0,
         attendancePeriodLabel: '',
         attendanceSyncStatus: _HrVacationSyncStatus.pendiente,
         prenominaSyncStatus: _HrVacationSyncStatus.pendiente,
         impactAttendance: true,
         impactPrenomina: false,
         generateReceipt: false,
+        isrMethod: _HrVacationIsrMethod.tarifaSemanal,
+        isrOrdinaryMonthlyIncomeOverrideText: '',
+        isrRetentionOverrideText: '',
         receiptGroupKey: '',
         notes: '',
       );
@@ -3327,10 +3540,14 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
     final salaryPerceivedDaily = salaryPerceivedWeekly > 0
         ? salaryPerceivedWeekly / 7
         : 0.0;
-    final vacationPay = salaryDaily * _balance.daysPaid;
-    final vacationPayPerceived = salaryPerceivedDaily * _balance.daysPaid;
-    final bonusPay = vacationPay * 0.25;
-    final bonusPayPerceived = vacationPayPerceived * 0.25;
+    final additionalPaidDays = _events
+        .where(_vacationEventHasPayrollFootprint)
+        .fold<double>(0, (sum, event) => sum + event.additionalPaidDays);
+    final payableSalaryDays = _balance.daysPaid + additionalPaidDays;
+    final vacationPay = salaryDaily * payableSalaryDays;
+    final vacationPayPerceived = salaryPerceivedDaily * payableSalaryDays;
+    final bonusPay = salaryDaily * _balance.daysPaid * 0.25;
+    final bonusPayPerceived = salaryPerceivedDaily * _balance.daysPaid * 0.25;
     final salaryDelta = salaryPerceivedWeekly - salaryWeekly;
     final vacationDelta = vacationPayPerceived - vacationPay;
     final bonusDelta = bonusPayPerceived - bonusPay;
@@ -3892,6 +4109,7 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
                                               ) ...[
                                                 _HrVacationEventCard(
                                                   draft: _events[index],
+                                                  balance: _balance,
                                                   onChanged: () => setState(() {
                                                     _refreshVacationEventDraft(
                                                       _events[index],
@@ -4572,12 +4790,14 @@ class _HrVacationEventPill extends StatelessWidget {
 
 class _HrVacationEventCard extends StatelessWidget {
   final _HrVacationEventDraft draft;
+  final _HrVacationBalanceDraft balance;
   final VoidCallback onChanged;
   final Future<DateTime?> Function(DateTime? initial) onPickDate;
   final VoidCallback onRemove;
 
   const _HrVacationEventCard({
     required this.draft,
+    required this.balance,
     required this.onChanged,
     required this.onPickDate,
     required this.onRemove,
@@ -4847,6 +5067,30 @@ class _HrVacationEventCard extends StatelessWidget {
                 ),
               ),
               SizedBox(
+                width: 190,
+                child: _HrVacationLabeledField(
+                  label: 'Domingos / festivos pagados',
+                  child: TextFormField(
+                    initialValue: _formatVacationDays(draft.additionalPaidDays),
+                    decoration: _hrVacationFieldDecoration(),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (value) {
+                      final trimmed = value.trim();
+                      draft.additionalPaidDaysManuallyEdited =
+                          trimmed.isNotEmpty;
+                      draft.additionalPaidDays = trimmed.isEmpty
+                          ? 0.0
+                          : _parseVacationNumber(
+                              trimmed,
+                            ).clamp(0, 9999).toDouble();
+                      onChanged();
+                    },
+                  ),
+                ),
+              ),
+              SizedBox(
                 width: 180,
                 child: _HrVacationLabeledField(
                   label: 'Estado',
@@ -4899,16 +5143,22 @@ class _HrVacationEventCard extends StatelessWidget {
                   onChanged();
                 },
               ),
-              _HrVacationBooleanField(
-                label: 'Genera recibo',
-                value: draft.generateReceipt,
-                onChanged: (value) {
-                  draft.generateReceipt = value;
-                  onChanged();
-                },
-              ),
             ],
           ),
+          const SizedBox(height: 10),
+          const _HrVacationInlineNote(
+            icon: Icons.lock_clock_outlined,
+            message:
+                'El evento queda pendiente de cierre. La emisión del recibo se controla desde Nómina después de publicar la prenómina del periodo.',
+          ),
+          if (draft.impactPrenomina) ...[
+            const SizedBox(height: 12),
+            _HrVacationIsrEditor(
+              draft: draft,
+              balance: balance,
+              onChanged: onChanged,
+            ),
+          ],
           const SizedBox(height: 12),
           _HrVacationLabeledField(
             label: 'Observación RH',
@@ -4919,6 +5169,122 @@ class _HrVacationEventCard extends StatelessWidget {
               maxLines: 4,
               onChanged: (value) => draft.notes = value,
             ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _HrVacationIsrEditor extends StatelessWidget {
+  final _HrVacationEventDraft draft;
+  final _HrVacationBalanceDraft balance;
+  final VoidCallback onChanged;
+
+  const _HrVacationIsrEditor({
+    required this.draft,
+    required this.balance,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final daily = balance.salarySnapshot / 7;
+    final fiscalVacation =
+        daily * (draft.daysApplied + draft.additionalPaidDays) +
+        (daily * draft.daysApplied * 0.25);
+    final isr = _calculateVacationIsr(
+      balance: balance,
+      event: draft,
+      fiscalVacationAmount: fiscalVacation,
+    );
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7F0FF),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0x445C2D91)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'RETENCIÓN ISR DEL RECIBO',
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 0.7,
+              color: Color(0xFF5C2D91),
+            ),
+          ),
+          const SizedBox(height: 4),
+          const Text(
+            'Salario base + vacaciones gravadas + prima gravada - subsidio al empleo. RH puede sustituir el importe por el CFDI.',
+            style: TextStyle(
+              fontSize: 12,
+              height: 1.25,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF6E47A8),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 12,
+            runSpacing: 12,
+            children: [
+              SizedBox(
+                width: 210,
+                child: _HrVacationLabeledField(
+                  label: 'ISR retenido (override CFDI)',
+                  child: TextFormField(
+                    initialValue: draft.isrRetentionOverrideText,
+                    decoration: _hrVacationFieldDecoration().copyWith(
+                      hintText: _formatVacationMoney(isr.retentionAmount),
+                    ),
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    onChanged: (value) {
+                      draft.isrRetentionOverrideText = value;
+                      onChanged();
+                    },
+                  ),
+                ),
+              ),
+              _HrVacationEventPill(
+                label: 'Base gravable ${_formatVacationMoney(isr.taxableBase)}',
+                colorSet: const _HrVacationPillColorSet(
+                  background: Color(0xFFEADFFF),
+                  border: Color(0xFFB084FF),
+                  foreground: Color(0xFF4E2B7A),
+                ),
+              ),
+              _HrVacationEventPill(
+                label: 'Exento ${_formatVacationMoney(isr.exemptAmount)}',
+                colorSet: const _HrVacationPillColorSet(
+                  background: Color(0xFFEADFFF),
+                  border: Color(0xFFB084FF),
+                  foreground: Color(0xFF4E2B7A),
+                ),
+              ),
+              _HrVacationEventPill(
+                label: 'Subsidio ${_formatVacationMoney(isr.subsidyAmount)}',
+                colorSet: const _HrVacationPillColorSet(
+                  background: Color(0xFFEADFFF),
+                  border: Color(0xFFB084FF),
+                  foreground: Color(0xFF4E2B7A),
+                ),
+              ),
+              _HrVacationEventPill(
+                label: 'ISR ${_formatVacationMoney(isr.retentionAmount)}',
+                colorSet: const _HrVacationPillColorSet(
+                  background: Color(0xFFFDEBEE),
+                  border: Color(0xFFE5A1AF),
+                  foreground: Color(0xFF9A2947),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -5264,6 +5630,22 @@ enum _HrVacationSyncStatus {
   const _HrVacationSyncStatus(this.label);
 }
 
+enum _HrVacationIsrMethod {
+  articulo174(
+    'Regla DICSA 2026',
+    'Tarifa semanal sobre la base gravable total.',
+  ),
+  tarifaSemanal(
+    'Regla DICSA 2026',
+    'Tarifa semanal sobre la base gravable total.',
+  ),
+  manualRh('Manual RH', 'RH captura la retención confirmada por CFDI.');
+
+  final String label;
+  final String description;
+  const _HrVacationIsrMethod(this.label, this.description);
+}
+
 class _HrVacationWorkSchedule {
   final String horario;
   final List<String> diasLabora;
@@ -5516,12 +5898,16 @@ class _HrVacationEventRecord {
   final DateTime startDate;
   final DateTime endDate;
   final double daysApplied;
+  final double additionalPaidDays;
   final String attendancePeriodLabel;
   final _HrVacationSyncStatus attendanceSyncStatus;
   final _HrVacationSyncStatus prenominaSyncStatus;
   final bool impactAttendance;
   final bool impactPrenomina;
   final bool generateReceipt;
+  final _HrVacationIsrMethod isrMethod;
+  final double? isrOrdinaryMonthlyIncomeOverride;
+  final double? isrRetentionOverride;
   final String receiptGroupKey;
   final _HrVacationEventStatus status;
   final String notes;
@@ -5536,12 +5922,16 @@ class _HrVacationEventRecord {
     required this.startDate,
     required this.endDate,
     required this.daysApplied,
+    required this.additionalPaidDays,
     required this.attendancePeriodLabel,
     required this.attendanceSyncStatus,
     required this.prenominaSyncStatus,
     required this.impactAttendance,
     required this.impactPrenomina,
     required this.generateReceipt,
+    required this.isrMethod,
+    required this.isrOrdinaryMonthlyIncomeOverride,
+    required this.isrRetentionOverride,
     required this.receiptGroupKey,
     required this.status,
     required this.notes,
@@ -5558,6 +5948,7 @@ class _HrVacationEventRecord {
       startDate: _parseVacationDbDate(row['start_date']) ?? DateTime.now(),
       endDate: _parseVacationDbDate(row['end_date']) ?? DateTime.now(),
       daysApplied: _parseVacationNumber(row['days_applied']),
+      additionalPaidDays: _parseVacationNumber(row['additional_paid_days']),
       attendancePeriodLabel: (row['attendance_period_label'] ?? '').toString(),
       attendanceSyncStatus: _syncStatusFromText(
         (row['attendance_sync_status'] ?? '').toString(),
@@ -5568,6 +5959,15 @@ class _HrVacationEventRecord {
       impactAttendance: row['impact_attendance'] != false,
       impactPrenomina: row['impact_prenomina'] == true,
       generateReceipt: row['generate_receipt'] == true,
+      isrMethod: _vacationIsrMethodFromText(
+        (row['isr_method'] ?? '').toString(),
+      ),
+      isrOrdinaryMonthlyIncomeOverride: _parseVacationNullableNumber(
+        row['isr_ordinary_monthly_income_override'],
+      ),
+      isrRetentionOverride: _parseVacationNullableNumber(
+        row['isr_retention_override'],
+      ),
       receiptGroupKey: (row['receipt_group_key'] ?? '').toString(),
       status: _eventStatusFromText((row['status'] ?? '').toString()),
       notes: (row['notes'] ?? '').toString(),
@@ -5593,6 +5993,11 @@ class _HrVacationCalculationRecord {
   final double transferComponent;
   final double cashComponent;
   final double differenceComponent;
+  final double isrTaxableBase;
+  final double isrExemptAmount;
+  final double isrRetentionAmount;
+  final _HrVacationIsrMethod isrMethod;
+  final int? isrTariffYear;
   final bool isFinal;
 
   const _HrVacationCalculationRecord({
@@ -5613,6 +6018,11 @@ class _HrVacationCalculationRecord {
     required this.transferComponent,
     required this.cashComponent,
     required this.differenceComponent,
+    required this.isrTaxableBase,
+    required this.isrExemptAmount,
+    required this.isrRetentionAmount,
+    required this.isrMethod,
+    required this.isrTariffYear,
     required this.isFinal,
   });
 
@@ -5639,6 +6049,13 @@ class _HrVacationCalculationRecord {
       transferComponent: _parseVacationNumber(row['transfer_component']),
       cashComponent: _parseVacationNumber(row['cash_component']),
       differenceComponent: _parseVacationNumber(row['difference_component']),
+      isrTaxableBase: _parseVacationNumber(row['isr_taxable_base']),
+      isrExemptAmount: _parseVacationNumber(row['isr_exempt_amount']),
+      isrRetentionAmount: _parseVacationNumber(row['isr_retention_amount']),
+      isrMethod: _vacationIsrMethodFromText(
+        (row['isr_method'] ?? '').toString(),
+      ),
+      isrTariffYear: (row['isr_tariff_year'] as num?)?.toInt(),
       isFinal: row['is_final'] == true,
     );
   }
@@ -5784,7 +6201,8 @@ class _HrVacationBalanceDraft {
       'entitlement_rule_key': entitlementRuleKey.isEmpty
           ? null
           : entitlementRuleKey,
-      'days_entitled': daysEntitled,
+      // El derecho legal se persiste como entero; los demás saldos admiten decimales.
+      'days_entitled': daysEntitled.round(),
       'days_paid': daysPaid,
       'days_enjoyed': daysEnjoyed,
       'days_reserved': daysReserved,
@@ -5801,19 +6219,24 @@ class _HrVacationBalanceDraft {
 }
 
 class _HrVacationEventDraft {
-  final String localId;
+  String localId;
   _HrVacationEventType eventType;
   _HrVacationEventStatus status;
   DateTime startDate;
   DateTime endDate;
   double daysApplied;
+  double additionalPaidDays;
   bool daysManuallyEdited;
+  bool additionalPaidDaysManuallyEdited = false;
   String attendancePeriodLabel;
   _HrVacationSyncStatus attendanceSyncStatus;
   _HrVacationSyncStatus prenominaSyncStatus;
   bool impactAttendance;
   bool impactPrenomina;
   bool generateReceipt;
+  _HrVacationIsrMethod isrMethod;
+  String isrOrdinaryMonthlyIncomeOverrideText;
+  String isrRetentionOverrideText;
   String receiptGroupKey;
   String notes;
 
@@ -5824,6 +6247,7 @@ class _HrVacationEventDraft {
     required this.startDate,
     required this.endDate,
     required this.daysApplied,
+    required this.additionalPaidDays,
     this.daysManuallyEdited = false,
     required this.attendancePeriodLabel,
     required this.attendanceSyncStatus,
@@ -5831,6 +6255,9 @@ class _HrVacationEventDraft {
     required this.impactAttendance,
     required this.impactPrenomina,
     required this.generateReceipt,
+    required this.isrMethod,
+    required this.isrOrdinaryMonthlyIncomeOverrideText,
+    required this.isrRetentionOverrideText,
     required this.receiptGroupKey,
     required this.notes,
   });
@@ -5843,6 +6270,7 @@ class _HrVacationEventDraft {
       startDate: record.startDate,
       endDate: record.endDate,
       daysApplied: record.daysApplied,
+      additionalPaidDays: record.additionalPaidDays,
       daysManuallyEdited: false,
       attendancePeriodLabel: record.attendancePeriodLabel,
       attendanceSyncStatus: record.attendanceSyncStatus,
@@ -5850,6 +6278,13 @@ class _HrVacationEventDraft {
       impactAttendance: record.impactAttendance,
       impactPrenomina: record.impactPrenomina,
       generateReceipt: record.generateReceipt,
+      isrMethod: record.isrMethod,
+      isrOrdinaryMonthlyIncomeOverrideText: _formatVacationNullableMoney(
+        record.isrOrdinaryMonthlyIncomeOverride,
+      ),
+      isrRetentionOverrideText: _formatVacationNullableMoney(
+        record.isrRetentionOverride,
+      ),
       receiptGroupKey: record.receiptGroupKey,
       notes: record.notes,
     );
@@ -5862,6 +6297,7 @@ class _HrVacationEventDraft {
     required int exerciseYear,
   }) {
     return {
+      if (hasPersistedId) 'id': localId,
       'balance_id': balanceId,
       'employee_id': employeeId,
       'employee_name': employeeName,
@@ -5870,17 +6306,29 @@ class _HrVacationEventDraft {
       'start_date': _vacationDbDate(startDate),
       'end_date': _vacationDbDate(endDate),
       'days_applied': daysApplied,
+      'additional_paid_days': additionalPaidDays,
       'attendance_period_label': attendancePeriodLabel,
+      'payroll_period_label': attendancePeriodLabel,
       'attendance_sync_status': _syncStatusToText(attendanceSyncStatus),
       'prenomina_sync_status': _syncStatusToText(prenominaSyncStatus),
       'impact_attendance': impactAttendance,
       'impact_prenomina': impactPrenomina,
       'generate_receipt': generateReceipt,
+      'isr_method': _vacationIsrMethodToText(isrMethod),
+      'isr_ordinary_monthly_income_override': _parseVacationNullableNumber(
+        isrOrdinaryMonthlyIncomeOverrideText,
+      ),
+      'isr_retention_override': _parseVacationNullableNumber(
+        isrRetentionOverrideText,
+      ),
       'receipt_group_key': receiptGroupKey,
       'status': _eventStatusToText(status),
       'notes': notes,
     };
   }
+
+  bool get hasPersistedId =>
+      localId.isNotEmpty && !localId.startsWith('event_');
 
   bool get isContpaqImported =>
       receiptGroupKey.startsWith(_kHrVacationContpaqReceiptPrefix);
@@ -6198,12 +6646,14 @@ Future<bool> _syncVacationPaidEventsFromContpaq({
   required List<_HrVacationEventRecord> events,
   required List<_HrVacationCalculationRecord> calculations,
   required int exerciseYear,
+  required String activePeriodLabel,
 }) async {
   final contpaqLots = attendanceLots
       .where(
         (lot) =>
             lot.source == _HrVacationAttendanceImportSource.contpaq &&
-            _lotBelongsToVacationExercise(lot, exerciseYear),
+            _lotBelongsToVacationExercise(lot, exerciseYear) &&
+            _vacationLotMatchesPeriod(lot, activePeriodLabel),
       )
       .toList(growable: false);
   if (contpaqLots.isEmpty) return false;
@@ -6245,6 +6695,9 @@ Future<bool> _syncVacationPaidEventsFromContpaq({
   var changed = false;
 
   for (final entry in existingAutoEvents.entries) {
+    if (entry.value.prenominaSyncStatus == _HrVacationSyncStatus.aplicado) {
+      continue;
+    }
     if (desiredSignals.containsKey(entry.key)) continue;
     await client
         .from(_kHrVacationEventsTable)
@@ -6255,6 +6708,9 @@ Future<bool> _syncVacationPaidEventsFromContpaq({
 
   for (final signal in desiredSignals.values) {
     final existingEvent = existingAutoEvents[signal.receiptGroupKey];
+    if (existingEvent?.prenominaSyncStatus == _HrVacationSyncStatus.aplicado) {
+      continue;
+    }
     final balance = balancesByEmployeeId[signal.employeeId];
     final desiredEventRow = _buildVacationContpaqEventRow(
       signal: signal,
@@ -6334,55 +6790,195 @@ List<Map<String, dynamic>> _buildVacationCalculationPayloads({
   final salaryPerceivedDaily = balance.salaryPerceivedSnapshot > 0
       ? balance.salaryPerceivedSnapshot / 7
       : 0.0;
-  final vacationPay = salaryDaily * event.daysApplied;
-  final vacationBonus = vacationPay * 0.25;
+  final grossDaily = salaryPerceivedDaily > 0
+      ? salaryPerceivedDaily
+      : salaryDaily;
+  final paidSalaryDays = event.daysApplied + event.additionalPaidDays;
+  final vacationPay = grossDaily * paidSalaryDays;
+  final vacationBonus = grossDaily * event.daysApplied * 0.25;
+  final totalVacationAmount = vacationPay + vacationBonus;
+  final fiscalShare = salaryPerceivedDaily > 0 && salaryDaily > 0
+      ? (salaryDaily / salaryPerceivedDaily).clamp(0, 1).toDouble()
+      : 1.0;
+  final transferComponent = totalVacationAmount * fiscalShare;
+  final cashComponent = totalVacationAmount - transferComponent;
+  final isr = _calculateVacationIsr(
+    balance: balance,
+    event: event,
+    fiscalVacationAmount: transferComponent,
+  );
   payloads.add({
     'vacation_event_id': eventId,
     'employee_id': employeeId,
     'exercise_year': exerciseYear,
     'sequence_no': 1,
-    'component_label': 'Salario',
-    'calculation_mode': 'salario',
+    'component_label': 'Pago vacacional',
+    'calculation_mode': 'mixto',
     'base_date_policy': _baseDatePolicyToText(balance.baseDatePolicy),
-    'days_paid': event.daysApplied,
+    'days_paid': paidSalaryDays,
     'daily_salary_used': salaryDaily,
-    'daily_salary_perceived_used': 0,
+    'daily_salary_perceived_used': salaryPerceivedDaily,
     'vacation_pay': vacationPay,
     'vacation_bonus_rate': 0.25,
     'vacation_bonus_pay': vacationBonus,
-    'transfer_component': event.generateReceipt ? vacationPay : 0,
-    'cash_component': 0,
-    'difference_component': 0,
+    'transfer_component': transferComponent,
+    'cash_component': cashComponent,
+    'difference_component': cashComponent,
+    'isr_taxable_base': isr.taxableBase,
+    'isr_exempt_amount': isr.exemptAmount,
+    'isr_retention_amount': isr.retentionAmount,
+    'isr_method': _vacationIsrMethodToText(event.isrMethod),
+    'isr_tariff_year': isr.tariffYear,
     'status': 'vigente',
-    'is_final': balance.salaryPerceivedSnapshot <= 0,
+    'is_final': false,
     'notes': event.notes,
   });
-  if (balance.salaryPerceivedSnapshot > 0) {
-    final vacationPayPerceived = salaryPerceivedDaily * event.daysApplied;
-    final vacationBonusPerceived = vacationPayPerceived * 0.25;
-    payloads.add({
-      'vacation_event_id': eventId,
-      'employee_id': employeeId,
-      'exercise_year': exerciseYear,
-      'sequence_no': 2,
-      'component_label': 'Salario percibido',
-      'calculation_mode': 'salario_percibido',
-      'base_date_policy': _baseDatePolicyToText(balance.baseDatePolicy),
-      'days_paid': event.daysApplied,
-      'daily_salary_used': 0,
-      'daily_salary_perceived_used': salaryPerceivedDaily,
-      'vacation_pay': vacationPayPerceived,
-      'vacation_bonus_rate': 0.25,
-      'vacation_bonus_pay': vacationBonusPerceived,
-      'transfer_component': 0,
-      'cash_component': vacationPayPerceived,
-      'difference_component': vacationPayPerceived - vacationPay,
-      'status': 'vigente',
-      'is_final': false,
-      'notes': event.notes,
-    });
-  }
   return payloads;
+}
+
+class _HrVacationIsrBreakdown {
+  final double taxableBase;
+  final double exemptAmount;
+  final double subsidyAmount;
+  final double retentionAmount;
+  final int? tariffYear;
+
+  const _HrVacationIsrBreakdown({
+    required this.taxableBase,
+    required this.exemptAmount,
+    required this.subsidyAmount,
+    required this.retentionAmount,
+    required this.tariffYear,
+  });
+}
+
+class _HrVacationIsrBracket {
+  final double lower;
+  final double? upper;
+  final double fixedQuota;
+  final double marginalRate;
+
+  const _HrVacationIsrBracket(
+    this.lower,
+    this.upper,
+    this.fixedQuota,
+    this.marginalRate,
+  );
+}
+
+class _HrVacationSubsidyBracket {
+  final double lower;
+  final double? upper;
+  final double subsidy;
+
+  const _HrVacationSubsidyBracket(this.lower, this.upper, this.subsidy);
+}
+
+const List<_HrVacationIsrBracket> _kHrVacationWeeklyIsr2026 =
+    <_HrVacationIsrBracket>[
+      _HrVacationIsrBracket(0.01, 194.46, 0, 0.0192),
+      _HrVacationIsrBracket(194.47, 1650.67, 3.71, 0.0640),
+      _HrVacationIsrBracket(1650.68, 2900.87, 96.95, 0.1088),
+      _HrVacationIsrBracket(2900.88, 3372.11, 232.96, 0.1600),
+      _HrVacationIsrBracket(3372.12, 4037.32, 308.35, 0.1792),
+      _HrVacationIsrBracket(4037.33, 8142.75, 427.56, 0.2136),
+      _HrVacationIsrBracket(8142.76, 12834.08, 1304.45, 0.2352),
+      _HrVacationIsrBracket(12834.09, 24502.45, 2407.86, 0.3000),
+      _HrVacationIsrBracket(24502.46, 32669.91, 5908.35, 0.3200),
+      _HrVacationIsrBracket(32669.92, 98009.66, 8521.94, 0.3400),
+      _HrVacationIsrBracket(98009.67, null, 30737.49, 0.3500),
+    ];
+
+const List<_HrVacationSubsidyBracket> _kHrVacationWeeklySubsidy2026 =
+    <_HrVacationSubsidyBracket>[
+      _HrVacationSubsidyBracket(0.01, 407.33, 93.73),
+      _HrVacationSubsidyBracket(407.34, 610.96, 93.66),
+      _HrVacationSubsidyBracket(610.97, 799.68, 93.66),
+      _HrVacationSubsidyBracket(799.69, 814.66, 90.44),
+      _HrVacationSubsidyBracket(814.67, 1023.75, 88.06),
+      _HrVacationSubsidyBracket(1023.76, 1086.19, 81.55),
+      _HrVacationSubsidyBracket(1086.20, 1228.57, 74.83),
+      _HrVacationSubsidyBracket(1228.58, 1433.32, 67.83),
+      _HrVacationSubsidyBracket(1433.33, 1638.07, 58.38),
+      _HrVacationSubsidyBracket(1638.08, 1699.88, 50.12),
+      _HrVacationSubsidyBracket(1699.89, null, 0),
+    ];
+
+const double _kHrVacationUmaDaily2026 = 117.31;
+const double _kHrVacationBonusExemptUmaDays = 15;
+
+_HrVacationIsrBreakdown _calculateVacationIsr({
+  required _HrVacationBalanceDraft balance,
+  required _HrVacationEventDraft event,
+  required double fiscalVacationAmount,
+}) {
+  final year = event.startDate.year;
+  if (year != 2026 || fiscalVacationAmount <= 0) {
+    return const _HrVacationIsrBreakdown(
+      taxableBase: 0,
+      exemptAmount: 0,
+      subsidyAmount: 0,
+      retentionAmount: 0,
+      tariffYear: null,
+    );
+  }
+  final fiscalWeekly = balance.salarySnapshot.clamp(0, 9999999).toDouble();
+  final fiscalDaily = fiscalWeekly / 7;
+  final fiscalVacationPay =
+      fiscalDaily * (event.daysApplied + event.additionalPaidDays);
+  final fiscalBonus = fiscalDaily * event.daysApplied * 0.25;
+  final exemptAmount = fiscalBonus
+      .clamp(0, _kHrVacationUmaDaily2026 * _kHrVacationBonusExemptUmaDays)
+      .toDouble();
+  final taxableBonus = (fiscalBonus - exemptAmount)
+      .clamp(0, 9999999)
+      .toDouble();
+  final taxableBase = fiscalWeekly + fiscalVacationPay + taxableBonus;
+  final subsidy = _calculateVacationWeeklySubsidy(taxableBase);
+
+  double calculatedRetention;
+  if (event.isrMethod == _HrVacationIsrMethod.manualRh) {
+    calculatedRetention = 0;
+  } else {
+    calculatedRetention =
+        _calculateVacationTariffTax(taxableBase, _kHrVacationWeeklyIsr2026) -
+        subsidy;
+  }
+  final override = _parseVacationNullableNumber(event.isrRetentionOverrideText);
+  return _HrVacationIsrBreakdown(
+    taxableBase: taxableBase,
+    exemptAmount: exemptAmount,
+    subsidyAmount: subsidy,
+    retentionAmount: ((override ?? calculatedRetention).clamp(
+      0,
+      fiscalVacationAmount,
+    )).toDouble(),
+    tariffYear: 2026,
+  );
+}
+
+double _calculateVacationWeeklySubsidy(double taxableBase) {
+  if (taxableBase <= 0) return 0;
+  final bracket = _kHrVacationWeeklySubsidy2026.firstWhere(
+    (item) => item.upper == null || taxableBase <= item.upper!,
+    orElse: () => _kHrVacationWeeklySubsidy2026.last,
+  );
+  return bracket.subsidy;
+}
+
+double _calculateVacationTariffTax(
+  double base,
+  List<_HrVacationIsrBracket> brackets,
+) {
+  if (base <= 0) return 0;
+  final bracket = brackets.firstWhere(
+    (item) => item.upper == null || base <= item.upper!,
+    orElse: () => brackets.last,
+  );
+  return (bracket.fixedQuota +
+          ((base - bracket.lower).clamp(0, 999999999) * bracket.marginalRate))
+      .clamp(0, 999999999)
+      .toDouble();
 }
 
 bool _vacationEventHasPayrollFootprint(_HrVacationEventDraft event) {
@@ -6620,6 +7216,22 @@ bool _vacationContpaqCalculationsNeedUpdate({
                   _parseVacationNumber(desired['difference_component']))
               .abs() >
           0.01 ||
+      (existing.isrTaxableBase -
+                  _parseVacationNumber(desired['isr_taxable_base']))
+              .abs() >
+          0.01 ||
+      (existing.isrExemptAmount -
+                  _parseVacationNumber(desired['isr_exempt_amount']))
+              .abs() >
+          0.01 ||
+      (existing.isrRetentionAmount -
+                  _parseVacationNumber(desired['isr_retention_amount']))
+              .abs() >
+          0.01 ||
+      existing.isrMethod !=
+          _vacationIsrMethodFromText(
+            (desired['isr_method'] ?? '').toString(),
+          ) ||
       existing.isFinal != (desired['is_final'] == true);
 }
 
@@ -6627,11 +7239,20 @@ void _normalizeVacationEventDraft(
   _HrVacationEventDraft draft, {
   bool forceDays = false,
 }) {
+  if (draft.isrMethod != _HrVacationIsrMethod.manualRh) {
+    draft.isrMethod = _HrVacationIsrMethod.tarifaSemanal;
+  }
   if (draft.endDate.isBefore(draft.startDate)) {
     draft.endDate = draft.startDate;
   }
   if (forceDays || !draft.daysManuallyEdited) {
     draft.daysApplied = _suggestVacationDays(draft.startDate, draft.endDate);
+  }
+  if (!draft.additionalPaidDaysManuallyEdited) {
+    draft.additionalPaidDays = _suggestVacationAdditionalPaidDays(
+      draft.startDate,
+      draft.endDate,
+    );
   }
   if (draft.daysApplied < 0) {
     draft.daysApplied = 0.0;
@@ -6647,6 +7268,8 @@ void _normalizeVacationEventDraft(
       !draft.impactPrenomina || draft.status == _HrVacationEventStatus.cancelado
       ? _HrVacationSyncStatus.omitido
       : _HrVacationSyncStatus.pendiente;
+  // La emisión queda exclusivamente en Nómina, tras publicar el cierre.
+  draft.generateReceipt = false;
 }
 
 class _HrVacationPillColorSet {
@@ -6872,6 +7495,17 @@ int _completedYearsOn(DateTime baseDate, DateTime asOf) {
 double _suggestVacationDays(DateTime start, DateTime end) =>
     end.difference(start).inDays + 1.0;
 
+double _suggestVacationAdditionalPaidDays(DateTime start, DateTime end) {
+  var count = 0;
+  var cursor = DateUtils.dateOnly(start);
+  final last = DateUtils.dateOnly(end.isBefore(start) ? start : end);
+  while (!cursor.isAfter(last)) {
+    if (cursor.weekday == DateTime.sunday) count += 1;
+    cursor = cursor.add(const Duration(days: 1));
+  }
+  return count.toDouble();
+}
+
 Set<String> _collectVacationAppliedDateLabels(
   List<_HrVacationEventRecord> events,
 ) {
@@ -6910,27 +7544,45 @@ _HrVacationEmployeeMaster? _findVacationEmployeeById(
   return null;
 }
 
-_HrVacationAttendanceLotLite? _latestVacationAttendanceLotBySource(
+List<String> _vacationPeriodOptions({
+  required List<_HrVacationAttendanceLotLite> lots,
+  required List<_HrVacationEventRecord> events,
+}) {
+  return HumanResourcesPeriodContext.normalizedOptions([
+    for (final lot in lots) _describeVacationAttendancePeriod(lot),
+    for (final event in events) event.attendancePeriodLabel,
+  ]);
+}
+
+_HrVacationAttendanceLotLite? _vacationLotForPeriod(
   List<_HrVacationAttendanceLotLite> lots,
   _HrVacationAttendanceImportSource source,
+  String selectedPeriodLabel,
 ) {
+  if (selectedPeriodLabel.trim().isEmpty) return null;
   for (final lot in lots) {
-    if (lot.source == source) return lot;
+    if (lot.source != source) continue;
+    if (_vacationLotMatchesPeriod(lot, selectedPeriodLabel)) return lot;
   }
   return null;
 }
 
-String _resolveActiveVacationAttendancePeriodLabel({
-  required _HrVacationAttendanceLotLite? ngtecoLot,
-  required _HrVacationAttendanceLotLite? contpaqLot,
-}) {
-  if (contpaqLot != null && contpaqLot.periodLabel.trim().isNotEmpty) {
-    return _describeVacationAttendancePeriod(contpaqLot);
-  }
-  if (ngtecoLot != null && ngtecoLot.periodLabel.trim().isNotEmpty) {
-    return _describeVacationAttendancePeriod(ngtecoLot);
-  }
-  return '';
+bool _vacationLotMatchesPeriod(
+  _HrVacationAttendanceLotLite lot,
+  String selectedPeriodLabel,
+) {
+  final described = _describeVacationAttendancePeriod(lot);
+  if (described == selectedPeriodLabel) return true;
+  final selectedRange = _extractVacationAttendanceDateRangeFromPeriodLabel(
+    selectedPeriodLabel,
+  );
+  final lotRange = _extractVacationAttendanceDateRangeFromPeriodLabel(
+    described,
+  );
+  return selectedRange != null &&
+      lotRange != null &&
+      selectedRange.start == lotRange.start &&
+      selectedRange.end == lotRange.end;
 }
 
 DateTimeRange? _resolveVacationAttendanceActiveRange({
@@ -6938,15 +7590,7 @@ DateTimeRange? _resolveVacationAttendanceActiveRange({
   required _HrVacationAttendanceLotLite? contpaqLot,
   required String activePeriodLabel,
 }) {
-  return _extractVacationAttendanceDateRangeFromPeriodLabel(
-        activePeriodLabel,
-      ) ??
-      _extractVacationAttendanceDateRangeFromPeriodLabel(
-        contpaqLot?.periodLabel ?? '',
-      ) ??
-      _extractVacationAttendanceDateRangeFromPeriodLabel(
-        ngtecoLot?.periodLabel ?? '',
-      );
+  return _extractVacationAttendanceDateRangeFromPeriodLabel(activePeriodLabel);
 }
 
 DateTimeRange? _extractVacationAttendanceDateRangeFromPeriodLabel(String raw) {
@@ -7286,6 +7930,539 @@ String _formatVacationDays(double value) {
   return value.toStringAsFixed(2);
 }
 
+Future<Uint8List> _buildVacationReceiptPdfBytes({
+  required _HrVacationSummaryRow row,
+  required _HrVacationBalanceDraft balance,
+  required _HrVacationEventDraft event,
+  required _HrVacationAttendanceImportedEntry? contpaqEntry,
+  required String contpaqPeriodLabel,
+}) async {
+  const companyName = 'DESPERDICIOS INDUSTRIALES CELAYA, S.A. DE C.V.';
+  final purple = PdfColor.fromHex('#3B1F5C');
+  final violet = PdfColor.fromHex('#7C4DFF');
+  final lavender = PdfColor.fromHex('#F3EDFF');
+  final softLavender = PdfColor.fromHex('#FBF9FF');
+  final ink = PdfColor.fromHex('#24143D');
+  final muted = PdfColor.fromHex('#6E5A8B');
+  final border = PdfColor.fromHex('#D9C8F8');
+  final receiptDate = DateTime.now();
+  final perceivedWeekly = balance.salaryPerceivedSnapshot > 0
+      ? balance.salaryPerceivedSnapshot
+      : balance.salarySnapshot;
+  final fiscalWeeklyImported = _parseVacationNumber(contpaqEntry?.net);
+  final fiscalWeekly = fiscalWeeklyImported > 0
+      ? fiscalWeeklyImported
+      : balance.salarySnapshot;
+  final dailySalary = perceivedWeekly > 0 ? perceivedWeekly / 7 : 0.0;
+  final paidSalaryDays = event.daysApplied + event.additionalPaidDays;
+  final vacationBase = paidSalaryDays * dailySalary;
+  final vacationBonus = event.daysApplied * dailySalary * 0.25;
+  final vacationTotal = vacationBase + vacationBonus;
+  final importedFiscalVacation = _parseVacationNumber(contpaqEntry?.vacations);
+  final fiscalVacation = importedFiscalVacation > 0
+      ? importedFiscalVacation
+      : _suggestVacationReceiptFiscalVacation(
+          vacationTotal: vacationTotal,
+          fiscalWeekly: fiscalWeekly,
+          perceivedWeekly: perceivedWeekly,
+        );
+  final cashVacation = (vacationTotal - fiscalVacation)
+      .clamp(0, 9999999)
+      .toDouble();
+  final cashWeekly = (perceivedWeekly - fiscalWeekly)
+      .clamp(0, 9999999)
+      .toDouble();
+  final isr = _calculateVacationIsr(
+    balance: balance,
+    event: event,
+    fiscalVacationAmount: fiscalVacation,
+  );
+  final transferTotal = (fiscalVacation + fiscalWeekly - isr.retentionAmount)
+      .clamp(0, 9999999)
+      .toDouble();
+  final cashTotal = cashVacation + cashWeekly;
+  final totalPayment = transferTotal + cashTotal;
+  pw.MemoryImage? logo;
+  try {
+    final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+    logo = pw.MemoryImage(logoBytes.buffer.asUint8List());
+  } catch (_) {
+    // El recibo conserva su estructura si el recurso visual no está disponible.
+  }
+
+  final document = pw.Document(
+    title: 'Recibo de vacaciones ${row.displayName}',
+    author: 'DICSA - Recursos Humanos',
+  );
+  document.addPage(
+    pw.Page(
+      pageFormat: PdfPageFormat.a4,
+      margin: const pw.EdgeInsets.all(30),
+      build: (context) => pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+        children: [
+          pw.Container(
+            padding: const pw.EdgeInsets.all(16),
+            decoration: pw.BoxDecoration(
+              color: purple,
+              borderRadius: pw.BorderRadius.circular(12),
+            ),
+            child: pw.Row(
+              children: [
+                if (logo != null)
+                  pw.Container(
+                    width: 48,
+                    height: 48,
+                    padding: const pw.EdgeInsets.all(5),
+                    decoration: pw.BoxDecoration(
+                      color: PdfColors.white,
+                      borderRadius: pw.BorderRadius.circular(9),
+                    ),
+                    child: pw.Image(logo, fit: pw.BoxFit.contain),
+                  ),
+                if (logo != null) pw.SizedBox(width: 12),
+                pw.Expanded(
+                  child: pw.Column(
+                    crossAxisAlignment: pw.CrossAxisAlignment.start,
+                    children: [
+                      pw.Text(
+                        companyName,
+                        style: pw.TextStyle(
+                          color: PdfColors.white,
+                          fontSize: 10,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      pw.SizedBox(height: 4),
+                      pw.Text(
+                        'RECIBO DE VACACIONES',
+                        style: pw.TextStyle(
+                          color: PdfColors.white,
+                          fontSize: 22,
+                          fontWeight: pw.FontWeight.bold,
+                        ),
+                      ),
+                      pw.Text(
+                        'Recursos Humanos',
+                        style: pw.TextStyle(
+                          color: PdfColor.fromHex('#DCC7FF'),
+                          fontSize: 11,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.end,
+                  children: [
+                    _vacationReceiptLabel(
+                      'FECHA DE EMISIÓN',
+                      _formatVacationPdfDate(receiptDate),
+                      PdfColors.white,
+                    ),
+                    pw.SizedBox(height: 5),
+                    _vacationReceiptLabel(
+                      'HORA',
+                      _formatVacationPdfTime(receiptDate),
+                      PdfColors.white,
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 14),
+          _vacationReceiptSection(
+            title: 'Datos del colaborador',
+            color: violet,
+            child: pw.Column(
+              children: [
+                _vacationReceiptDataRow(
+                  'Nombre del trabajador',
+                  row.displayName,
+                ),
+                _vacationReceiptDataRow(
+                  'ID / Empresa',
+                  '#${row.employeeId}  -  ${row.empresa}',
+                ),
+                _vacationReceiptDataRow(
+                  'Fecha de ingreso',
+                  _formatVacationPdfDate(row.fechaIngreso),
+                ),
+                _vacationReceiptDataRow(
+                  'Antigüedad / derecho',
+                  '${balance.antiguedadYears} año(s)  -  ${_formatVacationDays(balance.daysEntitled)} día(s)',
+                ),
+                _vacationReceiptDataRow(
+                  'Periodo de vacaciones',
+                  '${_formatVacationPdfDate(event.startDate)} al ${_formatVacationPdfDate(event.endDate)}',
+                ),
+                if (contpaqPeriodLabel.trim().isNotEmpty)
+                  _vacationReceiptDataRow(
+                    'Periodo fiscal CONTPAQ',
+                    contpaqPeriodLabel,
+                  ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 12),
+          _vacationReceiptSection(
+            title: 'Cálculo vacacional',
+            color: violet,
+            child: pw.Table(
+              border: pw.TableBorder.all(color: border, width: 0.7),
+              columnWidths: const {
+                0: pw.FlexColumnWidth(2.1),
+                1: pw.FlexColumnWidth(),
+                2: pw.FlexColumnWidth(),
+                3: pw.FlexColumnWidth(1.15),
+              },
+              children: [
+                _vacationReceiptTableRow(
+                  const ['Concepto', 'Días', 'Sueldo diario', 'Importe'],
+                  background: lavender,
+                  textColor: purple,
+                  bold: true,
+                ),
+                _vacationReceiptTableRow([
+                  'Vacaciones',
+                  _formatVacationDays(paidSalaryDays),
+                  _formatVacationMoney(dailySalary),
+                  _formatVacationMoney(vacationBase),
+                ]),
+                _vacationReceiptTableRow([
+                  'Prima vacacional (25%)',
+                  _formatVacationDays(event.daysApplied),
+                  _formatVacationMoney(dailySalary),
+                  _formatVacationMoney(vacationBonus),
+                ]),
+                _vacationReceiptTableRow(
+                  [
+                    'TOTAL VACACIONES',
+                    '',
+                    '',
+                    _formatVacationMoney(vacationTotal),
+                  ],
+                  background: PdfColor.fromHex('#E6DAFF'),
+                  textColor: purple,
+                  bold: true,
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 12),
+          pw.Row(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Expanded(
+                child: _vacationReceiptSection(
+                  title: 'Desglose transferencia',
+                  color: violet,
+                  child: _vacationReceiptTotals(
+                    rows: [
+                      ('Vacaciones fiscales', fiscalVacation),
+                      ('Nómina fiscal', fiscalWeekly),
+                      ('Retención ISR', -isr.retentionAmount),
+                    ],
+                    totalLabel: 'TOTAL TRANSFERENCIA',
+                    total: transferTotal,
+                  ),
+                ),
+              ),
+              pw.SizedBox(width: 12),
+              pw.Expanded(
+                child: _vacationReceiptSection(
+                  title: 'Desglose efectivo',
+                  color: violet,
+                  child: _vacationReceiptTotals(
+                    rows: [
+                      ('Vacaciones en efectivo', cashVacation),
+                      ('Sueldo en efectivo', cashWeekly),
+                    ],
+                    totalLabel: 'TOTAL EFECTIVO',
+                    total: cashTotal,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 12),
+          pw.Container(
+            padding: const pw.EdgeInsets.symmetric(
+              horizontal: 14,
+              vertical: 11,
+            ),
+            decoration: pw.BoxDecoration(
+              color: purple,
+              borderRadius: pw.BorderRadius.circular(9),
+            ),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'TOTAL DE PAGO',
+                  style: pw.TextStyle(
+                    color: PdfColors.white,
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                pw.Text(
+                  _formatVacationMoney(totalPayment),
+                  style: pw.TextStyle(
+                    color: PdfColors.white,
+                    fontWeight: pw.FontWeight.bold,
+                    fontSize: 16,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          pw.SizedBox(height: 12),
+          pw.Container(
+            padding: const pw.EdgeInsets.all(10),
+            decoration: pw.BoxDecoration(
+              color: softLavender,
+              border: pw.Border.all(color: border),
+              borderRadius: pw.BorderRadius.circular(8),
+            ),
+            child: pw.Text(
+              'El presente recibo detalla el convenio y pago vacacional registrado por Recursos Humanos. '
+              'ISR: base gravable ${_formatVacationMoney(isr.taxableBase)}, prima exenta ${_formatVacationMoney(isr.exemptAmount)}, subsidio ${_formatVacationMoney(isr.subsidyAmount)} y retención ${_formatVacationMoney(isr.retentionAmount)}. '
+              'RH debe confirmar el importe contra el CFDI cuando exista.',
+              style: pw.TextStyle(color: muted, fontSize: 8.6, lineSpacing: 2),
+            ),
+          ),
+          pw.Spacer(),
+          pw.Row(
+            children: [
+              _vacationReceiptSignature(
+                'Nombre y firma del trabajador',
+                row.displayName,
+                ink,
+              ),
+              pw.SizedBox(width: 34),
+              _vacationReceiptSignature('Recursos Humanos', 'DICSA', ink),
+            ],
+          ),
+        ],
+      ),
+    ),
+  );
+  return document.save();
+}
+
+double _suggestVacationReceiptFiscalVacation({
+  required double vacationTotal,
+  required double fiscalWeekly,
+  required double perceivedWeekly,
+}) {
+  if (vacationTotal <= 0) return 0;
+  if (fiscalWeekly <= 0 || perceivedWeekly <= 0) return vacationTotal;
+  return vacationTotal * (fiscalWeekly / perceivedWeekly).clamp(0, 1);
+}
+
+pw.Widget _vacationReceiptSection({
+  required String title,
+  required PdfColor color,
+  required pw.Widget child,
+}) {
+  return pw.Container(
+    padding: const pw.EdgeInsets.all(11),
+    decoration: pw.BoxDecoration(
+      color: PdfColors.white,
+      border: pw.Border.all(color: PdfColor.fromHex('#D9C8F8')),
+      borderRadius: pw.BorderRadius.circular(9),
+    ),
+    child: pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.stretch,
+      children: [
+        pw.Text(
+          title.toUpperCase(),
+          style: pw.TextStyle(
+            color: color,
+            fontSize: 10,
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+        pw.SizedBox(height: 8),
+        child,
+      ],
+    ),
+  );
+}
+
+pw.Widget _vacationReceiptDataRow(String label, String value) => pw.Padding(
+  padding: const pw.EdgeInsets.only(bottom: 4),
+  child: pw.Row(
+    crossAxisAlignment: pw.CrossAxisAlignment.start,
+    children: [
+      pw.SizedBox(
+        width: 132,
+        child: pw.Text(
+          label,
+          style: pw.TextStyle(
+            color: PdfColor.fromHex('#6E5A8B'),
+            fontSize: 8.5,
+          ),
+        ),
+      ),
+      pw.Expanded(
+        child: pw.Text(
+          value,
+          style: pw.TextStyle(
+            color: PdfColor.fromHex('#24143D'),
+            fontSize: 9,
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+      ),
+    ],
+  ),
+);
+
+pw.TableRow _vacationReceiptTableRow(
+  List<String> values, {
+  PdfColor? background,
+  PdfColor? textColor,
+  bool bold = false,
+}) => pw.TableRow(
+  decoration: pw.BoxDecoration(color: background),
+  children: values
+      .map(
+        (value) => pw.Padding(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 7, vertical: 6),
+          child: pw.Text(
+            value,
+            style: pw.TextStyle(
+              color: textColor ?? PdfColor.fromHex('#24143D'),
+              fontSize: 8.5,
+              fontWeight: bold ? pw.FontWeight.bold : pw.FontWeight.normal,
+            ),
+          ),
+        ),
+      )
+      .toList(growable: false),
+);
+
+pw.Widget _vacationReceiptTotals({
+  required List<(String, double)> rows,
+  required String totalLabel,
+  required double total,
+}) => pw.Column(
+  children: [
+    for (final row in rows)
+      pw.Padding(
+        padding: const pw.EdgeInsets.only(bottom: 5),
+        child: pw.Row(
+          mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+          children: [
+            pw.Text(
+              row.$1,
+              style: pw.TextStyle(
+                color: PdfColor.fromHex('#6E5A8B'),
+                fontSize: 8.5,
+              ),
+            ),
+            pw.Text(
+              _formatVacationMoney(row.$2),
+              style: pw.TextStyle(
+                color: PdfColor.fromHex('#24143D'),
+                fontSize: 9,
+                fontWeight: pw.FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    pw.Divider(color: PdfColor.fromHex('#D9C8F8')),
+    pw.Row(
+      mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+      children: [
+        pw.Text(
+          totalLabel,
+          style: pw.TextStyle(
+            color: PdfColor.fromHex('#3B1F5C'),
+            fontSize: 8.5,
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+        pw.Text(
+          _formatVacationMoney(total),
+          style: pw.TextStyle(
+            color: PdfColor.fromHex('#3B1F5C'),
+            fontSize: 10,
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+      ],
+    ),
+  ],
+);
+
+pw.Widget _vacationReceiptSignature(String label, String name, PdfColor ink) =>
+    pw.Expanded(
+      child: pw.Column(
+        children: [
+          pw.SizedBox(height: 30),
+          pw.Container(height: 0.8, color: ink),
+          pw.SizedBox(height: 5),
+          pw.Text(
+            name,
+            style: pw.TextStyle(
+              color: ink,
+              fontSize: 9,
+              fontWeight: pw.FontWeight.bold,
+            ),
+            textAlign: pw.TextAlign.center,
+          ),
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              color: PdfColor.fromHex('#6E5A8B'),
+              fontSize: 7.5,
+            ),
+            textAlign: pw.TextAlign.center,
+          ),
+        ],
+      ),
+    );
+
+pw.Widget _vacationReceiptLabel(String label, String value, PdfColor color) =>
+    pw.Column(
+      crossAxisAlignment: pw.CrossAxisAlignment.end,
+      children: [
+        pw.Text(
+          label,
+          style: pw.TextStyle(
+            color: PdfColor.fromInt(0xFFDCC7FF),
+            fontSize: 6.5,
+          ),
+        ),
+        pw.Text(
+          value,
+          style: pw.TextStyle(
+            color: color,
+            fontSize: 8.5,
+            fontWeight: pw.FontWeight.bold,
+          ),
+        ),
+      ],
+    );
+
+String _formatVacationPdfDate(DateTime? value) {
+  if (value == null) return 'Pendiente';
+  return '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';
+}
+
+String _formatVacationPdfTime(DateTime value) =>
+    '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+String _vacationFileSlug(String value) => value
+    .toLowerCase()
+    .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+    .replaceAll(RegExp(r'^_+|_+$'), '');
+
 String _formatVacationMoney(double value) {
   final sign = value < 0 ? '-' : '';
   final absolute = value.abs().toStringAsFixed(2);
@@ -7304,6 +8481,18 @@ String _formatVacationMoney(double value) {
 }
 
 double _parseVacationMoney(String value) => _parseVacationNumber(value);
+
+double? _parseVacationNullableNumber(Object? raw) {
+  if (raw == null) return null;
+  final text = raw.toString().trim();
+  if (text.isEmpty) return null;
+  return _parseVacationNumber(raw);
+}
+
+String _formatVacationNullableMoney(double? value) {
+  if (value == null || value == 0) return '';
+  return value.toStringAsFixed(2);
+}
 
 double _parseVacationNumber(Object? raw) {
   if (raw == null) return 0;
@@ -7422,6 +8611,22 @@ _HrVacationSyncStatus _syncStatusFromText(String value) {
     'aplicado' => _HrVacationSyncStatus.aplicado,
     'omitido' => _HrVacationSyncStatus.omitido,
     _ => _HrVacationSyncStatus.pendiente,
+  };
+}
+
+_HrVacationIsrMethod _vacationIsrMethodFromText(String value) {
+  return switch (value) {
+    'tarifa_semanal' => _HrVacationIsrMethod.tarifaSemanal,
+    'manual_rh' => _HrVacationIsrMethod.manualRh,
+    _ => _HrVacationIsrMethod.articulo174,
+  };
+}
+
+String _vacationIsrMethodToText(_HrVacationIsrMethod value) {
+  return switch (value) {
+    _HrVacationIsrMethod.articulo174 => 'articulo_174',
+    _HrVacationIsrMethod.tarifaSemanal => 'tarifa_semanal',
+    _HrVacationIsrMethod.manualRh => 'manual_rh',
   };
 }
 
