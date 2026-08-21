@@ -2223,19 +2223,23 @@ class _HrPermissionModuleTopBar extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 _HrPermissionSoftPill(label: '$totalRows colaboradores'),
-                const Spacer(),
-                Text(
-                  [
-                    'Selección: $selectedCount',
-                    activeCellLabel,
-                    if (activePeriodLabel.isNotEmpty)
-                      'Periodo: $activePeriodLabel',
-                  ].whereType<String>().join(' · '),
-                  textAlign: TextAlign.right,
-                  style: const TextStyle(
-                    color: Colors.white70,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    [
+                      'Selección: $selectedCount',
+                      activeCellLabel,
+                      if (activePeriodLabel.isNotEmpty)
+                        'Periodo: $activePeriodLabel',
+                    ].whereType<String>().join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.right,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w800,
+                    ),
                   ),
                 ),
               ],

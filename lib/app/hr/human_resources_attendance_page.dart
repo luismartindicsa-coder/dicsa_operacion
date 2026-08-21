@@ -2354,7 +2354,16 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
   final FocusNode _dialogFocusNode = FocusNode(
     debugLabel: 'hrAttendanceDialog',
   );
+  final TextEditingController _weeklyLateHoursController =
+      TextEditingController();
+  final TextEditingController _weeklyOvertimeHoursController =
+      TextEditingController();
+  final TextEditingController _weeklyWorkedDaysController =
+      TextEditingController();
+  final TextEditingController _weeklyAbsentDaysController =
+      TextEditingController();
   int? _selectedWorkScheduleIndex;
+  String? _quickAdjustmentFeedback;
   late final List<_HrAttendanceDayDraft> _days = widget.row.days
       .map((day) => day.toDraft())
       .toList(growable: true);
@@ -2363,6 +2372,7 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
   void initState() {
     super.initState();
     _applySelectedScheduleToDays();
+    _syncWeeklyAdjustmentInputs();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _dialogFocusNode.requestFocus();
     });
@@ -2371,7 +2381,220 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
   @override
   void dispose() {
     _dialogFocusNode.dispose();
+    _weeklyLateHoursController.dispose();
+    _weeklyOvertimeHoursController.dispose();
+    _weeklyWorkedDaysController.dispose();
+    _weeklyAbsentDaysController.dispose();
     super.dispose();
+  }
+
+  void _syncWeeklyAdjustmentInputs() {
+    final lateMinutes = _days.fold<int>(0, (sum, day) => sum + day.lateMinutes);
+    final overtimeMinutes = _days.fold<int>(
+      0,
+      (sum, day) => sum + day.overtimeMinutes,
+    );
+    _weeklyLateHoursController.text = _formatAttendanceHoursInput(lateMinutes);
+    _weeklyOvertimeHoursController.text = _formatAttendanceHoursInput(
+      overtimeMinutes,
+    );
+    _weeklyWorkedDaysController.text = _days
+        .where((day) => day.status == _HrAttendanceStatus.laboro)
+        .length
+        .toString();
+    _weeklyAbsentDaysController.text = _days
+        .where((day) => day.status == _HrAttendanceStatus.falto)
+        .length
+        .toString();
+  }
+
+  void _applyWeeklyWorkedDaysTotal() {
+    _applyWeeklyAttendanceDaysTotal(
+      controller: _weeklyWorkedDaysController,
+      targetStatus: _HrAttendanceStatus.laboro,
+      label: 'Laboró',
+    );
+  }
+
+  void _applyWeeklyAbsentDaysTotal() {
+    _applyWeeklyAttendanceDaysTotal(
+      controller: _weeklyAbsentDaysController,
+      targetStatus: _HrAttendanceStatus.falto,
+      label: 'Faltó',
+    );
+  }
+
+  void _applyWeeklyAttendanceDaysTotal({
+    required TextEditingController controller,
+    required _HrAttendanceStatus targetStatus,
+    required String label,
+  }) {
+    final targetCount = int.tryParse(controller.text.trim());
+    if (targetCount == null || targetCount < 0) {
+      setState(() {
+        _quickAdjustmentFeedback =
+            'Captura una cantidad válida de días para $label.';
+      });
+      return;
+    }
+    final candidates = _days
+        .where(
+          (day) =>
+              day.scheduledStart.trim().isNotEmpty &&
+              day.scheduledEnd.trim().isNotEmpty &&
+              !_attendanceDraftHasVacationSync(day) &&
+              !_attendanceDraftHasPermissionSync(day),
+        )
+        .toList(growable: false);
+    final candidateIds = candidates.map((day) => day.localId).toSet();
+    final lockedTargetDays = _days
+        .where(
+          (day) =>
+              !candidateIds.contains(day.localId) && day.status == targetStatus,
+        )
+        .length;
+    final targetCandidatesCount = targetCount - lockedTargetDays;
+    if (targetCandidatesCount < 0 ||
+        targetCandidatesCount > candidates.length) {
+      setState(() {
+        _quickAdjustmentFeedback =
+            'Este ajuste permite entre $lockedTargetDays y ${lockedTargetDays + candidates.length} día(s) como $label.';
+      });
+      return;
+    }
+    final ranked = List<_HrAttendanceDayDraft>.of(candidates)
+      ..sort((left, right) {
+        final priorityDifference = _attendanceMassStatusPriority(
+          left,
+          targetStatus,
+        ).compareTo(_attendanceMassStatusPriority(right, targetStatus));
+        if (priorityDifference != 0) return priorityDifference;
+        return left.sourceDate.compareTo(right.sourceDate);
+      });
+    final selectedIds = ranked
+        .take(targetCandidatesCount)
+        .map((day) => day.localId)
+        .toSet();
+    final oppositeStatus = targetStatus == _HrAttendanceStatus.laboro
+        ? _HrAttendanceStatus.falto
+        : _HrAttendanceStatus.laboro;
+    setState(() {
+      for (final day in candidates) {
+        final nextStatus = selectedIds.contains(day.localId)
+            ? targetStatus
+            : oppositeStatus;
+        if (day.status == nextStatus) continue;
+        day.status = nextStatus;
+        day.sourceMode = 'ajuste';
+        if (nextStatus == _HrAttendanceStatus.laboro) {
+          if (day.firstPunch.trim().isEmpty) {
+            day.firstPunch = day.scheduledStart;
+          }
+          if (day.lastPunch.trim().isEmpty) {
+            day.lastPunch = day.scheduledEnd;
+          }
+        }
+        _recalculateAttendanceDraftMetrics(day);
+      }
+      _syncWeeklyAdjustmentInputs();
+      _quickAdjustmentFeedback =
+          '$targetCount día(s) marcado(s) como $label. Vacaciones y permisos se conservaron sin cambios.';
+    });
+  }
+
+  int _attendanceMassStatusPriority(
+    _HrAttendanceDayDraft day,
+    _HrAttendanceStatus targetStatus,
+  ) {
+    if (day.status == targetStatus) return 0;
+    final hasImportedPunches =
+        _attendanceDraftIsImported(day) &&
+        (day.firstPunch.trim().isNotEmpty || day.lastPunch.trim().isNotEmpty);
+    if (targetStatus == _HrAttendanceStatus.laboro && hasImportedPunches) {
+      return 1;
+    }
+    final hasNoPunches =
+        day.firstPunch.trim().isEmpty && day.lastPunch.trim().isEmpty;
+    if (targetStatus == _HrAttendanceStatus.falto && hasNoPunches) return 1;
+    return 2;
+  }
+
+  void _applyWeeklyLateTotal() {
+    _applyWeeklyTotal(
+      controller: _weeklyLateHoursController,
+      isOvertime: false,
+      label: 'retardo',
+    );
+  }
+
+  void _applyWeeklyOvertimeTotal() {
+    _applyWeeklyTotal(
+      controller: _weeklyOvertimeHoursController,
+      isOvertime: true,
+      label: 'horas extra',
+    );
+  }
+
+  void _applyWeeklyTotal({
+    required TextEditingController controller,
+    required bool isOvertime,
+    required String label,
+  }) {
+    final totalMinutes = _parseAttendanceHoursInput(controller.text);
+    if (totalMinutes == null) {
+      setState(() {
+        _quickAdjustmentFeedback =
+            'Captura un total válido en horas, por ejemplo 6 o 6.50.';
+      });
+      return;
+    }
+    final targetDays = _days
+        .where(
+          (day) =>
+              day.status == _HrAttendanceStatus.laboro &&
+              day.scheduledStart.trim().isNotEmpty &&
+              day.scheduledEnd.trim().isNotEmpty,
+        )
+        .toList(growable: false);
+    if (targetDays.isEmpty) {
+      setState(() {
+        _quickAdjustmentFeedback =
+            'No hay jornadas con estatus Laboró para distribuir el $label.';
+      });
+      return;
+    }
+    final allocations = _distributeAttendanceMinutes(
+      totalMinutes,
+      targetDays.length,
+    );
+    setState(() {
+      for (var index = 0; index < targetDays.length; index += 1) {
+        final day = targetDays[index];
+        final allocatedMinutes = allocations[index];
+        if (isOvertime) {
+          day.lastPunch = _attendanceTimePlusMinutes(
+            day.scheduledEnd,
+            allocatedMinutes,
+          );
+          if (day.firstPunch.trim().isEmpty) {
+            day.firstPunch = day.scheduledStart;
+          }
+        } else {
+          day.firstPunch = _attendanceTimePlusMinutes(
+            day.scheduledStart,
+            allocatedMinutes,
+          );
+          if (day.lastPunch.trim().isEmpty) {
+            day.lastPunch = day.scheduledEnd;
+          }
+        }
+        day.sourceMode = 'ajuste';
+        _recalculateAttendanceDraftMetrics(day);
+      }
+      controller.text = _formatAttendanceHoursInput(totalMinutes);
+      _quickAdjustmentFeedback =
+          '${_formatAttendanceMinutesAsHourRatio(totalMinutes)} de $label distribuido entre ${targetDays.length} jornada(s).';
+    });
   }
 
   Future<void> _addManualDay() async {
@@ -2401,8 +2624,10 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
           localId: 'manual_${picked.microsecondsSinceEpoch}',
           sourceDate: sourceDate,
           weekdayLabel: weekdayLabel,
-          status: _HrAttendanceStatus.noAplica,
-          sourceMode: 'manual',
+          status: punchlessSchedule == null
+              ? _HrAttendanceStatus.noAplica
+              : _HrAttendanceStatus.laboro,
+          sourceMode: punchlessSchedule == null ? 'manual' : 'jornada',
           scheduledStart: punchlessSchedule == null
               ? ''
               : _fmtTimeOfDay(punchlessSchedule.schedule.start),
@@ -2414,6 +2639,12 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
               : _resolveAttendanceEffectiveWorkMinutes(
                   punchlessSchedule.schedule,
                 ),
+          firstPunch: punchlessSchedule == null
+              ? ''
+              : _fmtTimeOfDay(punchlessSchedule.schedule.start),
+          lastPunch: punchlessSchedule == null
+              ? ''
+              : _fmtTimeOfDay(punchlessSchedule.schedule.end),
         ),
       );
       _applySelectedScheduleToDays();
@@ -2423,6 +2654,7 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
         if (aDate != null && bDate != null) return aDate.compareTo(bDate);
         return a.sourceDate.compareTo(b.sourceDate);
       });
+      _syncWeeklyAdjustmentInputs();
     });
   }
 
@@ -2485,6 +2717,7 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
       (sum, day) => sum + day.overtimeMinutes,
     );
     final importedDays = _days.where(_attendanceDraftIsImported).length;
+    final scheduleDays = _days.where(_attendanceDraftIsScheduleFilled).length;
     final manualDays = _days.where(_attendanceDraftIsManual).length;
     final adjustedDays = _days.where(_attendanceDraftIsAdjusted).length;
     final vacationDays = _days.where(_attendanceDraftHasVacationSync).length;
@@ -2699,56 +2932,88 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
                             _HrAttendanceSectionCard(
                               title: 'Resumen semanal',
                               subtitle:
-                                  'Conteos y acumulados editables del cierre actual.',
-                              child: Wrap(
-                                spacing: 12,
-                                runSpacing: 12,
+                                  'Los totales se calculan por día. Edita Retardo u Horas extra y distribuye desde su card.',
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  _HrAttendanceMetricMiniCard(
-                                    label: 'DIAS LABORÓ',
-                                    value: workedCount.toString(),
+                                  Wrap(
+                                    spacing: 12,
+                                    runSpacing: 12,
+                                    children: [
+                                      _HrAttendanceEditableMetricMiniCard(
+                                        label: 'DIAS LABORÓ',
+                                        controller: _weeklyWorkedDaysController,
+                                        tooltip:
+                                            'Captura el total de días laborados y aplícalo en masa. Vacaciones y permisos no se modifican.',
+                                        onApply: _applyWeeklyWorkedDaysTotal,
+                                        icon: Icons.event_available_rounded,
+                                        integerOnly: true,
+                                      ),
+                                      _HrAttendanceEditableMetricMiniCard(
+                                        label: 'DIAS FALTÓ',
+                                        controller: _weeklyAbsentDaysController,
+                                        tooltip:
+                                            'Captura el total de faltas y aplícalo en masa. Vacaciones y permisos no se modifican.',
+                                        onApply: _applyWeeklyAbsentDaysTotal,
+                                        icon: Icons.event_busy_rounded,
+                                        integerOnly: true,
+                                      ),
+                                      _HrAttendanceEditableMetricMiniCard(
+                                        label: 'RETARDO (h)',
+                                        controller: _weeklyLateHoursController,
+                                        tooltip:
+                                            'Captura el total semanal y presiona Enter o aplicar para distribuirlo entre los días laborados.',
+                                        onApply: _applyWeeklyLateTotal,
+                                        icon: Icons.schedule_rounded,
+                                      ),
+                                      _HrAttendanceEditableMetricMiniCard(
+                                        label: 'HORAS EXTRA (h)',
+                                        controller:
+                                            _weeklyOvertimeHoursController,
+                                        tooltip:
+                                            'Captura el total semanal y presiona Enter o aplicar para distribuirlo entre los días laborados.',
+                                        onApply: _applyWeeklyOvertimeTotal,
+                                        icon: Icons.add_alarm_rounded,
+                                      ),
+                                      _HrAttendanceMetricMiniCard(
+                                        label: 'IMPORTADO',
+                                        value: importedDays.toString(),
+                                      ),
+                                      _HrAttendanceMetricMiniCard(
+                                        label: 'JORNADA',
+                                        value: scheduleDays.toString(),
+                                      ),
+                                      _HrAttendanceMetricMiniCard(
+                                        label: 'MANUAL/AJUSTE',
+                                        value: (manualDays + adjustedDays)
+                                            .toString(),
+                                      ),
+                                      _HrAttendanceMetricMiniCard(
+                                        label: 'VACACIONES',
+                                        value: vacationDays.toString(),
+                                      ),
+                                      _HrAttendanceMetricMiniCard(
+                                        label: 'PERMISOS',
+                                        value: permissionDays.toString(),
+                                      ),
+                                      _HrAttendanceMetricMiniCard(
+                                        label: 'LISTO PRENÓMINA',
+                                        value: readyDays.toString(),
+                                      ),
+                                      _HrAttendanceMetricMiniCard(
+                                        label: 'REVISIÓN RH',
+                                        value: reviewDays.toString(),
+                                      ),
+                                    ],
                                   ),
-                                  _HrAttendanceMetricMiniCard(
-                                    label: 'DIAS FALTÓ',
-                                    value: absentCount.toString(),
-                                  ),
-                                  _HrAttendanceMetricMiniCard(
-                                    label: 'RETARDO',
-                                    value: _formatAttendanceMinutesAsHourRatio(
-                                      totalLateMinutes,
+                                  if (_quickAdjustmentFeedback != null) ...[
+                                    const SizedBox(height: 10),
+                                    _HrAttendanceInlineNote(
+                                      icon: Icons.auto_awesome_rounded,
+                                      message:
+                                          '${_quickAdjustmentFeedback!} El reparto conserva los fichajes importados y marca los días como Ajuste RH.',
                                     ),
-                                  ),
-                                  _HrAttendanceMetricMiniCard(
-                                    label: 'HORAS EXTRA',
-                                    value: _formatAttendanceMinutesAsHourRatio(
-                                      totalExtraMinutes,
-                                    ),
-                                  ),
-                                  _HrAttendanceMetricMiniCard(
-                                    label: 'IMPORTADO',
-                                    value: importedDays.toString(),
-                                  ),
-                                  _HrAttendanceMetricMiniCard(
-                                    label: 'MANUAL/AJUSTE',
-                                    value: (manualDays + adjustedDays)
-                                        .toString(),
-                                  ),
-                                  _HrAttendanceMetricMiniCard(
-                                    label: 'VACACIONES',
-                                    value: vacationDays.toString(),
-                                  ),
-                                  _HrAttendanceMetricMiniCard(
-                                    label: 'PERMISOS',
-                                    value: permissionDays.toString(),
-                                  ),
-                                  _HrAttendanceMetricMiniCard(
-                                    label: 'LISTO PRENÓMINA',
-                                    value: readyDays.toString(),
-                                  ),
-                                  _HrAttendanceMetricMiniCard(
-                                    label: 'REVISIÓN RH',
-                                    value: reviewDays.toString(),
-                                  ),
+                                  ],
                                 ],
                               ),
                             ),
@@ -2814,11 +3079,13 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
                                             ) ...[
                                               _HrAttendanceDayCard(
                                                 draft: _days[index],
-                                                onChanged: () =>
-                                                    setState(() {}),
-                                                onRemove: () => setState(
-                                                  () => _days.removeAt(index),
+                                                onChanged: () => setState(
+                                                  _syncWeeklyAdjustmentInputs,
                                                 ),
+                                                onRemove: () => setState(() {
+                                                  _days.removeAt(index);
+                                                  _syncWeeklyAdjustmentInputs();
+                                                }),
                                               ),
                                               if (index != _days.length - 1)
                                                 const SizedBox(height: 10),
@@ -3023,6 +3290,110 @@ class _HrAttendanceMetricMiniCard extends StatelessWidget {
   }
 }
 
+class _HrAttendanceEditableMetricMiniCard extends StatelessWidget {
+  final String label;
+  final String tooltip;
+  final TextEditingController controller;
+  final VoidCallback onApply;
+  final IconData icon;
+  final bool integerOnly;
+
+  const _HrAttendanceEditableMetricMiniCard({
+    required this.label,
+    required this.tooltip,
+    required this.controller,
+    required this.onApply,
+    required this.icon,
+    this.integerOnly = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      child: Container(
+        width: 144,
+        height: 58,
+        padding: const EdgeInsets.fromLTRB(12, 8, 6, 5),
+        decoration: BoxDecoration(
+          color: const Color(0xFFFFFBFF),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: const Color(0xFF8B5CF6)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              label,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 10,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF6E47A8),
+                letterSpacing: 0.35,
+              ),
+            ),
+            const SizedBox(height: 1),
+            Expanded(
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextFormField(
+                      controller: controller,
+                      keyboardType: integerOnly
+                          ? TextInputType.number
+                          : const TextInputType.numberWithOptions(
+                              decimal: true,
+                            ),
+                      inputFormatters: [
+                        integerOnly
+                            ? FilteringTextInputFormatter.digitsOnly
+                            : FilteringTextInputFormatter.allow(
+                                RegExp(r'[0-9.,]'),
+                              ),
+                      ],
+                      onFieldSubmitted: (_) => onApply(),
+                      style: const TextStyle(
+                        fontSize: 17,
+                        fontWeight: FontWeight.w900,
+                        color: Color(0xFF24103D),
+                      ),
+                      decoration: const InputDecoration(
+                        isDense: true,
+                        border: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    tooltip: 'Distribuir total semanal',
+                    onPressed: onApply,
+                    constraints: const BoxConstraints.tightFor(
+                      width: 28,
+                      height: 28,
+                    ),
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    icon: Icon(icon, size: 17),
+                    style: IconButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      backgroundColor: const Color(0xFF7C4DCC),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(9),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _HrAttendanceInfoLine extends StatelessWidget {
   final String label;
   final String value;
@@ -3103,7 +3474,9 @@ class _HrAttendanceDayCard extends StatelessWidget {
                       children: [
                         _HrAttendanceDialogPill(
                           label: draft.sourceMode == 'importado'
-                              ? 'Importado'
+                              ? 'NGTeco'
+                              : draft.sourceMode == 'jornada'
+                              ? 'Jornada'
                               : draft.sourceMode == 'ajuste'
                               ? 'Ajuste'
                               : 'Manual',
@@ -3126,7 +3499,7 @@ class _HrAttendanceDayCard extends StatelessWidget {
                   ],
                 ),
               ),
-              if (draft.sourceMode != 'importado')
+              if (draft.sourceMode == 'manual' || draft.sourceMode == 'ajuste')
                 IconButton(
                   onPressed: onRemove,
                   style: IconButton.styleFrom(
@@ -4136,15 +4509,17 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
             lastPunchAt: importedDateTimes.last,
           );
         }
+      } else if (resolvedSchedule != null) {
+        // A jornada base keeps the weekly close usable without inventing a fault.
+        firstPunch = _fmtTimeOfDay(resolvedSchedule.schedule.start);
+        lastPunch = _fmtTimeOfDay(resolvedSchedule.schedule.end);
       }
 
       recordMap[sourceDate] = _HrAttendanceDayRecord(
         sourceDate: sourceDate,
         weekdayLabel: weekdayLabel,
-        status: hasPunches
-            ? _HrAttendanceStatus.laboro
-            : _HrAttendanceStatus.falto,
-        sourceMode: 'importado',
+        status: _HrAttendanceStatus.laboro,
+        sourceMode: hasPunches ? 'importado' : 'jornada',
         scheduledStart: resolvedSchedule == null
             ? ''
             : _fmtTimeOfDay(resolvedSchedule.schedule.start),
@@ -4168,6 +4543,23 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
           _normalizeAttendanceEmployeeId(item.employeeId) ==
           normalizedEmployeeId,
     )) {
+      final importedRecord = recordMap[stored.sourceDate];
+      final storedIsReplaceableTemplate =
+          stored.sourceMode == 'importado' || stored.sourceMode == 'jornada';
+      final storedHasNoPunches =
+          stored.firstPunch.trim().isEmpty &&
+          stored.lastPunch.trim().isEmpty &&
+          stored.punchTimeline.isEmpty;
+      final importedPunchesAreAvailable =
+          importedRecord?.sourceMode == 'importado' &&
+          importedRecord!.firstPunch.trim().isNotEmpty;
+      if (importedPunchesAreAvailable &&
+          (stored.sourceMode == 'jornada' ||
+              (storedIsReplaceableTemplate && storedHasNoPunches))) {
+        // A newly available NGTeco reading is more reliable than the old
+        // empty default that previous versions persisted for this day.
+        continue;
+      }
       final storedDate = _parseAttendanceDateLabel(stored.sourceDate);
       final storedWeekdayLabel = storedDate == null
           ? stored.weekdayLabel
@@ -4429,37 +4821,76 @@ int _asInt(Object? value) {
 }
 
 String _normalizeAttendanceEmployeeId(String raw) {
-  final trimmed = raw.trim();
-  if (trimmed.isEmpty) return '';
-  if (!RegExp(r'^\d+$').hasMatch(trimmed)) return trimmed;
-  final normalized = trimmed.replaceFirst(RegExp(r'^0+'), '');
+  final compact = raw.trim().replaceAll(RegExp(r'\s+'), '');
+  if (compact.isEmpty) return '';
+  final numeric = RegExp(r'^(\d+)(?:\.0+)?$').firstMatch(compact);
+  if (numeric == null) return compact;
+  final normalized = numeric.group(1)!.replaceFirst(RegExp(r'^0+'), '');
   return normalized.isEmpty ? '0' : normalized;
 }
 
 DateTime? _parseAttendanceImportedDateTime(_HrAttendanceImportedEntry entry) {
-  final date = entry.sourceDate.trim();
-  final time = entry.sourceTime.trim();
+  var date = entry.sourceDate.trim();
+  var time = entry.sourceTime.trim();
+  if (date.isEmpty || time.isEmpty) {
+    final detailMatch = RegExp(
+      r'(\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{1,2}/\d{4})[ T]+(\d{1,2}:\d{2}(?::\d{2}(?:\.\d+)?)?)',
+    ).firstMatch(entry.detail);
+    if (detailMatch != null) {
+      date = detailMatch.group(1)!;
+      time = detailMatch.group(2)!;
+    }
+  }
   if (date.isEmpty || time.isEmpty) return null;
-  final dateMatch = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$').firstMatch(date);
+
+  var year = 0;
+  var month = 0;
+  var day = 0;
+  final isoDate = RegExp(r'^(\d{4})-(\d{1,2})-(\d{1,2})$').firstMatch(date);
+  if (isoDate != null) {
+    year = int.tryParse(isoDate.group(1)!) ?? 0;
+    month = int.tryParse(isoDate.group(2)!) ?? 0;
+    day = int.tryParse(isoDate.group(3)!) ?? 0;
+  } else {
+    final slashDate = RegExp(r'^(\d{1,2})/(\d{1,2})/(\d{4})$').firstMatch(date);
+    if (slashDate == null) return null;
+    final first = int.tryParse(slashDate.group(1)!);
+    final second = int.tryParse(slashDate.group(2)!);
+    year = int.tryParse(slashDate.group(3)!) ?? 0;
+    if (first == null || second == null) return null;
+    // NGTeco normally exports MM/DD/YYYY. If only one order is valid, use it.
+    if (first > 12 && second <= 12) {
+      day = first;
+      month = second;
+    } else {
+      month = first;
+      day = second;
+    }
+  }
   final timeMatch = RegExp(
-    r'^(\d{1,2}):(\d{2})(?::(\d{2}))?$',
+    r'^(\d{1,2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$',
   ).firstMatch(time);
-  if (dateMatch == null || timeMatch == null) return null;
-  final month = int.tryParse(dateMatch.group(1)!);
-  final day = int.tryParse(dateMatch.group(2)!);
-  final year = int.tryParse(dateMatch.group(3)!);
+  if (timeMatch == null) return null;
   final hour = int.tryParse(timeMatch.group(1)!);
   final minute = int.tryParse(timeMatch.group(2)!);
   final second = int.tryParse(timeMatch.group(3) ?? '0');
-  if (month == null ||
-      day == null ||
-      year == null ||
+  if (year < 2000 ||
+      month < 1 ||
+      month > 12 ||
+      day < 1 ||
+      day > 31 ||
       hour == null ||
+      hour > 23 ||
       minute == null ||
-      second == null) {
+      minute > 59 ||
+      second == null ||
+      second > 59) {
     return null;
   }
-  return DateTime(year, month, day, hour, minute, second);
+  final parsed = DateTime(year, month, day, hour, minute, second);
+  return parsed.year == year && parsed.month == month && parsed.day == day
+      ? parsed
+      : null;
 }
 
 Map<String, List<_HrAttendanceImportedEntry>>
@@ -4560,6 +4991,35 @@ String _formatAttendanceMinutesAsHourRatio(int minutes) {
   return '${(minutes / 60).toStringAsFixed(2)} h';
 }
 
+String _formatAttendanceHoursInput(int minutes) =>
+    (minutes / 60).toStringAsFixed(2);
+
+int? _parseAttendanceHoursInput(String raw) {
+  final normalized = raw.trim().replaceAll(',', '.');
+  if (normalized.isEmpty) return null;
+  final hours = double.tryParse(normalized);
+  if (hours == null || hours < 0) return null;
+  return (hours * 60).round();
+}
+
+List<int> _distributeAttendanceMinutes(int totalMinutes, int count) {
+  if (count <= 0) return const <int>[];
+  final base = totalMinutes ~/ count;
+  final remainder = totalMinutes % count;
+  return List<int>.generate(
+    count,
+    (index) => base + (index < remainder ? 1 : 0),
+    growable: false,
+  );
+}
+
+String _attendanceTimePlusMinutes(String sourceTime, int extraMinutes) {
+  final time = _parseAttendanceTimeOfDay(sourceTime);
+  if (time == null) return sourceTime;
+  final total = (time.hour * 60 + time.minute + extraMinutes) % (24 * 60);
+  return '${(total ~/ 60).toString().padLeft(2, '0')}:${(total % 60).toString().padLeft(2, '0')}';
+}
+
 bool _attendanceNotesHaveVacationSync(String notes) {
   return notes.contains(_kHrAttendanceVacationSyncPrefix);
 }
@@ -4603,6 +5063,9 @@ bool _attendanceDayIsReadyForPrenomina(_HrAttendanceDayRecord day) =>
 
 bool _attendanceDraftIsImported(_HrAttendanceDayDraft day) =>
     day.sourceMode == 'importado';
+
+bool _attendanceDraftIsScheduleFilled(_HrAttendanceDayDraft day) =>
+    day.sourceMode == 'jornada';
 
 bool _attendanceDraftIsManual(_HrAttendanceDayDraft day) =>
     day.sourceMode == 'manual';
@@ -4698,7 +5161,7 @@ void _recalculateAttendanceDraftMetrics(_HrAttendanceDayDraft draft) {
     sourceDate: draft.sourceDate,
     sourceTime: draft.firstPunch,
   );
-  final lastPunchAt = _resolveAttendancePunchDateTime(
+  var lastPunchAt = _resolveAttendancePunchDateTime(
     sourceDate: draft.sourceDate,
     sourceTime: draft.lastPunch,
   );
@@ -4706,17 +5169,24 @@ void _recalculateAttendanceDraftMetrics(_HrAttendanceDayDraft draft) {
     sourceDate: draft.sourceDate,
     sourceTime: draft.scheduledStart,
   );
-  final scheduledEndAt = _resolveAttendancePunchDateTime(
+  final scheduledEndAtSameDate = _resolveAttendancePunchDateTime(
     sourceDate: draft.sourceDate,
     sourceTime: draft.scheduledEnd,
   );
   if (firstPunchAt == null ||
       lastPunchAt == null ||
       scheduledStartAt == null ||
-      scheduledEndAt == null) {
+      scheduledEndAtSameDate == null) {
     draft.lateMinutes = 0;
     draft.overtimeMinutes = 0;
     return;
+  }
+  final overnightSchedule = !scheduledEndAtSameDate.isAfter(scheduledStartAt);
+  final scheduledEndAt = overnightSchedule
+      ? scheduledEndAtSameDate.add(const Duration(days: 1))
+      : scheduledEndAtSameDate;
+  if (overnightSchedule && lastPunchAt.isBefore(scheduledStartAt)) {
+    lastPunchAt = lastPunchAt.add(const Duration(days: 1));
   }
   final lateMinutes = firstPunchAt.difference(scheduledStartAt).inMinutes;
   draft.lateMinutes = lateMinutes > 0 ? lateMinutes : 0;
