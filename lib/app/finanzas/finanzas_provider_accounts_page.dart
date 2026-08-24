@@ -72,6 +72,15 @@ int _compareAgreementInvoices(
   return a.id.compareTo(b.id);
 }
 
+int _compareAgreementInvoiceLinkViews(
+  _ProviderAgreementInvoiceLinkView a,
+  _ProviderAgreementInvoiceLinkView b,
+) {
+  final invoiceCompare = _compareAgreementInvoices(a.invoice, b.invoice);
+  if (invoiceCompare != 0) return invoiceCompare;
+  return a.link.id.compareTo(b.link.id);
+}
+
 class FinanzasProviderAccountsPage extends StatefulWidget {
   final bool instantOpen;
 
@@ -880,6 +889,431 @@ class _FinanzasProviderAccountsPageState
     } catch (error) {
       _toast('No se pudo abrir el PDF de facturas: $error');
     }
+  }
+
+  Future<void> _downloadAgreementPdfFor(
+    _ProviderAccountView account,
+    _ProviderAgreementView agreementView,
+  ) async {
+    try {
+      final pdfBytes = await _buildAgreementPdfBytes(account, agreementView);
+      final providerName = account.company.companyName
+          .replaceAll(RegExp(r'[^a-zA-Z0-9]+'), '_')
+          .replaceAll(RegExp(r'_+'), '_')
+          .replaceAll(RegExp(r'^_|_$'), '')
+          .toLowerCase();
+      final outputPath = await saveBytesAs(
+        bytes: pdfBytes,
+        suggestedFileName:
+            'convenio_${providerName.isEmpty ? 'proveedor' : providerName}_${_agreementPdfDateStamp(agreementView.agreement.startDate)}.pdf',
+        dialogTitle: 'Guardar convenio en PDF...',
+      );
+      if (outputPath == null) return;
+      _toast('Convenio guardado en $outputPath');
+    } catch (error) {
+      _toast('No se pudo generar el PDF del convenio: $error');
+    }
+  }
+
+  String _agreementPdfDateStamp(DateTime value) {
+    return '${value.year}${value.month.toString().padLeft(2, '0')}${value.day.toString().padLeft(2, '0')}';
+  }
+
+  Future<Uint8List> _buildAgreementPdfBytes(
+    _ProviderAccountView account,
+    _ProviderAgreementView agreementView,
+  ) async {
+    final agreement = agreementView.agreement;
+    final doc = pw.Document();
+    final dicsaBlueSoft = PdfColor.fromHex('#E9F0FF');
+    final dicsaBlueDeep = PdfColor.fromHex('#173A7A');
+    final dicsaGreenSoft = PdfColor.fromHex('#EEF9F1');
+    final dicsaInk = PdfColor.fromHex('#16202B');
+    final dicsaMuted = PdfColor.fromHex('#5E6B78');
+    final dicsaBorder = PdfColor.fromHex('#B8C7DD');
+    pw.MemoryImage? logoImage;
+    try {
+      final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+      logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+    } catch (_) {}
+
+    final installments = agreementView.installments.toList(growable: false)
+      ..sort((a, b) => a.sequenceNumber.compareTo(b.sequenceNumber));
+    final invoicesByInstallmentId =
+        <String, List<_ProviderAgreementInvoiceLinkView>>{};
+    for (final link in agreementView.invoiceLinks) {
+      invoicesByInstallmentId
+          .putIfAbsent(link.link.installmentId, () => [])
+          .add(link);
+    }
+    for (final rows in invoicesByInstallmentId.values) {
+      rows.sort(_compareAgreementInvoiceLinkViews);
+    }
+    final orderedInvoiceLinks = agreementView.invoiceLinks.toList(
+      growable: false,
+    )..sort(_compareAgreementInvoiceLinkViews);
+    final paidAmount = installments.fold<double>(
+      0,
+      (sum, row) => sum + row.paidAmount,
+    );
+    final now = DateTime.now();
+    final printedAt =
+        '${_dateLabel(now)} ${now.hour.toString().padLeft(2, '0')}:${now.minute.toString().padLeft(2, '0')}';
+
+    pw.Widget metric(String label, String value) {
+      return pw.Expanded(
+        child: pw.Container(
+          padding: const pw.EdgeInsets.symmetric(horizontal: 11, vertical: 10),
+          decoration: pw.BoxDecoration(
+            color: dicsaBlueSoft,
+            borderRadius: pw.BorderRadius.circular(12),
+            border: pw.Border.all(color: dicsaBorder),
+          ),
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: [
+              pw.Text(
+                label,
+                style: pw.TextStyle(
+                  fontSize: 8.5,
+                  fontWeight: pw.FontWeight.bold,
+                  color: dicsaBlueDeep,
+                ),
+              ),
+              pw.SizedBox(height: 5),
+              pw.Text(
+                value,
+                style: pw.TextStyle(
+                  fontSize: 13,
+                  fontWeight: pw.FontWeight.bold,
+                  color: dicsaInk,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    pw.Widget sectionTitle(String value) {
+      return pw.Text(
+        value,
+        style: pw.TextStyle(
+          fontSize: 12,
+          fontWeight: pw.FontWeight.bold,
+          color: dicsaBlueDeep,
+        ),
+      );
+    }
+
+    pw.Widget tableCell(String value, {bool header = false}) {
+      return pw.Padding(
+        padding: const pw.EdgeInsets.all(6),
+        child: pw.Text(
+          value,
+          style: pw.TextStyle(
+            fontSize: header ? 8.5 : 8.7,
+            fontWeight: header ? pw.FontWeight.bold : pw.FontWeight.normal,
+            color: header ? dicsaBlueDeep : dicsaInk,
+          ),
+        ),
+      );
+    }
+
+    doc.addPage(
+      pw.MultiPage(
+        pageFormat: PdfPageFormat.a4.landscape,
+        margin: const pw.EdgeInsets.fromLTRB(28, 28, 28, 30),
+        maxPages: 100,
+        footer: (context) => pw.Align(
+          alignment: pw.Alignment.centerRight,
+          child: pw.Text(
+            'Convenio de pago · pagina ${context.pageNumber} de ${context.pagesCount}',
+            style: pw.TextStyle(fontSize: 8, color: dicsaMuted),
+          ),
+        ),
+        build: (_) => [
+          pw.Row(
+            children: [
+              if (logoImage != null)
+                pw.SizedBox(
+                  width: 42,
+                  height: 28,
+                  child: pw.Image(logoImage, fit: pw.BoxFit.contain),
+                ),
+              if (logoImage != null) pw.SizedBox(width: 10),
+              pw.Expanded(
+                child: pw.Column(
+                  crossAxisAlignment: pw.CrossAxisAlignment.start,
+                  children: [
+                    pw.Text(
+                      'CONVENIO DE PAGO',
+                      style: pw.TextStyle(
+                        fontSize: 17,
+                        fontWeight: pw.FontWeight.bold,
+                        color: dicsaBlueDeep,
+                      ),
+                    ),
+                    pw.SizedBox(height: 2),
+                    pw.Text(
+                      account.company.companyName,
+                      style: pw.TextStyle(
+                        fontSize: 10.5,
+                        fontWeight: pw.FontWeight.bold,
+                        color: dicsaMuted,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              pw.Text(
+                printedAt,
+                style: pw.TextStyle(fontSize: 9, color: dicsaMuted),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 16),
+          pw.Row(
+            children: [
+              metric('TOTAL PACTADO', _money(agreement.totalAmount)),
+              pw.SizedBox(width: 8),
+              metric('PAGADO', _money(paidAmount)),
+              pw.SizedBox(width: 8),
+              metric('RESTANTE', _money(agreement.remainingAmount)),
+              pw.SizedBox(width: 8),
+              metric(
+                'ESTATUS',
+                finSupplierAgreementStatusLabel(agreement.status),
+              ),
+            ],
+          ),
+          pw.SizedBox(height: 16),
+          sectionTitle('CONDICIONES DEL CONVENIO'),
+          pw.SizedBox(height: 7),
+          pw.Table(
+            border: pw.TableBorder.all(color: dicsaBorder),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(1.2),
+              1: pw.FlexColumnWidth(1.4),
+              2: pw.FlexColumnWidth(1.1),
+              3: pw.FlexColumnWidth(1.2),
+            },
+            children: [
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
+                children: [
+                  tableCell('TIPO', header: true),
+                  tableCell('FRECUENCIA', header: true),
+                  tableCell('INICIA', header: true),
+                  tableCell('CUENTA OBJETIVO', header: true),
+                ],
+              ),
+              pw.TableRow(
+                children: [
+                  tableCell(
+                    finSupplierAgreementTypeLabel(agreement.agreementType),
+                  ),
+                  tableCell(
+                    finSupplierAgreementFrequencyLabel(agreement.frequency),
+                  ),
+                  tableCell(_dateLabel(agreement.startDate)),
+                  tableCell(
+                    '${agreement.targetCompany} · ${agreement.targetBranch == 'MAZATLAN' ? 'Mazatlan' : 'Celaya'}',
+                  ),
+                ],
+              ),
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
+                children: [
+                  tableCell(
+                    agreement.agreementType == 'POR_MONTO'
+                        ? 'PAGO POR CUOTA'
+                        : 'FACTURAS POR PERIODO',
+                    header: true,
+                  ),
+                  tableCell('COMPROMISOS', header: true),
+                  tableCell('FACTURAS LIGADAS', header: true),
+                  tableCell('PROXIMO VENCIMIENTO', header: true),
+                ],
+              ),
+              pw.TableRow(
+                children: [
+                  tableCell(
+                    agreement.agreementType == 'POR_MONTO'
+                        ? _money(agreement.installmentAmount)
+                        : '${agreement.invoicesPerPeriod} por periodo',
+                  ),
+                  tableCell('${agreement.installmentCount}'),
+                  tableCell('${agreement.scheduledInvoiceCount}'),
+                  tableCell(
+                    agreement.nextDueDate == null
+                        ? 'SIN PENDIENTES'
+                        : _dateLabel(agreement.nextDueDate!),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          if (agreement.notes.trim().isNotEmpty) ...[
+            pw.SizedBox(height: 12),
+            pw.Container(
+              width: double.infinity,
+              padding: const pw.EdgeInsets.all(10),
+              decoration: pw.BoxDecoration(
+                color: PdfColors.grey100,
+                borderRadius: pw.BorderRadius.circular(10),
+                border: pw.Border.all(color: dicsaBorder),
+              ),
+              child: pw.Column(
+                crossAxisAlignment: pw.CrossAxisAlignment.start,
+                children: [
+                  pw.Text(
+                    'NOTAS',
+                    style: pw.TextStyle(
+                      fontSize: 8.5,
+                      fontWeight: pw.FontWeight.bold,
+                      color: dicsaBlueDeep,
+                    ),
+                  ),
+                  pw.SizedBox(height: 4),
+                  pw.Text(
+                    agreement.notes.trim(),
+                    style: const pw.TextStyle(fontSize: 9),
+                  ),
+                ],
+              ),
+            ),
+          ],
+          pw.SizedBox(height: 16),
+          sectionTitle('CALENDARIO DE COMPROMISOS'),
+          pw.SizedBox(height: 7),
+          pw.Table(
+            border: pw.TableBorder.all(color: dicsaBorder),
+            columnWidths: const {
+              0: pw.FlexColumnWidth(0.65),
+              1: pw.FlexColumnWidth(1.0),
+              2: pw.FlexColumnWidth(1.1),
+              3: pw.FlexColumnWidth(1.0),
+              4: pw.FlexColumnWidth(1.0),
+              5: pw.FlexColumnWidth(1.0),
+              6: pw.FlexColumnWidth(1.05),
+              7: pw.FlexColumnWidth(2.2),
+            },
+            children: [
+              pw.TableRow(
+                decoration: pw.BoxDecoration(color: dicsaGreenSoft),
+                children: [
+                  tableCell('#', header: true),
+                  tableCell('VENCE', header: true),
+                  tableCell('TIPO', header: true),
+                  tableCell('PACTADO', header: true),
+                  tableCell('PAGADO', header: true),
+                  tableCell('PENDIENTE', header: true),
+                  tableCell('ESTADO', header: true),
+                  tableCell('FACTURAS ASIGNADAS', header: true),
+                ],
+              ),
+              for (final installment in installments)
+                pw.TableRow(
+                  children: [
+                    tableCell('${installment.sequenceNumber}'),
+                    tableCell(_dateLabel(installment.dueDate)),
+                    tableCell(
+                      installment.commitmentType == 'FACTURAS'
+                          ? 'Facturas'
+                          : 'Monto',
+                    ),
+                    tableCell(_money(installment.amount)),
+                    tableCell(_money(installment.paidAmount)),
+                    tableCell(
+                      _money(
+                        (installment.amount - installment.paidAmount)
+                            .clamp(0, double.infinity)
+                            .toDouble(),
+                      ),
+                    ),
+                    tableCell(_installmentStatusLabel(installment.status)),
+                    tableCell(
+                      (invoicesByInstallmentId[installment.id] ?? const [])
+                              .map(
+                                (link) => link.invoice.folio.trim().isEmpty
+                                    ? 'SIN FOLIO'
+                                    : link.invoice.folio.trim(),
+                              )
+                              .join(', ')
+                              .trim()
+                              .isEmpty
+                          ? '—'
+                          : (invoicesByInstallmentId[installment.id] ??
+                                    const [])
+                                .map(
+                                  (link) => link.invoice.folio.trim().isEmpty
+                                      ? 'SIN FOLIO'
+                                      : link.invoice.folio.trim(),
+                                )
+                                .join(', '),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+          if (orderedInvoiceLinks.isNotEmpty) ...[
+            pw.SizedBox(height: 16),
+            sectionTitle('FACTURAS INCLUIDAS EN EL CONVENIO'),
+            pw.SizedBox(height: 7),
+            pw.Table(
+              border: pw.TableBorder.all(color: dicsaBorder),
+              columnWidths: const {
+                0: pw.FlexColumnWidth(1.05),
+                1: pw.FlexColumnWidth(0.95),
+                2: pw.FlexColumnWidth(0.95),
+                3: pw.FlexColumnWidth(1.0),
+                4: pw.FlexColumnWidth(1.0),
+                5: pw.FlexColumnWidth(0.85),
+                6: pw.FlexColumnWidth(0.8),
+              },
+              children: [
+                pw.TableRow(
+                  decoration: pw.BoxDecoration(color: dicsaBlueSoft),
+                  children: [
+                    tableCell('FOLIO', header: true),
+                    tableCell('FECHA', header: true),
+                    tableCell('VENCE', header: true),
+                    tableCell('TOTAL', header: true),
+                    tableCell('SALDO', header: true),
+                    tableCell('ESTADO', header: true),
+                    tableCell('COMP.', header: true),
+                  ],
+                ),
+                for (final linkView in orderedInvoiceLinks)
+                  pw.TableRow(
+                    children: [
+                      tableCell(
+                        linkView.invoice.folio.trim().isEmpty
+                            ? 'SIN FOLIO'
+                            : linkView.invoice.folio.trim(),
+                      ),
+                      tableCell(_dateLabel(linkView.invoice.invoiceDate)),
+                      tableCell(
+                        linkView.invoice.dueDate == null
+                            ? 'SIN FECHA'
+                            : _dateLabel(linkView.invoice.dueDate!),
+                      ),
+                      tableCell(_money(linkView.invoice.totalAmount)),
+                      tableCell(_money(linkView.invoice.balanceAmount)),
+                      tableCell(
+                        finSupplierInvoiceStatusLabel(linkView.invoice.status),
+                      ),
+                      tableCell('${linkView.link.sequenceNumber}'),
+                    ],
+                  ),
+              ],
+            ),
+          ],
+        ],
+      ),
+    );
+    return doc.save();
   }
 
   List<_ProviderReportMovementSelectionItem> _buildSelectableReportMovements(
@@ -4239,6 +4673,8 @@ class _FinanzasProviderAccountsPageState
                                             _cancelAgreementForSelectedProvider,
                                         onToggleInstallmentPaid:
                                             _toggleAgreementInstallmentPaid,
+                                        onDownloadAgreementPdf:
+                                            _downloadAgreementPdfFor,
                                         onEditCashMovement:
                                             _editProviderCashMovementForSelectedProvider,
                                         onDeleteCashMovement:
@@ -6907,6 +7343,11 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
     FinanzasSupplierAgreementInstallmentRecord installment,
   )
   onToggleInstallmentPaid;
+  final Future<void> Function(
+    _ProviderAccountView account,
+    _ProviderAgreementView agreement,
+  )
+  onDownloadAgreementPdf;
   final Future<void> Function(ComprasProviderMovementRecord movement)
   onEditCashMovement;
   final Future<void> Function(ComprasProviderMovementRecord movement)
@@ -6938,6 +7379,7 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
     required this.onEditAgreement,
     required this.onCancelAgreement,
     required this.onToggleInstallmentPaid,
+    required this.onDownloadAgreementPdf,
     required this.onEditCashMovement,
     required this.onDeleteCashMovement,
     required this.onEditInvoice,
@@ -7128,6 +7570,8 @@ class _ProviderAccountsDetailPane extends StatelessWidget {
                 onEditAgreement: onEditAgreement,
                 onCancelAgreement: onCancelAgreement,
                 onToggleInstallmentPaid: onToggleInstallmentPaid,
+                onDownloadAgreementPdf: (agreement) =>
+                    onDownloadAgreementPdf(account, agreement),
               ),
             },
           ),
@@ -8476,6 +8920,8 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
     FinanzasSupplierAgreementInstallmentRecord installment,
   )
   onToggleInstallmentPaid;
+  final Future<void> Function(_ProviderAgreementView agreement)
+  onDownloadAgreementPdf;
 
   const _ProviderAccountAgreementsView({
     required this.account,
@@ -8485,6 +8931,7 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
     required this.onEditAgreement,
     required this.onCancelAgreement,
     required this.onToggleInstallmentPaid,
+    required this.onDownloadAgreementPdf,
   });
 
   @override
@@ -8581,6 +9028,12 @@ class _ProviderAccountAgreementsView extends StatelessWidget {
                               row.agreement.status,
                             ),
                             tone: tone,
+                          ),
+                          const SizedBox(width: 8),
+                          _MovementIconAction(
+                            icon: Icons.picture_as_pdf_outlined,
+                            color: AreaThemeScope.of(context).primaryStrong,
+                            onTap: () => onDownloadAgreementPdf(row),
                           ),
                           const SizedBox(width: 8),
                           _MovementIconAction(

@@ -250,6 +250,69 @@ void _showLogisticsPhaseSnack(BuildContext context, String message) {
   );
 }
 
+bool _usesGerenciaExecutiveTheme(BuildContext context) =>
+    AreaThemeScope.of(context).darkGlass;
+
+LinearGradient _logisticsExecutiveSurfaceGradient(BuildContext context) {
+  if (_usesGerenciaExecutiveTheme(context)) {
+    return const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0xE62A0D14), Color(0xE61A070D)],
+    );
+  }
+  return LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [
+      Colors.white.withValues(alpha: 0.48),
+      const Color(0xFFF2F4F7).withValues(alpha: 0.76),
+      const Color(0xFFD8DDE3).withValues(alpha: 0.62),
+    ],
+  );
+}
+
+LinearGradient _logisticsExecutiveModuleGradient(BuildContext context) {
+  if (_usesGerenciaExecutiveTheme(context)) {
+    return const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0xE6331019), Color(0xE61F080F)],
+    );
+  }
+  return kLogisticsModuleGradient;
+}
+
+LinearGradient _logisticsExecutiveCapsuleGradient(BuildContext context) {
+  if (_usesGerenciaExecutiveTheme(context)) {
+    return const LinearGradient(
+      begin: Alignment.topLeft,
+      end: Alignment.bottomRight,
+      colors: [Color(0x994A1520), Color(0xCC6A2130)],
+    );
+  }
+  return kLogisticsCapsuleGradient;
+}
+
+Color _logisticsExecutiveBorder(BuildContext context, {double alpha = 1}) {
+  final tokens = AreaThemeScope.of(context);
+  return (_usesGerenciaExecutiveTheme(context)
+          ? tokens.border
+          : kLogisticsSilverBorder)
+      .withValues(alpha: alpha);
+}
+
+Color _logisticsExecutiveMutedText(
+  BuildContext context, {
+  double alpha = 0.76,
+}) {
+  final tokens = AreaThemeScope.of(context);
+  return (_usesGerenciaExecutiveTheme(context)
+          ? tokens.onGlass
+          : kLogisticsSilverTextSecondary)
+      .withValues(alpha: alpha);
+}
+
 class LogisticsManagementExecutiveSection extends StatelessWidget {
   final Future<void> Function()? onOpenControlDiario;
   final Future<void> Function()? onOpenDiesel;
@@ -264,8 +327,11 @@ class LogisticsManagementExecutiveSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final parentTokens = AreaThemeScope.of(context);
     return AreaThemeScope(
-      tokens: logisticsAreaTokens,
+      // Gerencia consumes these widgets as an executive surface, while the
+      // Logistica dashboard keeps its own silver operational identity.
+      tokens: parentTokens.darkGlass ? parentTokens : logisticsAreaTokens,
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -615,32 +681,29 @@ class _LogisticsWorkspaceGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final executive = tokens.darkGlass;
     return Container(
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: 0.48),
-            const Color(0xFFF2F4F7).withValues(alpha: 0.76),
-            const Color(0xFFD8DDE3).withValues(alpha: 0.62),
-          ],
-        ),
+        gradient: _logisticsExecutiveSurfaceGradient(context),
         borderRadius: BorderRadius.circular(30),
         border: Border.all(
-          color: kLogisticsSilverBorder.withValues(alpha: 0.56),
+          color: executive
+              ? tokens.border.withValues(alpha: 0.52)
+              : kLogisticsSilverBorder.withValues(alpha: 0.56),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.05),
+            color: Colors.black.withValues(alpha: executive ? 0.24 : 0.05),
             blurRadius: 22,
             offset: const Offset(0, 12),
           ),
-          BoxShadow(
-            color: Colors.white.withValues(alpha: 0.50),
-            blurRadius: 16,
-            offset: const Offset(0, -2),
-          ),
+          if (!executive)
+            BoxShadow(
+              color: Colors.white.withValues(alpha: 0.50),
+              blurRadius: 16,
+              offset: const Offset(0, -2),
+            ),
         ],
       ),
       padding: padding,
@@ -898,6 +961,8 @@ class _LogisticsDieselHeadlineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final executive = _usesGerenciaExecutiveTheme(context);
+    final tokens = AreaThemeScope.of(context);
     return _LogisticsDashboardWidgetShortcut(
       onTap: onTap,
       child: ContractGlassCard(
@@ -909,21 +974,28 @@ class _LogisticsDieselHeadlineCard extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [topColor, bottomColor],
+              colors: executive
+                  ? [const Color(0xFF4A1520), const Color(0xFF2A0D14)]
+                  : [topColor, bottomColor],
             ),
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: borderColor),
+            border: Border.all(
+              color: executive
+                  ? tokens.border.withValues(alpha: 0.52)
+                  : borderColor,
+            ),
             boxShadow: [
               BoxShadow(
                 color: Colors.black.withValues(alpha: 0.05),
                 blurRadius: 16,
                 offset: const Offset(0, 10),
               ),
-              BoxShadow(
-                color: Colors.white.withValues(alpha: 0.58),
-                blurRadius: 12,
-                offset: const Offset(0, -2),
-              ),
+              if (!executive)
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.58),
+                  blurRadius: 12,
+                  offset: const Offset(0, -2),
+                ),
             ],
           ),
           padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
@@ -933,13 +1005,21 @@ class _LogisticsDieselHeadlineCard extends StatelessWidget {
                 width: 54,
                 height: 54,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.82),
+                  color: executive
+                      ? const Color(0x995D1C2A)
+                      : Colors.white.withValues(alpha: 0.82),
                   borderRadius: BorderRadius.circular(16),
                   border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.88),
+                    color: executive
+                        ? tokens.border.withValues(alpha: 0.36)
+                        : Colors.white.withValues(alpha: 0.88),
                   ),
                 ),
-                child: Icon(icon, size: 24, color: textColor),
+                child: Icon(
+                  icon,
+                  size: 24,
+                  color: executive ? tokens.primarySoft : textColor,
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -951,7 +1031,9 @@ class _LogisticsDieselHeadlineCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w900,
-                        color: textColor.withValues(alpha: 0.88),
+                        color: executive
+                            ? tokens.onGlass.withValues(alpha: 0.82)
+                            : textColor.withValues(alpha: 0.88),
                       ),
                     ),
                     const SizedBox(height: 6),
@@ -960,7 +1042,7 @@ class _LogisticsDieselHeadlineCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 30,
                         fontWeight: FontWeight.w900,
-                        color: textColor,
+                        color: executive ? tokens.primarySoft : textColor,
                         height: 1,
                       ),
                     ),
@@ -970,7 +1052,9 @@ class _LogisticsDieselHeadlineCard extends StatelessWidget {
                       style: TextStyle(
                         fontSize: 12.6,
                         fontWeight: FontWeight.w700,
-                        color: textColor.withValues(alpha: 0.82),
+                        color: executive
+                            ? tokens.onGlass.withValues(alpha: 0.70)
+                            : textColor.withValues(alpha: 0.82),
                         height: 1.3,
                       ),
                     ),
@@ -1190,6 +1274,8 @@ class _LogisticsServicesSummaryPanelState
   @override
   Widget build(BuildContext context) {
     final loading = (_loadingDates || _loadingRows) && _items.isEmpty;
+    final tokens = AreaThemeScope.of(context);
+    final executive = _usesGerenciaExecutiveTheme(context);
     return _LogisticsDashboardWidgetShortcut(
       onTap: widget.onOpenSource,
       child: ContractGlassCard(
@@ -1198,10 +1284,10 @@ class _LogisticsServicesSummaryPanelState
         padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
         child: Container(
           decoration: BoxDecoration(
-            gradient: kLogisticsModuleGradient,
+            gradient: _logisticsExecutiveModuleGradient(context),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: kLogisticsSilverBorder.withValues(alpha: 0.82),
+              color: _logisticsExecutiveBorder(context, alpha: 0.82),
             ),
             boxShadow: [
               BoxShadow(
@@ -1209,11 +1295,12 @@ class _LogisticsServicesSummaryPanelState
                 blurRadius: 18,
                 offset: const Offset(0, 10),
               ),
-              BoxShadow(
-                color: Colors.white.withValues(alpha: 0.54),
-                blurRadius: 12,
-                offset: const Offset(0, -2),
-              ),
+              if (!executive)
+                BoxShadow(
+                  color: Colors.white.withValues(alpha: 0.54),
+                  blurRadius: 12,
+                  offset: const Offset(0, -2),
+                ),
             ],
           ),
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
@@ -1232,33 +1319,36 @@ class _LogisticsServicesSummaryPanelState
                   Expanded(
                     child: Column(
                       children: [
-                        const Text(
+                        Text(
                           'Resumen de Viajes y Servicios',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             fontSize: 20,
                             fontWeight: FontWeight.w900,
-                            color: kLogisticsSilverTextPrimary,
+                            color: tokens.onGlass,
                           ),
                         ),
                         const SizedBox(height: 4),
                         Text(
                           _dashboardFormatLongDateEs(_selectedDate),
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13.5,
                             fontWeight: FontWeight.w700,
-                            color: kLogisticsSilverTextSecondary,
+                            color: _logisticsExecutiveMutedText(context),
                           ),
                         ),
                         const SizedBox(height: 2),
                         Text(
                           '${_items.length} servicio${_items.length == 1 ? '' : 's'}',
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w800,
-                            color: kLogisticsSilverTextMuted,
+                            color: _logisticsExecutiveMutedText(
+                              context,
+                              alpha: 0.62,
+                            ),
                           ),
                         ),
                       ],
@@ -1281,11 +1371,11 @@ class _LogisticsServicesSummaryPanelState
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
-                  gradient: kLogisticsCapsuleGradient,
+                  gradient: _logisticsExecutiveCapsuleGradient(context),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: kLogisticsSilverDivider),
+                  border: Border.all(color: _logisticsExecutiveBorder(context)),
                 ),
-                child: const Row(
+                child: Row(
                   children: [
                     Expanded(
                       flex: 3,
@@ -1294,7 +1384,7 @@ class _LogisticsServicesSummaryPanelState
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w900,
-                          color: kLogisticsSilverTextPrimary,
+                          color: tokens.onGlass,
                         ),
                       ),
                     ),
@@ -1305,7 +1395,7 @@ class _LogisticsServicesSummaryPanelState
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w900,
-                          color: kLogisticsSilverTextPrimary,
+                          color: tokens.onGlass,
                         ),
                       ),
                     ),
@@ -1317,7 +1407,7 @@ class _LogisticsServicesSummaryPanelState
                         style: TextStyle(
                           fontSize: 11.5,
                           fontWeight: FontWeight.w900,
-                          color: kLogisticsSilverTextPrimary,
+                          color: tokens.onGlass,
                         ),
                       ),
                     ),
@@ -1329,12 +1419,12 @@ class _LogisticsServicesSummaryPanelState
                 child: loading
                     ? const Center(child: CircularProgressIndicator())
                     : _items.isEmpty
-                    ? const Center(
+                    ? Center(
                         child: Text(
                           'No hay servicios para la fecha seleccionada.',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: kLogisticsSilverTextSecondary,
+                            color: _logisticsExecutiveMutedText(context),
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
                           ),
@@ -1353,12 +1443,16 @@ class _LogisticsServicesSummaryPanelState
                               vertical: 9,
                             ),
                             decoration: BoxDecoration(
-                              color: Colors.white.withValues(alpha: 0.74),
+                              color: executive
+                                  ? const Color(0x522A0D14)
+                                  : Colors.white.withValues(alpha: 0.74),
                               borderRadius: BorderRadius.circular(14),
                               border: Border.all(
-                                color: kLogisticsSilverBorderLight.withValues(
-                                  alpha: 0.86,
-                                ),
+                                color: executive
+                                    ? tokens.border.withValues(alpha: 0.36)
+                                    : kLogisticsSilverBorderLight.withValues(
+                                        alpha: 0.86,
+                                      ),
                               ),
                               boxShadow: [
                                 BoxShadow(
@@ -1376,10 +1470,10 @@ class _LogisticsServicesSummaryPanelState
                                     item.company,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12.4,
                                       fontWeight: FontWeight.w800,
-                                      color: kLogisticsSilverTextPrimary,
+                                      color: tokens.onGlass,
                                     ),
                                   ),
                                 ),
@@ -1389,10 +1483,12 @@ class _LogisticsServicesSummaryPanelState
                                     item.operator,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 12.2,
                                       fontWeight: FontWeight.w700,
-                                      color: kLogisticsSilverTextSecondary,
+                                      color: _logisticsExecutiveMutedText(
+                                        context,
+                                      ),
                                     ),
                                   ),
                                 ),
@@ -1780,6 +1876,7 @@ class _LogisticsWeeklyDriverChartsState
   @override
   Widget build(BuildContext context) {
     final tokens = AreaThemeScope.of(context);
+    final executive = tokens.darkGlass;
     final stacked = widget.preferSideBySide
         ? widget.width < 760
         : widget.width < 1240;
@@ -1805,10 +1902,18 @@ class _LogisticsWeeklyDriverChartsState
           footerNote: 'Ordenado de mayor a menor por litros solicitados.',
           primaryIcon: Icons.local_gas_station_rounded,
           secondaryIcon: Icons.timeline_rounded,
-          primaryAccent: const Color(0xFF526C8A),
-          secondaryAccent: const Color(0xFF7B8795),
-          barTopColor: const Color(0xFFAFBAC7),
-          barBottomColor: const Color(0xFF7B8795),
+          primaryAccent: executive
+              ? const Color(0xFFFF9FA7)
+              : const Color(0xFF526C8A),
+          secondaryAccent: executive
+              ? const Color(0xFFFFC7CF)
+              : const Color(0xFF7B8795),
+          barTopColor: executive
+              ? const Color(0xFFFF8A7A)
+              : const Color(0xFFAFBAC7),
+          barBottomColor: executive
+              ? const Color(0xFFB23346)
+              : const Color(0xFF7B8795),
           onOpenSource: widget.onOpenDieselSource,
         ),
       ),
@@ -1827,10 +1932,18 @@ class _LogisticsWeeklyDriverChartsState
           footerNote: 'Ordenado de mayor a menor por litros cargados.',
           primaryIcon: Icons.local_gas_station_outlined,
           secondaryIcon: Icons.route_rounded,
-          primaryAccent: const Color(0xFF6B727A),
-          secondaryAccent: const Color(0xFF868D96),
-          barTopColor: const Color(0xFFC2C7CC),
-          barBottomColor: const Color(0xFF7A838D),
+          primaryAccent: executive
+              ? const Color(0xFFFFC07A)
+              : const Color(0xFF6B727A),
+          secondaryAccent: executive
+              ? const Color(0xFFFFE0AB)
+              : const Color(0xFF868D96),
+          barTopColor: executive
+              ? const Color(0xFFFFB35C)
+              : const Color(0xFFC2C7CC),
+          barBottomColor: executive
+              ? const Color(0xFFC46A35)
+              : const Color(0xFF7A838D),
           onOpenSource: widget.onOpenGasolineSource,
         ),
       ),
@@ -1849,10 +1962,18 @@ class _LogisticsWeeklyDriverChartsState
           footerNote: 'Ordenado de mayor a menor por número de viajes.',
           primaryIcon: Icons.work_outline_rounded,
           secondaryIcon: Icons.analytics_outlined,
-          primaryAccent: const Color(0xFF5A78B0),
-          secondaryAccent: const Color(0xFF7F96C4),
-          barTopColor: const Color(0xFF8FA4B8),
-          barBottomColor: const Color(0xFF546272),
+          primaryAccent: executive
+              ? const Color(0xFFFF9FA7)
+              : const Color(0xFF5A78B0),
+          secondaryAccent: executive
+              ? const Color(0xFFFFC7CF)
+              : const Color(0xFF7F96C4),
+          barTopColor: executive
+              ? const Color(0xFFE46A78)
+              : const Color(0xFF8FA4B8),
+          barBottomColor: executive
+              ? const Color(0xFF8F2737)
+              : const Color(0xFF546272),
           onOpenSource: widget.onOpenServicesSource,
         ),
       ),
@@ -1867,9 +1988,9 @@ class _LogisticsWeeklyDriverChartsState
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
           child: Container(
             decoration: BoxDecoration(
-              gradient: kLogisticsCapsuleGradient,
+              gradient: _logisticsExecutiveCapsuleGradient(context),
               borderRadius: BorderRadius.circular(20),
-              border: Border.all(color: kLogisticsSilverDivider),
+              border: Border.all(color: _logisticsExecutiveBorder(context)),
             ),
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: Row(
@@ -1896,20 +2017,23 @@ class _LogisticsWeeklyDriverChartsState
                       Text(
                         weekLabel,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 13.5,
                           fontWeight: FontWeight.w800,
-                          color: kLogisticsSilverTextSecondary,
+                          color: _logisticsExecutiveMutedText(context),
                         ),
                       ),
                       const SizedBox(height: 2),
                       Text(
                         weekSubtitle,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           fontSize: 11.8,
                           fontWeight: FontWeight.w700,
-                          color: kLogisticsSilverTextMuted,
+                          color: _logisticsExecutiveMutedText(
+                            context,
+                            alpha: 0.62,
+                          ),
                         ),
                       ),
                     ],
@@ -2025,10 +2149,10 @@ class _LogisticsDriverLeaderboardCard extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
         child: Container(
           decoration: BoxDecoration(
-            gradient: kLogisticsModuleGradient,
+            gradient: _logisticsExecutiveModuleGradient(context),
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
-              color: kLogisticsSilverBorder.withValues(alpha: 0.80),
+              color: _logisticsExecutiveBorder(context, alpha: 0.80),
             ),
           ),
           padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
@@ -2096,9 +2220,9 @@ class _LogisticsDriverLeaderboardCard extends StatelessWidget {
                   vertical: 10,
                 ),
                 decoration: BoxDecoration(
-                  gradient: kLogisticsCapsuleGradient,
+                  gradient: _logisticsExecutiveCapsuleGradient(context),
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: kLogisticsSilverDivider),
+                  border: Border.all(color: _logisticsExecutiveBorder(context)),
                 ),
                 child: Row(
                   children: [
@@ -2148,10 +2272,10 @@ class _LogisticsDriverLeaderboardCard extends StatelessWidget {
                         child: Text(
                           emptyMessage,
                           textAlign: TextAlign.center,
-                          style: const TextStyle(
+                          style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w700,
-                            color: kLogisticsSilverTextSecondary,
+                            color: _logisticsExecutiveMutedText(context),
                           ),
                         ),
                       )
@@ -2219,12 +2343,20 @@ class _LogisticsDriverMetricSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final executive = _usesGerenciaExecutiveTheme(context);
+    final tokens = AreaThemeScope.of(context);
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.72),
+        color: executive
+            ? const Color(0x522A0D14)
+            : Colors.white.withValues(alpha: 0.72),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: kLogisticsSilverBorderLight),
+        border: Border.all(
+          color: executive
+              ? tokens.border.withValues(alpha: 0.34)
+              : kLogisticsSilverBorderLight,
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -2263,10 +2395,10 @@ class _LogisticsDriverMetricSummaryCard extends StatelessWidget {
                 const SizedBox(height: 6),
                 Text(
                   label,
-                  style: const TextStyle(
+                  style: TextStyle(
                     fontSize: 12.4,
                     fontWeight: FontWeight.w700,
-                    color: kLogisticsSilverTextSecondary,
+                    color: _logisticsExecutiveMutedText(context),
                     height: 1.25,
                   ),
                 ),
@@ -2302,6 +2434,8 @@ class _LogisticsDriverLeaderboardRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final executive = _usesGerenciaExecutiveTheme(context);
+    final tokens = AreaThemeScope.of(context);
     final ratio = maxValue <= 0 ? 0.0 : (row.value / maxValue).clamp(0.0, 1.0);
     final averageRatio = maxValue <= 0
         ? 0.0
@@ -2311,10 +2445,14 @@ class _LogisticsDriverLeaderboardRow extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.68),
+        color: executive
+            ? const Color(0x452A0D14)
+            : Colors.white.withValues(alpha: 0.68),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-          color: kLogisticsSilverBorderLight.withValues(alpha: 0.88),
+          color: executive
+              ? tokens.border.withValues(alpha: 0.32)
+              : kLogisticsSilverBorderLight.withValues(alpha: 0.88),
         ),
       ),
       child: Row(
@@ -2353,10 +2491,10 @@ class _LogisticsDriverLeaderboardRow extends StatelessWidget {
                     row.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12.8,
                       fontWeight: FontWeight.w800,
-                      color: kLogisticsSilverTextPrimary,
+                      color: tokens.onGlass,
                     ),
                   ),
                 ),
@@ -2405,7 +2543,9 @@ class _LogisticsDriverLeaderboardRow extends StatelessWidget {
                             Container(
                               height: 26,
                               decoration: BoxDecoration(
-                                color: const Color(0xFFEFF2F6),
+                                color: executive
+                                    ? const Color(0x664A1520)
+                                    : const Color(0xFFEFF2F6),
                                 borderRadius: BorderRadius.circular(999),
                               ),
                             ),
@@ -2420,7 +2560,8 @@ class _LogisticsDriverLeaderboardRow extends StatelessWidget {
                                 child: Container(
                                   width: 2,
                                   decoration: BoxDecoration(
-                                    color: kLogisticsSilverTextMuted.withValues(
+                                    color: _logisticsExecutiveMutedText(
+                                      context,
                                       alpha: 0.40,
                                     ),
                                     borderRadius: BorderRadius.circular(999),
@@ -2464,10 +2605,10 @@ class _LogisticsDriverLeaderboardRow extends StatelessWidget {
                     textAlign: TextAlign.right,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
+                    style: TextStyle(
                       fontSize: 12.8,
                       fontWeight: FontWeight.w900,
-                      color: kLogisticsSilverTextPrimary,
+                      color: tokens.onGlass,
                     ),
                   ),
                 ),
@@ -2548,6 +2689,8 @@ class _LogisticsMiniNavButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tokens = AreaThemeScope.of(context);
+    final executive = tokens.darkGlass;
     return InkWell(
       borderRadius: BorderRadius.circular(12),
       onTap: enabled ? onTap : null,
@@ -2555,21 +2698,27 @@ class _LogisticsMiniNavButton extends StatelessWidget {
         width: 40,
         height: 40,
         decoration: BoxDecoration(
-          gradient: enabled ? kLogisticsCapsuleGradient : null,
-          color: enabled ? null : Colors.white.withValues(alpha: 0.36),
+          gradient: enabled
+              ? _logisticsExecutiveCapsuleGradient(context)
+              : null,
+          color: enabled
+              ? null
+              : executive
+              ? const Color(0x334A1520)
+              : Colors.white.withValues(alpha: 0.36),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: enabled
-                ? kLogisticsSilverDivider
-                : kLogisticsSilverBorder.withValues(alpha: 0.54),
+                ? _logisticsExecutiveBorder(context)
+                : _logisticsExecutiveBorder(context, alpha: 0.54),
           ),
         ),
         child: Icon(
           icon,
           size: 17,
           color: enabled
-              ? kLogisticsSilverTextPrimary
-              : kLogisticsSilverTextMuted,
+              ? tokens.onGlass
+              : _logisticsExecutiveMutedText(context, alpha: 0.52),
         ),
       ),
     );
@@ -2831,7 +2980,7 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
                   elevation: _hovered ? 24 : 18,
                   child: Container(
                     decoration: BoxDecoration(
-                      gradient: kLogisticsModuleGradient,
+                      gradient: _logisticsExecutiveModuleGradient(context),
                       borderRadius: BorderRadius.circular(24),
                       border: Border.all(
                         color: tokens.border.withValues(
@@ -2846,17 +2995,20 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
                           blurRadius: _hovered ? 24 : 18,
                           offset: Offset(0, _hovered ? 14 : 10),
                         ),
-                        BoxShadow(
-                          color: Colors.white.withValues(
-                            alpha: _hovered ? 0.64 : 0.48,
+                        if (!_usesGerenciaExecutiveTheme(context))
+                          BoxShadow(
+                            color: Colors.white.withValues(
+                              alpha: _hovered ? 0.64 : 0.48,
+                            ),
+                            blurRadius: _hovered ? 14 : 10,
+                            offset: const Offset(0, -2),
                           ),
-                          blurRadius: _hovered ? 14 : 10,
-                          offset: const Offset(0, -2),
-                        ),
                         BoxShadow(
-                          color: kLogisticsSilverGlowEdge.withValues(
-                            alpha: _hovered ? 0.42 : 0.26,
-                          ),
+                          color:
+                              (_usesGerenciaExecutiveTheme(context)
+                                      ? tokens.glow
+                                      : kLogisticsSilverGlowEdge)
+                                  .withValues(alpha: _hovered ? 0.42 : 0.26),
                           blurRadius: _hovered ? 22 : 16,
                           spreadRadius: _hovered ? 1.5 : 0.4,
                         ),
@@ -2873,7 +3025,14 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
                               width: 48,
                               height: 48,
                               decoration: BoxDecoration(
-                                gradient: kLogisticsHeroIconGradient,
+                                gradient: _usesGerenciaExecutiveTheme(context)
+                                    ? const LinearGradient(
+                                        colors: [
+                                          Color(0xFFB23346),
+                                          Color(0xFF4A1520),
+                                        ],
+                                      )
+                                    : kLogisticsHeroIconGradient,
                                 borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
                                   color: tokens.border.withValues(alpha: 0.66),
@@ -2890,16 +3049,20 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
                                     offset: const Offset(0, -1),
                                   ),
                                   BoxShadow(
-                                    color: kLogisticsSilverGlow.withValues(
-                                      alpha: 0.34,
-                                    ),
+                                    color:
+                                        (_usesGerenciaExecutiveTheme(context)
+                                                ? tokens.glow
+                                                : kLogisticsSilverGlow)
+                                            .withValues(alpha: 0.34),
                                     blurRadius: 14,
                                   ),
                                 ],
                               ),
                               child: Icon(
                                 widget.icon,
-                                color: kLogisticsSilverIcon,
+                                color: _usesGerenciaExecutiveTheme(context)
+                                    ? tokens.primarySoft
+                                    : kLogisticsSilverIcon,
                                 size: 22,
                               ),
                             ),
@@ -2914,10 +3077,15 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
                                       vertical: 6,
                                     ),
                                     decoration: BoxDecoration(
-                                      gradient: kLogisticsCapsuleGradient,
+                                      gradient:
+                                          _logisticsExecutiveCapsuleGradient(
+                                            context,
+                                          ),
                                       borderRadius: BorderRadius.circular(999),
                                       border: Border.all(
-                                        color: kLogisticsSilverDivider,
+                                        color: _logisticsExecutiveBorder(
+                                          context,
+                                        ),
                                       ),
                                       boxShadow: [
                                         BoxShadow(
@@ -2928,8 +3096,13 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
                                           offset: const Offset(0, 6),
                                         ),
                                         BoxShadow(
-                                          color: kLogisticsSilverGlow
-                                              .withValues(alpha: 0.26),
+                                          color:
+                                              (_usesGerenciaExecutiveTheme(
+                                                        context,
+                                                      )
+                                                      ? tokens.glow
+                                                      : kLogisticsSilverGlow)
+                                                  .withValues(alpha: 0.26),
                                           blurRadius: 14,
                                         ),
                                       ],
@@ -2939,7 +3112,10 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
                                       style: TextStyle(
                                         fontSize: 11.5,
                                         fontWeight: FontWeight.w900,
-                                        color: kLogisticsSilverTextSecondary,
+                                        color: _logisticsExecutiveMutedText(
+                                          context,
+                                          alpha: 0.9,
+                                        ),
                                       ),
                                     ),
                                   ),
@@ -2971,9 +3147,13 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
                         Container(
                           padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
                           decoration: BoxDecoration(
-                            gradient: kLogisticsCapsuleGradient,
+                            gradient: _logisticsExecutiveCapsuleGradient(
+                              context,
+                            ),
                             borderRadius: BorderRadius.circular(18),
-                            border: Border.all(color: kLogisticsSilverDivider),
+                            border: Border.all(
+                              color: _logisticsExecutiveBorder(context),
+                            ),
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.04),
@@ -2981,9 +3161,11 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
                                 offset: const Offset(0, 6),
                               ),
                               BoxShadow(
-                                color: kLogisticsSilverGlow.withValues(
-                                  alpha: 0.24,
-                                ),
+                                color:
+                                    (_usesGerenciaExecutiveTheme(context)
+                                            ? tokens.glow
+                                            : kLogisticsSilverGlow)
+                                        .withValues(alpha: 0.24),
                                 blurRadius: 14,
                               ),
                             ],
@@ -3006,13 +3188,15 @@ class _LogisticsModuleCardState extends State<_LogisticsModuleCard> {
                               style: TextStyle(
                                 fontSize: 12.5,
                                 fontWeight: FontWeight.w800,
-                                color: kLogisticsSilverTextSecondary,
+                                color: _logisticsExecutiveMutedText(context),
                               ),
                             ),
                             const Spacer(),
                             Icon(
                               Icons.arrow_forward_rounded,
-                              color: kLogisticsSilverIcon,
+                              color: _usesGerenciaExecutiveTheme(context)
+                                  ? tokens.primarySoft
+                                  : kLogisticsSilverIcon,
                               size: 20,
                             ),
                           ],

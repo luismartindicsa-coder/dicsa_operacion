@@ -654,7 +654,7 @@ class _DirectionDashboardCanvas extends StatelessWidget {
           const _DeferredDashboardSection(
             delay: Duration(milliseconds: 1200),
             minHeight: 360,
-            child: _DirectionMaterialFlowChartsSection(),
+            child: _DirectionMaterialFlowChartsSection(gerenciaTheme: false),
           ),
           const SizedBox(height: 20),
           const Text(
@@ -2606,16 +2606,23 @@ String _monthShortLabel(DateTime month) {
 }
 
 class DirectionOperationalMaterialFlowWidget extends StatelessWidget {
-  const DirectionOperationalMaterialFlowWidget({super.key});
+  final bool gerenciaTheme;
+
+  const DirectionOperationalMaterialFlowWidget({
+    super.key,
+    this.gerenciaTheme = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return const _DirectionMaterialFlowChartsSection();
+    return _DirectionMaterialFlowChartsSection(gerenciaTheme: gerenciaTheme);
   }
 }
 
 class _DirectionMaterialFlowChartsSection extends StatefulWidget {
-  const _DirectionMaterialFlowChartsSection();
+  final bool gerenciaTheme;
+
+  const _DirectionMaterialFlowChartsSection({required this.gerenciaTheme});
 
   @override
   State<_DirectionMaterialFlowChartsSection> createState() =>
@@ -2767,50 +2774,65 @@ class _DirectionMaterialFlowChartsSectionState
   @override
   Widget build(BuildContext context) {
     final bundle = _bundle;
+    final gerenciaTheme = widget.gerenciaTheme;
+    final surfaceText = gerenciaTheme
+        ? const Color(0xCCFFE4E8)
+        : kDirectionSurfaceText;
+    final mutedText = gerenciaTheme
+        ? const Color(0xCCFFE4E8)
+        : kDirectionMutedText;
     return _DirectionGlassPanel(
       padding: const EdgeInsets.fromLTRB(20, 20, 20, 20),
       borderRadius: BorderRadius.circular(30),
       blurSigma: 28,
-      fillColor: kDirectionOliveDeep.withValues(alpha: 0.28),
-      borderColor: Colors.white.withValues(alpha: 0.30),
+      fillColor: gerenciaTheme
+          ? const Color(0xCC2A0D14)
+          : kDirectionOliveDeep.withValues(alpha: 0.28),
+      borderColor: gerenciaTheme
+          ? const Color(0x66F08A96)
+          : Colors.white.withValues(alpha: 0.30),
       shadowColor: Colors.black.withValues(alpha: 0.14),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.74),
+      edgeHighlightColor: gerenciaTheme
+          ? const Color(0x40FFB4BC)
+          : Colors.white.withValues(alpha: 0.74),
       bevelShadowColor: Colors.black.withValues(alpha: 0.16),
-      glowColor: kDirectionOliveGlow.withValues(alpha: 0.12),
+      glowColor: gerenciaTheme
+          ? const Color(0x33FF7F8F)
+          : kDirectionOliveGlow.withValues(alpha: 0.12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
+          Text(
             'Flujo de material operativo',
-            style: TextStyle(
+            style: const TextStyle(
               color: Colors.white,
               fontSize: 24,
               fontWeight: FontWeight.w900,
             ),
           ),
           const SizedBox(height: 6),
-          const Text(
+          Text(
             'Entradas y salidas consolidadas por material general. Hover sobre cada punto para ver los kg del día.',
             style: TextStyle(
-              color: kDirectionSurfaceText,
+              color: surfaceText,
               fontSize: 12.5,
               fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 16),
           if (_loading && bundle == null)
-            const SizedBox(
+            SizedBox(
               height: 420,
               child: Center(child: CircularProgressIndicator()),
             )
           else if (bundle == null)
-            const SizedBox(
+            SizedBox(
               height: 420,
               child: Center(
                 child: Text(
                   'No fue posible cargar entradas y salidas de material.',
                   style: TextStyle(
-                    color: kDirectionMutedText,
+                    color: mutedText,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -2825,6 +2847,7 @@ class _DirectionMaterialFlowChartsSectionState
                   subtitle:
                       'Promedio semanal recibido por material en lo que va de la semana.',
                   accent: const Color(0xFF87E08A),
+                  gerenciaTheme: gerenciaTheme,
                   averageRows: bundle.entryWeeklyAverages,
                   series: bundle.entrySeries,
                   loading: _loading,
@@ -2836,6 +2859,7 @@ class _DirectionMaterialFlowChartsSectionState
                   subtitle:
                       'Promedio semanal despachado por material en lo que va de la semana.',
                   accent: const Color(0xFFFFC16D),
+                  gerenciaTheme: gerenciaTheme,
                   averageRows: bundle.exitWeeklyAverages,
                   series: bundle.exitSeries,
                   loading: _loading,
@@ -2875,6 +2899,7 @@ class _DirectionMaterialLineChartCard extends StatelessWidget {
   final List<_DirectionMaterialLineSeries> series;
   final bool loading;
   final String? diagnostics;
+  final bool gerenciaTheme;
 
   const _DirectionMaterialLineChartCard({
     required this.title,
@@ -2883,21 +2908,36 @@ class _DirectionMaterialLineChartCard extends StatelessWidget {
     required this.averageRows,
     required this.series,
     required this.loading,
+    required this.gerenciaTheme,
     this.diagnostics,
   });
 
   @override
   Widget build(BuildContext context) {
+    final surfaceText = gerenciaTheme
+        ? const Color(0xCCFFE4E8)
+        : kDirectionSurfaceText;
+    final mutedText = gerenciaTheme
+        ? const Color(0xCCFFE4E8)
+        : kDirectionMutedText;
     return _DirectionGlassPanel(
       padding: const EdgeInsets.fromLTRB(18, 18, 18, 18),
       borderRadius: BorderRadius.circular(26),
       blurSigma: 26,
-      fillColor: Colors.white.withValues(alpha: 0.05),
-      borderColor: Colors.white.withValues(alpha: 0.18),
+      fillColor: gerenciaTheme
+          ? const Color(0x522A0D14)
+          : Colors.white.withValues(alpha: 0.05),
+      borderColor: gerenciaTheme
+          ? const Color(0x59F08A96)
+          : Colors.white.withValues(alpha: 0.18),
       shadowColor: Colors.black.withValues(alpha: 0.10),
-      edgeHighlightColor: Colors.white.withValues(alpha: 0.62),
+      edgeHighlightColor: gerenciaTheme
+          ? const Color(0x33FFB4BC)
+          : Colors.white.withValues(alpha: 0.62),
       bevelShadowColor: Colors.black.withValues(alpha: 0.12),
-      glowColor: accent.withValues(alpha: 0.10),
+      glowColor: (gerenciaTheme ? const Color(0xFFFF7F8F) : accent).withValues(
+        alpha: 0.10,
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -2915,8 +2955,8 @@ class _DirectionMaterialLineChartCard extends StatelessWidget {
               Expanded(
                 child: Text(
                   title,
-                  style: const TextStyle(
-                    color: Colors.white,
+                  style: TextStyle(
+                    color: surfaceText,
                     fontSize: 20,
                     fontWeight: FontWeight.w900,
                   ),
@@ -2927,8 +2967,8 @@ class _DirectionMaterialLineChartCard extends StatelessWidget {
           const SizedBox(height: 6),
           Text(
             subtitle,
-            style: const TextStyle(
-              color: kDirectionSurfaceText,
+            style: TextStyle(
+              color: surfaceText,
               fontSize: 12,
               fontWeight: FontWeight.w700,
             ),
@@ -2937,18 +2977,20 @@ class _DirectionMaterialLineChartCard extends StatelessWidget {
             const SizedBox(height: 6),
             Text(
               diagnostics!,
-              style: const TextStyle(
-                color: Color(0xFFB7CFCC),
+              style: TextStyle(
+                color: mutedText.withValues(alpha: 0.72),
                 fontSize: 10.5,
                 fontWeight: FontWeight.w700,
               ),
             ),
           ],
           const SizedBox(height: 14),
-          const Text(
+          Text(
             'Promedio semana',
             style: TextStyle(
-              color: kDirectionOliveMist,
+              color: gerenciaTheme
+                  ? const Color(0xFFFFC7CF)
+                  : kDirectionOliveMist,
               fontSize: 11.5,
               fontWeight: FontWeight.w900,
               letterSpacing: 0.8,
@@ -2956,10 +2998,10 @@ class _DirectionMaterialLineChartCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           if (averageRows.isEmpty)
-            const Text(
+            Text(
               'Sin promedio semanal disponible todavía.',
               style: TextStyle(
-                color: kDirectionMutedText,
+                color: mutedText,
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
               ),
@@ -2988,6 +3030,7 @@ class _DirectionMaterialLineChartCard extends StatelessWidget {
               series: series,
               unitLabel: 'kg',
               loading: loading,
+              gerenciaTheme: gerenciaTheme,
             ),
           ),
         ],
@@ -3052,11 +3095,13 @@ class _DirectionMaterialLineChart extends StatefulWidget {
   final List<_DirectionMaterialLineSeries> series;
   final String unitLabel;
   final bool loading;
+  final bool gerenciaTheme;
 
   const _DirectionMaterialLineChart({
     required this.series,
     required this.unitLabel,
     required this.loading,
+    required this.gerenciaTheme,
   });
 
   @override
@@ -3107,18 +3152,18 @@ class _DirectionMaterialLineChartState
 
   @override
   Widget build(BuildContext context) {
+    final mutedText = widget.gerenciaTheme
+        ? const Color(0xCCFFE4E8)
+        : kDirectionMutedText;
     if (widget.loading && widget.series.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
     if (widget.series.isEmpty ||
         widget.series.every((series) => series.points.isEmpty)) {
-      return const Center(
+      return Center(
         child: Text(
           'Sin datos suficientes.',
-          style: TextStyle(
-            fontWeight: FontWeight.w700,
-            color: kDirectionMutedText,
-          ),
+          style: TextStyle(fontWeight: FontWeight.w700, color: mutedText),
         ),
       );
     }
@@ -3219,7 +3264,9 @@ class _DirectionMaterialLineChartState
                                     vertical: 6,
                                   ),
                                   decoration: BoxDecoration(
-                                    color: Colors.white.withValues(alpha: 0.95),
+                                    color: widget.gerenciaTheme
+                                        ? const Color(0xF52A0D14)
+                                        : Colors.white.withValues(alpha: 0.95),
                                     borderRadius: BorderRadius.circular(8),
                                     border: Border.all(
                                       color: _hovered!.color.withValues(
@@ -3229,10 +3276,12 @@ class _DirectionMaterialLineChartState
                                   ),
                                   child: Text(
                                     '${_hovered!.label} · ${_hovered!.dayLabel} · ${formatDecimal(_hovered!.value, decimals: 0)} ${widget.unitLabel}',
-                                    style: const TextStyle(
+                                    style: TextStyle(
                                       fontSize: 11,
                                       fontWeight: FontWeight.w800,
-                                      color: Color(0xFF223A39),
+                                      color: widget.gerenciaTheme
+                                          ? const Color(0xFFFFE4E8)
+                                          : const Color(0xFF223A39),
                                     ),
                                   ),
                                 ),
@@ -3268,10 +3317,12 @@ class _DirectionMaterialLineChartState
                               const SizedBox(width: 6),
                               Text(
                                 series.label,
-                                style: const TextStyle(
+                                style: TextStyle(
                                   fontSize: 11,
                                   fontWeight: FontWeight.w700,
-                                  color: Color(0xFF365653),
+                                  color: widget.gerenciaTheme
+                                      ? const Color(0xCCFFE4E8)
+                                      : const Color(0xFF365653),
                                 ),
                               ),
                             ],

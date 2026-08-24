@@ -199,11 +199,6 @@ class _GerenciaBaleWeeklyTrackingPageState
       text: line.shipmentTargetBales.toString(),
     );
     final notesController = TextEditingController(text: line.notes);
-    final productionFocusNode = FocusNode(debugLabel: 'gerencia_prod_target');
-    final shipmentFocusNode = FocusNode(debugLabel: 'gerencia_ship_target');
-    final notesFocusNode = FocusNode(debugLabel: 'gerencia_notes');
-    final cancelFocusNode = FocusNode(debugLabel: 'gerencia_cancel');
-    final saveFocusNode = FocusNode(debugLabel: 'gerencia_save');
     final result = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
@@ -267,42 +262,61 @@ class _GerenciaBaleWeeklyTrackingPageState
                         ),
                         const SizedBox(height: 14),
                         TextField(
-                          focusNode: productionFocusNode,
                           controller: productionController,
+                          autofocus: true,
                           keyboardType: TextInputType.number,
                           textInputAction: TextInputAction.done,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          cursorColor: const Color(0xFFFFC7CF),
                           onSubmitted: (_) =>
                               Navigator.of(dialogContext).pop(true),
                           decoration: const InputDecoration(
                             labelText: 'Meta producción',
                             hintText: 'Pacas de producción',
+                            labelStyle: TextStyle(color: Color(0xFFFFC7CF)),
+                            hintStyle: TextStyle(color: Color(0x99FFE4E8)),
                           ),
                         ),
                         const SizedBox(height: 12),
                         TextField(
-                          focusNode: shipmentFocusNode,
                           controller: shipmentController,
                           keyboardType: TextInputType.number,
                           textInputAction: TextInputAction.done,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                          cursorColor: const Color(0xFFFFC7CF),
                           onSubmitted: (_) =>
                               Navigator.of(dialogContext).pop(true),
                           decoration: const InputDecoration(
                             labelText: 'Meta embarque',
                             hintText: 'Pacas de embarque',
+                            labelStyle: TextStyle(color: Color(0xFFFFC7CF)),
+                            hintStyle: TextStyle(color: Color(0x99FFE4E8)),
                           ),
                         ),
                         const SizedBox(height: 12),
                         TextField(
-                          focusNode: notesFocusNode,
                           controller: notesController,
                           minLines: 2,
                           maxLines: 4,
                           textInputAction: TextInputAction.done,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w700,
+                          ),
+                          cursorColor: const Color(0xFFFFC7CF),
                           onSubmitted: (_) =>
                               Navigator.of(dialogContext).pop(true),
                           decoration: const InputDecoration(
                             labelText: 'Nota',
                             hintText: 'Comentario ejecutivo opcional',
+                            labelStyle: TextStyle(color: Color(0xFFFFC7CF)),
+                            hintStyle: TextStyle(color: Color(0x99FFE4E8)),
                           ),
                         ),
                         const SizedBox(height: 18),
@@ -310,7 +324,6 @@ class _GerenciaBaleWeeklyTrackingPageState
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
                             OutlinedButton(
-                              focusNode: cancelFocusNode,
                               style: contractSecondaryButtonStyle(
                                 dialogContext,
                               ),
@@ -320,7 +333,6 @@ class _GerenciaBaleWeeklyTrackingPageState
                             ),
                             const SizedBox(width: 8),
                             FilledButton.icon(
-                              focusNode: saveFocusNode,
                               style: contractPrimaryButtonStyle(dialogContext),
                               onPressed: () =>
                                   Navigator.of(dialogContext).pop(true),
@@ -340,18 +352,9 @@ class _GerenciaBaleWeeklyTrackingPageState
       },
     );
 
-    // A dialog route can still rebuild its fields for the remainder of the
-    // frame in which it is popped. Dispose the nodes only after that frame so
-    // EditableText never subscribes to an already-disposed FocusNode.
     final productionText = productionController.text;
     final shipmentText = shipmentController.text;
     final notesText = notesController.text;
-    await WidgetsBinding.instance.endOfFrame;
-    productionFocusNode.dispose();
-    shipmentFocusNode.dispose();
-    notesFocusNode.dispose();
-    cancelFocusNode.dispose();
-    saveFocusNode.dispose();
     productionController.dispose();
     shipmentController.dispose();
     notesController.dispose();

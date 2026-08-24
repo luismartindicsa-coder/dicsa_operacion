@@ -519,7 +519,7 @@ class _GerenciaWorkspace extends StatelessWidget {
                   'Entradas y salidas consolidadas del frente operativo para lectura ejecutiva.',
             ),
             const SizedBox(height: 12),
-            const DirectionOperationalMaterialFlowWidget(),
+            const DirectionOperationalMaterialFlowWidget(gerenciaTheme: true),
             const SizedBox(height: 18),
             const _DashboardSectionHeading(
               title: 'Widgets de Logística',
