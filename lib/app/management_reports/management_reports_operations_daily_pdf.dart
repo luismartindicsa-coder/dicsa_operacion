@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/services.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -13,6 +15,7 @@ import '../finanzas/finanzas_payment_center_reserves_store.dart';
 import '../finanzas/finanzas_provider_accounts_store.dart';
 import '../maintenance/maintenance_statuses.dart';
 import '../mayoreo/mayoreo_financial_status.dart';
+import '../hr/human_resources_period_context.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'management_reports_registry.dart';
 
@@ -95,6 +98,31 @@ const String _kCommercialWeeklySalesSignalFields =
     'counterparty_name,kind,counterparty_business_type,'
     'counterparty_business_group,material_key,material_label,volume_kg,'
     'amount_total,unit_price';
+
+const String _kHrWeeklyProfileFields =
+    'id,nombre,empresa,employment_status,termination_date,termination_reason';
+
+const String _kHrWeeklyAttendanceFields =
+    'period_label,employee_id,employee_name,status,late_minutes,overtime_minutes,source_date';
+
+const String _kHrWeeklyPermissionFields =
+    'employee_id,employee_name,empresa,attendance_period_label,permission_type,status,'
+    'start_date,end_date,quantity_days,quantity_hours,attendance_sync_status,'
+    'prenomina_sync_status,impact_prenomina';
+
+const String _kHrWeeklyVacationFields =
+    'employee_id,employee_name,empresa,attendance_period_label,event_type,status,'
+    'start_date,end_date,days_applied,attendance_sync_status,prenomina_sync_status,'
+    'impact_prenomina';
+
+const String _kHrWeeklyPrenominaFields =
+    'period_label,employee_id,employee_name,empresa,draft_status,'
+    'manual_adjustment_amount,fiscal_net_amount,fiscal_late_deduction_amount,'
+    'fiscal_vacation_amount,cash_salary_amount,cash_vacation_amount,'
+    'cash_isr_amount,transport_support_amount,holiday_amount,'
+    'overtime_monetized_amount,manual_bonus_amount,cash_absence_deduction_amount,'
+    'cash_infonavit_deduction_amount,cash_fonacot_deduction_amount,'
+    'loan_deduction_amount,payment_outside_amount';
 
 const Map<String, String> _kPriorityLabels = <String, String>{
   'alta': 'Alta',
@@ -2589,6 +2617,307 @@ Future<Uint8List> buildSalesWeeklySupervisionPdfBytes({
     ),
   );
 
+  return pdf.save();
+}
+
+Future<Uint8List> buildHumanResourcesWeeklySupervisionPdfBytes({
+  required ManagementAreaDefinition area,
+  required DateTime generatedAt,
+  required String generatedBy,
+}) async {
+  final cut = _resolveHrWeeklyCut(generatedAt);
+  final source = await _loadHrWeeklySourceBundle(cut);
+  final insights = _buildHrWeeklyInsights(source, cut);
+  final logoImage = await _tryLoadManagementReportLogo();
+  final accentBase = area.accent;
+  final accent = _pdfColorFromFlutter(_managementAccentInk(accentBase));
+  final accentSoft = _pdfColorFromFlutter(_blendWithWhite(accentBase, 0.9));
+  final accentBorder = _pdfColorFromFlutter(_blendWithWhite(accentBase, 0.74));
+
+  final pdf = pw.Document();
+  pdf.addPage(
+    pw.MultiPage(
+      pageTheme: _managementReportPdfPageTheme(PdfPageFormat.a4.landscape),
+      maxPages: 70,
+      build: (context) => <pw.Widget>[
+        _pdfHeader(
+          logoImage: logoImage,
+          eyebrow: 'REPORTE DE SEGUIMIENTO',
+          title: 'RH · personas, incidencias y nómina semanal',
+          subtitle:
+              'Área Recursos Humanos · corte de supervisión para coordinar personal, asistencia, incidencias y cierre de nómina sin perder la trazabilidad del dashboard.',
+          badges: <MapEntry<String, String>>[
+            MapEntry('Área', area.title),
+            MapEntry('Periodo RH', insights.periodLabel),
+            MapEntry(
+              'Junta',
+              '${_formatShortDate(cut.weekStart)} - ${_formatShortDate(cut.friday)}',
+            ),
+            MapEntry('Responsable', area.ownerLabel),
+            MapEntry('Generado', _formatDateTimeShort(generatedAt)),
+          ],
+          accent: accent,
+          accentSoft: accentSoft,
+          accentBorder: accentBorder,
+        ),
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'Alcance del corte',
+          accent: accent,
+          child: _pdfBulletList(<String>[
+            'Replica los widgets del Dashboard RH: plantilla, importación y conciliación, asistencia, permisos, prenómina, nómina y vacaciones.',
+            'El periodo operativo es ${insights.periodLabel}. ${insights.periodResolutionNote}',
+            'La junta cubre ${_formatLongDateSpanish(cut.weekStart)} al ${_formatLongDateSpanish(cut.friday)}; los eventos del periodo RH se muestran tal como estén registrados hasta ${_formatDateTimeShort(cut.cutoffAt)}.',
+            'Accidentes, reclutamiento y plantilla por cubrir aún no tienen captura homologada; se reportan como cobertura pendiente, no como cero.',
+          ]),
+        ),
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'Resumen ejecutivo',
+          accent: accent,
+          child: _pdfBulletList(insights.executiveSummary),
+        ),
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'KPIs del dashboard RH',
+          accent: accent,
+          child: _pdfKpiGrid(
+            accent: accent,
+            accentSoft: accentSoft,
+            items: <_PdfKpiItem>[
+              _PdfKpiItem('Plantilla activa', '${insights.activeEmployees}'),
+              _PdfKpiItem('Empresas', '${insights.companyRows.length}'),
+              _PdfKpiItem(
+                'Asistencia',
+                insights.attendanceRate == null
+                    ? '-'
+                    : _formatPercent(insights.attendanceRate!),
+              ),
+              _PdfKpiItem('Faltas', '${insights.absenceDays} día(s)'),
+              _PdfKpiItem(
+                'Retardos',
+                '${insights.lateRecordCount}',
+                note: _formatHours(insights.lateMinutes),
+              ),
+              _PdfKpiItem(
+                'Horas extra',
+                _formatHours(insights.overtimeMinutes),
+              ),
+              _PdfKpiItem(
+                'Permisos',
+                '${insights.permissionRows.length}',
+                note: '${insights.pendingPermissions} pendientes',
+              ),
+              _PdfKpiItem('Incidencias abiertas', '${insights.openIncidents}'),
+              _PdfKpiItem('Prenómina lista', '${insights.prenominaReadyCount}'),
+              _PdfKpiItem(
+                'Prenómina revisión',
+                '${insights.prenominaReviewCount}',
+              ),
+              _PdfKpiItem(
+                'Vacaciones activas',
+                '${insights.activeVacationRows.length}',
+              ),
+              _PdfKpiItem(
+                'Próximas vacaciones',
+                '${insights.upcomingVacationRows.length}',
+              ),
+            ],
+          ),
+        ),
+        if (insights.alerts.isNotEmpty) ...<pw.Widget>[
+          pw.SizedBox(height: 14),
+          _pdfSection(
+            title: 'Alertas automáticas',
+            accent: accent,
+            child: _pdfBulletList(insights.alerts),
+          ),
+        ],
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'Flujo de trabajo y cobertura',
+          accent: accent,
+          child: _pdfSimpleTable(
+            headers: const <String>[
+              'Frente',
+              'Estatus visible',
+              'Lectura de supervisión',
+            ],
+            rows: insights.workflowRows
+                .map((row) => <String>[row.title, row.status, row.detail])
+                .toList(growable: false),
+            emptyLabel: 'No hay información de flujo disponible.',
+            headerColor: accent,
+          ),
+        ),
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'Plantilla activa por empresa',
+          accent: accent,
+          child: _pdfSimpleTable(
+            headers: const <String>['Empresa', 'Colaboradores activos'],
+            rows: insights.companyRows
+                .map((row) => <String>[row.name, '${row.count}'])
+                .toList(growable: false),
+            emptyLabel: 'No hay expedientes activos visibles.',
+            headerColor: accent,
+          ),
+        ),
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'Asistencia e incidencias frecuentes',
+          accent: accent,
+          child: _pdfSimpleTable(
+            headers: const <String>[
+              'Colaborador',
+              'Empresa',
+              'Faltas',
+              'Retardos',
+              'Minutos tarde',
+              'Horas extra',
+            ],
+            rows: insights.attendanceFocusRows
+                .map(
+                  (row) => <String>[
+                    _sanitizePdfText(row.name),
+                    _sanitizePdfText(row.company),
+                    '${row.absenceDays}',
+                    '${row.lateCount}',
+                    '${row.lateMinutes}',
+                    _formatHours(row.overtimeMinutes),
+                  ],
+                )
+                .toList(growable: false),
+            emptyLabel:
+                'No hay incidencias de asistencia visibles en el periodo.',
+            headerColor: accent,
+            compact: true,
+          ),
+        ),
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'Ausencias, permisos y vacaciones',
+          accent: accent,
+          child: _pdfSimpleTable(
+            headers: const <String>[
+              'Colaborador',
+              'Evento',
+              'Tipo',
+              'Fechas',
+              'Cantidad',
+              'Estatus / sincronía',
+            ],
+            rows: insights.eventRows
+                .take(36)
+                .map(
+                  (row) => <String>[
+                    _sanitizePdfText(row.name),
+                    row.eventLabel,
+                    row.typeLabel,
+                    row.dateLabel,
+                    row.quantityLabel,
+                    row.statusLabel,
+                  ],
+                )
+                .toList(growable: false),
+            emptyLabel:
+                'No hay permisos o vacaciones registrados en el periodo.',
+            headerColor: accent,
+            compact: true,
+          ),
+        ),
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'Nómina fiscal y operativa',
+          accent: accent,
+          child: pw.Column(
+            crossAxisAlignment: pw.CrossAxisAlignment.start,
+            children: <pw.Widget>[
+              _pdfKpiGrid(
+                accent: accent,
+                accentSoft: accentSoft,
+                items: <_PdfKpiItem>[
+                  _PdfKpiItem(
+                    'Total fiscal',
+                    _formatCurrency(insights.payroll.fiscalTotal),
+                    note: 'Neto fiscal menos retardos + vacaciones',
+                  ),
+                  _PdfKpiItem(
+                    'Bolsa operativa RH',
+                    _formatCurrency(insights.payroll.cashOperationalTotal),
+                    note: 'Efectivo, apoyos, bonos y descuentos',
+                  ),
+                  _PdfKpiItem(
+                    'Ajustes y fuera',
+                    _formatCurrency(
+                      insights.payroll.adjustmentsAndOutsideTotal,
+                    ),
+                  ),
+                  _PdfKpiItem(
+                    'Total operativo nómina',
+                    _formatCurrency(insights.payroll.operationalTotal),
+                    note: '${insights.payroll.rows} colaborador(es)',
+                  ),
+                  _PdfKpiItem(
+                    'Cierre de nómina',
+                    insights.payrollClosed ? 'Confirmado' : 'Pendiente',
+                  ),
+                ],
+              ),
+              pw.SizedBox(height: 10),
+              _pdfSimpleTable(
+                headers: const <String>[
+                  'Empresa',
+                  'Colab.',
+                  'Fiscal',
+                  'Operativo RH',
+                  'Total operativo',
+                ],
+                rows: insights.payrollCompanyRows
+                    .map(
+                      (row) => <String>[
+                        _sanitizePdfText(row.company),
+                        '${row.rows}',
+                        _formatCurrency(row.fiscalTotal),
+                        _formatCurrency(row.cashOperationalTotal),
+                        _formatCurrency(row.operationalTotal),
+                      ],
+                    )
+                    .toList(growable: false),
+                emptyLabel:
+                    'No hay filas de prenómina para el periodo operativo.',
+                headerColor: accent,
+                compact: true,
+              ),
+            ],
+          ),
+        ),
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'Bajas, reclutamiento, vacantes y accidentes',
+          accent: accent,
+          child: _pdfSimpleTable(
+            headers: const <String>[
+              'Reporte planeado',
+              'Cobertura actual',
+              'Resultado del corte',
+            ],
+            rows: insights.pendingCoverageRows
+                .map((row) => <String>[row.title, row.status, row.detail])
+                .toList(growable: false),
+            emptyLabel: 'Sin rubros pendientes.',
+            headerColor: accent,
+          ),
+        ),
+        pw.SizedBox(height: 14),
+        _pdfSection(
+          title: 'Cierre gerencial',
+          accent: accent,
+          child: _pdfBulletList(insights.closeoutPrompts),
+        ),
+      ],
+    ),
+  );
   return pdf.save();
 }
 
@@ -12636,6 +12965,789 @@ class _PdfKpiItem {
   final String? note;
 
   const _PdfKpiItem(this.label, this.value, {this.note});
+}
+
+class _HrWeeklyCut {
+  final DateTime weekStart;
+  final DateTime friday;
+  final DateTime cutoffAt;
+
+  const _HrWeeklyCut({
+    required this.weekStart,
+    required this.friday,
+    required this.cutoffAt,
+  });
+}
+
+class _HrWeeklySourceBundle {
+  final String selectedPeriodLabel;
+  final List<Map<String, dynamic>> profiles;
+  final List<Map<String, dynamic>> importLots;
+  final List<Map<String, dynamic>> attendanceRows;
+  final List<Map<String, dynamic>> permissionRows;
+  final List<Map<String, dynamic>> vacationRows;
+  final List<Map<String, dynamic>> prenominaRows;
+  final List<Map<String, dynamic>> closureRows;
+
+  const _HrWeeklySourceBundle({
+    required this.selectedPeriodLabel,
+    required this.profiles,
+    required this.importLots,
+    required this.attendanceRows,
+    required this.permissionRows,
+    required this.vacationRows,
+    required this.prenominaRows,
+    required this.closureRows,
+  });
+}
+
+class _HrWeeklyPayroll {
+  final int rows;
+  final double fiscalTotal;
+  final double cashOperationalTotal;
+  final double adjustmentsAndOutsideTotal;
+  final double operationalTotal;
+
+  const _HrWeeklyPayroll({
+    required this.rows,
+    required this.fiscalTotal,
+    required this.cashOperationalTotal,
+    required this.adjustmentsAndOutsideTotal,
+    required this.operationalTotal,
+  });
+
+  factory _HrWeeklyPayroll.fromRows(List<Map<String, dynamic>> rows) {
+    var fiscalTotal = 0.0;
+    var cashOperationalTotal = 0.0;
+    var adjustmentsAndOutsideTotal = 0.0;
+    for (final row in rows) {
+      final fiscal =
+          math.max(
+            0.0,
+            _number(row['fiscal_net_amount']) -
+                _number(row['fiscal_late_deduction_amount']),
+          ) +
+          _number(row['fiscal_vacation_amount']);
+      final cashIncome =
+          _number(row['cash_salary_amount']) +
+          _number(row['cash_vacation_amount']) +
+          _number(row['transport_support_amount']) +
+          _number(row['holiday_amount']) +
+          _number(row['overtime_monetized_amount']) +
+          _number(row['manual_bonus_amount']);
+      final cashDeductions =
+          _number(row['cash_isr_amount']) +
+          _number(row['cash_absence_deduction_amount']) +
+          _number(row['cash_infonavit_deduction_amount']) +
+          _number(row['cash_fonacot_deduction_amount']) +
+          _number(row['loan_deduction_amount']);
+      fiscalTotal += fiscal;
+      cashOperationalTotal += cashIncome - cashDeductions;
+      adjustmentsAndOutsideTotal +=
+          _number(row['manual_adjustment_amount']) +
+          _number(row['payment_outside_amount']);
+    }
+    return _HrWeeklyPayroll(
+      rows: rows.length,
+      fiscalTotal: fiscalTotal,
+      cashOperationalTotal: cashOperationalTotal,
+      adjustmentsAndOutsideTotal: adjustmentsAndOutsideTotal,
+      operationalTotal:
+          fiscalTotal + cashOperationalTotal + adjustmentsAndOutsideTotal,
+    );
+  }
+}
+
+class _HrWeeklyCompanyRow {
+  final String name;
+  final int count;
+
+  const _HrWeeklyCompanyRow({required this.name, required this.count});
+}
+
+class _HrWeeklyAttendanceFocusRow {
+  final String name;
+  final String company;
+  final int absenceDays;
+  final int lateCount;
+  final int lateMinutes;
+  final int overtimeMinutes;
+
+  const _HrWeeklyAttendanceFocusRow({
+    required this.name,
+    required this.company,
+    required this.absenceDays,
+    required this.lateCount,
+    required this.lateMinutes,
+    required this.overtimeMinutes,
+  });
+}
+
+class _HrWeeklyEventRow {
+  final String name;
+  final String eventLabel;
+  final String typeLabel;
+  final String dateLabel;
+  final String quantityLabel;
+  final String statusLabel;
+  final DateTime sortDate;
+
+  const _HrWeeklyEventRow({
+    required this.name,
+    required this.eventLabel,
+    required this.typeLabel,
+    required this.dateLabel,
+    required this.quantityLabel,
+    required this.statusLabel,
+    required this.sortDate,
+  });
+}
+
+class _HrWeeklyTextRow {
+  final String title;
+  final String status;
+  final String detail;
+
+  const _HrWeeklyTextRow({
+    required this.title,
+    required this.status,
+    required this.detail,
+  });
+}
+
+class _HrWeeklyPayrollCompanyRow {
+  final String company;
+  final int rows;
+  final double fiscalTotal;
+  final double cashOperationalTotal;
+  final double operationalTotal;
+
+  const _HrWeeklyPayrollCompanyRow({
+    required this.company,
+    required this.rows,
+    required this.fiscalTotal,
+    required this.cashOperationalTotal,
+    required this.operationalTotal,
+  });
+}
+
+class _HrWeeklyInsights {
+  final String periodLabel;
+  final String periodResolutionNote;
+  final int activeEmployees;
+  final List<_HrWeeklyCompanyRow> companyRows;
+  final int workedDays;
+  final int absenceDays;
+  final int lateRecordCount;
+  final int lateMinutes;
+  final int overtimeMinutes;
+  final int pendingPermissions;
+  final int openIncidents;
+  final int prenominaReadyCount;
+  final int prenominaReviewCount;
+  final bool payrollClosed;
+  final List<Map<String, dynamic>> permissionRows;
+  final List<Map<String, dynamic>> activeVacationRows;
+  final List<Map<String, dynamic>> upcomingVacationRows;
+  final List<_HrWeeklyAttendanceFocusRow> attendanceFocusRows;
+  final List<_HrWeeklyEventRow> eventRows;
+  final _HrWeeklyPayroll payroll;
+  final List<_HrWeeklyPayrollCompanyRow> payrollCompanyRows;
+  final List<_HrWeeklyTextRow> workflowRows;
+  final List<_HrWeeklyTextRow> pendingCoverageRows;
+  final List<String> executiveSummary;
+  final List<String> alerts;
+  final List<String> closeoutPrompts;
+
+  const _HrWeeklyInsights({
+    required this.periodLabel,
+    required this.periodResolutionNote,
+    required this.activeEmployees,
+    required this.companyRows,
+    required this.workedDays,
+    required this.absenceDays,
+    required this.lateRecordCount,
+    required this.lateMinutes,
+    required this.overtimeMinutes,
+    required this.pendingPermissions,
+    required this.openIncidents,
+    required this.prenominaReadyCount,
+    required this.prenominaReviewCount,
+    required this.payrollClosed,
+    required this.permissionRows,
+    required this.activeVacationRows,
+    required this.upcomingVacationRows,
+    required this.attendanceFocusRows,
+    required this.eventRows,
+    required this.payroll,
+    required this.payrollCompanyRows,
+    required this.workflowRows,
+    required this.pendingCoverageRows,
+    required this.executiveSummary,
+    required this.alerts,
+    required this.closeoutPrompts,
+  });
+
+  double? get attendanceRate {
+    final total = workedDays + absenceDays;
+    return total == 0 ? null : workedDays / total * 100;
+  }
+}
+
+_HrWeeklyCut _resolveHrWeeklyCut(DateTime generatedAt) {
+  final friday = _nextOrSameFriday(generatedAt);
+  final weekStart = friday.subtract(const Duration(days: 4));
+  final fridayEnd = DateTime(friday.year, friday.month, friday.day, 23, 59, 59);
+  return _HrWeeklyCut(
+    weekStart: weekStart,
+    friday: friday,
+    cutoffAt: generatedAt.isBefore(fridayEnd) ? generatedAt : fridayEnd,
+  );
+}
+
+Future<_HrWeeklySourceBundle> _loadHrWeeklySourceBundle(
+  _HrWeeklyCut cut,
+) async {
+  final client = Supabase.instance.client;
+  final results = await Future.wait<List<Map<String, dynamic>>>([
+    fetchAllSupabaseRows(
+      (from, to) => client
+          .from('hr_employee_profiles')
+          .select(_kHrWeeklyProfileFields)
+          .order('id')
+          .range(from, to),
+    ),
+    fetchAllSupabaseRows(
+      (from, to) => client
+          .from('hr_attendance_import_lots')
+          .select('source,period_label,imported_at')
+          .order('imported_at', ascending: false)
+          .range(from, to),
+    ),
+    fetchAllSupabaseRows(
+      (from, to) => client
+          .from('hr_attendance_daily_records')
+          .select(_kHrWeeklyAttendanceFields)
+          .order('source_date')
+          .range(from, to),
+    ),
+    fetchAllSupabaseRows(
+      (from, to) => client
+          .from('hr_employee_permission_events')
+          .select(_kHrWeeklyPermissionFields)
+          .order('start_date')
+          .range(from, to),
+    ),
+    fetchAllSupabaseRows(
+      (from, to) => client
+          .from('hr_employee_vacation_events')
+          .select(_kHrWeeklyVacationFields)
+          .order('start_date')
+          .range(from, to),
+    ),
+    fetchAllSupabaseRows(
+      (from, to) => client
+          .from('hr_prenomina_draft_rows')
+          .select(_kHrWeeklyPrenominaFields)
+          .order('period_label')
+          .range(from, to),
+    ),
+    fetchAllSupabaseRows(
+      (from, to) => client
+          .from('hr_payroll_period_closures')
+          .select('period_label,status')
+          .order('created_at', ascending: false)
+          .range(from, to),
+    ),
+  ]);
+  final labels = <String>{
+    for (final row in results[2]) _cleanString(row['period_label']),
+    for (final row in results[3]) _cleanString(row['attendance_period_label']),
+    for (final row in results[4]) _cleanString(row['attendance_period_label']),
+    for (final row in results[5]) _cleanString(row['period_label']),
+    for (final row in results[6]) _cleanString(row['period_label']),
+  }..remove('');
+  final selected = await HumanResourcesPeriodContext.readSelectedLabel();
+  final resolved = _resolveHrReportPeriod(
+    selectedLabel: selected,
+    labels: labels,
+    cut: cut,
+  );
+  return _HrWeeklySourceBundle(
+    selectedPeriodLabel: resolved,
+    profiles: results[0],
+    importLots: results[1],
+    attendanceRows: results[2],
+    permissionRows: results[3],
+    vacationRows: results[4],
+    prenominaRows: results[5],
+    closureRows: results[6],
+  );
+}
+
+String _resolveHrReportPeriod({
+  required String selectedLabel,
+  required Set<String> labels,
+  required _HrWeeklyCut cut,
+}) {
+  final selected = selectedLabel.trim();
+  if (selected.isNotEmpty && labels.contains(selected)) return selected;
+  final options = labels.toList(growable: false)
+    ..sort((a, b) {
+      final aEnd = HumanResourcesPeriodRange.tryParse(a)?.end;
+      final bEnd = HumanResourcesPeriodRange.tryParse(b)?.end;
+      if (aEnd != null && bEnd != null) return bEnd.compareTo(aEnd);
+      return b.compareTo(a);
+    });
+  for (final label in options) {
+    final range = HumanResourcesPeriodRange.tryParse(label);
+    if (range != null &&
+        !range.end.isBefore(cut.weekStart) &&
+        !range.start.isAfter(cut.friday)) {
+      return label;
+    }
+  }
+  return options.isEmpty ? '' : options.first;
+}
+
+_HrWeeklyInsights _buildHrWeeklyInsights(
+  _HrWeeklySourceBundle source,
+  _HrWeeklyCut cut,
+) {
+  final period = source.selectedPeriodLabel;
+  final periodRange = HumanResourcesPeriodRange.tryParse(period);
+  final people = <String, Map<String, dynamic>>{
+    for (final row in source.profiles)
+      if (_cleanString(row['id']).isNotEmpty) _cleanString(row['id']): row,
+  };
+  final activeProfiles = source.profiles
+      .where((row) => _normalizeTag(row['employment_status']) != 'baja')
+      .toList(growable: false);
+  final companyCounts = <String, int>{};
+  for (final row in activeProfiles) {
+    final company = _stringOrFallback(row['empresa'], 'Sin empresa');
+    companyCounts[company] = (companyCounts[company] ?? 0) + 1;
+  }
+  final companyRows =
+      companyCounts.entries
+          .map(
+            (entry) => _HrWeeklyCompanyRow(name: entry.key, count: entry.value),
+          )
+          .toList(growable: false)
+        ..sort((a, b) => b.count.compareTo(a.count));
+  bool belongsToPeriod(Map<String, dynamic> row, String labelField) {
+    if (period.isEmpty) return false;
+    if (_cleanString(row[labelField]) == period) return true;
+    if (periodRange == null) return false;
+    final start = _parseHrDate(row['start_date']);
+    final end = _parseHrDate(row['end_date']) ?? start;
+    return start != null &&
+        end != null &&
+        !end.isBefore(periodRange.start) &&
+        !start.isAfter(periodRange.end);
+  }
+
+  final attendance = source.attendanceRows
+      .where((row) => _cleanString(row['period_label']) == period)
+      .where((row) => people.containsKey(_cleanString(row['employee_id'])))
+      .toList(growable: false);
+  final workedDays = attendance
+      .where((row) => row['status'] == 'laboro')
+      .length;
+  final absenceDays = attendance
+      .where((row) => row['status'] == 'falto')
+      .length;
+  final lateRows = attendance.where((row) => _number(row['late_minutes']) > 0);
+  final lateRecordCount = lateRows.length;
+  final lateMinutes = lateRows.fold<int>(
+    0,
+    (total, row) => total + _number(row['late_minutes']).round(),
+  );
+  final overtimeMinutes = attendance.fold<int>(
+    0,
+    (total, row) => total + _number(row['overtime_minutes']).round(),
+  );
+  final focusMap = <String, List<Map<String, dynamic>>>{};
+  for (final row in attendance) {
+    final id = _cleanString(row['employee_id']);
+    focusMap.putIfAbsent(id, () => <Map<String, dynamic>>[]).add(row);
+  }
+  final attendanceFocusRows =
+      focusMap.entries
+          .map((entry) {
+            final rows = entry.value;
+            final profile = people[entry.key];
+            final name = _cleanString(rows.first['employee_name']);
+            return _HrWeeklyAttendanceFocusRow(
+              name: name.isEmpty
+                  ? _stringOrFallback(profile?['nombre'], 'ID #${entry.key}')
+                  : name,
+              company: _stringOrFallback(profile?['empresa'], 'Sin empresa'),
+              absenceDays: rows.where((row) => row['status'] == 'falto').length,
+              lateCount: rows
+                  .where((row) => _number(row['late_minutes']) > 0)
+                  .length,
+              lateMinutes: rows.fold<int>(
+                0,
+                (total, row) => total + _number(row['late_minutes']).round(),
+              ),
+              overtimeMinutes: rows.fold<int>(
+                0,
+                (total, row) =>
+                    total + _number(row['overtime_minutes']).round(),
+              ),
+            );
+          })
+          .where(
+            (row) =>
+                row.absenceDays > 0 ||
+                row.lateCount > 0 ||
+                row.overtimeMinutes > 0,
+          )
+          .toList(growable: false)
+        ..sort(
+          (a, b) => (b.absenceDays * 10000 + b.lateMinutes + b.overtimeMinutes)
+              .compareTo(
+                a.absenceDays * 10000 + a.lateMinutes + a.overtimeMinutes,
+              ),
+        );
+
+  final permissions = source.permissionRows
+      .where(
+        (row) =>
+            belongsToPeriod(row, 'attendance_period_label') &&
+            _normalizeTag(row['status']) != 'cancelado',
+      )
+      .toList(growable: false);
+  final pendingPermissions = permissions
+      .where((row) => _normalizeTag(row['status']) == 'pendiente')
+      .length;
+  final today = DateTime(
+    cut.cutoffAt.year,
+    cut.cutoffAt.month,
+    cut.cutoffAt.day,
+  );
+  final futureLimit = today.add(const Duration(days: 15));
+  final vacations = source.vacationRows
+      .where((row) => _normalizeTag(row['status']) != 'cancelado')
+      .toList(growable: false);
+  final activeVacationRows = vacations
+      .where((row) {
+        final start = _parseHrDate(row['start_date']);
+        final end = _parseHrDate(row['end_date']) ?? start;
+        return start != null &&
+            end != null &&
+            !start.isAfter(today) &&
+            !end.isBefore(today);
+      })
+      .toList(growable: false);
+  final upcomingVacationRows = vacations
+      .where((row) {
+        final start = _parseHrDate(row['start_date']);
+        return start != null &&
+            start.isAfter(today) &&
+            !start.isAfter(futureLimit);
+      })
+      .toList(growable: false);
+  final pendingVacations = source.vacationRows
+      .where(
+        (row) =>
+            belongsToPeriod(row, 'attendance_period_label') &&
+            _normalizeTag(row['status']) == 'pendiente',
+      )
+      .length;
+  final prenominaRows = source.prenominaRows
+      .where((row) => _cleanString(row['period_label']) == period)
+      .toList(growable: false);
+  final prenominaReadyCount = prenominaRows
+      .where(
+        (row) => const {
+          'listo',
+          'publicado',
+        }.contains(_normalizeTag(row['draft_status'])),
+      )
+      .length;
+  final prenominaReviewCount = prenominaRows
+      .where(
+        (row) => const {
+          'revision_rh',
+          'borrador',
+        }.contains(_normalizeTag(row['draft_status'])),
+      )
+      .length;
+  final payroll = _HrWeeklyPayroll.fromRows(prenominaRows);
+  final payrollClosed = source.closureRows.any(
+    (row) =>
+        _cleanString(row['period_label']) == period &&
+        _normalizeTag(row['status']) == 'cerrado',
+  );
+  final payrollByCompany = <String, List<Map<String, dynamic>>>{};
+  for (final row in prenominaRows) {
+    final company = _stringOrFallback(row['empresa'], 'Sin empresa');
+    payrollByCompany
+        .putIfAbsent(company, () => <Map<String, dynamic>>[])
+        .add(row);
+  }
+  final payrollCompanyRows =
+      payrollByCompany.entries
+          .map((entry) {
+            final total = _HrWeeklyPayroll.fromRows(entry.value);
+            return _HrWeeklyPayrollCompanyRow(
+              company: entry.key,
+              rows: total.rows,
+              fiscalTotal: total.fiscalTotal,
+              cashOperationalTotal: total.cashOperationalTotal,
+              operationalTotal: total.operationalTotal,
+            );
+          })
+          .toList(growable: false)
+        ..sort((a, b) => b.operationalTotal.compareTo(a.operationalTotal));
+  final eventRows = <_HrWeeklyEventRow>[];
+  for (final row in permissions) {
+    final start = _parseHrDate(row['start_date']) ?? today;
+    final end = _parseHrDate(row['end_date']) ?? start;
+    eventRows.add(
+      _HrWeeklyEventRow(
+        name: _stringOrFallback(row['employee_name'], 'Sin nombre'),
+        eventLabel: 'Permiso',
+        typeLabel: _hrPermissionTypeLabel(
+          _normalizeTag(row['permission_type']),
+        ),
+        dateLabel: _hrDateRangeLabel(start, end),
+        quantityLabel: _hrEventQuantity(row),
+        statusLabel: _hrSyncStatusLabel(row),
+        sortDate: start,
+      ),
+    );
+  }
+  for (final row in source.vacationRows.where(
+    (row) =>
+        belongsToPeriod(row, 'attendance_period_label') &&
+        _normalizeTag(row['status']) != 'cancelado',
+  )) {
+    final start = _parseHrDate(row['start_date']) ?? today;
+    final end = _parseHrDate(row['end_date']) ?? start;
+    eventRows.add(
+      _HrWeeklyEventRow(
+        name: _stringOrFallback(row['employee_name'], 'Sin nombre'),
+        eventLabel: 'Vacaciones',
+        typeLabel: _hrVacationTypeLabel(_normalizeTag(row['event_type'])),
+        dateLabel: _hrDateRangeLabel(start, end),
+        quantityLabel:
+            '${_formatQuantity(_number(row['days_applied']))} día(s)',
+        statusLabel: _hrSyncStatusLabel(row),
+        sortDate: start,
+      ),
+    );
+  }
+  eventRows.sort((a, b) => a.sortDate.compareTo(b.sortDate));
+  final terminationRows = source.profiles
+      .where((row) {
+        final date = _parseHrDate(row['termination_date']);
+        return _normalizeTag(row['employment_status']) == 'baja' &&
+            date != null &&
+            !date.isBefore(cut.weekStart) &&
+            !date.isAfter(cut.friday);
+      })
+      .toList(growable: false);
+  final importedSources = <String>{
+    for (final row in source.importLots)
+      if (_cleanString(row['period_label']) == period)
+        _normalizeTag(row['source']),
+  };
+  final openIncidents =
+      pendingPermissions + pendingVacations + prenominaReviewCount;
+  final workflowRows = <_HrWeeklyTextRow>[
+    _HrWeeklyTextRow(
+      title: 'Personal',
+      status: '${activeProfiles.length} activo(s)',
+      detail: '${companyRows.length} empresa(s) con plantilla visible.',
+    ),
+    _HrWeeklyTextRow(
+      title: 'Importación y conciliación',
+      status: _hrImportStatus(importedSources),
+      detail:
+          'Fuentes detectadas: ${importedSources.isEmpty ? 'ninguna' : importedSources.join(' y ')}.',
+    ),
+    _HrWeeklyTextRow(
+      title: 'Asistencia',
+      status: '${attendance.length} jornada(s)',
+      detail:
+          '$workedDays laboradas, $absenceDays faltas y $lateRecordCount retardos.',
+    ),
+    _HrWeeklyTextRow(
+      title: 'Permisos',
+      status: '${permissions.length} evento(s)',
+      detail: '$pendingPermissions pendiente(s) de aplicar.',
+    ),
+    _HrWeeklyTextRow(
+      title: 'Prenómina',
+      status: '$prenominaReadyCount lista(s) · $prenominaReviewCount revisión',
+      detail: '${prenominaRows.length} fila(s) en el periodo.',
+    ),
+    _HrWeeklyTextRow(
+      title: 'Nómina',
+      status: payrollClosed ? 'Cierre confirmado' : 'Pendiente de cierre',
+      detail:
+          'Total operativo visible: ${_formatCurrency(payroll.operationalTotal)}.',
+    ),
+    _HrWeeklyTextRow(
+      title: 'Vacaciones',
+      status: '${activeVacationRows.length} activa(s)',
+      detail:
+          '${upcomingVacationRows.length} inicio(s) en los siguientes 15 días.',
+    ),
+  ];
+  final pendingCoverageRows = <_HrWeeklyTextRow>[
+    _HrWeeklyTextRow(
+      title: 'Informe de bajas',
+      status: 'Fuente disponible',
+      detail: terminationRows.isEmpty
+          ? 'No hay bajas con fecha dentro del corte.'
+          : '${terminationRows.length} baja(s): ${terminationRows.map((row) => _stringOrFallback(row['nombre'], 'Sin nombre')).join(', ')}.',
+    ),
+    const _HrWeeklyTextRow(
+      title: 'Reporte de accidentes',
+      status: 'Sin fuente homologada',
+      detail:
+          'No existe aún un módulo o tabla de accidentes RH; no se puede afirmar que fueron cero.',
+    ),
+    const _HrWeeklyTextRow(
+      title: 'Avances en reclutamiento',
+      status: 'Sin fuente homologada',
+      detail:
+          'No existe aún un flujo de vacantes, candidatos y etapas dentro de la app.',
+    ),
+    const _HrWeeklyTextRow(
+      title: 'Plantilla por cubrir',
+      status: 'Sin fuente homologada',
+      detail:
+          'Falta registrar puestos autorizados, responsable, fecha objetivo e impacto operativo.',
+    ),
+  ];
+  final alerts = <String>[];
+  if (period.isEmpty) {
+    alerts.add(
+      'No hay periodo operativo RH disponible; la nómina y la asistencia no pueden considerarse completas.',
+    );
+  }
+  if (pendingPermissions > 0) {
+    alerts.add('$pendingPermissions permiso(s) siguen pendientes de aplicar.');
+  }
+  if (pendingVacations > 0) {
+    alerts.add(
+      '$pendingVacations evento(s) de vacaciones siguen pendientes dentro del periodo.',
+    );
+  }
+  if (prenominaReviewCount > 0) {
+    alerts.add(
+      '$prenominaReviewCount fila(s) de prenómina requieren revisión RH antes del cierre.',
+    );
+  }
+  if (!payrollClosed && period.isNotEmpty) {
+    alerts.add('La nómina del periodo permanece sin cierre confirmado.');
+  }
+  if (!importedSources.contains('ngteco') ||
+      !importedSources.contains('contpaq')) {
+    alerts.add(
+      'La conciliación de importaciones está incompleta: ${_hrImportStatus(importedSources)}.',
+    );
+  }
+  final executiveSummary = <String>[
+    'La plantilla activa visible es de ${activeProfiles.length} colaborador(es) en ${companyRows.length} empresa(s).',
+    'Asistencia del periodo: $workedDays jornadas laboradas, $absenceDays faltas, $lateRecordCount retardos (${_formatHours(lateMinutes)}) y ${_formatHours(overtimeMinutes)} de tiempo extra.',
+    'Nómina: fiscal ${_formatCurrency(payroll.fiscalTotal)}; bolsa operativa RH ${_formatCurrency(payroll.cashOperationalTotal)}; total operativo ${_formatCurrency(payroll.operationalTotal)}.',
+    '$openIncidents incidencia(s) abierta(s) se forman por permisos pendientes, vacaciones pendientes y filas de prenómina en revisión.',
+  ];
+  return _HrWeeklyInsights(
+    periodLabel: period.isEmpty ? 'Sin periodo operativo' : period,
+    periodResolutionNote:
+        'Se usó el periodo seleccionado en el dashboard cuando estuvo disponible; de otro modo se resolvió el más reciente que cruza o antecede a la junta.',
+    activeEmployees: activeProfiles.length,
+    companyRows: companyRows,
+    workedDays: workedDays,
+    absenceDays: absenceDays,
+    lateRecordCount: lateRecordCount,
+    lateMinutes: lateMinutes,
+    overtimeMinutes: overtimeMinutes,
+    pendingPermissions: pendingPermissions,
+    openIncidents: openIncidents,
+    prenominaReadyCount: prenominaReadyCount,
+    prenominaReviewCount: prenominaReviewCount,
+    payrollClosed: payrollClosed,
+    permissionRows: permissions,
+    activeVacationRows: activeVacationRows,
+    upcomingVacationRows: upcomingVacationRows,
+    attendanceFocusRows: attendanceFocusRows,
+    eventRows: eventRows,
+    payroll: payroll,
+    payrollCompanyRows: payrollCompanyRows,
+    workflowRows: workflowRows,
+    pendingCoverageRows: pendingCoverageRows,
+    executiveSummary: executiveSummary,
+    alerts: alerts,
+    closeoutPrompts: <String>[
+      'Confirmar dueño y fecha de cierre para cada incidencia abierta; el objetivo es corregir el flujo, no absorber casos individuales.',
+      'Validar el total fiscal y el total operativo contra Finanzas antes de autorizar pagos o reservas de nómina.',
+      'Definir la fuente y el responsable de accidentes, reclutamiento y plantilla por cubrir para que dejen de depender de una actualización verbal.',
+    ],
+  );
+}
+
+DateTime? _parseHrDate(Object? value) => DateTime.tryParse(_cleanString(value));
+
+double _number(Object? value) => _toNullableDouble(value) ?? 0;
+
+String _formatHours(int minutes) => '${(minutes / 60).toStringAsFixed(2)} h';
+
+String _hrDateRangeLabel(DateTime start, DateTime end) => start == end
+    ? _formatShortDate(start)
+    : '${_formatShortDate(start)} - ${_formatShortDate(end)}';
+
+String _hrEventQuantity(Map<String, dynamic> row) {
+  final hours = _number(row['quantity_hours']);
+  return hours > 0
+      ? '${_formatQuantity(hours)} h'
+      : '${_formatQuantity(_number(row['quantity_days']))} día(s)';
+}
+
+String _hrSyncStatusLabel(Map<String, dynamic> row) {
+  final status = _stringOrFallback(row['status'], 'Sin estatus');
+  final attendance = _cleanString(row['attendance_sync_status']);
+  final prenomina = _cleanString(row['prenomina_sync_status']);
+  final parts = <String>[status];
+  if (attendance.isNotEmpty) {
+    parts.add('Asist. $attendance');
+  }
+  if (prenomina.isNotEmpty) {
+    parts.add('Prenóm. $prenomina');
+  }
+  return parts.join(' · ');
+}
+
+String _hrPermissionTypeLabel(String type) => switch (type) {
+  'permiso_con_goce' => 'Con goce',
+  'permiso_sin_goce' => 'Sin goce',
+  'incapacidad' => 'Incapacidad',
+  'ajuste_rh' => 'Ajuste RH',
+  _ => 'Otro',
+};
+
+String _hrVacationTypeLabel(String type) => switch (type) {
+  'vacaciones_disfrutadas' => 'Disfrutadas',
+  'vacaciones_pagadas' => 'Pagadas',
+  'vacaciones_pendientes' => 'Pendientes',
+  'ajuste_rh' => 'Ajuste RH',
+  _ => 'Otro',
+};
+
+String _hrImportStatus(Set<String> sources) {
+  if (sources.contains('ngteco') && sources.contains('contpaq')) {
+    return 'NGTeco y CONTPAQ listos';
+  }
+  if (sources.contains('ngteco')) return 'Falta CONTPAQ';
+  if (sources.contains('contpaq')) return 'Falta NGTeco';
+  return 'Sin archivos del periodo';
 }
 
 pw.Widget _pdfHeader({

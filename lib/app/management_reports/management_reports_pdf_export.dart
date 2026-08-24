@@ -141,6 +141,14 @@ Future<Uint8List> buildManagementReportPdfBytes({
       generatedBy: generatedBy,
     );
   }
+  if (area.key == ManagementAreaKey.rh &&
+      frequency == ManagementReportFrequency.weeklyFriday) {
+    return buildHumanResourcesWeeklySupervisionPdfBytes(
+      area: area,
+      generatedAt: generatedAt,
+      generatedBy: generatedBy,
+    );
+  }
 
   final reports = area.reportsFor(frequency);
   final readyCount = area.countByStatus(

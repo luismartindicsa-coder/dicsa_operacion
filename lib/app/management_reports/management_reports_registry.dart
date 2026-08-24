@@ -384,7 +384,7 @@ managementAreaCatalog = <ManagementAreaDefinition>[
     title: 'RH',
     ownerLabel: 'Responsable de Recursos Humanos',
     subtitle:
-        'Nómina, ausencias, permisos, vacaciones y plantilla por cubrir aún en homologación.',
+        'Plantilla, asistencia, permisos, vacaciones y nómina para supervisión semanal con trazabilidad de periodo.',
     accent: Color(0xFFB78B5A),
     icon: Icons.badge_rounded,
     reports: <ManagementReportDefinition>[
@@ -392,7 +392,7 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'hr_payroll',
         title: 'Reporte de nómina fiscal y efectivo',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.partial,
+        dataStatus: ManagementReportDataStatus.ready,
         sourceLabel: 'Prenómina RH',
         followUpPrompt:
             'Qué diferencia aparece entre fiscal y efectivo y qué decisión requiere.',
@@ -410,8 +410,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'hr_frequent_incidents',
         title: 'Incidencias frecuentes',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.partial,
-        sourceLabel: 'Incidencias RH',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'Asistencia + permisos + prenómina RH',
         followUpPrompt:
             'Qué incidencia se repitió y cómo se corrige el sistema y no solo el caso.',
       ),
@@ -437,8 +437,8 @@ managementAreaCatalog = <ManagementAreaDefinition>[
         key: 'hr_departures',
         title: 'Informe de bajas',
         frequency: ManagementReportFrequency.weeklyFriday,
-        dataStatus: ManagementReportDataStatus.pending,
-        sourceLabel: 'Flujo pendiente',
+        dataStatus: ManagementReportDataStatus.ready,
+        sourceLabel: 'Expedientes de Personal RH',
         followUpPrompt:
             'Qué bajas ocurrieron y qué revela eso del sistema del área.',
       ),

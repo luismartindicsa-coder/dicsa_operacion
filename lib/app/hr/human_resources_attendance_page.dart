@@ -44,6 +44,8 @@ import 'human_resources_vacations_page.dart';
 const String _kHrProfilesTable = 'hr_employee_profiles';
 const String _kHrImportLotsTable = 'hr_attendance_import_lots';
 const String _kHrAttendanceDailyRecordsTable = 'hr_attendance_daily_records';
+const String _kHrAttendanceOperationalPeriodsTable =
+    'hr_attendance_operational_periods';
 const String _kHrAttendanceVacationSyncPrefix = 'Vacaciones RH:';
 const String _kHrAttendancePermissionSyncPrefix = 'Permisos RH:';
 
@@ -67,11 +69,14 @@ class HumanResourcesAttendancePage extends StatefulWidget {
 
 enum _HrAttendanceSummaryRowAction { open }
 
+enum _HrAttendanceViewMode { diario, semanal }
+
 class _HumanResourcesAttendancePageState
     extends State<HumanResourcesAttendancePage> {
   bool _menuOpen = false;
   bool _canReturnToDirection = false;
   bool _loading = true;
+  _HrAttendanceViewMode _viewMode = _HrAttendanceViewMode.diario;
   String _activePeriodLabel = '';
   String _selectedPeriodLabel = '';
   List<String> _periodOptions = const <String>[];
@@ -109,6 +114,10 @@ class _HumanResourcesAttendancePageState
       <_HrAttendanceImportLotLite>[];
   final List<_HrAttendanceStoredRecord> _storedRecords =
       <_HrAttendanceStoredRecord>[];
+  final List<_HrAttendanceOperationalPeriod> _operationalPeriods =
+      <_HrAttendanceOperationalPeriod>[];
+  DateTime? _selectedDailyDate;
+  int _dailyRefreshRevision = 0;
   List<_HrAttendanceSummaryRow> _allRows = const <_HrAttendanceSummaryRow>[];
   List<_HrAttendanceSummaryRow> _visibleRows =
       const <_HrAttendanceSummaryRow>[];
@@ -220,6 +229,19 @@ class _HumanResourcesAttendancePageState
             .order('imported_at', ascending: false)
             .range(from, to),
       );
+      List<dynamic> operationalPeriodsResult = const <dynamic>[];
+      try {
+        operationalPeriodsResult = await fetchAllSupabaseRows(
+          (from, to) => client
+              .from(_kHrAttendanceOperationalPeriodsTable)
+              .select()
+              .order('start_date', ascending: false)
+              .range(from, to),
+        );
+      } catch (_) {
+        // The operational-period migration can be deployed independently.
+        operationalPeriodsResult = const <dynamic>[];
+      }
       List<dynamic> recordsResult = const <dynamic>[];
       try {
         recordsResult = await fetchAllSupabaseRows(
@@ -268,6 +290,10 @@ class _HumanResourcesAttendancePageState
           .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrAttendanceImportLotLite.fromRow)
           .toList(growable: false);
+      final operationalPeriods = operationalPeriodsResult
+          .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .map(_HrAttendanceOperationalPeriod.fromRow)
+          .toList(growable: false);
 
       var records = recordsResult
           .map((raw) => Map<String, dynamic>.from(raw as Map))
@@ -277,12 +303,18 @@ class _HumanResourcesAttendancePageState
       final periodOptions = _attendancePeriodOptions(
         lots: lots,
         records: records,
+        operationalPeriodLabels: operationalPeriods.map(
+          (period) => period.periodLabel,
+        ),
       );
       final activePeriodLabel = HumanResourcesPeriodContext.resolveSelected(
         selectedLabel: selectedPeriodLabel,
         availableLabels: periodOptions,
       );
-      if (activePeriodLabel.isNotEmpty) {
+      final isOperationalDailyPeriod = operationalPeriods.any(
+        (period) => period.periodLabel == activePeriodLabel,
+      );
+      if (activePeriodLabel.isNotEmpty && !isOperationalDailyPeriod) {
         records = await _synchronizeNgtecoAttendanceBaselines(
           client: client,
           employees: employees,
@@ -300,8 +332,21 @@ class _HumanResourcesAttendancePageState
       _storedRecords
         ..clear()
         ..addAll(records);
+      _operationalPeriods
+        ..clear()
+        ..addAll(operationalPeriods);
       _selectedPeriodLabel = selectedPeriodLabel;
-      _periodOptions = _attendancePeriodOptions(lots: lots, records: records);
+      _periodOptions = _attendancePeriodOptions(
+        lots: lots,
+        records: records,
+        operationalPeriodLabels: operationalPeriods.map(
+          (period) => period.periodLabel,
+        ),
+      );
+      _selectedDailyDate = _resolveDailyDateForPeriod(
+        periodLabel: activePeriodLabel,
+        current: _selectedDailyDate,
+      );
       _rebuildRows();
     } catch (_) {
       if (!mounted) return;
@@ -381,6 +426,12 @@ class _HumanResourcesAttendancePageState
             );
             continue;
           }
+          // Manual capture and explicit RH adjustments are authoritative.
+          // NGTeco may refresh its own baseline, but it can never replace a
+          // human correction recorded for the same employee and day.
+          if (existing.any((record) => record.sourceMode != 'importado')) {
+            continue;
+          }
           for (final record in existing) {
             if (_attendanceStoredRecordMatchesDay(record, day)) continue;
             repairs.add(
@@ -445,12 +496,17 @@ class _HumanResourcesAttendancePageState
       _HrAttendanceImportSource.contpaq,
       periodLabel,
     );
+    final usesDailyOperationalTruth = _operationalPeriods.any(
+      (period) => period.periodLabel == periodLabel,
+    );
     final rows = _buildAttendanceSummaryRows(
       employees: _employees,
-      ngtecoLot: ngtecoLot,
+      ngtecoLot: usesDailyOperationalTruth ? null : ngtecoLot,
       contpaqLot: contpaqLot,
       storedRecords: _storedRecords,
       periodLabel: periodLabel,
+      includeImportedStoredRows: !usesDailyOperationalTruth,
+      defaultSchedulePending: usesDailyOperationalTruth,
     );
     final filteredRows = _applyAttendanceFilters(rows);
     final pageCount = filteredRows.isEmpty
@@ -494,6 +550,128 @@ class _HumanResourcesAttendancePageState
     if (!mounted) return;
     _selectedPeriodLabel = periodLabel;
     _currentPage = 0;
+    _selectedDailyDate = _resolveDailyDateForPeriod(
+      periodLabel: periodLabel,
+      current: _selectedDailyDate,
+    );
+    _rebuildRows();
+  }
+
+  DateTime? _resolveDailyDateForPeriod({
+    required String periodLabel,
+    required DateTime? current,
+  }) {
+    final range = _extractDateRangeFromPeriodLabel(periodLabel);
+    if (range == null) return current;
+    if (current != null &&
+        !current.isBefore(range.start) &&
+        !current.isAfter(range.end)) {
+      return current;
+    }
+    return range.start;
+  }
+
+  bool get _usesDailyOperationalTruth => _operationalPeriods.any(
+    (period) => period.periodLabel == _activePeriodLabel,
+  );
+
+  Future<void> _selectDailyDate(DateTime date) async {
+    final range = _extractDateRangeFromPeriodLabel(_activePeriodLabel);
+    if (range == null ||
+        date.isBefore(range.start) ||
+        date.isAfter(range.end)) {
+      _showSnack('La fecha debe pertenecer al periodo activo.');
+      return;
+    }
+    setState(() => _selectedDailyDate = date);
+  }
+
+  Future<void> _createOperationalPeriod() async {
+    final created = await showDialog<_HrAttendanceOperationalPeriodDraft>(
+      context: context,
+      barrierDismissible: true,
+      builder: (context) => const _HrAttendanceCreatePeriodDialog(),
+    );
+    if (created == null) return;
+
+    try {
+      final client = Supabase.instance.client;
+      final inserted = await client
+          .from(_kHrAttendanceOperationalPeriodsTable)
+          .insert(created.toRow())
+          .select()
+          .single();
+      final period = _HrAttendanceOperationalPeriod.fromRow(
+        Map<String, dynamic>.from(inserted),
+      );
+      _operationalPeriods.removeWhere(
+        (item) => item.periodLabel == period.periodLabel,
+      );
+      _operationalPeriods.add(period);
+      _periodOptions = _attendancePeriodOptions(
+        lots: _importLots,
+        records: _storedRecords,
+        operationalPeriodLabels: _operationalPeriods.map(
+          (item) => item.periodLabel,
+        ),
+      );
+      await HumanResourcesPeriodContext.select(period.periodLabel);
+      if (!mounted) return;
+      setState(() {
+        _selectedPeriodLabel = period.periodLabel;
+        _selectedDailyDate = period.startDate;
+        _viewMode = _HrAttendanceViewMode.diario;
+        _currentPage = 0;
+      });
+      _rebuildRows();
+      _showSnack('Periodo operativo creado. Ya puedes capturar el primer día.');
+    } on PostgrestException catch (error) {
+      _showSnack('No se pudo crear el periodo: ${error.message}');
+    }
+  }
+
+  Future<void> _persistDailyAttendanceRecord(
+    _HrAttendanceDailyDraft draft,
+  ) async {
+    if (!_requireActivePeriod()) return;
+    final record = _HrAttendanceStoredRecord(
+      id: '',
+      periodLabel: _activePeriodLabel,
+      employeeId: draft.employee.employeeId,
+      employeeName: draft.employee.displayName,
+      sourceDate: _fmtAttendanceDateLabel(draft.date),
+      weekdayLabel: _hrWeekdayLabel(draft.date.weekday),
+      status: draft.status,
+      sourceMode: 'manual',
+      captureOrigin: 'daily',
+      selectedSchedule: draft.selectedSchedule,
+      firstPunch: draft.entry,
+      lastPunch: draft.exit,
+      punchTimeline: draft.manualTimeline,
+      lateMinutes: draft.lateMinutes,
+      overtimeMinutes: draft.overtimeMinutes,
+      notes: draft.notes,
+    );
+    final client = Supabase.instance.client;
+    final saved = await client
+        .from(_kHrAttendanceDailyRecordsTable)
+        .upsert(
+          record.toRow(),
+          onConflict: 'period_label,employee_id,source_date',
+        )
+        .select()
+        .single();
+    final persisted = _HrAttendanceStoredRecord.fromRow(
+      Map<String, dynamic>.from(saved),
+    );
+    _storedRecords.removeWhere(
+      (item) =>
+          item.periodLabel == persisted.periodLabel &&
+          item.employeeId == persisted.employeeId &&
+          _normalizeAttendanceStoredDateLabel(item.sourceDate) ==
+              persisted.sourceDate,
+    );
+    _storedRecords.add(persisted);
     _rebuildRows();
   }
 
@@ -647,6 +825,8 @@ class _HumanResourcesAttendancePageState
             weekdayLabel: day.weekdayLabel,
             status: day.status,
             sourceMode: day.sourceMode,
+            captureOrigin: day.captureOrigin,
+            selectedSchedule: day.selectedSchedule,
             firstPunch: day.firstPunch,
             lastPunch: day.lastPunch,
             punchTimeline: day.punchTimeline,
@@ -694,6 +874,7 @@ class _HumanResourcesAttendancePageState
           item.employeeId == row.employeeId,
     );
     _storedRecords.addAll(refreshed);
+    _dailyRefreshRevision += 1;
     _rebuildRows();
     _showSnack('Asistencia de ${row.displayName} actualizada.');
   }
@@ -1111,68 +1292,89 @@ class _HumanResourcesAttendancePageState
                       ? const Center(
                           child: CircularProgressIndicator(strokeWidth: 2.4),
                         )
-                      : _HrAttendanceWorkspace(
-                          allRows: _allRows,
-                          rows: _visibleRows,
-                          totalRows: _allRows.length,
-                          selectedCount:
-                              _selectionController.selectedIds.length,
-                          activePeriodLabel: _activePeriodLabel,
-                          periodOptions: _periodOptions,
-                          navigationController: _navigationController,
-                          selectionController: _selectionController,
-                          rowsScrollController: _rowsScrollController,
-                          visibilityCoordinator: _gridVisibilityCoordinator,
-                          rowsViewportKey: _rowsViewportKey,
-                          rowsFocusNode: _rowsFocusNode,
-                          selectedRowId: _selectedRowId,
-                          rowKeyForId: _rowKeyForId,
-                          onRowsPointerMove: _handleRowsPointerMove,
-                          onTapRow: _handleTapRow,
-                          onPrepareRowActions:
-                              (_HrAttendanceSummaryRow row, int rowIndex) =>
-                                  _prepareRowSelectionForActions(
-                                    rowId: row.employeeId,
-                                    rowIndex: rowIndex,
-                                  ),
-                          onBeginDragSelection: _beginDragSelection,
-                          onUpdateDragSelection: _updateDragSelection,
-                          onEndDragSelection: _endDragSelection,
-                          onRowContextMenu: _openRowMenu,
-                          onOpenRow: _openSummaryRow,
-                          currentPage: _currentPage,
-                          totalPages: _allRows.isEmpty
-                              ? 1
-                              : ((_allRows.length - 1) ~/ _pageSize) + 1,
-                          pageSize: _pageSize,
-                          onPreviousPage: _currentPage == 0
-                              ? null
-                              : _previousPage,
-                          onNextPage:
-                              (((_allRows.isEmpty
-                                          ? 1
-                                          : ((_allRows.length - 1) ~/
-                                                    _pageSize) +
-                                                1) -
-                                      1) <=
-                                  _currentPage)
-                              ? null
-                              : _nextPage,
-                          onPageSizeChanged: _changePageSize,
-                          onOpenSelectedRow: () async {
-                            final row = _activeRow();
-                            if (row != null) await _openSummaryRow(row);
-                          },
-                          onSelectPeriod: _selectPeriod,
-                          onEscape: _handleEscape,
-                          onOpenActiveCell: _openActiveRecord,
-                          hoveredRowId: _hoveredRowId,
-                          hasActiveFilter: _hasActiveFilter,
-                          onOpenFilter: _openColumnFilter,
-                          onHoverRowChanged: (value) {
-                            if (_hoveredRowId == value) return;
-                            setState(() => _hoveredRowId = value);
-                          },
+                      : _HrAttendanceTabbedWorkspace(
+                          viewMode: _viewMode,
+                          onViewModeChanged: (mode) =>
+                              setState(() => _viewMode = mode),
+                          weeklyChild: _HrAttendanceWorkspace(
+                            allRows: _allRows,
+                            rows: _visibleRows,
+                            totalRows: _allRows.length,
+                            selectedCount:
+                                _selectionController.selectedIds.length,
+                            activePeriodLabel: _activePeriodLabel,
+                            periodOptions: _periodOptions,
+                            navigationController: _navigationController,
+                            selectionController: _selectionController,
+                            rowsScrollController: _rowsScrollController,
+                            visibilityCoordinator: _gridVisibilityCoordinator,
+                            rowsViewportKey: _rowsViewportKey,
+                            rowsFocusNode: _rowsFocusNode,
+                            selectedRowId: _selectedRowId,
+                            rowKeyForId: _rowKeyForId,
+                            onRowsPointerMove: _handleRowsPointerMove,
+                            onTapRow: _handleTapRow,
+                            onPrepareRowActions:
+                                (_HrAttendanceSummaryRow row, int rowIndex) =>
+                                    _prepareRowSelectionForActions(
+                                      rowId: row.employeeId,
+                                      rowIndex: rowIndex,
+                                    ),
+                            onBeginDragSelection: _beginDragSelection,
+                            onUpdateDragSelection: _updateDragSelection,
+                            onEndDragSelection: _endDragSelection,
+                            onRowContextMenu: _openRowMenu,
+                            onOpenRow: _openSummaryRow,
+                            currentPage: _currentPage,
+                            totalPages: _allRows.isEmpty
+                                ? 1
+                                : ((_allRows.length - 1) ~/ _pageSize) + 1,
+                            pageSize: _pageSize,
+                            onPreviousPage: _currentPage == 0
+                                ? null
+                                : _previousPage,
+                            onNextPage:
+                                (((_allRows.isEmpty
+                                            ? 1
+                                            : ((_allRows.length - 1) ~/
+                                                      _pageSize) +
+                                                  1) -
+                                        1) <=
+                                    _currentPage)
+                                ? null
+                                : _nextPage,
+                            onPageSizeChanged: _changePageSize,
+                            onOpenSelectedRow: () async {
+                              final row = _activeRow();
+                              if (row != null) await _openSummaryRow(row);
+                            },
+                            onSelectPeriod: _selectPeriod,
+                            onEscape: _handleEscape,
+                            onOpenActiveCell: _openActiveRecord,
+                            hoveredRowId: _hoveredRowId,
+                            hasActiveFilter: _hasActiveFilter,
+                            onOpenFilter: _openColumnFilter,
+                            onHoverRowChanged: (value) {
+                              if (_hoveredRowId == value) return;
+                              setState(() => _hoveredRowId = value);
+                            },
+                          ),
+                          dailyChild: _HrAttendanceDailyGrid(
+                            key: ValueKey<String>(
+                              '$_activePeriodLabel-${_selectedDailyDate?.toIso8601String()}-$_dailyRefreshRevision',
+                            ),
+                            activePeriodLabel: _activePeriodLabel,
+                            periodOptions: _periodOptions,
+                            selectedDate: _selectedDailyDate,
+                            employees: _employees,
+                            storedRecords: _storedRecords,
+                            importLots: _importLots,
+                            usesOperationalTruth: _usesDailyOperationalTruth,
+                            onSelectPeriod: _selectPeriod,
+                            onSelectDate: _selectDailyDate,
+                            onCreatePeriod: _createOperationalPeriod,
+                            onPersist: _persistDailyAttendanceRecord,
+                          ),
                         ),
                 ),
               ),
@@ -1203,6 +1405,1163 @@ class _HumanResourcesAttendancePageState
       ),
     );
   }
+}
+
+class _HrAttendanceTabbedWorkspace extends StatelessWidget {
+  final _HrAttendanceViewMode viewMode;
+  final ValueChanged<_HrAttendanceViewMode> onViewModeChanged;
+  final Widget weeklyChild;
+  final Widget dailyChild;
+
+  const _HrAttendanceTabbedWorkspace({
+    required this.viewMode,
+    required this.onViewModeChanged,
+    required this.weeklyChild,
+    required this.dailyChild,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 2, bottom: 10),
+          child: Wrap(
+            spacing: 8,
+            children: [
+              _HrAttendanceModeTab(
+                label: 'Diario',
+                icon: Icons.edit_calendar_rounded,
+                selected: viewMode == _HrAttendanceViewMode.diario,
+                onTap: () => onViewModeChanged(_HrAttendanceViewMode.diario),
+              ),
+              _HrAttendanceModeTab(
+                label: 'Semanal',
+                icon: Icons.calendar_view_week_rounded,
+                selected: viewMode == _HrAttendanceViewMode.semanal,
+                onTap: () => onViewModeChanged(_HrAttendanceViewMode.semanal),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: IndexedStack(
+            index: viewMode.index,
+            children: [dailyChild, weeklyChild],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _HrAttendanceModeTab extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _HrAttendanceModeTab({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(14),
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 140),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: selected
+              ? const Color(0xFFEFE3FF)
+              : Colors.white.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(
+            color: selected
+                ? const Color(0xFF9F6BFF)
+                : Colors.white.withValues(alpha: 0.20),
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 18,
+              color: selected ? const Color(0xFF4A207D) : Colors.white,
+            ),
+            const SizedBox(width: 7),
+            Text(
+              label,
+              style: TextStyle(
+                fontWeight: FontWeight.w900,
+                color: selected ? const Color(0xFF2B1946) : Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HrAttendanceDailyGrid extends StatefulWidget {
+  final String activePeriodLabel;
+  final List<String> periodOptions;
+  final DateTime? selectedDate;
+  final List<_HrAttendanceEmployeeMaster> employees;
+  final List<_HrAttendanceStoredRecord> storedRecords;
+  final List<_HrAttendanceImportLotLite> importLots;
+  final bool usesOperationalTruth;
+  final ValueChanged<String> onSelectPeriod;
+  final ValueChanged<DateTime> onSelectDate;
+  final Future<void> Function() onCreatePeriod;
+  final Future<void> Function(_HrAttendanceDailyDraft draft) onPersist;
+
+  const _HrAttendanceDailyGrid({
+    super.key,
+    required this.activePeriodLabel,
+    required this.periodOptions,
+    required this.selectedDate,
+    required this.employees,
+    required this.storedRecords,
+    required this.importLots,
+    required this.usesOperationalTruth,
+    required this.onSelectPeriod,
+    required this.onSelectDate,
+    required this.onCreatePeriod,
+    required this.onPersist,
+  });
+
+  @override
+  State<_HrAttendanceDailyGrid> createState() => _HrAttendanceDailyGridState();
+}
+
+class _HrAttendanceDailyGridState extends State<_HrAttendanceDailyGrid> {
+  static const int _columnCount = 11;
+  final FocusNode _gridFocusNode = FocusNode(debugLabel: 'hrAttendanceDaily');
+  final GridNavigationController _navigation = GridNavigationController();
+  final GridScrollVisibilityCoordinator _visibility =
+      GridScrollVisibilityCoordinator();
+  final ScrollController _verticalScroll = ScrollController();
+  final ScrollController _horizontalScroll = ScrollController();
+  final Map<String, _HrAttendanceDailyDraft> _drafts =
+      <String, _HrAttendanceDailyDraft>{};
+  final Map<String, TextEditingController> _controllers =
+      <String, TextEditingController>{};
+  final Map<String, FocusNode> _cellFocusNodes = <String, FocusNode>{};
+  final Map<String, Timer> _saveTimers = <String, Timer>{};
+  final Set<String> _savingDrafts = <String>{};
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _navigation.addListener(_handleGridNavigationChanged);
+    _hydrateDrafts();
+  }
+
+  @override
+  void didUpdateWidget(covariant _HrAttendanceDailyGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.activePeriodLabel != widget.activePeriodLabel ||
+        oldWidget.selectedDate != widget.selectedDate) {
+      _disposeEditors();
+      _drafts.clear();
+      _hydrateDrafts();
+    }
+  }
+
+  @override
+  void dispose() {
+    _gridFocusNode.dispose();
+    _navigation
+      ..removeListener(_handleGridNavigationChanged)
+      ..dispose();
+    _verticalScroll.dispose();
+    _horizontalScroll.dispose();
+    _disposeEditors();
+    super.dispose();
+  }
+
+  void _handleGridNavigationChanged() {
+    if (mounted) setState(() {});
+  }
+
+  void _disposeEditors() {
+    for (final timer in _saveTimers.values) {
+      timer.cancel();
+    }
+    _saveTimers.clear();
+    for (final controller in _controllers.values) {
+      controller.dispose();
+    }
+    _controllers.clear();
+    for (final node in _cellFocusNodes.values) {
+      node.dispose();
+    }
+    _cellFocusNodes.clear();
+  }
+
+  DateTimeRange? get _range =>
+      _extractDateRangeFromPeriodLabel(widget.activePeriodLabel);
+
+  List<_HrAttendanceDailyDraft> get _rows {
+    final rows = _drafts.values.toList(growable: false)
+      ..sort((left, right) {
+        final leftId = int.tryParse(left.employee.employeeId);
+        final rightId = int.tryParse(right.employee.employeeId);
+        if (leftId != null && rightId != null) return leftId.compareTo(rightId);
+        return left.employee.employeeId.compareTo(right.employee.employeeId);
+      });
+    return rows;
+  }
+
+  void _hydrateDrafts() {
+    final date = widget.selectedDate;
+    if (date == null || widget.activePeriodLabel.isEmpty) {
+      _navigation.configure(
+        insertColumnCount: 0,
+        gridColumnCount: _columnCount,
+        rowCount: 0,
+      );
+      return;
+    }
+    final dateLabel = _fmtAttendanceDateLabel(date);
+    final weekdayLabel = _hrWeekdayLabel(date.weekday);
+    final ngtecoLot = _attendanceLotForPeriod(
+      widget.importLots,
+      _HrAttendanceImportSource.ngteco,
+      widget.activePeriodLabel,
+    );
+    final entries = ngtecoLot == null
+        ? const <_HrAttendanceImportedEntry>[]
+        : _filterAttendanceEntriesToRange(
+            ngtecoLot.entries,
+            DateTimeRange(start: date, end: date),
+          );
+    final importsByEmployee = _groupAttendanceEntriesByEmployeeDay(entries);
+    for (final employee in widget.employees) {
+      final resolvedSchedule = _resolveAttendanceScheduleForPunchlessDay(
+        schedules: employee.workSchedules,
+        weekdayLabel: weekdayLabel,
+      );
+      final stored = _dailyStoredRecordFor(
+        records: widget.storedRecords,
+        periodLabel: widget.activePeriodLabel,
+        employeeId: employee.employeeId,
+        dateLabel: dateLabel,
+      );
+      // Daily capture is the operational sheet. Keep every active employee
+      // visible, even when Personal still lacks a schedule, so RH can resolve
+      // that case without waiting for NGTeco or a later configuration change.
+      final importKey = _attendanceEmployeeDayKey(
+        _normalizeAttendanceEmployeeId(employee.employeeId),
+        date,
+      );
+      final importedTimes =
+          (importsByEmployee[importKey] ?? const <_HrAttendanceImportedEntry>[])
+              .map(_parseAttendanceImportedDateTime)
+              .whereType<DateTime>()
+              .toList(growable: false)
+            ..sort();
+      // Semanal y Diario son dos vistas del mismo registro. Los datos ya
+      // capturados en Semanal se muestran como transición en Diario; desde
+      // aquí, cualquier ajuste de RH se guarda con origen Diario.
+      final storedDraft = stored;
+      final scheduleOptions = employee.workSchedules
+          .where((item) => _parseAttendanceSchedule(item.horario) != null)
+          .toList(growable: false);
+      final storedSchedule = storedDraft?.selectedSchedule.trim() ?? '';
+      final selectedOption =
+          _attendanceWorkScheduleForValue(scheduleOptions, storedSchedule) ??
+          _attendanceWorkScheduleMatching(
+            scheduleOptions,
+            resolvedSchedule?.schedule,
+          );
+      final activeSchedule = selectedOption == null
+          ? (_parseAttendanceSchedule(storedSchedule) ??
+                resolvedSchedule?.schedule)
+          : _parseAttendanceSchedule(selectedOption.horario);
+      final expectedTimes = _attendanceExpectedTimes(activeSchedule);
+      _drafts[employee.employeeId] = _HrAttendanceDailyDraft(
+        employee: employee,
+        date: date,
+        schedule: activeSchedule,
+        scheduleOptions: scheduleOptions,
+        selectedSchedule: selectedOption?.horario ?? storedSchedule,
+        status: storedDraft?.status ?? _HrAttendanceStatus.pendiente,
+        // The new daily sheet starts from Personal's expected schedule. A
+        // stored RH capture always wins, including intentionally blank cells.
+        entry: storedDraft?.firstPunch ?? expectedTimes[0],
+        lunchExit: storedDraft == null
+            ? expectedTimes[1]
+            : _manualPunchTimelineValue(
+                storedDraft.punchTimeline,
+                'Salida comida',
+              ),
+        lunchEntry: storedDraft == null
+            ? expectedTimes[2]
+            : _manualPunchTimelineValue(
+                storedDraft.punchTimeline,
+                'Entrada comida',
+              ),
+        exit: storedDraft?.lastPunch ?? expectedTimes[3],
+        notes: storedDraft?.notes ?? '',
+        ngtecoTimes: importedTimes
+            .map(_fmtAttendanceTime)
+            .toList(growable: false),
+      )..recalculate();
+    }
+    _navigation.configure(
+      insertColumnCount: 0,
+      gridColumnCount: _columnCount,
+      rowCount: _drafts.length,
+    );
+    if (_drafts.isNotEmpty) {
+      _navigation.focusGridCell(rowIndex: 0, columnIndex: 4);
+    }
+  }
+
+  TextEditingController _controllerFor(
+    _HrAttendanceDailyDraft draft,
+    String field,
+  ) {
+    final key = '${draft.id}:$field';
+    return _controllers.putIfAbsent(
+      key,
+      () => TextEditingController(text: draft.valueFor(field)),
+    );
+  }
+
+  FocusNode _focusFor(_HrAttendanceDailyDraft draft, int columnIndex) {
+    final key = '${draft.id}:$columnIndex';
+    return _cellFocusNodes.putIfAbsent(
+      key,
+      () => FocusNode(
+        debugLabel: 'hrAttendanceDaily:${draft.id}:$columnIndex',
+        onKeyEvent: (_, event) => _handleTimeCellKey(
+          draftId: draft.id,
+          columnIndex: columnIndex,
+          event: event,
+        ),
+      ),
+    );
+  }
+
+  KeyEventResult _handleTimeCellKey({
+    required String draftId,
+    required int columnIndex,
+    required KeyEvent event,
+  }) {
+    if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+      return KeyEventResult.ignored;
+    }
+
+    final field = _dailyTimeFieldForColumn(columnIndex);
+    final controller = field == null ? null : _controllers['$draftId:$field'];
+    final rowIndex = _rows.indexWhere((draft) => draft.id == draftId);
+    if (controller == null || rowIndex < 0) return KeyEventResult.ignored;
+
+    final key = event.logicalKey;
+    final selection = controller.selection;
+    final hasSelection = !selection.isCollapsed;
+    final caretOffset = selection.extentOffset;
+
+    if (key == LogicalKeyboardKey.arrowUp) {
+      if (rowIndex == 0) return KeyEventResult.ignored;
+      _moveToCell(rowIndex - 1, columnIndex);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowDown) {
+      if (rowIndex == _rows.length - 1) return KeyEventResult.ignored;
+      _moveToCell(rowIndex + 1, columnIndex);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowLeft &&
+        !hasSelection &&
+        caretOffset <= 0) {
+      _moveToCell(rowIndex, columnIndex - 1);
+      return KeyEventResult.handled;
+    }
+    if (key == LogicalKeyboardKey.arrowRight &&
+        !hasSelection &&
+        caretOffset >= controller.text.length) {
+      _moveToCell(rowIndex, columnIndex + 1);
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  void _updateTime(_HrAttendanceDailyDraft draft, String field, String raw) {
+    draft.setValue(field, raw);
+    if (draft.entry.trim().isNotEmpty || draft.exit.trim().isNotEmpty) {
+      draft.status = _HrAttendanceStatus.laboro;
+    } else if (draft.status == _HrAttendanceStatus.laboro) {
+      draft.status = _HrAttendanceStatus.pendiente;
+    }
+    draft.recalculate();
+    setState(() {});
+    _schedulePersist(draft);
+  }
+
+  void _updateStatus(_HrAttendanceDailyDraft draft, _HrAttendanceStatus value) {
+    draft.status = value;
+    draft.recalculate();
+    setState(() {});
+    _schedulePersist(draft, immediate: true);
+  }
+
+  void _selectSchedule(_HrAttendanceDailyDraft draft, int index) {
+    if (!draft.selectScheduleAt(index)) return;
+    for (final field in const <String>[
+      'entry',
+      'lunchExit',
+      'lunchEntry',
+      'exit',
+    ]) {
+      final controller = _controllers['${draft.id}:$field'];
+      if (controller == null) continue;
+      final value = draft.valueFor(field);
+      controller.value = TextEditingValue(
+        text: value,
+        selection: TextSelection.collapsed(offset: value.length),
+      );
+    }
+    setState(() {});
+    _schedulePersist(draft, immediate: true);
+  }
+
+  void _schedulePersist(
+    _HrAttendanceDailyDraft draft, {
+    bool immediate = false,
+  }) {
+    final previous = _saveTimers.remove(draft.id);
+    previous?.cancel();
+    if (!_isDraftReadyToPersist(draft)) return;
+    if (immediate) {
+      unawaited(_persist(draft));
+      return;
+    }
+    _saveTimers[draft.id] = Timer(
+      const Duration(milliseconds: 550),
+      () => unawaited(_persist(draft)),
+    );
+  }
+
+  bool _isDraftReadyToPersist(_HrAttendanceDailyDraft draft) =>
+      _isValidAttendanceTimeOrEmpty(draft.entry) &&
+      _isValidAttendanceTimeOrEmpty(draft.lunchExit) &&
+      _isValidAttendanceTimeOrEmpty(draft.lunchEntry) &&
+      _isValidAttendanceTimeOrEmpty(draft.exit);
+
+  Future<void> _persist(_HrAttendanceDailyDraft draft) async {
+    if (!_isDraftReadyToPersist(draft)) return;
+    setState(() {
+      _savingDrafts.add(draft.id);
+      _error = null;
+    });
+    try {
+      draft.normalizeTimes();
+      for (final field in const <String>[
+        'entry',
+        'lunchExit',
+        'lunchEntry',
+        'exit',
+      ]) {
+        final controller = _controllers['${draft.id}:$field'];
+        final normalized = draft.valueFor(field);
+        if (controller != null && controller.text != normalized) {
+          controller.value = TextEditingValue(
+            text: normalized,
+            selection: TextSelection.collapsed(offset: normalized.length),
+          );
+        }
+      }
+      draft.recalculate();
+      await widget.onPersist(draft);
+    } catch (_) {
+      _error =
+          'No se pudo guardar una celda. Verifica tu conexión e inténtalo de nuevo.';
+    } finally {
+      if (mounted) setState(() => _savingDrafts.remove(draft.id));
+    }
+  }
+
+  void _moveToCell(int rowIndex, int columnIndex) {
+    final rows = _rows;
+    if (rows.isEmpty) return;
+    final nextRow = rowIndex.clamp(0, rows.length - 1);
+    final nextColumn = columnIndex.clamp(0, _columnCount - 1);
+    _navigation.focusGridCell(rowIndex: nextRow, columnIndex: nextColumn);
+    unawaited(_visibility.ensureGridRowVisible(nextRow, alignment: 0.35));
+    final editableColumns = <int>{4, 5, 6, 7};
+    if (editableColumns.contains(nextColumn)) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final field = _dailyTimeFieldForColumn(nextColumn);
+        if (field == null) return;
+        _focusFor(rows[nextRow], nextColumn).requestFocus();
+        final controller = _controllerFor(rows[nextRow], field);
+        controller.selection = TextSelection.collapsed(
+          offset: controller.text.length,
+        );
+      });
+    } else {
+      _gridFocusNode.requestFocus();
+    }
+  }
+
+  Future<void> _pickDate() async {
+    final range = _range;
+    if (range == null) return;
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: widget.selectedDate ?? range.start,
+      firstDate: range.start,
+      lastDate: range.end,
+    );
+    if (picked != null) widget.onSelectDate(picked);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final date = widget.selectedDate;
+    final rows = _rows;
+    return ContractGlassCard(
+      padding: EdgeInsets.zero,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const Text(
+              'Asistencia diaria',
+              style: TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w900,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(height: 4),
+            const Text(
+              'Captura RH es la verdad operativa. NGTeco sólo se muestra para validar diferencias y nunca sobreescribe esta hoja.',
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFFD7C6F5),
+              ),
+            ),
+            const SizedBox(height: 12),
+            AppGlassToolbarPanel(
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  HumanResourcesPeriodSelector(
+                    selectedLabel: widget.activePeriodLabel,
+                    options: widget.periodOptions,
+                    onSelected: widget.onSelectPeriod,
+                  ),
+                  FilledButton.icon(
+                    style: contractPrimaryButtonStyle(context),
+                    onPressed: widget.onCreatePeriod,
+                    icon: const Icon(Icons.add_circle_outline_rounded),
+                    label: const Text('Crear periodo'),
+                  ),
+                  OutlinedButton.icon(
+                    style: contractSecondaryButtonStyle(context),
+                    onPressed: date == null ? null : _pickDate,
+                    icon: const Icon(Icons.today_rounded),
+                    label: Text(
+                      date == null
+                          ? 'Elige un periodo'
+                          : _fmtAttendanceDateLabel(date),
+                    ),
+                  ),
+                  if (date != null)
+                    _HrAttendanceDailySaveState(
+                      saving: _savingDrafts.isNotEmpty,
+                      operational: widget.usesOperationalTruth,
+                    ),
+                ],
+              ),
+            ),
+            if (_error != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _error!,
+                style: const TextStyle(
+                  color: Color(0xFFFFCCCB),
+                  fontWeight: FontWeight.w800,
+                ),
+              ),
+            ],
+            const SizedBox(height: 10),
+            Expanded(
+              child: date == null
+                  ? const _HrAttendanceDailyEmptyState()
+                  : GridKeyboardShell(
+                      navigationController: _navigation,
+                      focusNode: _gridFocusNode,
+                      isEditingText: () =>
+                          _cellFocusNodes.values.any((node) => node.hasFocus),
+                      onNavigated: (position) =>
+                          _moveToCell(position.rowIndex, position.columnIndex),
+                      child: _HrAttendanceDailySheet(
+                        rows: rows,
+                        navigation: _navigation,
+                        visibility: _visibility,
+                        verticalScroll: _verticalScroll,
+                        horizontalScroll: _horizontalScroll,
+                        controllerFor: _controllerFor,
+                        focusFor: _focusFor,
+                        onUpdateTime: _updateTime,
+                        onUpdateStatus: _updateStatus,
+                        onSelectSchedule: _selectSchedule,
+                        onMoveToCell: _moveToCell,
+                      ),
+                    ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String? _dailyTimeFieldForColumn(int columnIndex) => switch (columnIndex) {
+  4 => 'entry',
+  5 => 'lunchExit',
+  6 => 'lunchEntry',
+  7 => 'exit',
+  _ => null,
+};
+
+class _HrAttendanceDailySaveState extends StatelessWidget {
+  final bool saving;
+  final bool operational;
+  const _HrAttendanceDailySaveState({
+    required this.saving,
+    required this.operational,
+  });
+
+  @override
+  Widget build(BuildContext context) => Container(
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+    decoration: BoxDecoration(
+      color: const Color(0xFFEFE3FF),
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: const Color(0xFFB794FF)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(
+          saving ? Icons.sync_rounded : Icons.cloud_done_rounded,
+          size: 17,
+          color: const Color(0xFF5B3291),
+        ),
+        const SizedBox(width: 7),
+        Text(
+          saving
+              ? 'Guardando...'
+              : operational
+              ? 'Captura RH activa'
+              : 'Autoguardado activo',
+          style: const TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w900,
+            color: Color(0xFF2B1946),
+          ),
+        ),
+      ],
+    ),
+  );
+}
+
+class _HrAttendanceDailyEmptyState extends StatelessWidget {
+  const _HrAttendanceDailyEmptyState();
+  @override
+  Widget build(BuildContext context) => const Center(
+    child: Text(
+      'Crea o selecciona un periodo para abrir la captura diaria.',
+      style: TextStyle(color: Colors.white, fontWeight: FontWeight.w800),
+    ),
+  );
+}
+
+class _HrAttendanceDailySheet extends StatelessWidget {
+  final List<_HrAttendanceDailyDraft> rows;
+  final GridNavigationController navigation;
+  final GridScrollVisibilityCoordinator visibility;
+  final ScrollController verticalScroll;
+  final ScrollController horizontalScroll;
+  final TextEditingController Function(_HrAttendanceDailyDraft, String)
+  controllerFor;
+  final FocusNode Function(_HrAttendanceDailyDraft, int) focusFor;
+  final void Function(_HrAttendanceDailyDraft, String, String) onUpdateTime;
+  final void Function(_HrAttendanceDailyDraft, _HrAttendanceStatus)
+  onUpdateStatus;
+  final void Function(_HrAttendanceDailyDraft, int) onSelectSchedule;
+  final void Function(int, int) onMoveToCell;
+
+  const _HrAttendanceDailySheet({
+    required this.rows,
+    required this.navigation,
+    required this.visibility,
+    required this.verticalScroll,
+    required this.horizontalScroll,
+    required this.controllerFor,
+    required this.focusFor,
+    required this.onUpdateTime,
+    required this.onUpdateStatus,
+    required this.onSelectSchedule,
+    required this.onMoveToCell,
+  });
+
+  static const List<double> _widths = <double>[
+    110,
+    72,
+    280,
+    220,
+    114,
+    126,
+    130,
+    114,
+    108,
+    108,
+    138,
+  ];
+  static const List<String> _headers = <String>[
+    'FECHA',
+    'ID',
+    'NOMBRE',
+    'JORNADA',
+    'ENTRADA',
+    'SALIDA COMIDA',
+    'ENTRADA COMIDA',
+    'SALIDA',
+    'RETARDO',
+    'EXTRA',
+    'ESTATUS',
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    final minWidth = _widths.fold<double>(0, (sum, width) => sum + width) + 72;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xDDF0E7FF),
+        borderRadius: BorderRadius.circular(22),
+        border: Border.all(color: const Color(0x66B084FF)),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(22),
+        child: Scrollbar(
+          controller: horizontalScroll,
+          child: SingleChildScrollView(
+            controller: horizontalScroll,
+            scrollDirection: Axis.horizontal,
+            child: SizedBox(
+              width: math.max(minWidth, MediaQuery.sizeOf(context).width - 130),
+              child: Column(
+                children: [
+                  _header(),
+                  Expanded(
+                    child: Scrollbar(
+                      controller: verticalScroll,
+                      child: ListView.builder(
+                        controller: verticalScroll,
+                        itemCount: rows.length,
+                        itemBuilder: (context, index) =>
+                            _row(context, rows[index], index),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _header() => Container(
+    color: const Color(0xFFF1E9FF),
+    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+    child: Row(
+      children: [
+        for (var index = 0; index < _headers.length; index++)
+          SizedBox(
+            width: _widths[index],
+            child: Text(
+              _headers[index],
+              textAlign: index < 4 ? TextAlign.left : TextAlign.center,
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF24103D),
+              ),
+            ),
+          ),
+      ],
+    ),
+  );
+
+  Widget _row(BuildContext context, _HrAttendanceDailyDraft draft, int index) {
+    final activeRow =
+        navigation.active.zone == GridNavigationZone.grid &&
+        navigation.active.rowIndex == index;
+    return Container(
+      decoration: BoxDecoration(
+        color: activeRow
+            ? const Color(0xFF9F6BFF).withValues(alpha: 0.17)
+            : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: const Color(0xFFB68CFF).withValues(alpha: 0.25),
+          ),
+        ),
+      ),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      child: Row(
+        children: [
+          _readonly(
+            _fmtAttendanceDateLabel(draft.date),
+            0,
+            draft,
+            index,
+            centered: true,
+          ),
+          _readonly(draft.employee.employeeId, 1, draft, index, centered: true),
+          _readonly(draft.employee.displayName, 2, draft, index),
+          _scheduleCell(draft, index),
+          _timeCell(context, draft, index, 'entry', 4),
+          _timeCell(context, draft, index, 'lunchExit', 5),
+          _timeCell(context, draft, index, 'lunchEntry', 6),
+          _timeCell(context, draft, index, 'exit', 7),
+          _readonly(
+            _formatAttendanceMinutesAsHourRatio(draft.lateMinutes),
+            8,
+            draft,
+            index,
+            centered: true,
+            accent: draft.lateMinutes > 0,
+          ),
+          _readonly(
+            _formatAttendanceMinutesAsHourRatio(draft.overtimeMinutes),
+            9,
+            draft,
+            index,
+            centered: true,
+            accent: draft.overtimeMinutes > 0,
+          ),
+          SizedBox(width: _widths[10], child: _statusCell(draft, index)),
+        ],
+      ),
+    );
+  }
+
+  Widget _readonly(
+    String value,
+    int column,
+    _HrAttendanceDailyDraft draft,
+    int row, {
+    bool centered = false,
+    bool accent = false,
+  }) => SizedBox(
+    width: _widths[column],
+    child: InkWell(
+      key: visibility.keyForCell(
+        zone: GridNavigationZone.grid,
+        rowIndex: row,
+        columnIndex: column,
+      ),
+      onTap: () => onMoveToCell(row, column),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 11),
+        child: Text(
+          value.isEmpty ? '—' : value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: centered ? TextAlign.center : TextAlign.left,
+          style: TextStyle(
+            fontSize: 12.3,
+            fontWeight: FontWeight.w800,
+            color: accent ? const Color(0xFF7340B3) : const Color(0xFF24103D),
+          ),
+        ),
+      ),
+    ),
+  );
+
+  Widget _scheduleCell(_HrAttendanceDailyDraft draft, int row) => SizedBox(
+    key: visibility.keyForCell(
+      zone: GridNavigationZone.grid,
+      rowIndex: row,
+      columnIndex: 3,
+    ),
+    width: _widths[3],
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 7),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (draft.scheduleOptions.length > 1)
+            DropdownButtonFormField<int>(
+              key: ValueKey('${draft.id}:${draft.selectedSchedule}'),
+              initialValue: draft.selectedScheduleIndex,
+              isExpanded: true,
+              onChanged: (value) {
+                if (value != null) onSelectSchedule(draft, value);
+              },
+              decoration: InputDecoration(
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 7,
+                ),
+                filled: true,
+                fillColor: const Color(0xFFFBF8FF),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFFD7C3FF)),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(color: Color(0xFFD7C3FF)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(10),
+                  borderSide: const BorderSide(
+                    color: Color(0xFF8B59E7),
+                    width: 1.6,
+                  ),
+                ),
+              ),
+              hint: Text(
+                draft.scheduleLabel,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFF24103D),
+                ),
+              ),
+              items: [
+                for (
+                  var index = 0;
+                  index < draft.scheduleOptions.length;
+                  index += 1
+                )
+                  DropdownMenuItem<int>(
+                    value: index,
+                    child: Text(
+                      'Jornada ${index + 1} · '
+                      '${draft.scheduleOptions[index].horario}',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+              ],
+              style: const TextStyle(
+                fontSize: 11.5,
+                fontWeight: FontWeight.w800,
+                color: Color(0xFF24103D),
+              ),
+            )
+          else
+            InkWell(
+              onTap: () => onMoveToCell(row, 3),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(vertical: 7),
+                child: Text(
+                  draft.scheduleLabel,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12.3,
+                    fontWeight: FontWeight.w800,
+                    color: Color(0xFF24103D),
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(height: 2),
+          Text(
+            draft.ngtecoTimes.isEmpty
+                ? 'NGTeco: sin lectura'
+                : 'NGTeco: ${draft.ngtecoTimes.join(' · ')}',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              fontSize: 10.5,
+              fontWeight: FontWeight.w700,
+              color: Color(0xFF765AA8),
+            ),
+          ),
+        ],
+      ),
+    ),
+  );
+
+  Widget _timeCell(
+    BuildContext context,
+    _HrAttendanceDailyDraft draft,
+    int row,
+    String field,
+    int column,
+  ) {
+    final controller = controllerFor(draft, field);
+    final focus = focusFor(draft, column);
+    return SizedBox(
+      width: _widths[column],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 5),
+        child: Shortcuts(
+          // GridKeyboardShell owns these keys outside an editor. Override the
+          // editing keys locally so a desktop TextField keeps native cursor
+          // movement and deletion while the user captures a punch.
+          shortcuts: const <ShortcutActivator, Intent>{
+            SingleActivator(LogicalKeyboardKey.backspace):
+                DeleteCharacterIntent(forward: false),
+            SingleActivator(LogicalKeyboardKey.delete): DeleteCharacterIntent(
+              forward: true,
+            ),
+            SingleActivator(
+              LogicalKeyboardKey.arrowLeft,
+            ): ExtendSelectionByCharacterIntent(
+              forward: false,
+              collapseSelection: true,
+            ),
+            SingleActivator(
+              LogicalKeyboardKey.arrowRight,
+            ): ExtendSelectionByCharacterIntent(
+              forward: true,
+              collapseSelection: true,
+            ),
+          },
+          child: TextField(
+            key: visibility.keyForCell(
+              zone: GridNavigationZone.grid,
+              rowIndex: row,
+              columnIndex: column,
+            ),
+            controller: controller,
+            focusNode: focus,
+            // macOS selects all text in a single-line input by default. A
+            // time cell behaves more like a spreadsheet: enter at the end,
+            // then let RH move through the digits with the arrow keys.
+            selectAllOnFocus: false,
+            textAlign: TextAlign.center,
+            keyboardType: TextInputType.datetime,
+            inputFormatters: [
+              FilteringTextInputFormatter.allow(RegExp(r'[0-9:]')),
+            ],
+            onTap: () => onMoveToCell(row, column),
+            onChanged: (value) => onUpdateTime(draft, field, value),
+            onSubmitted: (_) =>
+                onMoveToCell(row, column == 7 ? 10 : column + 1),
+            decoration: InputDecoration(
+              hintText: 'HH:MM',
+              hintStyle: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF9D84BB),
+              ),
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(
+                horizontal: 8,
+                vertical: 10,
+              ),
+              filled: true,
+              fillColor: const Color(0xFFFBF8FF),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFD7C3FF)),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(color: Color(0xFFD7C3FF)),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(10),
+                borderSide: const BorderSide(
+                  color: Color(0xFF8B59E7),
+                  width: 1.6,
+                ),
+              ),
+            ),
+            style: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              color: Color(0xFF24103D),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _statusCell(_HrAttendanceDailyDraft draft, int row) => InkWell(
+    key: visibility.keyForCell(
+      zone: GridNavigationZone.grid,
+      rowIndex: row,
+      columnIndex: 10,
+    ),
+    onTap: () => onMoveToCell(row, 10),
+    child: Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 5),
+      child: DropdownButtonFormField<_HrAttendanceStatus>(
+        initialValue: draft.status,
+        isExpanded: true,
+        onChanged: (value) {
+          if (value != null) onUpdateStatus(draft, value);
+        },
+        items: _HrAttendanceStatus.values
+            .map(
+              (status) => DropdownMenuItem(
+                value: status,
+                child: Text(status.label, overflow: TextOverflow.ellipsis),
+              ),
+            )
+            .toList(growable: false),
+        decoration: InputDecoration(
+          isDense: true,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 9,
+            vertical: 9,
+          ),
+          filled: true,
+          fillColor: _dailyStatusColor(draft.status),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFD7C3FF)),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(10),
+            borderSide: const BorderSide(color: Color(0xFFD7C3FF)),
+          ),
+        ),
+        style: const TextStyle(
+          fontSize: 12.2,
+          fontWeight: FontWeight.w900,
+          color: Color(0xFF24103D),
+        ),
+      ),
+    ),
+  );
 }
 
 class _HrAttendanceWorkspace extends StatelessWidget {
@@ -2627,6 +3986,7 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
         if (day.status == nextStatus) continue;
         day.status = nextStatus;
         day.sourceMode = 'ajuste';
+        day.captureOrigin = 'weekly';
         if (nextStatus == _HrAttendanceStatus.laboro) {
           if (day.firstPunch.trim().isEmpty) {
             day.firstPunch = day.scheduledStart;
@@ -2730,6 +4090,7 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
           }
         }
         day.sourceMode = 'ajuste';
+        day.captureOrigin = 'weekly';
         _recalculateAttendanceDraftMetrics(day);
       }
       controller.text = _formatAttendanceHoursInput(totalMinutes);
@@ -2804,7 +4165,7 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
     return focusedWidget is EditableText;
   }
 
-  void _applySelectedScheduleToDays() {
+  void _applySelectedScheduleToDays({bool markAsWeeklyEdit = false}) {
     final overrideSchedule =
         _selectedWorkScheduleIndex != null &&
             _selectedWorkScheduleIndex! >= 0 &&
@@ -2826,6 +4187,7 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
         day.scheduledEnd = day.originalScheduledEnd;
         day.effectiveWorkMinutes = day.originalEffectiveWorkMinutes;
       }
+      if (markAsWeeklyEdit) day.captureOrigin = 'weekly';
       _recalculateAttendanceDraftMetrics(day);
     }
   }
@@ -3032,7 +4394,9 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
                                         _selectedWorkScheduleIndex == null,
                                     onTap: () => setState(() {
                                       _selectedWorkScheduleIndex = null;
-                                      _applySelectedScheduleToDays();
+                                      _applySelectedScheduleToDays(
+                                        markAsWeeklyEdit: true,
+                                      );
                                     }),
                                   ),
                                 if (widget.row.workSchedules.length > 1)
@@ -3054,7 +4418,9 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
                                     onTap: () => setState(() {
                                       _selectedWorkScheduleIndex =
                                           scheduleIndex;
-                                      _applySelectedScheduleToDays();
+                                      _applySelectedScheduleToDays(
+                                        markAsWeeklyEdit: true,
+                                      );
                                     }),
                                   ),
                                   if (scheduleIndex !=
@@ -3633,7 +4999,18 @@ class _HrAttendanceDayCard extends StatelessWidget {
                         ),
                         if (draft.punchTimeline.isNotEmpty)
                           _HrAttendanceDialogPill(
-                            label: draft.punchTimeline.join(' · '),
+                            label: draft.sourceMode == 'importado'
+                                ? draft.punchTimeline.join(' · ')
+                                : 'RH: ${draft.punchTimeline.join(' · ')}',
+                          ),
+                        if (draft.ngtecoReferenceTimeline.isNotEmpty &&
+                            !_listEquals(
+                              draft.punchTimeline,
+                              draft.ngtecoReferenceTimeline,
+                            ))
+                          _HrAttendanceDialogPill(
+                            label:
+                                'NGTeco: ${draft.ngtecoReferenceTimeline.join(' · ')}',
                           ),
                       ],
                     ),
@@ -3761,7 +5138,12 @@ class _HrAttendanceDayCard extends StatelessWidget {
               decoration: _hrAttendanceFieldDecoration(),
               minLines: 2,
               maxLines: 4,
-              onChanged: (value) => draft.notes = value,
+              onChanged: (value) {
+                if (draft.notes == value) return;
+                draft.notes = value;
+                _markAttendanceDraftAsUserAdjustment(draft);
+                onChanged();
+              },
             ),
           ),
         ],
@@ -4165,6 +5547,7 @@ enum _HrAttendanceImportSource {
 }
 
 enum _HrAttendanceStatus {
+  pendiente('Pendiente'),
   laboro('Laboró'),
   falto('Faltó'),
   noAplica('No aplica');
@@ -4173,6 +5556,7 @@ enum _HrAttendanceStatus {
   const _HrAttendanceStatus(this.label);
 
   String get databaseValue => switch (this) {
+    _HrAttendanceStatus.pendiente => 'pendiente',
     _HrAttendanceStatus.laboro => 'laboro',
     _HrAttendanceStatus.falto => 'falto',
     _HrAttendanceStatus.noAplica => 'no_aplica',
@@ -4180,10 +5564,11 @@ enum _HrAttendanceStatus {
 
   static _HrAttendanceStatus fromDatabaseValue(String raw) {
     return switch (raw.trim()) {
+      'pendiente' => _HrAttendanceStatus.pendiente,
       'laboro' => _HrAttendanceStatus.laboro,
       'falto' => _HrAttendanceStatus.falto,
       'no_aplica' || 'noAplica' => _HrAttendanceStatus.noAplica,
-      _ => _HrAttendanceStatus.noAplica,
+      _ => _HrAttendanceStatus.pendiente,
     };
   }
 }
@@ -4208,6 +5593,416 @@ class _HrAttendanceEmployeeMaster {
     required this.fechaIngreso,
     required this.salario,
   });
+}
+
+class _HrAttendanceOperationalPeriod {
+  final String periodLabel;
+  final int? periodNumber;
+  final DateTime startDate;
+  final DateTime endDate;
+
+  const _HrAttendanceOperationalPeriod({
+    required this.periodLabel,
+    required this.periodNumber,
+    required this.startDate,
+    required this.endDate,
+  });
+
+  static _HrAttendanceOperationalPeriod fromRow(Map<String, dynamic> row) {
+    final start =
+        _parseAttendanceDateLabel((row['start_date'] ?? '').toString()) ??
+        DateTime.now();
+    final end =
+        _parseAttendanceDateLabel((row['end_date'] ?? '').toString()) ??
+        start.add(const Duration(days: 6));
+    return _HrAttendanceOperationalPeriod(
+      periodLabel: (row['period_label'] ?? '').toString(),
+      periodNumber: _asNullableInt(row['period_number']),
+      startDate: start,
+      endDate: end,
+    );
+  }
+}
+
+class _HrAttendanceOperationalPeriodDraft {
+  final int periodNumber;
+  final DateTime startDate;
+  final DateTime endDate;
+
+  const _HrAttendanceOperationalPeriodDraft({
+    required this.periodNumber,
+    required this.startDate,
+    required this.endDate,
+  });
+
+  String get periodLabel => _formatOperationalAttendancePeriodLabel(
+    periodNumber: periodNumber,
+    startDate: startDate,
+    endDate: endDate,
+  );
+
+  Map<String, dynamic> toRow() => <String, dynamic>{
+    'period_label': periodLabel,
+    'period_number': periodNumber,
+    'start_date': _formatAttendanceDatabaseDate(startDate),
+    'end_date': _formatAttendanceDatabaseDate(endDate),
+  };
+}
+
+class _HrAttendanceCreatePeriodDialog extends StatefulWidget {
+  const _HrAttendanceCreatePeriodDialog();
+
+  @override
+  State<_HrAttendanceCreatePeriodDialog> createState() =>
+      _HrAttendanceCreatePeriodDialogState();
+}
+
+class _HrAttendanceCreatePeriodDialogState
+    extends State<_HrAttendanceCreatePeriodDialog> {
+  late final TextEditingController _periodController;
+  late DateTime _startDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _periodController = TextEditingController();
+    final today = DateTime.now();
+    _startDate = DateTime(today.year, today.month, today.day);
+  }
+
+  @override
+  void dispose() {
+    _periodController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _pickStartDate() async {
+    final selected = await showDatePicker(
+      context: context,
+      initialDate: _startDate,
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2100),
+    );
+    if (selected == null || !mounted) return;
+    setState(() => _startDate = selected);
+  }
+
+  void _submit() {
+    final periodNumber = int.tryParse(_periodController.text.trim());
+    if (periodNumber == null || periodNumber <= 0) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Escribe un número de periodo válido.')),
+      );
+      return;
+    }
+    Navigator.of(context).pop(
+      _HrAttendanceOperationalPeriodDraft(
+        periodNumber: periodNumber,
+        startDate: _startDate,
+        endDate: _startDate.add(const Duration(days: 6)),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final endDate = _startDate.add(const Duration(days: 6));
+    return ContractDialogShell(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+      child: Container(
+        width: 480,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF7F1FF),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: const Color(0xFFCEB3FF)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            HumanResourcesCompactDialogHeader(
+              title: 'Crear periodo diario',
+              contextLabel:
+                  'La captura diaria funciona antes de importar NGTeco o CONTPAQ.',
+              onClose: () => Navigator.of(context).pop(),
+            ),
+            const SizedBox(height: 18),
+            const Text(
+              'Periodo semanal',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF5F3AA2),
+              ),
+            ),
+            const SizedBox(height: 6),
+            TextField(
+              controller: _periodController,
+              autofocus: true,
+              keyboardType: TextInputType.number,
+              inputFormatters: <TextInputFormatter>[
+                FilteringTextInputFormatter.digitsOnly,
+              ],
+              onSubmitted: (_) => _submit(),
+              decoration: _hrAttendanceFieldDecoration().copyWith(
+                hintText: 'Ej. 35',
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Inicio de semana',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w900,
+                color: Color(0xFF5F3AA2),
+              ),
+            ),
+            const SizedBox(height: 6),
+            OutlinedButton.icon(
+              style: contractSecondaryButtonStyle(context),
+              onPressed: _pickStartDate,
+              icon: const Icon(Icons.calendar_month_rounded),
+              label: Text(_fmtAttendanceDateLabel(_startDate)),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'El periodo cerrará el ${_fmtAttendanceDateLabel(endDate)}.',
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+                color: Color(0xFF7454A6),
+              ),
+            ),
+            const SizedBox(height: 22),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                OutlinedButton(
+                  style: contractSecondaryButtonStyle(context),
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                const SizedBox(width: 10),
+                FilledButton.icon(
+                  style: contractPrimaryButtonStyle(context),
+                  onPressed: _submit,
+                  icon: const Icon(Icons.add_rounded),
+                  label: const Text('Crear periodo'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _HrAttendanceDailyDraft {
+  final _HrAttendanceEmployeeMaster employee;
+  final DateTime date;
+  final List<_HrAttendanceWorkSchedule> scheduleOptions;
+  _HrAttendanceScheduleDraft? schedule;
+  String selectedSchedule;
+  String entry;
+  String lunchExit;
+  String lunchEntry;
+  String exit;
+  String notes;
+  final List<String> ngtecoTimes;
+  _HrAttendanceStatus status;
+  int lateMinutes = 0;
+  int overtimeMinutes = 0;
+
+  _HrAttendanceDailyDraft({
+    required this.employee,
+    required this.date,
+    required this.schedule,
+    required this.scheduleOptions,
+    this.selectedSchedule = '',
+    required this.status,
+    required this.entry,
+    required this.lunchExit,
+    required this.lunchEntry,
+    required this.exit,
+    required this.notes,
+    required this.ngtecoTimes,
+  });
+
+  String get id => '${employee.employeeId}|${_fmtAttendanceDateLabel(date)}';
+
+  int? get selectedScheduleIndex {
+    final index = scheduleOptions.indexWhere(
+      (item) => item.horario == selectedSchedule,
+    );
+    return index < 0 ? null : index;
+  }
+
+  String get scheduleLabel {
+    final value = schedule;
+    if (value == null) return 'Jornada pendiente';
+    final lunch = value.lunchStart == null || value.lunchEnd == null
+        ? ''
+        : ' | comida ${_fmtTimeOfDay(value.lunchStart!)} - ${_fmtTimeOfDay(value.lunchEnd!)}';
+    return '${_fmtTimeOfDay(value.start)} - ${_fmtTimeOfDay(value.end)}$lunch';
+  }
+
+  List<String> get manualTimeline => <String>[
+    if (entry.trim().isNotEmpty) 'Entrada ${entry.trim()}',
+    if (lunchExit.trim().isNotEmpty) 'Salida comida ${lunchExit.trim()}',
+    if (lunchEntry.trim().isNotEmpty) 'Entrada comida ${lunchEntry.trim()}',
+    if (exit.trim().isNotEmpty) 'Salida ${exit.trim()}',
+  ];
+
+  String valueFor(String field) => switch (field) {
+    'entry' => entry,
+    'lunchExit' => lunchExit,
+    'lunchEntry' => lunchEntry,
+    'exit' => exit,
+    _ => '',
+  };
+
+  void setValue(String field, String value) {
+    switch (field) {
+      case 'entry':
+        entry = value;
+      case 'lunchExit':
+        lunchExit = value;
+      case 'lunchEntry':
+        lunchEntry = value;
+      case 'exit':
+        exit = value;
+    }
+  }
+
+  bool selectScheduleAt(int index) {
+    if (index < 0 || index >= scheduleOptions.length) return false;
+    final selected = scheduleOptions[index];
+    final nextSchedule = _parseAttendanceSchedule(selected.horario);
+    if (nextSchedule == null) return false;
+    final previousExpected = _attendanceExpectedTimes(schedule);
+    final nextExpected = _attendanceExpectedTimes(nextSchedule);
+    schedule = nextSchedule;
+    selectedSchedule = selected.horario;
+
+    if (_attendanceTimeIsDerived(entry, previousExpected[0])) {
+      entry = nextExpected[0];
+    }
+    if (_attendanceTimeIsDerived(lunchExit, previousExpected[1])) {
+      lunchExit = nextExpected[1];
+    }
+    if (_attendanceTimeIsDerived(lunchEntry, previousExpected[2])) {
+      lunchEntry = nextExpected[2];
+    }
+    if (_attendanceTimeIsDerived(exit, previousExpected[3])) {
+      exit = nextExpected[3];
+    }
+    recalculate();
+    return true;
+  }
+
+  void normalizeTimes() {
+    entry = _normalizeAttendanceTimeInput(entry);
+    lunchExit = _normalizeAttendanceTimeInput(lunchExit);
+    lunchEntry = _normalizeAttendanceTimeInput(lunchEntry);
+    exit = _normalizeAttendanceTimeInput(exit);
+  }
+
+  void recalculate() {
+    final activeSchedule = schedule;
+    if (status != _HrAttendanceStatus.laboro || activeSchedule == null) {
+      lateMinutes = 0;
+      overtimeMinutes = 0;
+      return;
+    }
+    final firstPunchAt = _resolveAttendancePunchDateTime(
+      sourceDate: _fmtAttendanceDateLabel(date),
+      sourceTime: _normalizeAttendanceTimeInput(entry),
+    );
+    var lastPunchAt = _resolveAttendancePunchDateTime(
+      sourceDate: _fmtAttendanceDateLabel(date),
+      sourceTime: _normalizeAttendanceTimeInput(exit),
+    );
+    final scheduledStartAt = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      activeSchedule.start.hour,
+      activeSchedule.start.minute,
+    );
+    final scheduledEndAtSameDate = DateTime(
+      date.year,
+      date.month,
+      date.day,
+      activeSchedule.end.hour,
+      activeSchedule.end.minute,
+    );
+    if (firstPunchAt == null || lastPunchAt == null) {
+      lateMinutes = 0;
+      overtimeMinutes = 0;
+      return;
+    }
+    final overnightSchedule = !scheduledEndAtSameDate.isAfter(scheduledStartAt);
+    final scheduledEndAt = overnightSchedule
+        ? scheduledEndAtSameDate.add(const Duration(days: 1))
+        : scheduledEndAtSameDate;
+    if (overnightSchedule && lastPunchAt.isBefore(scheduledStartAt)) {
+      lastPunchAt = lastPunchAt.add(const Duration(days: 1));
+    }
+    lateMinutes = math.max(
+      0,
+      firstPunchAt.difference(scheduledStartAt).inMinutes,
+    );
+    overtimeMinutes = _resolveOvertimeMinutes(
+      scheduledEndAt: scheduledEndAt,
+      lastPunchAt: lastPunchAt,
+    );
+  }
+}
+
+List<String> _attendanceExpectedTimes(_HrAttendanceScheduleDraft? schedule) {
+  if (schedule == null) return const <String>['', '', '', ''];
+  return <String>[
+    _fmtTimeOfDay(schedule.start),
+    schedule.lunchStart == null ? '' : _fmtTimeOfDay(schedule.lunchStart!),
+    schedule.lunchEnd == null ? '' : _fmtTimeOfDay(schedule.lunchEnd!),
+    _fmtTimeOfDay(schedule.end),
+  ];
+}
+
+bool _attendanceTimeIsDerived(String value, String expected) {
+  if (value.trim().isEmpty) return true;
+  return _normalizeAttendanceTimeInput(value) ==
+      _normalizeAttendanceTimeInput(expected);
+}
+
+_HrAttendanceWorkSchedule? _attendanceWorkScheduleForValue(
+  List<_HrAttendanceWorkSchedule> schedules,
+  String value,
+) {
+  final normalized = value.trim();
+  if (normalized.isEmpty) return null;
+  for (final schedule in schedules) {
+    if (schedule.horario == normalized) return schedule;
+  }
+  return null;
+}
+
+_HrAttendanceWorkSchedule? _attendanceWorkScheduleMatching(
+  List<_HrAttendanceWorkSchedule> schedules,
+  _HrAttendanceScheduleDraft? target,
+) {
+  if (target == null) return null;
+  final targetTimes = _attendanceExpectedTimes(target);
+  for (final schedule in schedules) {
+    final parsed = _parseAttendanceSchedule(schedule.horario);
+    if (parsed == null) continue;
+    if (_listEquals(_attendanceExpectedTimes(parsed), targetTimes)) {
+      return schedule;
+    }
+  }
+  return null;
 }
 
 class _HrAttendanceWorkSchedule {
@@ -4298,6 +6093,8 @@ class _HrAttendanceStoredRecord {
   final String weekdayLabel;
   final _HrAttendanceStatus status;
   final String sourceMode;
+  final String captureOrigin;
+  final String selectedSchedule;
   final String firstPunch;
   final String lastPunch;
   final List<String> punchTimeline;
@@ -4314,6 +6111,8 @@ class _HrAttendanceStoredRecord {
     required this.weekdayLabel,
     required this.status,
     required this.sourceMode,
+    this.captureOrigin = 'weekly',
+    this.selectedSchedule = '',
     required this.firstPunch,
     required this.lastPunch,
     required this.punchTimeline,
@@ -4330,6 +6129,8 @@ class _HrAttendanceStoredRecord {
     'weekday_label': weekdayLabel,
     'status': status.databaseValue,
     'source_mode': sourceMode,
+    'capture_origin': captureOrigin,
+    'selected_schedule': selectedSchedule,
     'first_punch': firstPunch,
     'last_punch': lastPunch,
     'punch_timeline': punchTimeline,
@@ -4350,6 +6151,8 @@ class _HrAttendanceStoredRecord {
         (row['status'] ?? '').toString(),
       ),
       sourceMode: (row['source_mode'] ?? 'manual').toString(),
+      captureOrigin: (row['capture_origin'] ?? 'weekly').toString(),
+      selectedSchedule: (row['selected_schedule'] ?? '').toString(),
       firstPunch: (row['first_punch'] ?? '').toString(),
       lastPunch: (row['last_punch'] ?? '').toString(),
       punchTimeline: ((row['punch_timeline'] as List?) ?? const <dynamic>[])
@@ -4367,12 +6170,15 @@ class _HrAttendanceDayRecord {
   final String weekdayLabel;
   final _HrAttendanceStatus status;
   final String sourceMode;
+  final String captureOrigin;
+  final String selectedSchedule;
   final String scheduledStart;
   final String scheduledEnd;
   final int effectiveWorkMinutes;
   final String firstPunch;
   final String lastPunch;
   final List<String> punchTimeline;
+  final List<String> ngtecoReferenceTimeline;
   final int lateMinutes;
   final int overtimeMinutes;
   final String notes;
@@ -4382,12 +6188,15 @@ class _HrAttendanceDayRecord {
     required this.weekdayLabel,
     required this.status,
     required this.sourceMode,
+    this.captureOrigin = 'weekly',
+    this.selectedSchedule = '',
     required this.scheduledStart,
     required this.scheduledEnd,
     required this.effectiveWorkMinutes,
     required this.firstPunch,
     required this.lastPunch,
     required this.punchTimeline,
+    this.ngtecoReferenceTimeline = const <String>[],
     required this.lateMinutes,
     required this.overtimeMinutes,
     required this.notes,
@@ -4400,12 +6209,15 @@ class _HrAttendanceDayRecord {
       weekdayLabel: weekdayLabel,
       status: status,
       sourceMode: sourceMode,
+      captureOrigin: captureOrigin,
+      selectedSchedule: selectedSchedule,
       scheduledStart: scheduledStart,
       scheduledEnd: scheduledEnd,
       effectiveWorkMinutes: effectiveWorkMinutes,
       firstPunch: firstPunch,
       lastPunch: lastPunch,
       punchTimeline: List<String>.from(punchTimeline),
+      ngtecoReferenceTimeline: List<String>.from(ngtecoReferenceTimeline),
       lateMinutes: lateMinutes,
       overtimeMinutes: overtimeMinutes,
       notes: notes,
@@ -4446,12 +6258,15 @@ class _HrAttendanceDayDraft {
   String weekdayLabel;
   _HrAttendanceStatus status;
   String sourceMode;
+  String captureOrigin;
+  String selectedSchedule;
   String scheduledStart;
   String scheduledEnd;
   int effectiveWorkMinutes;
   String firstPunch;
   String lastPunch;
   List<String> punchTimeline;
+  List<String> ngtecoReferenceTimeline;
   int lateMinutes;
   int overtimeMinutes;
   String notes;
@@ -4465,12 +6280,15 @@ class _HrAttendanceDayDraft {
     required this.weekdayLabel,
     required this.status,
     required this.sourceMode,
+    this.captureOrigin = 'weekly',
+    this.selectedSchedule = '',
     this.scheduledStart = '',
     this.scheduledEnd = '',
     this.effectiveWorkMinutes = 0,
     this.firstPunch = '',
     this.lastPunch = '',
     this.punchTimeline = const <String>[],
+    this.ngtecoReferenceTimeline = const <String>[],
     this.lateMinutes = 0,
     this.overtimeMinutes = 0,
     this.notes = '',
@@ -4576,6 +6394,8 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
   required _HrAttendanceImportLotLite? contpaqLot,
   required List<_HrAttendanceStoredRecord> storedRecords,
   required String periodLabel,
+  bool includeImportedStoredRows = true,
+  bool defaultSchedulePending = false,
 }) {
   final periodRange = _resolveAttendanceActiveRange(
     ngtecoLot: ngtecoLot,
@@ -4682,16 +6502,14 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
             lastPunchAt: lastPunchAt,
           );
         }
-      } else if (resolvedSchedule != null) {
-        // A jornada base keeps the weekly close usable without inventing a fault.
-        firstPunch = _fmtTimeOfDay(resolvedSchedule.schedule.start);
-        lastPunch = _fmtTimeOfDay(resolvedSchedule.schedule.end);
       }
 
       recordMap[sourceDate] = _HrAttendanceDayRecord(
         sourceDate: sourceDate,
         weekdayLabel: weekdayLabel,
-        status: _HrAttendanceStatus.laboro,
+        status: hasPunches || !defaultSchedulePending
+            ? _HrAttendanceStatus.laboro
+            : _HrAttendanceStatus.pendiente,
         sourceMode: hasPunches ? 'importado' : 'jornada',
         scheduledStart: resolvedSchedule == null
             ? ''
@@ -4705,6 +6523,7 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
         firstPunch: firstPunch,
         lastPunch: lastPunch,
         punchTimeline: punchTimeline,
+        ngtecoReferenceTimeline: punchTimeline,
         lateMinutes: lateMinutes,
         overtimeMinutes: overtimeMinutes,
         notes: '',
@@ -4723,6 +6542,11 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
       employeeStoredRecords.putIfAbsent(stored.id, () => stored);
     }
     for (final stored in employeeStoredRecords.values) {
+      if (!includeImportedStoredRows &&
+          stored.sourceMode == 'importado' &&
+          stored.captureOrigin != 'weekly') {
+        continue;
+      }
       final storedSourceDate = _resolveAttendanceStoredDateForRecord(
         stored: stored,
         recordMap: recordMap,
@@ -4737,16 +6561,18 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
         sourceDate: storedSourceDate,
         sourceTime: stored.firstPunch,
       );
-      final storedSchedule = storedPunchAt != null
-          ? _resolveAttendanceScheduleForPunch(
-              schedules: employee.workSchedules,
-              weekdayLabel: storedWeekdayLabel,
-              punchAt: storedPunchAt,
-            )
-          : _resolveAttendanceScheduleForPunchlessDay(
-              schedules: employee.workSchedules,
-              weekdayLabel: storedWeekdayLabel,
-            );
+      final storedSchedule =
+          _resolveAttendanceSelectedSchedule(stored.selectedSchedule) ??
+          (storedPunchAt != null
+              ? _resolveAttendanceScheduleForPunch(
+                  schedules: employee.workSchedules,
+                  weekdayLabel: storedWeekdayLabel,
+                  punchAt: storedPunchAt,
+                )
+              : _resolveAttendanceScheduleForPunchlessDay(
+                  schedules: employee.workSchedules,
+                  weekdayLabel: storedWeekdayLabel,
+                ));
       final importedRecord = recordMap[storedSourceDate];
       final importedPunchesAreAvailable =
           importedRecord?.sourceMode == 'importado' &&
@@ -4770,6 +6596,8 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
         weekdayLabel: storedWeekdayLabel,
         status: stored.status,
         sourceMode: stored.sourceMode,
+        captureOrigin: stored.captureOrigin,
+        selectedSchedule: stored.selectedSchedule,
         scheduledStart: storedSchedule == null
             ? ''
             : _fmtTimeOfDay(storedSchedule.schedule.start),
@@ -4782,6 +6610,8 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
         firstPunch: stored.firstPunch,
         lastPunch: stored.lastPunch,
         punchTimeline: stored.punchTimeline,
+        ngtecoReferenceTimeline:
+            importedRecord?.punchTimeline ?? const <String>[],
         lateMinutes: stored.lateMinutes,
         overtimeMinutes: stored.overtimeMinutes,
         notes: stored.notes,
@@ -4923,6 +6753,8 @@ _HrAttendanceStoredRecord _attendanceStoredRecordFromDay({
     weekdayLabel: day.weekdayLabel,
     status: day.status,
     sourceMode: day.sourceMode,
+    captureOrigin: day.captureOrigin,
+    selectedSchedule: day.selectedSchedule,
     firstPunch: day.firstPunch,
     lastPunch: day.lastPunch,
     punchTimeline: day.punchTimeline,
@@ -4939,6 +6771,8 @@ bool _attendanceStoredRecordMatchesDay(
   return record.weekdayLabel == day.weekdayLabel &&
       record.status == day.status &&
       record.sourceMode == day.sourceMode &&
+      record.captureOrigin == day.captureOrigin &&
+      record.selectedSchedule == day.selectedSchedule &&
       record.firstPunch == day.firstPunch &&
       record.lastPunch == day.lastPunch &&
       _listEquals(record.punchTimeline, day.punchTimeline) &&
@@ -4959,8 +6793,10 @@ bool _listEquals<T>(List<T> left, List<T> right) {
 List<String> _attendancePeriodOptions({
   required List<_HrAttendanceImportLotLite> lots,
   required List<_HrAttendanceStoredRecord> records,
+  Iterable<String> operationalPeriodLabels = const <String>[],
 }) {
   return HumanResourcesPeriodContext.normalizedOptions([
+    ...operationalPeriodLabels,
     for (final lot in lots) _describeImportPeriod(lot),
     for (final record in records) record.periodLabel,
   ]);
@@ -5268,6 +7104,39 @@ String _fmtAttendanceDateLabel(DateTime value) {
   return '$day/$month/$year';
 }
 
+String _formatAttendanceDatabaseDate(DateTime value) {
+  final month = value.month.toString().padLeft(2, '0');
+  final day = value.day.toString().padLeft(2, '0');
+  return '${value.year}-$month-$day';
+}
+
+String _formatOperationalAttendancePeriodLabel({
+  required int periodNumber,
+  required DateTime startDate,
+  required DateTime endDate,
+}) {
+  return 'Periodo $periodNumber semanal · '
+      '${_fmtAttendanceDateLabel(startDate)} - ${_fmtAttendanceDateLabel(endDate)}';
+}
+
+int? _asNullableInt(dynamic value) {
+  if (value == null) return null;
+  if (value is int) return value;
+  if (value is num && value.isFinite && value == value.roundToDouble()) {
+    return value.toInt();
+  }
+  final raw = value.toString().trim();
+  final direct = int.tryParse(raw);
+  if (direct != null) return direct;
+  final decimal = double.tryParse(raw);
+  if (decimal != null &&
+      decimal.isFinite &&
+      decimal == decimal.roundToDouble()) {
+    return decimal.toInt();
+  }
+  return null;
+}
+
 String _normalizeAttendanceStoredDateLabel(String raw) {
   final parsed = _parseAttendanceDateLabel(raw);
   return parsed == null ? raw.trim() : _fmtAttendanceDateLabel(parsed);
@@ -5342,9 +7211,69 @@ TimeOfDay? _parseAttendanceTimeOfDay(String? raw) {
   if (parts.length != 2) return null;
   final hour = int.tryParse(parts[0]);
   final minute = int.tryParse(parts[1]);
-  if (hour == null || minute == null) return null;
+  if (hour == null ||
+      minute == null ||
+      hour < 0 ||
+      hour > 23 ||
+      minute < 0 ||
+      minute > 59) {
+    return null;
+  }
   return TimeOfDay(hour: hour, minute: minute);
 }
+
+TimeOfDay? _parseFlexibleAttendanceTime(String raw) {
+  final normalized = raw.trim();
+  if (normalized.isEmpty) return null;
+  final separated = RegExp(r'^(\d{1,2}):(\d{2})$').firstMatch(normalized);
+  final compact = RegExp(r'^(\d{1,2})(\d{2})$').firstMatch(normalized);
+  final hour = int.tryParse(separated?.group(1) ?? compact?.group(1) ?? '');
+  final minute = int.tryParse(separated?.group(2) ?? compact?.group(2) ?? '');
+  if (hour == null || minute == null || hour > 23 || minute > 59) return null;
+  return TimeOfDay(hour: hour, minute: minute);
+}
+
+bool _isValidAttendanceTimeOrEmpty(String raw) =>
+    raw.trim().isEmpty || _parseFlexibleAttendanceTime(raw) != null;
+
+String _normalizeAttendanceTimeInput(String raw) {
+  final time = _parseFlexibleAttendanceTime(raw);
+  return time == null ? raw.trim() : _fmtTimeOfDay(time);
+}
+
+_HrAttendanceStoredRecord? _dailyStoredRecordFor({
+  required List<_HrAttendanceStoredRecord> records,
+  required String periodLabel,
+  required String employeeId,
+  required String dateLabel,
+}) {
+  for (final record in records.reversed) {
+    if (record.periodLabel != periodLabel ||
+        _normalizeAttendanceEmployeeId(record.employeeId) !=
+            _normalizeAttendanceEmployeeId(employeeId) ||
+        _normalizeAttendanceStoredDateLabel(record.sourceDate) != dateLabel) {
+      continue;
+    }
+    return record;
+  }
+  return null;
+}
+
+String _manualPunchTimelineValue(List<String> timeline, String prefix) {
+  for (final item in timeline) {
+    final normalized = item.trim();
+    if (!normalized.toLowerCase().startsWith(prefix.toLowerCase())) continue;
+    return normalized.substring(prefix.length).trim();
+  }
+  return '';
+}
+
+Color _dailyStatusColor(_HrAttendanceStatus status) => switch (status) {
+  _HrAttendanceStatus.pendiente => const Color(0xFFFFF8E8),
+  _HrAttendanceStatus.laboro => const Color(0xFFE9F8ED),
+  _HrAttendanceStatus.falto => const Color(0xFFFFEBEE),
+  _HrAttendanceStatus.noAplica => const Color(0xFFF0ECF7),
+};
 
 String _formatAttendanceMinutesAsHourRatio(int minutes) {
   return '${(minutes / 60).toStringAsFixed(2)} h';
@@ -5407,6 +7336,7 @@ bool _attendanceDayIsJustified(_HrAttendanceDayRecord day) =>
 
 bool _attendanceDayNeedsReview(_HrAttendanceDayRecord day) {
   if (_attendanceDayIsJustified(day)) return false;
+  if (day.status == _HrAttendanceStatus.pendiente) return true;
   if (day.status == _HrAttendanceStatus.falto) return true;
   if (day.status == _HrAttendanceStatus.noAplica &&
       day.firstPunch.trim().isEmpty &&
@@ -5444,6 +7374,7 @@ bool _attendanceDraftIsJustified(_HrAttendanceDayDraft day) =>
 
 bool _attendanceDraftNeedsReview(_HrAttendanceDayDraft day) {
   if (_attendanceDraftIsJustified(day)) return false;
+  if (day.status == _HrAttendanceStatus.pendiente) return true;
   if (day.status == _HrAttendanceStatus.falto) return true;
   if (day.status == _HrAttendanceStatus.noAplica &&
       day.firstPunch.trim().isEmpty &&
@@ -5514,6 +7445,7 @@ void _markAttendanceDraftAsUserAdjustment(_HrAttendanceDayDraft draft) {
   if (draft.sourceMode != 'manual') {
     draft.sourceMode = 'ajuste';
   }
+  draft.captureOrigin = 'weekly';
 }
 
 void _recalculateAttendanceDraftMetrics(_HrAttendanceDayDraft draft) {
@@ -5610,6 +7542,16 @@ class _HrResolvedAttendanceSchedule {
     required this.schedule,
     required this.worksThatDay,
   });
+}
+
+_HrResolvedAttendanceSchedule? _resolveAttendanceSelectedSchedule(
+  String rawSchedule,
+) {
+  final schedule = _parseAttendanceSchedule(rawSchedule);
+  if (schedule == null) return null;
+  // The daily sheet explicitly records this as the worked shift, even when
+  // its normal workday pattern differs because the employee rotated shifts.
+  return _HrResolvedAttendanceSchedule(schedule: schedule, worksThatDay: true);
 }
 
 _HrResolvedAttendanceSchedule? _resolveAttendanceScheduleForPunch({

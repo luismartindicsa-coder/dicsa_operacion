@@ -199,7 +199,10 @@ class FinanzasDueAlertsStore {
       }
       final normalizedDue = DateUtils.dateOnly(installment.dueDate);
       final daysUntilDue = normalizedDue.difference(today).inDays;
-      final meta = _reminderMeta(daysUntilDue);
+      // A supplier agreement remains an active commitment until its installment
+      // is paid. Regular invoices and fixed payments retain their scheduled
+      // reminder windows, but an overdue agreement must carry into tomorrow.
+      final meta = _agreementReminderMeta(daysUntilDue);
       if (meta == null) continue;
       final agreement = agreementById[installment.agreementId];
       if (agreement == null ||
@@ -267,4 +270,18 @@ class FinanzasDueAlertsStore {
     return ('seven_days', 'vence en 1 semana', FinanzasDueAlertSeverity.info);
   }
   return null;
+}
+
+(String, String, FinanzasDueAlertSeverity)? _agreementReminderMeta(
+  int daysUntilDue,
+) {
+  if (daysUntilDue < 0) {
+    final overdueDays = daysUntilDue.abs();
+    return (
+      'overdue',
+      overdueDays == 1 ? 'venció ayer' : 'venció hace $overdueDays días',
+      FinanzasDueAlertSeverity.critical,
+    );
+  }
+  return _reminderMeta(daysUntilDue);
 }
