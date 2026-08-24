@@ -33,6 +33,7 @@ import 'human_resources_area_chrome.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_dashboard_page.dart';
 import 'human_resources_employee_status.dart';
+import 'human_resources_event_period_impacts.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
@@ -46,6 +47,8 @@ const String _kHrImportLotsTable = 'hr_attendance_import_lots';
 const String _kHrAttendanceDailyRecordsTable = 'hr_attendance_daily_records';
 const String _kHrAttendanceOperationalPeriodsTable =
     'hr_attendance_operational_periods';
+const String _kHrVacationEventsTable = 'hr_employee_vacation_events';
+const String _kHrPermissionEventsTable = 'hr_employee_permission_events';
 const String _kHrAttendanceVacationSyncPrefix = 'Vacaciones RH:';
 const String _kHrAttendancePermissionSyncPrefix = 'Permisos RH:';
 
@@ -608,12 +611,9 @@ class _HumanResourcesAttendancePageState
         (item) => item.periodLabel == period.periodLabel,
       );
       _operationalPeriods.add(period);
-      _periodOptions = _attendancePeriodOptions(
-        lots: _importLots,
-        records: _storedRecords,
-        operationalPeriodLabels: _operationalPeriods.map(
-          (item) => item.periodLabel,
-        ),
+      await _projectPendingHrEventsIntoOperationalPeriod(
+        client: client,
+        period: period,
       );
       await HumanResourcesPeriodContext.select(period.periodLabel);
       if (!mounted) return;
@@ -623,11 +623,269 @@ class _HumanResourcesAttendancePageState
         _viewMode = _HrAttendanceViewMode.diario;
         _currentPage = 0;
       });
-      _rebuildRows();
-      _showSnack('Periodo operativo creado. Ya puedes capturar el primer día.');
+      await _loadData();
+      if (!mounted) return;
+      _showSnack(
+        'Periodo operativo creado. Se aplicaron los permisos y vacaciones que correspondan.',
+      );
     } on PostgrestException catch (error) {
       _showSnack('No se pudo crear el periodo: ${error.message}');
     }
+  }
+
+  /// Makes date-based HR events visible once their operational week exists.
+  /// Events are always captured independently from attendance; the period only
+  /// determines when their daily impact can be materialized.
+  Future<void> _projectPendingHrEventsIntoOperationalPeriod({
+    required SupabaseClient client,
+    required _HrAttendanceOperationalPeriod period,
+  }) async {
+    final startDate = _formatAttendanceDatabaseDate(period.startDate);
+    final endDate = _formatAttendanceDatabaseDate(period.endDate);
+
+    Future<List<Map<String, dynamic>>> loadEvents(String table) async {
+      try {
+        final raw = await client
+            .from(table)
+            .select()
+            .lte('start_date', endDate)
+            .gte('end_date', startDate);
+        return (raw as List)
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .toList(growable: false);
+      } catch (error) {
+        // Event modules can be deployed separately. Attendance creation must
+        // stay available even while one administrative module is unavailable.
+        debugPrint('No se pudieron leer eventos de $table: $error');
+        return const <Map<String, dynamic>>[];
+      }
+    }
+
+    final vacationEvents = await loadEvents(_kHrVacationEventsTable);
+    final permissionEvents = await loadEvents(_kHrPermissionEventsTable);
+    final knownPeriodLabels = _operationalPeriods
+        .map((item) => item.periodLabel)
+        .toList(growable: false);
+
+    Future<void> syncImpacts({
+      required String eventKind,
+      required List<Map<String, dynamic>> events,
+      required bool vacation,
+    }) async {
+      final sources = <HrEventPeriodImpactSource>[];
+      for (final event in events) {
+        final start = _parseAttendanceDateLabel(
+          (event['start_date'] ?? '').toString(),
+        );
+        final end = _parseAttendanceDateLabel(
+          (event['end_date'] ?? '').toString(),
+        );
+        if (start == null || end == null || end.isBefore(start)) continue;
+        sources.add(
+          HrEventPeriodImpactSource(
+            eventId: (event['id'] ?? '').toString(),
+            employeeId: (event['employee_id'] ?? '').toString(),
+            startDate: start,
+            endDate: end,
+            daysApplied: _asAttendanceDouble(
+              event[vacation ? 'days_applied' : 'quantity_days'],
+            ),
+            additionalPaidDays: vacation
+                ? _asAttendanceDouble(event['additional_paid_days'])
+                : 0,
+            quantityHours: vacation
+                ? 0
+                : _asAttendanceDouble(event['quantity_hours']),
+            impactAttendance: vacation
+                ? event['impact_attendance'] != false
+                : event['impact_attendance'] == true,
+            impactPrenomina: event['impact_prenomina'] == true,
+            isCancelled: (event['status'] ?? '').toString() == 'cancelado',
+          ),
+        );
+      }
+      if (sources.isEmpty) return;
+      try {
+        await syncHrEventPeriodImpacts(
+          client: client,
+          eventKind: eventKind,
+          sources: sources,
+          knownPeriodLabels: knownPeriodLabels,
+          activePeriodLabel: '',
+        );
+      } catch (error) {
+        debugPrint('No se pudieron sincronizar impactos de $eventKind: $error');
+      }
+    }
+
+    await syncImpacts(
+      eventKind: 'vacacion',
+      events: vacationEvents,
+      vacation: true,
+    );
+    await syncImpacts(
+      eventKind: 'permiso',
+      events: permissionEvents,
+      vacation: false,
+    );
+
+    final rawAttendance = await client
+        .from(_kHrAttendanceDailyRecordsTable)
+        .select()
+        .eq('period_label', period.periodLabel);
+    final existingByEmployeeDay = <String, _HrAttendanceStoredRecord>{};
+    for (final raw in rawAttendance as List) {
+      final record = _HrAttendanceStoredRecord.fromRow(
+        Map<String, dynamic>.from(raw as Map),
+      );
+      final date = _parseAttendanceDateLabel(record.sourceDate);
+      if (date == null) continue;
+      existingByEmployeeDay[_attendanceEmployeeDayKey(
+            record.employeeId,
+            date,
+          )] =
+          record;
+    }
+    final employeesById = <String, _HrAttendanceEmployeeMaster>{
+      for (final employee in _employees)
+        _normalizeAttendanceEmployeeId(employee.employeeId): employee,
+    };
+
+    Future<void> projectAttendanceEvents({
+      required String table,
+      required List<Map<String, dynamic>> events,
+      required bool vacation,
+    }) async {
+      final syncUpdates = <Map<String, dynamic>>[];
+      final eventPeriodLabels = <String, String>{};
+      for (final event in events) {
+        final eventId = (event['id'] ?? '').toString().trim();
+        final employeeId = (event['employee_id'] ?? '').toString().trim();
+        final start = _parseAttendanceDateLabel(
+          (event['start_date'] ?? '').toString(),
+        );
+        final end = _parseAttendanceDateLabel(
+          (event['end_date'] ?? '').toString(),
+        );
+        if (start == null || end == null || end.isBefore(start)) continue;
+        final isApplicable =
+            eventId.isNotEmpty &&
+            employeeId.isNotEmpty &&
+            (event['status'] ?? '').toString() == 'aplicado' &&
+            (vacation
+                ? event['impact_attendance'] != false
+                : event['impact_attendance'] == true) &&
+            (vacation || (event['request_unit'] ?? '').toString() == 'dia');
+        if (!isApplicable) continue;
+
+        final employee =
+            employeesById[_normalizeAttendanceEmployeeId(employeeId)];
+        if (employee == null) continue;
+        final prefix = vacation
+            ? _kHrAttendanceVacationSyncPrefix
+            : _kHrAttendancePermissionSyncPrefix;
+        final eventLabel = vacation
+            ? (event['event_type'] ?? 'vacaciones').toString()
+            : (event['permission_type'] ?? 'permiso').toString();
+        final note =
+            '$prefix $eventLabel · '
+            '${_fmtAttendanceDateLabel(start)} - ${_fmtAttendanceDateLabel(end)}';
+        final firstDate = start.isBefore(period.startDate)
+            ? period.startDate
+            : start;
+        final lastDate = end.isAfter(period.endDate) ? period.endDate : end;
+        var appliedAny = false;
+
+        for (
+          var date = DateTime(firstDate.year, firstDate.month, firstDate.day);
+          !date.isAfter(lastDate);
+          date = date.add(const Duration(days: 1))
+        ) {
+          final weekdayLabel = _hrWeekdayLabel(date.weekday);
+          final schedule = _resolveAttendanceScheduleForPunchlessDay(
+            schedules: employee.workSchedules,
+            weekdayLabel: weekdayLabel,
+          );
+          if (schedule == null) continue;
+
+          final key = _attendanceEmployeeDayKey(employeeId, date);
+          final existing = existingByEmployeeDay[key];
+          if (existing != null &&
+              _attendanceRecordIsProtectedFromEventProjection(existing)) {
+            continue;
+          }
+          if (!vacation &&
+              existing?.notes.contains(_kHrAttendanceVacationSyncPrefix) ==
+                  true) {
+            // Vacation has precedence over a day-level permission.
+            continue;
+          }
+
+          final projected = _HrAttendanceStoredRecord(
+            id: existing?.id ?? '',
+            periodLabel: period.periodLabel,
+            employeeId: employee.employeeId,
+            employeeName: employee.displayName,
+            sourceDate: _fmtAttendanceDateLabel(date),
+            weekdayLabel: weekdayLabel,
+            status: _HrAttendanceStatus.noAplica,
+            sourceMode: 'ajuste',
+            captureOrigin: existing?.captureOrigin ?? 'weekly',
+            selectedSchedule: existing?.selectedSchedule ?? '',
+            firstPunch: '',
+            lastPunch: '',
+            punchTimeline: const <String>[],
+            lateMinutes: 0,
+            overtimeMinutes: 0,
+            notes: _mergeAttendanceEventProjectionNote(
+              existing?.notes ?? '',
+              prefix: prefix,
+              note: note,
+            ),
+          );
+          syncUpdates.add(projected.toRow());
+          existingByEmployeeDay[key] = projected;
+          appliedAny = true;
+        }
+
+        if (appliedAny) {
+          eventPeriodLabels[eventId] = _appendAttendanceEventPeriodLabel(
+            (event['attendance_period_label'] ?? '').toString(),
+            period.periodLabel,
+          );
+        }
+      }
+
+      if (syncUpdates.isNotEmpty) {
+        await client
+            .from(_kHrAttendanceDailyRecordsTable)
+            .upsert(
+              syncUpdates,
+              onConflict: 'period_label,employee_id,source_date',
+            );
+      }
+      for (final entry in eventPeriodLabels.entries) {
+        await client
+            .from(table)
+            .update(<String, dynamic>{
+              'attendance_period_label': entry.value,
+              'payroll_period_label': entry.value,
+              'attendance_sync_status': 'aplicado',
+            })
+            .eq('id', entry.key);
+      }
+    }
+
+    await projectAttendanceEvents(
+      table: _kHrVacationEventsTable,
+      events: vacationEvents,
+      vacation: true,
+    );
+    await projectAttendanceEvents(
+      table: _kHrPermissionEventsTable,
+      events: permissionEvents,
+      vacation: false,
+    );
   }
 
   Future<void> _persistDailyAttendanceRecord(
@@ -7002,6 +7260,59 @@ int _asInt(Object? value) {
   if (value is int) return value;
   if (value is num) return value.toInt();
   return int.tryParse((value ?? '').toString()) ?? 0;
+}
+
+double _asAttendanceDouble(Object? value) {
+  if (value is num) return value.toDouble();
+  return double.tryParse(
+        (value ?? '').toString().trim().replaceAll(',', '.'),
+      ) ??
+      0;
+}
+
+bool _attendanceRecordIsProtectedFromEventProjection(
+  _HrAttendanceStoredRecord record,
+) {
+  final hasFichajes =
+      record.firstPunch.trim().isNotEmpty ||
+      record.lastPunch.trim().isNotEmpty ||
+      record.punchTimeline.any((item) => item.trim().isNotEmpty);
+  if (hasFichajes ||
+      record.sourceMode == 'manual' ||
+      record.captureOrigin == 'daily') {
+    return true;
+  }
+
+  // A weekly adjustment without an administrative-event trace belongs to RH
+  // and must not be overwritten when a period is created later.
+  final isAdministrativeProjection =
+      record.notes.contains(_kHrAttendanceVacationSyncPrefix) ||
+      record.notes.contains(_kHrAttendancePermissionSyncPrefix);
+  return record.sourceMode == 'ajuste' && !isAdministrativeProjection;
+}
+
+String _mergeAttendanceEventProjectionNote(
+  String current, {
+  required String prefix,
+  required String note,
+}) {
+  final remaining = current
+      .split('\n')
+      .map((line) => line.trim())
+      .where((line) => line.isNotEmpty && !line.startsWith(prefix))
+      .toList(growable: false);
+  return <String>[...remaining, note].join('\n');
+}
+
+String _appendAttendanceEventPeriodLabel(String current, String periodLabel) {
+  final labels = current
+      .split(' · ')
+      .map((item) => item.trim())
+      .where((item) => item.isNotEmpty)
+      .toSet();
+  labels.add(periodLabel);
+  final ordered = labels.toList(growable: false)..sort();
+  return ordered.join(' · ');
 }
 
 String _normalizeAttendanceEmployeeId(String raw) {

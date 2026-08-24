@@ -260,6 +260,7 @@ class ContabilidadIncomeStatementStore {
 
     for (final row in vaultRows) {
       if (!_withinRange(row.date, range)) continue;
+      if (_isExcludedVaultVoucher(row)) continue;
       if (row.type == 'deposit') continue;
       final rule = classifyCashRubricForIncomeStatement(
         movementType: DirectionCashMovementType.exit,
@@ -522,6 +523,7 @@ class ContabilidadIncomeStatementStore {
     final totals = <String, ({double amount, int count})>{};
     for (final row in rows) {
       if (!_withinRange(row.date, range) || row.type == 'deposit') continue;
+      if (_isExcludedVaultVoucher(row)) continue;
       final rule = classifyCashRubricForIncomeStatement(
         movementType: DirectionCashMovementType.exit,
         rubricLabel: row.rubric,
@@ -883,6 +885,25 @@ class ContabilidadIncomeStatementStore {
         .replaceAll('Í', 'I')
         .replaceAll('Ó', 'O')
         .replaceAll('Ú', 'U');
+  }
+
+  bool _isExcludedVaultVoucher(DirectionVaultVoucherRecord row) {
+    final values = <String>[row.person, row.comment];
+    for (final line in row.lines) {
+      values.addAll(<String>[
+        line.concept,
+        line.company,
+        line.driver,
+        line.destination,
+        line.subconcept,
+        line.comment,
+      ]);
+    }
+    return values.any((value) {
+      final normalized = _normalizeFinanceText(value);
+      return normalized.contains('BIANCA') ||
+          normalized.contains('MARICRUZ QUIROGA');
+    });
   }
 
   void _accumulateBreakdown(

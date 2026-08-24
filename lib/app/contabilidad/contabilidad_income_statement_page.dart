@@ -15,8 +15,10 @@ import '../shared/utils/number_formatters.dart';
 import 'contabilidad_area_chrome.dart';
 import 'contabilidad_dashboard_page.dart';
 import 'contabilidad_flow_analysis_page.dart';
+import 'contabilidad_flow_analysis_store.dart';
 import 'contabilidad_income_statement_rules.dart';
 import 'contabilidad_income_statement_store.dart';
+import 'contabilidad_pdf_export.dart';
 import 'contabilidad_theme.dart';
 import 'contabilidad_trade_analysis_page.dart';
 
@@ -34,6 +36,8 @@ class _ContabilidadIncomeStatementPageState
     extends State<ContabilidadIncomeStatementPage> {
   final ContabilidadIncomeStatementStore _store =
       const ContabilidadIncomeStatementStore();
+  final ContabilidadFlowAnalysisStore _periodicFlowStore =
+      const ContabilidadFlowAnalysisStore();
 
   bool _menuOpen = false;
   bool _loading = true;
@@ -46,6 +50,9 @@ class _ContabilidadIncomeStatementPageState
   DateTimeRange? _customRange;
   ContabilidadIncomeStatementDataset? _dataset;
   ContabilidadIncomeStatementDataset? _previousDataset;
+  ContabilidadPeriodicFlowDataset? _periodicFlowDataset;
+  ContabilidadPeriodicIncomeDataset? _periodicIncomeDataset;
+  ContabilidadPeriodicOperationalDataset? _periodicOperationalDataset;
 
   @override
   void initState() {
@@ -61,14 +68,31 @@ class _ContabilidadIncomeStatementPageState
     try {
       final currentRange = _customRange ?? _defaultWindowRange(_windowDays);
       final previousRange = _previousRange(currentRange);
-      final results = await Future.wait<ContabilidadIncomeStatementDataset>([
+      final results = await Future.wait<dynamic>([
         _store.load(windowDays: _windowDays, dateRange: _customRange),
         _store.load(windowDays: _windowDays, dateRange: previousRange),
+        _periodicFlowStore.loadPeriodic(
+          windowDays: _windowDays,
+          dateRange: _customRange,
+        ),
+        _periodicFlowStore.loadPeriodicIncome(
+          windowDays: _windowDays,
+          dateRange: _customRange,
+        ),
+        _periodicFlowStore.loadPeriodicOperational(
+          windowDays: _windowDays,
+          dateRange: _customRange,
+        ),
       ]);
       if (!mounted) return;
       setState(() {
-        _dataset = results[0];
-        _previousDataset = results[1];
+        _dataset = results[0] as ContabilidadIncomeStatementDataset;
+        _previousDataset = results[1] as ContabilidadIncomeStatementDataset;
+        _periodicFlowDataset = results[2] as ContabilidadPeriodicFlowDataset;
+        _periodicIncomeDataset =
+            results[3] as ContabilidadPeriodicIncomeDataset;
+        _periodicOperationalDataset =
+            results[4] as ContabilidadPeriodicOperationalDataset;
         _loading = false;
       });
     } catch (error) {
@@ -110,6 +134,49 @@ class _ContabilidadIncomeStatementPageState
 
   Future<void> _logout() async {
     await signOutAndRouteToLogin(context);
+  }
+
+  Future<void> _exportPdf() async {
+    final statement = _dataset;
+    final payables = _periodicFlowDataset;
+    final income = _periodicIncomeDataset;
+    final operational = _periodicOperationalDataset;
+    if (statement == null ||
+        payables == null ||
+        income == null ||
+        operational == null) {
+      return;
+    }
+    final reviewedExpenses = <ContabilidadReviewedExpensePdfRow>[];
+    for (final row in statement.reviewRows) {
+      final draft = _reviewDrafts[_reviewKey(row)];
+      if (draft == null ||
+          !draft.isComplete ||
+          draft.treatment != _ReviewTreatment.expense ||
+          draft.family == null) {
+        continue;
+      }
+      reviewedExpenses.add(
+        ContabilidadReviewedExpensePdfRow(
+          label: row.label,
+          source: row.sourceLabel,
+          family: switch (draft.family!) {
+            _ReviewExpenseFamily.operating => 'Operativo',
+            _ReviewExpenseFamily.administrative => 'Administrativo',
+            _ReviewExpenseFamily.financial => 'Financiero',
+            _ReviewExpenseFamily.payroll => 'Nomina',
+          },
+          amount: row.amount,
+        ),
+      );
+    }
+    await exportContabilidadIncomeStatementPdf(
+      statement: statement,
+      payables: payables,
+      income: income,
+      operational: operational,
+      reviewedExpenses: reviewedExpenses,
+    );
   }
 
   Future<void> _pickCustomRange() async {
@@ -286,6 +353,13 @@ class _ContabilidadIncomeStatementPageState
             mainAxisSize: MainAxisSize.min,
             children: [
               ContabilidadPageHeaderButton(
+                label: 'PDF',
+                icon: Icons.picture_as_pdf_rounded,
+                width: 104,
+                onTap: _exportPdf,
+              ),
+              const SizedBox(width: 10),
+              ContabilidadPageHeaderButton(
                 label: 'Recargar',
                 icon: Icons.refresh_rounded,
                 width: 132,
@@ -341,6 +415,10 @@ class _ContabilidadIncomeStatementPageState
                               selectedTab: _selectedTab,
                               dataset: dataset,
                               previousDataset: previousDataset,
+                              periodicFlowDataset: _periodicFlowDataset,
+                              periodicIncomeDataset: _periodicIncomeDataset,
+                              periodicOperationalDataset:
+                                  _periodicOperationalDataset,
                               money: _money,
                               changeLabel: _changeLabel,
                               statusLabel: _statusLabel(dataset.snapshot),
@@ -390,7 +468,7 @@ class _ContabilidadIncomeStatementPageState
   }
 }
 
-enum _IncomeStatementTab { summary, expenses, review, audit }
+enum _IncomeStatementTab { summary, periodInvoices, expenses, review, audit }
 
 enum _ReviewTreatment {
   expense,
@@ -452,6 +530,11 @@ class _IncomeStatementSectionTabs extends StatelessWidget {
             label: 'Resumen',
             active: selectedTab == _IncomeStatementTab.summary,
             onTap: () => onSelectTab(_IncomeStatementTab.summary),
+          ),
+          _TabPill(
+            label: 'Facturas del periodo',
+            active: selectedTab == _IncomeStatementTab.periodInvoices,
+            onTap: () => onSelectTab(_IncomeStatementTab.periodInvoices),
           ),
           _TabPill(
             label: 'Gastos',
@@ -524,6 +607,9 @@ class _IncomeStatementTabContent extends StatelessWidget {
   final _IncomeStatementTab selectedTab;
   final ContabilidadIncomeStatementDataset dataset;
   final ContabilidadIncomeStatementDataset? previousDataset;
+  final ContabilidadPeriodicFlowDataset? periodicFlowDataset;
+  final ContabilidadPeriodicIncomeDataset? periodicIncomeDataset;
+  final ContabilidadPeriodicOperationalDataset? periodicOperationalDataset;
   final String Function(num value) money;
   final String? Function(double current, double previous) changeLabel;
   final String statusLabel;
@@ -545,6 +631,9 @@ class _IncomeStatementTabContent extends StatelessWidget {
     required this.selectedTab,
     required this.dataset,
     required this.previousDataset,
+    required this.periodicFlowDataset,
+    required this.periodicIncomeDataset,
+    required this.periodicOperationalDataset,
     required this.money,
     required this.changeLabel,
     required this.statusLabel,
@@ -570,6 +659,12 @@ class _IncomeStatementTabContent extends StatelessWidget {
         statusColor: statusColor,
         statusIcon: statusIcon,
         mainReading: mainReading,
+      ),
+      _IncomeStatementTab.periodInvoices => _IncomeStatementPeriodInvoicesTab(
+        dataset: periodicFlowDataset,
+        incomeDataset: periodicIncomeDataset,
+        operationalDataset: periodicOperationalDataset,
+        money: money,
       ),
       _IncomeStatementTab.expenses => _IncomeStatementExpensesTab(
         dataset: dataset,
@@ -1970,6 +2065,620 @@ class _ValueBar extends StatelessWidget {
             borderRadius: BorderRadius.circular(999),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _IncomeStatementPeriodInvoicesTab extends StatelessWidget {
+  final ContabilidadPeriodicFlowDataset? dataset;
+  final ContabilidadPeriodicIncomeDataset? incomeDataset;
+  final ContabilidadPeriodicOperationalDataset? operationalDataset;
+  final String Function(num value) money;
+
+  const _IncomeStatementPeriodInvoicesTab({
+    required this.dataset,
+    required this.incomeDataset,
+    required this.operationalDataset,
+    required this.money,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final data = dataset;
+    if (data == null) {
+      return const ContractGlassCard(
+        child: Padding(
+          padding: EdgeInsets.all(24),
+          child: Center(child: CircularProgressIndicator()),
+        ),
+      );
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ContractGlassCard(
+          padding: const EdgeInsets.all(22),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Facturas emitidas y pagadas en este periodo',
+                style: TextStyle(
+                  color: kContabilidadInk,
+                  fontSize: 21,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Esta lectura explica el periodo: sólo toma facturas fechadas en el rango y sus pagos vinculados dentro del mismo rango.',
+                style: TextStyle(
+                  color: kContabilidadMutedInk,
+                  height: 1.4,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 18),
+              Wrap(
+                spacing: 12,
+                runSpacing: 12,
+                children: [
+                  _PeriodInvoiceMetric(
+                    label: 'Facturado',
+                    value: money(data.invoicedAmount),
+                    detail: '${data.invoiceCount} facturas del periodo',
+                    color: kContabilidadGlow,
+                  ),
+                  _PeriodInvoiceMetric(
+                    label: 'Pagado de esas facturas',
+                    value: money(data.paidAmount),
+                    detail: 'Pagos bancarios vinculados',
+                    color: kContabilidadSuccess,
+                  ),
+                  _PeriodInvoiceMetric(
+                    label: 'Pendiente',
+                    value: money(data.pendingAmount),
+                    detail: '${data.pendingInvoiceCount} facturas con saldo',
+                    color: const Color(0xFFFFB36B),
+                  ),
+                ],
+              ),
+              if (incomeDataset != null) ...[
+                const SizedBox(height: 18),
+                _IncomePeriodSalesSummary(
+                  dataset: incomeDataset!,
+                  money: money,
+                ),
+              ],
+              if (operationalDataset != null) ...[
+                const SizedBox(height: 14),
+                _IncomeOperationalSummary(
+                  dataset: operationalDataset!,
+                  money: money,
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final punctual = _PeriodInvoiceReadingCard(
+              icon: Icons.schedule_rounded,
+              title: 'Puntualidad del pago',
+              child: Column(
+                children: [
+                  _PeriodInvoiceAmountRow(
+                    label: 'Pagado a tiempo',
+                    value: money(data.paidOnTimeAmount),
+                    color: kContabilidadSuccess,
+                  ),
+                  const SizedBox(height: 11),
+                  _PeriodInvoiceAmountRow(
+                    label: 'Pagado vencido en este periodo',
+                    value: money(data.paidLateAmount),
+                    color: const Color(0xFFFFB36B),
+                  ),
+                ],
+              ),
+            );
+            final contextCard = _PeriodInvoiceReadingCard(
+              icon: data.unlinkedPaymentCount > 0
+                  ? Icons.link_off_rounded
+                  : Icons.fact_check_rounded,
+              title: data.unlinkedPaymentCount > 0
+                  ? 'Dato por completar'
+                  : 'Lectura verificable',
+              iconColor: data.unlinkedPaymentCount > 0
+                  ? const Color(0xFFFFB36B)
+                  : kContabilidadSuccess,
+              child: Text(
+                _periodContext(data),
+                style: const TextStyle(
+                  color: kContabilidadMutedInk,
+                  height: 1.4,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            );
+            if (constraints.maxWidth < 900) {
+              return Column(
+                children: [punctual, const SizedBox(height: 16), contextCard],
+              );
+            }
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: punctual),
+                const SizedBox(width: 16),
+                Expanded(child: contextCard),
+              ],
+            );
+          },
+        ),
+        const SizedBox(height: 16),
+        ContractGlassCard(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Facturas con mayor importe',
+                style: TextStyle(
+                  color: kContabilidadInk,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 5),
+              const Text(
+                'El detalle conserva separado lo pagado y lo que todavía quedó pendiente en el periodo.',
+                style: TextStyle(
+                  color: kContabilidadMutedInk,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 14),
+              if (data.rows.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 24),
+                  child: Center(
+                    child: Text(
+                      'No hay facturas registradas en el periodo.',
+                      style: TextStyle(
+                        color: kContabilidadMutedInk,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ),
+                )
+              else
+                ...data.rows
+                    .take(12)
+                    .map(
+                      (row) => _PeriodInvoiceDetailRow(row: row, money: money),
+                    ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  String _periodContext(ContabilidadPeriodicFlowDataset data) {
+    final messages = <String>[];
+    if (data.paidHistoricalOverdueAmount > 0.009) {
+      messages.add(
+        'Se pagaron ${money(data.paidHistoricalOverdueAmount)} de ${data.paidHistoricalOverdueCount} factura(s) vencida(s) de periodos anteriores; se muestran aparte y no cambian este resultado.',
+      );
+    }
+    if (data.unlinkedPaymentCount > 0) {
+      messages.add(
+        'Hay ${data.unlinkedPaymentCount} pago(s) de factura sin vínculo; se excluyeron para no atribuirlos incorrectamente.',
+      );
+    }
+    if (messages.isEmpty) {
+      return 'Los pagos incluidos están vinculados explícitamente a una factura del periodo, por lo que se pueden rastrear desde Finanzas.';
+    }
+    return messages.join('\n\n');
+  }
+}
+
+class _IncomeOperationalSummary extends StatelessWidget {
+  final ContabilidadPeriodicOperationalDataset dataset;
+  final String Function(num value) money;
+
+  const _IncomeOperationalSummary({required this.dataset, required this.money});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kContabilidadGlow.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: kContabilidadGlow.withValues(alpha: 0.20)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Operación: Bóveda y efectivo',
+            style: TextStyle(
+              color: kContabilidadInk,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'Entradas y salidas fechadas en el periodo. Los traspasos internos de Bóveda no se tratan como gasto.',
+            style: TextStyle(
+              color: kContabilidadMutedInk,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 18,
+            runSpacing: 8,
+            children: [
+              Text(
+                'Entradas ${money(dataset.vaultInflows + dataset.cashInflows)}',
+                style: const TextStyle(
+                  color: kContabilidadSuccess,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                'Salidas ${money(dataset.vaultOutflows + dataset.cashOutflows)}',
+                style: const TextStyle(
+                  color: Color(0xFFFFD08A),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                'Neto ${money(dataset.operationalNet)}',
+                style: const TextStyle(
+                  color: kContabilidadInk,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Bóveda ${money(dataset.vaultInflows)} / ${money(dataset.vaultOutflows)} · Efectivo ${money(dataset.cashInflows)} / ${money(dataset.cashOutflows)}${dataset.vaultInternalTransfers > 0.009 ? ' · Internos aislados ${money(dataset.vaultInternalTransfers)}' : ''}',
+            style: const TextStyle(
+              color: kContabilidadMutedInk,
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _IncomePeriodSalesSummary extends StatelessWidget {
+  final ContabilidadPeriodicIncomeDataset dataset;
+  final String Function(num value) money;
+
+  const _IncomePeriodSalesSummary({required this.dataset, required this.money});
+
+  @override
+  Widget build(BuildContext context) {
+    final notes = <String>[];
+    if (dataset.collectedHistoricalOverdueAmount > 0.009) {
+      notes.add(
+        'Cobrado de atrasos anteriores: ${money(dataset.collectedHistoricalOverdueAmount)}; no se mezcla con el resultado del periodo.',
+      );
+    }
+    if (dataset.unlinkedCollectionCount > 0) {
+      notes.add(
+        '${dataset.unlinkedCollectionCount} cobro(s) sin vínculo a una factura fueron excluidos.',
+      );
+    }
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: kContabilidadSuccess.withValues(alpha: 0.07),
+        borderRadius: BorderRadius.circular(17),
+        border: Border.all(color: kContabilidadSuccess.withValues(alpha: 0.22)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Ingresos: ventas mayoristas facturadas',
+            style: TextStyle(
+              color: kContabilidadInk,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 5),
+          const Text(
+            'El cobro sólo se reconoce si el abono bancario está ligado a la factura de venta.',
+            style: TextStyle(
+              color: kContabilidadMutedInk,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 18,
+            runSpacing: 8,
+            children: [
+              Text(
+                'Facturado ${money(dataset.invoicedAmount)}',
+                style: const TextStyle(
+                  color: kContabilidadInk,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                'Cobrado ${money(dataset.collectedCurrentAmount)}',
+                style: const TextStyle(
+                  color: kContabilidadSuccess,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              Text(
+                'Por cobrar ${money(dataset.pendingAmount)}',
+                style: const TextStyle(
+                  color: Color(0xFFFFD08A),
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          if (notes.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            Text(
+              notes.join(' '),
+              style: const TextStyle(
+                color: kContabilidadMutedInk,
+                fontSize: 12,
+                height: 1.35,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PeriodInvoiceMetric extends StatelessWidget {
+  final String label;
+  final String value;
+  final String detail;
+  final Color color;
+
+  const _PeriodInvoiceMetric({
+    required this.label,
+    required this.value,
+    required this.detail,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 252,
+      padding: const EdgeInsets.all(15),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.09),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: color.withValues(alpha: 0.24)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            label,
+            style: const TextStyle(
+              color: kContabilidadMutedInk,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          const SizedBox(height: 7),
+          Text(
+            value,
+            style: TextStyle(
+              color: color,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            detail,
+            style: const TextStyle(
+              color: kContabilidadMutedInk,
+              fontSize: 11,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PeriodInvoiceReadingCard extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final Widget child;
+  final Color? iconColor;
+
+  const _PeriodInvoiceReadingCard({
+    required this.icon,
+    required this.title,
+    required this.child,
+    this.iconColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final tone = iconColor ?? kContabilidadGlow;
+    return ContractGlassCard(
+      padding: const EdgeInsets.all(18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: tone),
+              const SizedBox(width: 8),
+              Text(
+                title,
+                style: const TextStyle(
+                  color: kContabilidadInk,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          child,
+        ],
+      ),
+    );
+  }
+}
+
+class _PeriodInvoiceAmountRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final Color color;
+
+  const _PeriodInvoiceAmountRow({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: kContabilidadMutedInk,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        const SizedBox(width: 12),
+        Text(
+          value,
+          style: TextStyle(color: color, fontWeight: FontWeight.w900),
+        ),
+      ],
+    );
+  }
+}
+
+class _PeriodInvoiceDetailRow extends StatelessWidget {
+  final ContabilidadPeriodicFlowRow row;
+  final String Function(num value) money;
+
+  const _PeriodInvoiceDetailRow({required this.row, required this.money});
+
+  @override
+  Widget build(BuildContext context) {
+    final pending = row.pendingAmount > 0.009;
+    final late = !pending && row.hasLatePayment;
+    final tone = pending || late
+        ? const Color(0xFFFFB36B)
+        : kContabilidadSuccess;
+    final status = pending
+        ? 'Pendiente ${money(row.pendingAmount)}'
+        : late
+        ? 'Pagada vencida'
+        : 'Pagada a tiempo';
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(13),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.035),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
+      ),
+      child: Wrap(
+        spacing: 14,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: [
+          SizedBox(
+            width: 255,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  row.folio.trim().isEmpty ? 'Factura sin folio' : row.folio,
+                  style: const TextStyle(
+                    color: kContabilidadInk,
+                    fontWeight: FontWeight.w900,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  row.provider.trim().isEmpty
+                      ? 'Proveedor sin nombre'
+                      : row.provider,
+                  style: const TextStyle(
+                    color: kContabilidadMutedInk,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            'Factura ${money(row.invoicedAmount)}',
+            style: const TextStyle(
+              color: kContabilidadInk,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Text(
+            'Pagado ${money(row.paidAmount)}',
+            style: const TextStyle(
+              color: kContabilidadInk,
+              fontSize: 12,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+            decoration: BoxDecoration(
+              color: tone.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(999),
+            ),
+            child: Text(
+              status,
+              style: TextStyle(
+                color: tone,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

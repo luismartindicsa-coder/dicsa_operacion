@@ -99,9 +99,9 @@ class HrEventPeriodImpactSource {
   });
 }
 
-/// Reparte cada evento en semanas operativas. Si todavía no existe una
-/// importación para una semana futura, se conserva un rango provisional que
-/// se empata por fecha cuando esa semana se cargue.
+/// Reparte cada evento exclusivamente entre semanas operativas ya creadas.
+/// Un expediente puede existir antes que su periodo: se conserva por fecha y
+/// se conciliará cuando RH cree la semana que se traslape.
 Future<void> syncHrEventPeriodImpacts({
   required SupabaseClient client,
   required String eventKind,
@@ -148,11 +148,7 @@ Future<void> syncHrEventPeriodImpacts({
         (!source.impactAttendance && !source.impactPrenomina)) {
       continue;
     }
-    final segments = _segmentsForSource(
-      source,
-      candidateRanges,
-      activePeriodLabel,
-    );
+    final segments = _segmentsForSource(source, candidateRanges);
     final allocatedDays = _allocate(source, source.daysApplied, segments);
     final allocatedAdditional = _allocate(
       source,
@@ -242,38 +238,14 @@ List<_PeriodSegment> _resolveCandidateRanges({
 List<_PeriodSegment> _segmentsForSource(
   HrEventPeriodImpactSource source,
   List<_PeriodSegment> candidates,
-  String activePeriodLabel,
 ) {
-  // Use RH's explicitly selected period as the weekly anchor so older or
-  // overlapping import lots cannot shift a split.
-  final activeRange = HumanResourcesPeriodRange.tryParse(activePeriodLabel);
-  final anchor = activeRange == null
-      ? candidates.first
-      : _PeriodSegment(
-          label: activePeriodLabel,
-          start: activeRange.start,
-          end: activeRange.end,
-        );
-  final durationDays = anchor.end.difference(anchor.start).inDays + 1;
-  final generated = <_PeriodSegment>[];
-  var start = anchor.start;
-  while (start.isAfter(source.startDate)) {
-    start = start.subtract(Duration(days: durationDays));
-  }
-  while (!start.isAfter(source.endDate)) {
-    final end = start.add(Duration(days: durationDays - 1));
-    final matching = candidates.where(
-      (candidate) => candidate.start == start && candidate.end == end,
-    );
-    final label = matching.isEmpty
-        ? 'Semana operativa · ${_formatDate(start)} - ${_formatDate(end)}'
-        : matching.first.label;
-    if (!end.isBefore(source.startDate) && !start.isAfter(source.endDate)) {
-      generated.add(_PeriodSegment(label: label, start: start, end: end));
-    }
-    start = start.add(Duration(days: durationDays));
-  }
-  return generated;
+  return candidates
+      .where(
+        (candidate) =>
+            !candidate.end.isBefore(source.startDate) &&
+            !candidate.start.isAfter(source.endDate),
+      )
+      .toList(growable: false);
 }
 
 List<double> _allocate(
@@ -315,6 +287,3 @@ double _asDouble(Object? raw) {
 
 String _dateKey(DateTime value) =>
     '${value.year.toString().padLeft(4, '0')}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')}';
-
-String _formatDate(DateTime value) =>
-    '${value.day.toString().padLeft(2, '0')}/${value.month.toString().padLeft(2, '0')}/${value.year}';

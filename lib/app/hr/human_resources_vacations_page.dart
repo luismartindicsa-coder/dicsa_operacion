@@ -48,6 +48,8 @@ import 'human_resources_theme.dart';
 const String _kHrProfilesTable = 'hr_employee_profiles';
 const String _kHrImportLotsTable = 'hr_attendance_import_lots';
 const String _kHrAttendanceDailyRecordsTable = 'hr_attendance_daily_records';
+const String _kHrAttendanceOperationalPeriodsTable =
+    'hr_attendance_operational_periods';
 const String _kHrVacationRulesTable = 'hr_vacation_entitlement_rules';
 const String _kHrVacationBalancesTable = 'hr_employee_vacation_balances';
 const String _kHrVacationEventsTable = 'hr_employee_vacation_events';
@@ -122,6 +124,7 @@ class _HumanResourcesVacationsPageState
       const <_HrVacationEmployeeMaster>[];
   List<_HrVacationAttendanceLotLite> _attendanceImportLots =
       const <_HrVacationAttendanceLotLite>[];
+  List<String> _operationalPeriodLabels = const <String>[];
   List<_HrVacationRule> _rules = const <_HrVacationRule>[];
   List<_HrVacationBalanceRecord> _balances = const <_HrVacationBalanceRecord>[];
   List<_HrVacationEventRecord> _events = const <_HrVacationEventRecord>[];
@@ -238,6 +241,13 @@ class _HumanResourcesVacationsPageState
             .order('imported_at', ascending: false)
             .range(from, to),
       );
+      final operationalPeriodsResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrAttendanceOperationalPeriodsTable)
+            .select('period_label,start_date,end_date')
+            .order('start_date')
+            .range(from, to),
+      );
       final rulesResult = await fetchAllSupabaseRows(
         (from, to) => client
             .from(_kHrVacationRulesTable)
@@ -288,6 +298,10 @@ class _HumanResourcesVacationsPageState
           .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrVacationAttendanceLotLite.fromRow)
           .toList(growable: false);
+      final operationalPeriodLabels = operationalPeriodsResult
+          .map((raw) => (raw['period_label'] ?? '').toString().trim())
+          .where((label) => label.isNotEmpty)
+          .toList(growable: false);
 
       final rules = rulesResult
           .map((raw) => Map<String, dynamic>.from(raw))
@@ -309,6 +323,7 @@ class _HumanResourcesVacationsPageState
       final periodOptions = _vacationPeriodOptions(
         lots: attendanceLots,
         events: events,
+        operationalPeriodLabels: operationalPeriodLabels,
       );
       final activePeriodLabel = HumanResourcesPeriodContext.resolveSelected(
         selectedLabel: selectedPeriodLabel,
@@ -358,6 +373,7 @@ class _HumanResourcesVacationsPageState
       if (!mounted) return;
       _employees = employees;
       _attendanceImportLots = attendanceLots;
+      _operationalPeriodLabels = operationalPeriodLabels;
       _rules = rules;
       _balances = balances;
       _events = events;
@@ -366,6 +382,7 @@ class _HumanResourcesVacationsPageState
       _periodOptions = _vacationPeriodOptions(
         lots: attendanceLots,
         events: events,
+        operationalPeriodLabels: operationalPeriodLabels,
       );
       _rebuildRows();
     } catch (_) {
@@ -426,12 +443,6 @@ class _HumanResourcesVacationsPageState
     _selectedPeriodLabel = periodLabel;
     _currentPage = 0;
     _rebuildRows();
-  }
-
-  bool _requireActivePeriod() {
-    if (_activePeriodLabel.isNotEmpty) return true;
-    _showSnack('Selecciona un periodo operativo antes de editar vacaciones.');
-    return false;
   }
 
   List<_HrVacationSummaryRow> _applyVacationFilters(
@@ -515,7 +526,6 @@ class _HumanResourcesVacationsPageState
   Future<void> _logout() async => signOutAndRouteToLogin(context);
 
   Future<void> _openSummaryRow(_HrVacationSummaryRow row) async {
-    if (!_requireActivePeriod()) return;
     final initialIndex = _allRows.indexWhere(
       (candidate) => candidate.employeeId == row.employeeId,
     );
@@ -570,7 +580,6 @@ class _HumanResourcesVacationsPageState
     required _HrVacationSummaryRow row,
     required _HrVacationEditResult result,
   }) async {
-    if (!_requireActivePeriod()) return;
     final client = Supabase.instance.client;
     final preparedEvents = await _prepareVacationEventsForPersistence(
       row: row,
@@ -683,11 +692,8 @@ class _HumanResourcesVacationsPageState
             ),
           )
           .toList(growable: false),
-      knownPeriodLabels: [
-        for (final lot in _attendanceImportLots)
-          _describeVacationAttendancePeriod(lot),
-      ],
-      activePeriodLabel: _activePeriodLabel,
+      knownPeriodLabels: [..._operationalPeriodLabels],
+      activePeriodLabel: '',
     );
 
     final mutableEvents = preparedEvents
@@ -799,22 +805,6 @@ class _HumanResourcesVacationsPageState
   }) async {
     final client = Supabase.instance.client;
     final employee = _findVacationEmployeeById(row.employeeId, _employees);
-    final ngtecoLot = _vacationLotForPeriod(
-      _attendanceImportLots,
-      _HrVacationAttendanceImportSource.ngteco,
-      _activePeriodLabel,
-    );
-    final contpaqLot = _vacationLotForPeriod(
-      _attendanceImportLots,
-      _HrVacationAttendanceImportSource.contpaq,
-      _activePeriodLabel,
-    );
-    final activeAttendancePeriodLabel = _activePeriodLabel;
-    final activeAttendanceRange = _resolveVacationAttendanceActiveRange(
-      ngtecoLot: ngtecoLot,
-      contpaqLot: contpaqLot,
-      activePeriodLabel: activeAttendancePeriodLabel,
-    );
     final rawRows = await fetchAllSupabaseRows(
       (from, to) => client
           .from(_kHrAttendanceDailyRecordsTable)
@@ -833,7 +823,10 @@ class _HumanResourcesVacationsPageState
     for (final attendanceRow in attendanceRows) {
       final sourceDate = (attendanceRow['source_date'] ?? '').toString();
       if (!previousSyncedDates.contains(sourceDate)) continue;
-      if (_attendanceRowHasPunches(attendanceRow)) continue;
+      if (_attendanceRowHasPunches(attendanceRow) ||
+          _attendanceRowIsUserCaptured(attendanceRow)) {
+        continue;
+      }
       final notes = (attendanceRow['notes'] ?? '').toString();
       if (!notes.contains(_kHrVacationAttendanceSyncPrefix)) continue;
       final nextNotes = _removeVacationAttendanceNotes(notes);
@@ -899,25 +892,18 @@ class _HumanResourcesVacationsPageState
         event.startDate,
         event.endDate,
       );
-      if (activeAttendancePeriodLabel.isEmpty ||
-          activeAttendanceRange == null) {
-        event.attendanceSyncStatus = _HrVacationSyncStatus.pendiente;
-        continue;
-      }
-
       final note = _buildVacationAttendanceSyncNote(event);
       final syncUpdates = <Map<String, dynamic>>[];
       var appliedAny = false;
       var skippedByPunch = false;
       final touchedPeriods = <String>{};
       for (final sourceDate in sourceDates) {
-        if (!_isVacationAttendanceDateWithinRange(
+        final periodLabel = _vacationOperationalPeriodForDate(
           sourceDate,
-          activeAttendanceRange,
-        )) {
-          continue;
-        }
-        final key = '$activeAttendancePeriodLabel|$sourceDate';
+          _operationalPeriodLabels,
+        );
+        if (periodLabel == null) continue;
+        final key = '$periodLabel|$sourceDate';
         final attendanceRow = attendanceByPeriodDate[key];
         if (attendanceRow == null) {
           if (employee == null ||
@@ -928,7 +914,7 @@ class _HumanResourcesVacationsPageState
             continue;
           }
           final created = _buildVacationAttendanceRow(
-            periodLabel: activeAttendancePeriodLabel,
+            periodLabel: periodLabel,
             employeeId: row.employeeId,
             employeeName: row.displayName,
             sourceDate: sourceDate,
@@ -938,10 +924,11 @@ class _HumanResourcesVacationsPageState
           attendanceRows.add(created);
           attendanceByPeriodDate[key] = created;
           appliedAny = true;
-          touchedPeriods.add(activeAttendancePeriodLabel);
+          touchedPeriods.add(periodLabel);
           continue;
         }
-        if (_attendanceRowHasPunches(attendanceRow)) {
+        if (_attendanceRowHasPunches(attendanceRow) ||
+            _attendanceRowIsUserCaptured(attendanceRow)) {
           skippedByPunch = true;
           continue;
         }
@@ -2499,9 +2486,7 @@ class _HrVacationModuleTopBar extends StatelessWidget {
                   ),
                   FilledButton.icon(
                     style: contractPrimaryButtonStyle(context),
-                    onPressed: activePeriodLabel.isEmpty
-                        ? null
-                        : onOpenSelectedRow,
+                    onPressed: onOpenSelectedRow,
                     icon: const Icon(Icons.beach_access_rounded),
                     label: const Text('Editar vacaciones'),
                   ),
@@ -7549,8 +7534,10 @@ _HrVacationEmployeeMaster? _findVacationEmployeeById(
 List<String> _vacationPeriodOptions({
   required List<_HrVacationAttendanceLotLite> lots,
   required List<_HrVacationEventRecord> events,
+  required Iterable<String> operationalPeriodLabels,
 }) {
   return HumanResourcesPeriodContext.normalizedOptions([
+    ...operationalPeriodLabels,
     for (final lot in lots) _describeVacationAttendancePeriod(lot),
     for (final event in events) event.attendancePeriodLabel,
   ]);
@@ -7681,6 +7668,8 @@ Map<String, dynamic> _buildVacationAttendanceRow({
         : _vacationWeekdayLabel(parsedDate.weekday),
     'status': 'no_aplica',
     'source_mode': 'ajuste',
+    'capture_origin': 'weekly',
+    'selected_schedule': '',
     'first_punch': '',
     'last_punch': '',
     'punch_timeline': const <String>[],
@@ -7855,6 +7844,11 @@ bool _attendanceRowHasPunches(Map<String, dynamic> row) {
       punchTimeline.isNotEmpty;
 }
 
+bool _attendanceRowIsUserCaptured(Map<String, dynamic> row) {
+  return (row['source_mode'] ?? '').toString() == 'manual' ||
+      (row['capture_origin'] ?? '').toString() == 'daily';
+}
+
 Map<String, dynamic> _copyAttendanceRowForUpdate(
   Map<String, dynamic> row, {
   required String status,
@@ -7875,6 +7869,8 @@ Map<String, dynamic> _copyAttendanceRowForUpdate(
     'weekday_label': (row['weekday_label'] ?? '').toString(),
     'status': status,
     'source_mode': sourceMode,
+    'capture_origin': (row['capture_origin'] ?? 'weekly').toString(),
+    'selected_schedule': (row['selected_schedule'] ?? '').toString(),
     'first_punch': firstPunch,
     'last_punch': lastPunch,
     'punch_timeline': punchTimeline,
@@ -7882,6 +7878,23 @@ Map<String, dynamic> _copyAttendanceRowForUpdate(
     'overtime_minutes': overtimeMinutes,
     'notes': notes,
   };
+}
+
+String? _vacationOperationalPeriodForDate(
+  String sourceDate,
+  Iterable<String> periodLabels,
+) {
+  final date = _parseVacationAttendanceDateLabel(sourceDate);
+  if (date == null) return null;
+  for (final label in periodLabels) {
+    final range = HumanResourcesPeriodRange.tryParse(label);
+    if (range != null &&
+        !date.isBefore(range.start) &&
+        !date.isAfter(range.end)) {
+      return label;
+    }
+  }
+  return null;
 }
 
 String _buildVacationAttendanceSyncNote(_HrVacationEventDraft event) {

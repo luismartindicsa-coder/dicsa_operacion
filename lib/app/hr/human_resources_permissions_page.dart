@@ -43,6 +43,8 @@ const String _kHrPermissionProfilesTable = 'hr_employee_profiles';
 const String _kHrPermissionImportLotsTable = 'hr_attendance_import_lots';
 const String _kHrPermissionAttendanceDailyRecordsTable =
     'hr_attendance_daily_records';
+const String _kHrPermissionOperationalPeriodsTable =
+    'hr_attendance_operational_periods';
 const String _kHrPermissionEventsTable = 'hr_employee_permission_events';
 const String _kHrPermissionAttendanceSyncPrefix = 'Permisos RH:';
 const String _kHrPermissionVacationAttendanceSyncPrefix = 'Vacaciones RH:';
@@ -106,6 +108,7 @@ class _HumanResourcesPermissionsPageState
       const <_HrPermissionEmployeeMaster>[];
   List<_HrPermissionImportLotLite> _importLots =
       const <_HrPermissionImportLotLite>[];
+  List<String> _operationalPeriodLabels = const <String>[];
   List<_HrPermissionEventRecord> _events = const <_HrPermissionEventRecord>[];
   List<_HrPermissionSummaryRow> _allRows = const <_HrPermissionSummaryRow>[];
   List<_HrPermissionSummaryRow> _visibleRows =
@@ -218,6 +221,13 @@ class _HumanResourcesPermissionsPageState
             .order('imported_at', ascending: false)
             .range(from, to),
       );
+      final operationalPeriodsResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrPermissionOperationalPeriodsTable)
+            .select('period_label,start_date,end_date')
+            .order('start_date')
+            .range(from, to),
+      );
       List<dynamic> eventsResult = const <dynamic>[];
       try {
         eventsResult = await fetchAllSupabaseRows(
@@ -249,6 +259,10 @@ class _HumanResourcesPermissionsPageState
           .map((raw) => Map<String, dynamic>.from(raw))
           .map(_HrPermissionImportLotLite.fromRow)
           .toList(growable: false);
+      final operationalPeriodLabels = operationalPeriodsResult
+          .map((raw) => (raw['period_label'] ?? '').toString().trim())
+          .where((label) => label.isNotEmpty)
+          .toList(growable: false);
 
       final events = eventsResult
           .map((raw) => Map<String, dynamic>.from(raw as Map))
@@ -258,11 +272,13 @@ class _HumanResourcesPermissionsPageState
       if (!mounted) return;
       _employees = employees;
       _importLots = importLots;
+      _operationalPeriodLabels = operationalPeriodLabels;
       _events = events;
       _selectedPeriodLabel = selectedPeriodLabel;
       _periodOptions = _permissionPeriodOptions(
         lots: importLots,
         events: events,
+        operationalPeriodLabels: operationalPeriodLabels,
       );
       _rebuildRows();
     } catch (_) {
@@ -277,13 +293,15 @@ class _HumanResourcesPermissionsPageState
       availableLabels: _periodOptions,
     );
     final activeRange = HumanResourcesPeriodRange.tryParse(periodLabel);
-    final periodEvents = _events
-        .where(
-          (event) =>
-              event.attendancePeriodLabel == periodLabel ||
-              _permissionEventOverlapsPeriod(event, activeRange),
-        )
-        .toList(growable: false);
+    final periodEvents = activeRange == null
+        ? _events
+        : _events
+              .where(
+                (event) =>
+                    event.attendancePeriodLabel == periodLabel ||
+                    _permissionEventOverlapsPeriod(event, activeRange),
+              )
+              .toList(growable: false);
     final rows = _buildPermissionSummaryRows(
       employees: _employees,
       events: periodEvents,
@@ -331,12 +349,6 @@ class _HumanResourcesPermissionsPageState
     _selectedPeriodLabel = periodLabel;
     _currentPage = 0;
     _rebuildRows();
-  }
-
-  bool _requireActivePeriod() {
-    if (_activePeriodLabel.isNotEmpty) return true;
-    _showSnack('Selecciona un periodo operativo antes de editar permisos.');
-    return false;
   }
 
   List<_HrPermissionSummaryRow> _applyPermissionFilters(
@@ -408,7 +420,6 @@ class _HumanResourcesPermissionsPageState
   Future<void> _logout() async => signOutAndRouteToLogin(context);
 
   Future<void> _openSummaryRow(_HrPermissionSummaryRow row) async {
-    if (!_requireActivePeriod()) return;
     final initialIndex = _allRows.indexWhere(
       (candidate) => candidate.employeeId == row.employeeId,
     );
@@ -460,19 +471,10 @@ class _HumanResourcesPermissionsPageState
     required _HrPermissionSummaryRow row,
     required _HrPermissionEditResult result,
   }) async {
-    if (!_requireActivePeriod()) return;
     final client = Supabase.instance.client;
-    final existing = _events
-        .where(
-          (item) =>
-              item.employeeId == row.employeeId &&
-              (item.attendancePeriodLabel == _activePeriodLabel ||
-                  _permissionEventOverlapsPeriod(
-                    item,
-                    HumanResourcesPeriodRange.tryParse(_activePeriodLabel),
-                  )),
-        )
-        .toList(growable: false);
+    // The dialog only owns the events shown in this row. Historical events
+    // remain independent from the selected weekly view.
+    final existing = row.events;
 
     final preparedEvents = await _preparePermissionEventsForPersistence(
       row: row,
@@ -487,9 +489,7 @@ class _HumanResourcesPermissionsPageState
             employeeId: row.employeeId,
             employeeName: row.displayName,
             empresa: row.empresa,
-            attendancePeriodLabel: event.attendancePeriodLabel.isEmpty
-                ? _activePeriodLabel
-                : event.attendancePeriodLabel,
+            attendancePeriodLabel: event.attendancePeriodLabel,
             permissionType: event.permissionType,
             requestUnit: event.requestUnit,
             startDate: event.startDate!,
@@ -557,7 +557,6 @@ class _HumanResourcesPermissionsPageState
         .from(_kHrPermissionEventsTable)
         .select()
         .eq('employee_id', row.employeeId)
-        .eq('attendance_period_label', _activePeriodLabel)
         .order('start_date')
         .order('created_at');
     final refreshed = (refreshedResult as List)
@@ -584,10 +583,8 @@ class _HumanResourcesPermissionsPageState
             ),
           )
           .toList(growable: false),
-      knownPeriodLabels: [
-        for (final lot in _importLots) _describePermissionImportPeriod(lot),
-      ],
-      activePeriodLabel: _activePeriodLabel,
+      knownPeriodLabels: _operationalPeriodLabels,
+      activePeriodLabel: '',
     );
 
     await _loadData();
@@ -601,22 +598,6 @@ class _HumanResourcesPermissionsPageState
   }) async {
     final client = Supabase.instance.client;
     final employee = _findPermissionEmployeeById(row.employeeId, _employees);
-    final ngtecoLot = _permissionLotForPeriod(
-      _importLots,
-      _HrPermissionImportSource.ngteco,
-      _activePeriodLabel,
-    );
-    final contpaqLot = _permissionLotForPeriod(
-      _importLots,
-      _HrPermissionImportSource.contpaq,
-      _activePeriodLabel,
-    );
-    final activeAttendancePeriodLabel = _activePeriodLabel;
-    final activeAttendanceRange = _resolvePermissionAttendanceActiveRange(
-      ngtecoLot: ngtecoLot,
-      contpaqLot: contpaqLot,
-      activePeriodLabel: activeAttendancePeriodLabel,
-    );
     final rawRows = await fetchAllSupabaseRows(
       (from, to) => client
           .from(_kHrPermissionAttendanceDailyRecordsTable)
@@ -635,7 +616,10 @@ class _HumanResourcesPermissionsPageState
     for (final attendanceRow in attendanceRows) {
       final sourceDate = (attendanceRow['source_date'] ?? '').toString();
       if (!previousSyncedDates.contains(sourceDate)) continue;
-      if (_permissionAttendanceRowHasPunches(attendanceRow)) continue;
+      if (_permissionAttendanceRowHasPunches(attendanceRow) ||
+          _permissionAttendanceRowIsUserCaptured(attendanceRow)) {
+        continue;
+      }
       final notes = (attendanceRow['notes'] ?? '').toString();
       if (!notes.contains(_kHrPermissionAttendanceSyncPrefix)) continue;
       final nextNotes = _removePermissionAttendanceNotes(notes);
@@ -704,12 +688,6 @@ class _HumanResourcesPermissionsPageState
         event.startDate!,
         event.endDate!,
       );
-      if (activeAttendancePeriodLabel.isEmpty ||
-          activeAttendanceRange == null) {
-        event.attendanceSyncStatus = _HrPermissionSyncStatus.pendiente;
-        continue;
-      }
-
       final note = _buildPermissionAttendanceSyncNote(event);
       final syncUpdates = <Map<String, dynamic>>[];
       var appliedAny = false;
@@ -717,13 +695,12 @@ class _HumanResourcesPermissionsPageState
       var blockedByVacation = false;
       final touchedPeriods = <String>{};
       for (final sourceDate in sourceDates) {
-        if (!_isPermissionAttendanceDateWithinRange(
+        final periodLabel = _permissionOperationalPeriodForDate(
           sourceDate,
-          activeAttendanceRange,
-        )) {
-          continue;
-        }
-        final key = '$activeAttendancePeriodLabel|$sourceDate';
+          _operationalPeriodLabels,
+        );
+        if (periodLabel == null) continue;
+        final key = '$periodLabel|$sourceDate';
         final attendanceRow = attendanceByPeriodDate[key];
         if (attendanceRow == null) {
           if (employee == null ||
@@ -734,7 +711,7 @@ class _HumanResourcesPermissionsPageState
             continue;
           }
           final created = _buildPermissionAttendanceRow(
-            periodLabel: activeAttendancePeriodLabel,
+            periodLabel: periodLabel,
             employeeId: row.employeeId,
             employeeName: row.displayName,
             sourceDate: sourceDate,
@@ -744,10 +721,11 @@ class _HumanResourcesPermissionsPageState
           attendanceRows.add(created);
           attendanceByPeriodDate[key] = created;
           appliedAny = true;
-          touchedPeriods.add(activeAttendancePeriodLabel);
+          touchedPeriods.add(periodLabel);
           continue;
         }
-        if (_permissionAttendanceRowHasPunches(attendanceRow)) {
+        if (_permissionAttendanceRowHasPunches(attendanceRow) ||
+            _permissionAttendanceRowIsUserCaptured(attendanceRow)) {
           skippedByPunch = true;
           continue;
         }
@@ -4279,8 +4257,10 @@ String _permissionCellValueForColumn(
 List<String> _permissionPeriodOptions({
   required List<_HrPermissionImportLotLite> lots,
   required List<_HrPermissionEventRecord> events,
+  required Iterable<String> operationalPeriodLabels,
 }) {
   return HumanResourcesPeriodContext.normalizedOptions([
+    ...operationalPeriodLabels,
     for (final lot in lots) _describePermissionImportPeriod(lot),
     for (final event in events) event.attendancePeriodLabel,
   ]);
@@ -4840,6 +4820,8 @@ Map<String, dynamic> _buildPermissionAttendanceRow({
         : _permissionWeekdayLabel(parsedDate.weekday),
     'status': 'no_aplica',
     'source_mode': 'ajuste',
+    'capture_origin': 'weekly',
+    'selected_schedule': '',
     'first_punch': '',
     'last_punch': '',
     'punch_timeline': const <String>[],
@@ -4857,6 +4839,11 @@ bool _permissionAttendanceRowHasPunches(Map<String, dynamic> row) {
   return (row['first_punch'] ?? '').toString().trim().isNotEmpty ||
       (row['last_punch'] ?? '').toString().trim().isNotEmpty ||
       punchTimeline.isNotEmpty;
+}
+
+bool _permissionAttendanceRowIsUserCaptured(Map<String, dynamic> row) {
+  return (row['source_mode'] ?? '').toString() == 'manual' ||
+      (row['capture_origin'] ?? '').toString() == 'daily';
 }
 
 Map<String, dynamic> _copyPermissionAttendanceRowForUpdate(
@@ -4879,6 +4866,8 @@ Map<String, dynamic> _copyPermissionAttendanceRowForUpdate(
     'weekday_label': (row['weekday_label'] ?? '').toString(),
     'status': status,
     'source_mode': sourceMode,
+    'capture_origin': (row['capture_origin'] ?? 'weekly').toString(),
+    'selected_schedule': (row['selected_schedule'] ?? '').toString(),
     'first_punch': firstPunch,
     'last_punch': lastPunch,
     'punch_timeline': punchTimeline,
@@ -4886,6 +4875,23 @@ Map<String, dynamic> _copyPermissionAttendanceRowForUpdate(
     'overtime_minutes': overtimeMinutes,
     'notes': notes,
   };
+}
+
+String? _permissionOperationalPeriodForDate(
+  String sourceDate,
+  Iterable<String> periodLabels,
+) {
+  final date = _parsePermissionAttendanceDateLabel(sourceDate);
+  if (date == null) return null;
+  for (final label in periodLabels) {
+    final range = HumanResourcesPeriodRange.tryParse(label);
+    if (range != null &&
+        !date.isBefore(range.start) &&
+        !date.isAfter(range.end)) {
+      return label;
+    }
+  }
+  return null;
 }
 
 String _buildPermissionAttendanceSyncNote(_HrPermissionEventDraft event) {

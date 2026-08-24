@@ -1,9 +1,105 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../direction/analysis/menudeo/menudeo_analysis_models.dart';
 import '../direction/analysis/menudeo/menudeo_analysis_repository.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
+import '../finanzas/finanzas_provider_accounts_store.dart';
 import '../shared/direction_vault/direction_vault_repository.dart';
+
+class ContabilidadPeriodicFlowDataset {
+  final DateTimeRange range;
+  final double invoicedAmount;
+  final int invoiceCount;
+  final double paidOnTimeAmount;
+  final double paidLateAmount;
+  final double paidHistoricalOverdueAmount;
+  final int paidHistoricalOverdueCount;
+  final double pendingAmount;
+  final int pendingInvoiceCount;
+  final int unlinkedPaymentCount;
+  final List<ContabilidadPeriodicFlowRow> rows;
+
+  const ContabilidadPeriodicFlowDataset({
+    required this.range,
+    required this.invoicedAmount,
+    required this.invoiceCount,
+    required this.paidOnTimeAmount,
+    required this.paidLateAmount,
+    required this.paidHistoricalOverdueAmount,
+    required this.paidHistoricalOverdueCount,
+    required this.pendingAmount,
+    required this.pendingInvoiceCount,
+    required this.unlinkedPaymentCount,
+    required this.rows,
+  });
+
+  double get paidAmount => paidOnTimeAmount + paidLateAmount;
+  double get periodNet => invoicedAmount - paidAmount;
+}
+
+class ContabilidadPeriodicFlowRow {
+  final String folio;
+  final String provider;
+  final DateTime invoiceDate;
+  final DateTime? dueDate;
+  final double invoicedAmount;
+  final double paidAmount;
+  final double pendingAmount;
+  final bool hasLatePayment;
+
+  const ContabilidadPeriodicFlowRow({
+    required this.folio,
+    required this.provider,
+    required this.invoiceDate,
+    required this.dueDate,
+    required this.invoicedAmount,
+    required this.paidAmount,
+    required this.pendingAmount,
+    required this.hasLatePayment,
+  });
+}
+
+class ContabilidadPeriodicIncomeDataset {
+  final double invoicedAmount;
+  final int invoiceCount;
+  final double collectedCurrentAmount;
+  final double pendingAmount;
+  final int pendingInvoiceCount;
+  final double collectedHistoricalOverdueAmount;
+  final int collectedHistoricalOverdueCount;
+  final int unlinkedCollectionCount;
+
+  const ContabilidadPeriodicIncomeDataset({
+    required this.invoicedAmount,
+    required this.invoiceCount,
+    required this.collectedCurrentAmount,
+    required this.pendingAmount,
+    required this.pendingInvoiceCount,
+    required this.collectedHistoricalOverdueAmount,
+    required this.collectedHistoricalOverdueCount,
+    required this.unlinkedCollectionCount,
+  });
+}
+
+class ContabilidadPeriodicOperationalDataset {
+  final double vaultInflows;
+  final double vaultOutflows;
+  final double vaultInternalTransfers;
+  final double cashInflows;
+  final double cashOutflows;
+
+  const ContabilidadPeriodicOperationalDataset({
+    required this.vaultInflows,
+    required this.vaultOutflows,
+    required this.vaultInternalTransfers,
+    required this.cashInflows,
+    required this.cashOutflows,
+  });
+
+  double get operationalNet =>
+      vaultInflows + cashInflows - vaultOutflows - cashOutflows;
+}
 
 class ContabilidadFlowDataset {
   final DateTimeRange? range;
@@ -112,6 +208,271 @@ class ContabilidadFlowBreakdownRow {
 class ContabilidadFlowAnalysisStore {
   const ContabilidadFlowAnalysisStore();
 
+  /// Reads only invoices issued in the selected period. Payments are counted
+  /// only when their bank movement is explicitly linked to one of those
+  /// invoices and also happened within that same period.
+  Future<ContabilidadPeriodicFlowDataset> loadPeriodic({
+    required int windowDays,
+    required DateTimeRange? dateRange,
+  }) async {
+    final range = _resolveRange(windowDays: windowDays, dateRange: dateRange);
+    final results = await Future.wait<dynamic>([
+      FinanzasProviderAccountsStore.loadInvoices(),
+      FinanzasBankAccountsStore.loadMovementsStrict(),
+    ]);
+    final invoices = results[0] as List<FinanzasSupplierInvoiceRecord>;
+    final movements = results[1] as List<FinanzasBankMovementRecord>;
+    final periodInvoices = invoices
+        .where(
+          (invoice) =>
+              _withinRange(invoice.invoiceDate, range) &&
+              !_isExcludedSupplierInvoice(invoice),
+        )
+        .toList(growable: false);
+    final invoicesById = <String, FinanzasSupplierInvoiceRecord>{
+      for (final invoice in invoices) invoice.id: invoice,
+    };
+    final invoiceIds = periodInvoices.map((invoice) => invoice.id).toSet();
+    final paymentsByInvoiceId = <String, List<FinanzasBankMovementRecord>>{};
+    var unlinkedPaymentCount = 0;
+    var paidHistoricalOverdueAmount = 0.0;
+    var paidHistoricalOverdueCount = 0;
+
+    for (final movement in movements) {
+      if (!_withinRange(movement.date, range) || movement.debitAmount <= 0) {
+        continue;
+      }
+      if (movement.sourceType != 'COMPRA_FACTURA') continue;
+      final invoiceId = movement.linkedSupplierInvoiceId?.trim() ?? '';
+      if (invoiceId.isEmpty) {
+        unlinkedPaymentCount++;
+        continue;
+      }
+      if (invoiceIds.contains(invoiceId)) {
+        paymentsByInvoiceId.putIfAbsent(invoiceId, () => []).add(movement);
+        continue;
+      }
+      final invoice = invoicesById[invoiceId];
+      final dueDate = invoice?.dueDate;
+      if (invoice != null &&
+          _dateOnly(invoice.invoiceDate).isBefore(_dateOnly(range.start)) &&
+          dueDate != null &&
+          _dateOnly(movement.date).isAfter(_dateOnly(dueDate))) {
+        paidHistoricalOverdueAmount += movement.effectiveSupplierAppliedAmount;
+        paidHistoricalOverdueCount++;
+      }
+    }
+
+    var invoicedAmount = 0.0;
+    var paidOnTimeAmount = 0.0;
+    var paidLateAmount = 0.0;
+    var pendingAmount = 0.0;
+    var pendingInvoiceCount = 0;
+    final rows = <ContabilidadPeriodicFlowRow>[];
+    for (final invoice in periodInvoices) {
+      final payments = paymentsByInvoiceId[invoice.id] ?? const [];
+      var paidForInvoice = 0.0;
+      var hasLatePayment = false;
+      for (final payment in payments) {
+        final applied = payment.effectiveSupplierAppliedAmount;
+        if (applied <= 0) continue;
+        paidForInvoice += applied;
+        final dueDate = invoice.dueDate;
+        final late =
+            dueDate != null &&
+            _dateOnly(payment.date).isAfter(_dateOnly(dueDate));
+        if (late) {
+          paidLateAmount += applied;
+          hasLatePayment = true;
+        } else {
+          paidOnTimeAmount += applied;
+        }
+      }
+      final pending = (invoice.totalAmount - paidForInvoice).clamp(
+        0.0,
+        double.infinity,
+      );
+      invoicedAmount += invoice.totalAmount;
+      pendingAmount += pending;
+      if (pending > 0.009) pendingInvoiceCount++;
+      rows.add(
+        ContabilidadPeriodicFlowRow(
+          folio: invoice.folio,
+          provider: invoice.providerNameSnapshot,
+          invoiceDate: _dateOnly(invoice.invoiceDate),
+          dueDate: invoice.dueDate == null ? null : _dateOnly(invoice.dueDate!),
+          invoicedAmount: invoice.totalAmount,
+          paidAmount: paidForInvoice,
+          pendingAmount: pending,
+          hasLatePayment: hasLatePayment,
+        ),
+      );
+    }
+    rows.sort((a, b) => b.invoicedAmount.compareTo(a.invoicedAmount));
+    return ContabilidadPeriodicFlowDataset(
+      range: range,
+      invoicedAmount: invoicedAmount,
+      invoiceCount: periodInvoices.length,
+      paidOnTimeAmount: paidOnTimeAmount,
+      paidLateAmount: paidLateAmount,
+      paidHistoricalOverdueAmount: paidHistoricalOverdueAmount,
+      paidHistoricalOverdueCount: paidHistoricalOverdueCount,
+      pendingAmount: pendingAmount,
+      pendingInvoiceCount: pendingInvoiceCount,
+      unlinkedPaymentCount: unlinkedPaymentCount,
+      rows: rows,
+    );
+  }
+
+  /// Sales invoices live in Mayoreo accounts. Collections are accepted only
+  /// from bank credits linked to the same account, so unlinked credits never
+  /// inflate the period's collection metric.
+  Future<ContabilidadPeriodicIncomeDataset> loadPeriodicIncome({
+    required int windowDays,
+    required DateTimeRange? dateRange,
+  }) async {
+    final range = _resolveRange(windowDays: windowDays, dateRange: dateRange);
+    final results = await Future.wait<dynamic>([
+      Supabase.instance.client
+          .from('mayoreo_accounts')
+          .select(
+            'id,operation_type,status,approved_amount,document_number,document_date,estimated_payment_date',
+          ),
+      FinanzasBankAccountsStore.loadMovementsStrict(),
+    ]);
+    final accountRows = (results[0] as List)
+        .map((row) => Map<String, dynamic>.from(row as Map))
+        .toList(growable: false);
+    final movements = results[1] as List<FinanzasBankMovementRecord>;
+    final accountsById = <String, Map<String, dynamic>>{
+      for (final row in accountRows) (row['id'] ?? '').toString(): row,
+    };
+    final periodAccountIds = <String>{};
+    var invoicedAmount = 0.0;
+    var invoiceCount = 0;
+    for (final row in accountRows) {
+      if ((row['operation_type'] ?? 'factura').toString().toLowerCase() !=
+          'factura') {
+        continue;
+      }
+      if ((row['status'] ?? '').toString().toLowerCase() == 'cancelada') {
+        continue;
+      }
+      if ((row['document_number'] ?? '').toString().trim().isEmpty) {
+        continue;
+      }
+      final invoiceDate = _parseRemoteDate(row['document_date']);
+      if (invoiceDate == null || !_withinRange(invoiceDate, range)) continue;
+      final id = (row['id'] ?? '').toString();
+      if (id.isEmpty) continue;
+      periodAccountIds.add(id);
+      invoiceCount++;
+      invoicedAmount += ((row['approved_amount'] as num?) ?? 0).toDouble();
+    }
+
+    final collectedByAccountId = <String, double>{};
+    var historicalOverdueAmount = 0.0;
+    var historicalOverdueCount = 0;
+    var unlinkedCollectionCount = 0;
+    for (final movement in movements) {
+      if (!_withinRange(movement.date, range) || movement.creditAmount <= 0) {
+        continue;
+      }
+      if (movement.sourceType != 'VENTA_FACTURA') continue;
+      final accountId = movement.linkedExternalRef?.trim() ?? '';
+      if (accountId.isEmpty) {
+        unlinkedCollectionCount++;
+        continue;
+      }
+      if (periodAccountIds.contains(accountId)) {
+        collectedByAccountId.update(
+          accountId,
+          (value) => value + movement.creditAmount,
+          ifAbsent: () => movement.creditAmount,
+        );
+        continue;
+      }
+      final account = accountsById[accountId];
+      if (account == null) continue;
+      if ((account['operation_type'] ?? 'factura').toString().toLowerCase() !=
+              'factura' ||
+          (account['status'] ?? '').toString().toLowerCase() == 'cancelada' ||
+          (account['document_number'] ?? '').toString().trim().isEmpty) {
+        continue;
+      }
+      final invoiceDate = _parseRemoteDate(account['document_date']);
+      final dueDate = _parseRemoteDate(account['estimated_payment_date']);
+      if (invoiceDate != null &&
+          _dateOnly(invoiceDate).isBefore(_dateOnly(range.start)) &&
+          dueDate != null &&
+          _dateOnly(movement.date).isAfter(_dateOnly(dueDate))) {
+        historicalOverdueAmount += movement.creditAmount;
+        historicalOverdueCount++;
+      }
+    }
+
+    var collectedCurrentAmount = 0.0;
+    var pendingAmount = 0.0;
+    var pendingInvoiceCount = 0;
+    for (final row in accountRows) {
+      final id = (row['id'] ?? '').toString();
+      if (!periodAccountIds.contains(id)) continue;
+      final approved = ((row['approved_amount'] as num?) ?? 0).toDouble();
+      final collected = collectedByAccountId[id] ?? 0.0;
+      collectedCurrentAmount += collected;
+      final pending = (approved - collected).clamp(0.0, double.infinity);
+      pendingAmount += pending;
+      if (pending > 0.009) pendingInvoiceCount++;
+    }
+    return ContabilidadPeriodicIncomeDataset(
+      invoicedAmount: invoicedAmount,
+      invoiceCount: invoiceCount,
+      collectedCurrentAmount: collectedCurrentAmount,
+      pendingAmount: pendingAmount,
+      pendingInvoiceCount: pendingInvoiceCount,
+      collectedHistoricalOverdueAmount: historicalOverdueAmount,
+      collectedHistoricalOverdueCount: historicalOverdueCount,
+      unlinkedCollectionCount: unlinkedCollectionCount,
+    );
+  }
+
+  Future<ContabilidadPeriodicOperationalDataset> loadPeriodicOperational({
+    required int windowDays,
+    required DateTimeRange? dateRange,
+  }) async {
+    final range = _resolveRange(windowDays: windowDays, dateRange: dateRange);
+    final results = await Future.wait<dynamic>([
+      DirectionVaultRepository.instance.loadVouchers(),
+      MenudeoAnalysisRepository().loadCashDataset(
+        windowDays: windowDays,
+        dateRange: dateRange,
+      ),
+    ]);
+    final vaultRows = results[0] as List<DirectionVaultVoucherRecord>;
+    final cash = results[1] as MenudeoCashDataset;
+    var vaultInflows = 0.0;
+    var vaultOutflows = 0.0;
+    var vaultInternalTransfers = 0.0;
+    for (final row in vaultRows) {
+      if (!_withinRange(row.date, range)) continue;
+      if (_isExcludedVaultVoucher(row)) continue;
+      if (_isInternalVaultMovement(row)) {
+        vaultInternalTransfers += row.total;
+      } else if (row.type == 'deposit') {
+        vaultInflows += row.total;
+      } else {
+        vaultOutflows += row.total;
+      }
+    }
+    return ContabilidadPeriodicOperationalDataset(
+      vaultInflows: vaultInflows,
+      vaultOutflows: vaultOutflows,
+      vaultInternalTransfers: vaultInternalTransfers,
+      cashInflows: cash.snapshot.deposits,
+      cashOutflows: cash.snapshot.expenses,
+    );
+  }
+
   Future<ContabilidadFlowDataset> load({
     required int windowDays,
     required DateTimeRange? dateRange,
@@ -202,6 +563,7 @@ class ContabilidadFlowAnalysisStore {
 
     for (final row in vaultRows) {
       if (!_withinRange(row.date, range)) continue;
+      if (_isExcludedVaultVoucher(row)) continue;
       vaultMovementCount++;
       final date = _dateOnly(row.date);
       if (_isInternalVaultMovement(row)) {
@@ -444,6 +806,31 @@ class ContabilidadFlowAnalysisStore {
     return false;
   }
 
+  bool _isExcludedSupplierInvoice(FinanzasSupplierInvoiceRecord invoice) {
+    return _normalize(
+      invoice.providerNameSnapshot,
+    ).contains('MARICRUZ QUIROGA');
+  }
+
+  bool _isExcludedVaultVoucher(DirectionVaultVoucherRecord row) {
+    final values = <String>[row.person, row.comment];
+    for (final line in row.lines) {
+      values.addAll(<String>[
+        line.concept,
+        line.company,
+        line.driver,
+        line.destination,
+        line.subconcept,
+        line.comment,
+      ]);
+    }
+    return values.any((value) {
+      final normalized = _normalize(value);
+      return normalized.contains('BIANCA') ||
+          normalized.contains('MARICRUZ QUIROGA');
+    });
+  }
+
   bool _withinRange(DateTime value, DateTimeRange range) {
     final current = DateTime(value.year, value.month, value.day);
     final start = DateTime(
@@ -457,6 +844,11 @@ class ContabilidadFlowAnalysisStore {
 
   DateTime _dateOnly(DateTime value) =>
       DateTime(value.year, value.month, value.day);
+
+  DateTime? _parseRemoteDate(Object? value) {
+    if (value == null) return null;
+    return DateTime.tryParse(value.toString());
+  }
 
   void _accumulateTimeline(
     Map<DateTime, ({double inflows, double outflows, double internal})>
