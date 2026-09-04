@@ -7,6 +7,7 @@ const String _kDirectionVaultVouchersTable = 'direction_vault_vouchers';
 const String _kDirectionVaultVoucherLinesTable =
     'direction_vault_voucher_lines';
 const String _kLegacyDirectionVaultArea = 'direccion_boveda_vouchers';
+const int _kVoucherLineLoadBatchSize = 75;
 
 class DirectionVaultVoucherLineRecord {
   final String concept;
@@ -185,14 +186,27 @@ class DirectionVaultRepository {
         .map((row) => (row['id'] ?? '').toString())
         .where((value) => value.trim().isNotEmpty)
         .toList(growable: false);
-    final lineRows = await _supa
-        .from(_kDirectionVaultVoucherLinesTable)
-        .select()
-        .inFilter('voucher_id', ids)
-        .order('line_order', ascending: true)
-        .order('created_at', ascending: true);
+    // A single `in` filter containing every voucher id eventually produces a
+    // URL that PostgREST rejects with 400. Load the detail in small batches so
+    // the grid can still retain its client-side pagination and filters.
+    final lineRows = <dynamic>[];
+    for (
+      var start = 0;
+      start < ids.length;
+      start += _kVoucherLineLoadBatchSize
+    ) {
+      final end = (start + _kVoucherLineLoadBatchSize).clamp(0, ids.length);
+      final batch = ids.sublist(start, end);
+      final batchRows = await _supa
+          .from(_kDirectionVaultVoucherLinesTable)
+          .select()
+          .inFilter('voucher_id', batch)
+          .order('line_order', ascending: true)
+          .order('created_at', ascending: true);
+      lineRows.addAll(batchRows as List);
+    }
     final linesByVoucher = <String, List<DirectionVaultVoucherLineRecord>>{};
-    for (final raw in (lineRows as List)) {
+    for (final raw in lineRows) {
       final row = Map<String, dynamic>.from(raw as Map);
       final voucherId = (row['voucher_id'] ?? '').toString();
       linesByVoucher
