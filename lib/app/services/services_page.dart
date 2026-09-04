@@ -1,10 +1,15 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
+import 'package:file_picker/file_picker.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:pdf/pdf.dart';
+import 'package:pdf/widgets.dart' as pw;
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
@@ -1218,6 +1223,7 @@ class _ServicesPageState extends State<ServicesPage>
   int _currentPage = 0;
   int _pageSize = 40;
   bool _exportingCsv = false;
+  bool _exportingPlanningPdf = false;
   _LogisticsPlanningView _logisticsPlanningView = _LogisticsPlanningView.all;
   bool _marqueeActive = false;
   bool _servicesScheduledTimeColumnAvailable = true;
@@ -2058,6 +2064,336 @@ class _ServicesPageState extends State<ServicesPage>
       _toast('No se pudo exportar el CSV: $e');
     } finally {
       if (mounted) setState(() => _exportingCsv = false);
+    }
+  }
+
+  pw.Widget _planningPdfSummaryChip({
+    required String label,
+    required String value,
+    required PdfColor background,
+    required PdfColor text,
+  }) {
+    return pw.Container(
+      padding: const pw.EdgeInsets.symmetric(horizontal: 9, vertical: 7),
+      decoration: pw.BoxDecoration(
+        color: background,
+        borderRadius: pw.BorderRadius.circular(8),
+      ),
+      child: pw.Column(
+        crossAxisAlignment: pw.CrossAxisAlignment.start,
+        mainAxisSize: pw.MainAxisSize.min,
+        children: [
+          pw.Text(
+            label,
+            style: pw.TextStyle(
+              color: text,
+              fontWeight: pw.FontWeight.bold,
+              fontSize: 6.7,
+            ),
+          ),
+          pw.SizedBox(height: 2),
+          pw.Text(
+            value,
+            style: pw.TextStyle(
+              color: text,
+              fontWeight: pw.FontWeight.bold,
+              fontSize: 9,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _exportLogisticsPlanningPdf() async {
+    if (_exportingPlanningPdf) return;
+    final rows = List<Map<String, dynamic>>.from(_filteredRows);
+    if (rows.isEmpty) {
+      _toast('No hay rutas en la planeación anticipada para imprimir');
+      return;
+    }
+
+    setState(() => _exportingPlanningPdf = true);
+    try {
+      rows.sort((left, right) {
+        final byDate = (_planningDateForRow(left) ?? DateTime(9999)).compareTo(
+          _planningDateForRow(right) ?? DateTime(9999),
+        );
+        if (byDate != 0) return byDate;
+
+        int timeValue(Map<String, dynamic> row) {
+          final time = _parseServicesTimeOfDay(
+            (row['scheduled_time'] ?? '').toString(),
+          );
+          return time == null ? 24 * 60 : time.hour * 60 + time.minute;
+        }
+
+        final byTime = timeValue(left).compareTo(timeValue(right));
+        if (byTime != 0) return byTime;
+
+        return _cellTextForColumn(
+          left,
+          'chofer',
+        ).compareTo(_cellTextForColumn(right, 'chofer'));
+      });
+
+      pw.MemoryImage? logoImage;
+      try {
+        final logoBytes = await rootBundle.load('assets/images/logo_dicsa.png');
+        logoImage = pw.MemoryImage(logoBytes.buffer.asUint8List());
+      } catch (_) {
+        // El reporte sigue siendo imprimible si el asset no está disponible.
+      }
+
+      final scheduledDates =
+          rows.map(_planningDateForRow).whereType<DateTime>().toList()..sort();
+      final dateRange = scheduledDates.isEmpty
+          ? 'Sin fecha programada'
+          : scheduledDates.first == scheduledDates.last
+          ? _fmtUiDate(scheduledDates.first)
+          : '${_fmtUiDate(scheduledDates.first)} - ${_fmtUiDate(scheduledDates.last)}';
+      final drivers = rows
+          .map((row) => _cellTextForColumn(row, 'chofer'))
+          .where((value) => value.isNotEmpty)
+          .toSet()
+          .length;
+
+      const ink = PdfColor.fromInt(0xFF1C222A);
+      const muted = PdfColor.fromInt(0xFF59636E);
+      const steel = PdfColor.fromInt(0xFF68727C);
+      const steelSoft = PdfColor.fromInt(0xFFE9EDF0);
+      const steelLight = PdfColor.fromInt(0xFFF6F7F8);
+      const border = PdfColor.fromInt(0xFFC4CBD1);
+      const accent = PdfColor.fromInt(0xFF147B72);
+
+      final document = pw.Document();
+      document.addPage(
+        pw.MultiPage(
+          pageFormat: PdfPageFormat.a4.landscape,
+          margin: const pw.EdgeInsets.fromLTRB(22, 18, 22, 20),
+          footer: (context) => pw.Padding(
+            padding: const pw.EdgeInsets.only(top: 8),
+            child: pw.Row(
+              mainAxisAlignment: pw.MainAxisAlignment.spaceBetween,
+              children: [
+                pw.Text(
+                  'DICSA - Planeación anticipada de Logística',
+                  style: const pw.TextStyle(color: muted, fontSize: 7.5),
+                ),
+                pw.Text(
+                  'Hoja ${context.pageNumber} de ${context.pagesCount}',
+                  style: const pw.TextStyle(color: muted, fontSize: 7.5),
+                ),
+              ],
+            ),
+          ),
+          build: (context) => [
+            pw.Container(
+              padding: const pw.EdgeInsets.fromLTRB(14, 12, 14, 12),
+              decoration: pw.BoxDecoration(
+                color: steelLight,
+                borderRadius: pw.BorderRadius.circular(12),
+                border: pw.Border.all(color: border, width: 0.8),
+              ),
+              child: pw.Row(
+                crossAxisAlignment: pw.CrossAxisAlignment.center,
+                children: [
+                  pw.Container(
+                    width: 46,
+                    height: 46,
+                    padding: const pw.EdgeInsets.all(6),
+                    decoration: pw.BoxDecoration(
+                      color: PdfColors.white,
+                      borderRadius: pw.BorderRadius.circular(10),
+                      border: pw.Border.all(color: border, width: 0.7),
+                    ),
+                    child: logoImage == null
+                        ? pw.Center(
+                            child: pw.Text(
+                              'D',
+                              style: pw.TextStyle(
+                                color: accent,
+                                fontWeight: pw.FontWeight.bold,
+                                fontSize: 24,
+                              ),
+                            ),
+                          )
+                        : pw.Image(logoImage),
+                  ),
+                  pw.SizedBox(width: 12),
+                  pw.Expanded(
+                    child: pw.Column(
+                      crossAxisAlignment: pw.CrossAxisAlignment.start,
+                      children: [
+                        pw.Text(
+                          'PLANEACIÓN ANTICIPADA DE RUTAS',
+                          style: pw.TextStyle(
+                            color: ink,
+                            fontWeight: pw.FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                        pw.SizedBox(height: 3),
+                        pw.Text(
+                          'Control Diario de Logística - entregar al chofer antes del turno.',
+                          style: const pw.TextStyle(color: muted, fontSize: 9),
+                        ),
+                      ],
+                    ),
+                  ),
+                  _planningPdfSummaryChip(
+                    label: 'FECHAS',
+                    value: dateRange,
+                    background: steelSoft,
+                    text: ink,
+                  ),
+                  pw.SizedBox(width: 8),
+                  _planningPdfSummaryChip(
+                    label: 'RUTAS',
+                    value: '${rows.length}',
+                    background: steelSoft,
+                    text: ink,
+                  ),
+                  pw.SizedBox(width: 8),
+                  _planningPdfSummaryChip(
+                    label: 'CHOFERES',
+                    value: '$drivers',
+                    background: steelSoft,
+                    text: ink,
+                  ),
+                ],
+              ),
+            ),
+            pw.SizedBox(height: 11),
+            pw.Text(
+              'RUTAS ORDENADAS POR CHOFER Y HORARIO',
+              style: pw.TextStyle(
+                color: steel,
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 9,
+              ),
+            ),
+            pw.SizedBox(height: 5),
+            pw.TableHelper.fromTextArray(
+              headers: const [
+                'FECHA',
+                'HORA',
+                'CHOFER',
+                'UNIDAD',
+                'EMPRESA',
+                'MOVIMIENTO',
+                'MATERIAL',
+                'INDICACIONES',
+              ],
+              data: rows
+                  .map(
+                    (row) => [
+                      _cellTextForColumn(row, 'para_dia').isNotEmpty
+                          ? _cellTextForColumn(row, 'para_dia')
+                          : _cellTextForColumn(row, 'fecha'),
+                      _cellTextForColumn(row, 'horario').isEmpty
+                          ? '-'
+                          : _cellTextForColumn(row, 'horario'),
+                      _cellTextForColumn(row, 'chofer').isEmpty
+                          ? 'PENDIENTE'
+                          : _cellTextForColumn(row, 'chofer'),
+                      _cellTextForColumn(row, 'unidad').isEmpty
+                          ? 'PENDIENTE'
+                          : _cellTextForColumn(row, 'unidad'),
+                      _cellTextForColumn(row, 'empresa'),
+                      _cellTextForColumn(row, 'movimiento'),
+                      _cellTextForColumn(row, 'material'),
+                      _cellTextForColumn(row, 'comentario'),
+                    ],
+                  )
+                  .toList(growable: false),
+              headerStyle: pw.TextStyle(
+                color: PdfColors.white,
+                fontWeight: pw.FontWeight.bold,
+                fontSize: 7.6,
+              ),
+              cellStyle: const pw.TextStyle(color: ink, fontSize: 7.8),
+              headerDecoration: const pw.BoxDecoration(color: steel),
+              rowDecoration: const pw.BoxDecoration(color: PdfColors.white),
+              oddRowDecoration: const pw.BoxDecoration(color: steelLight),
+              border: pw.TableBorder(
+                top: const pw.BorderSide(color: border, width: 0.7),
+                bottom: const pw.BorderSide(color: border, width: 0.7),
+                horizontalInside: const pw.BorderSide(
+                  color: border,
+                  width: 0.45,
+                ),
+                verticalInside: const pw.BorderSide(color: border, width: 0.35),
+              ),
+              headerPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 5,
+                vertical: 6,
+              ),
+              cellPadding: const pw.EdgeInsets.symmetric(
+                horizontal: 5,
+                vertical: 5,
+              ),
+              columnWidths: const <int, pw.TableColumnWidth>{
+                0: pw.FlexColumnWidth(1.1),
+                1: pw.FlexColumnWidth(0.7),
+                2: pw.FlexColumnWidth(1.7),
+                3: pw.FlexColumnWidth(0.9),
+                4: pw.FlexColumnWidth(1.65),
+                5: pw.FlexColumnWidth(1.0),
+                6: pw.FlexColumnWidth(1.4),
+                7: pw.FlexColumnWidth(2.0),
+              },
+            ),
+            pw.SizedBox(height: 8),
+            pw.Container(
+              padding: const pw.EdgeInsets.symmetric(
+                horizontal: 10,
+                vertical: 7,
+              ),
+              decoration: pw.BoxDecoration(
+                color: steelSoft,
+                borderRadius: pw.BorderRadius.circular(7),
+              ),
+              child: pw.Text(
+                'Confirmar cualquier cambio de hora, unidad o prioridad con Logística antes de salir.',
+                style: const pw.TextStyle(color: muted, fontSize: 8),
+              ),
+            ),
+          ],
+        ),
+      );
+
+      final now = DateTime.now();
+      final fileName =
+          'planeacion_logistica_${now.year}${now.month.toString().padLeft(2, '0')}${now.day.toString().padLeft(2, '0')}.pdf';
+      if (kIsWeb) {
+        _toast(
+          'La exportación de PDF está disponible desde la aplicación de escritorio.',
+        );
+        return;
+      }
+      final outputPath = await FilePicker.platform.saveFile(
+        dialogTitle: 'Guardar planeación de rutas como PDF',
+        fileName: fileName,
+        allowedExtensions: const ['pdf'],
+        type: FileType.custom,
+        lockParentWindow: true,
+      );
+      if (outputPath == null || outputPath.trim().isEmpty) {
+        _toast('Guardado cancelado');
+        return;
+      }
+      final normalizedPath = outputPath.toLowerCase().endsWith('.pdf')
+          ? outputPath
+          : '$outputPath.pdf';
+      await File(
+        normalizedPath,
+      ).writeAsBytes(await document.save(), flush: true);
+      _toast('PDF de rutas guardado: $normalizedPath');
+    } catch (error) {
+      _toast('No se pudo generar el PDF de rutas: $error');
+    } finally {
+      if (mounted) setState(() => _exportingPlanningPdf = false);
     }
   }
 
@@ -4011,6 +4347,23 @@ class _ServicesPageState extends State<ServicesPage>
                     onPressed: _loadingCats ? null : _openFixedServicesManager,
                     icon: const Icon(Icons.repeat_rounded),
                     label: const Text('Servicios fijos'),
+                  ),
+                ],
+                if (widget.logisticsSilverMode &&
+                    _logisticsPlanningView ==
+                        _LogisticsPlanningView.planned) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    style: _actionOutlinedButtonStyle(context),
+                    onPressed: _exportingPlanningPdf
+                        ? null
+                        : _exportLogisticsPlanningPdf,
+                    icon: Icon(
+                      _exportingPlanningPdf
+                          ? Icons.hourglass_top_rounded
+                          : Icons.picture_as_pdf_rounded,
+                    ),
+                    label: const Text('Imprimir rutas'),
                   ),
                 ],
                 if (_selectedCount > 0) ...[

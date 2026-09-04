@@ -34,6 +34,122 @@ enum ContabilidadAccountingFamily {
   reviewRequired,
 }
 
+enum ContabilidadExpenseSubaccount {
+  operatingPayroll,
+  taxes,
+  imss,
+  fuel,
+  maintenance,
+  transport,
+  utilities,
+  rent,
+  insurance,
+  operatingMisc,
+  professionalFees,
+  administrativePayroll,
+  software,
+  administrativeMisc,
+  interestPaid,
+  biancaInterest,
+}
+
+String contabilidadExpenseSubaccountLabel(ContabilidadExpenseSubaccount value) {
+  return switch (value) {
+    ContabilidadExpenseSubaccount.operatingPayroll => 'Nominas',
+    ContabilidadExpenseSubaccount.taxes => 'Impuestos',
+    ContabilidadExpenseSubaccount.imss => 'IMSS',
+    ContabilidadExpenseSubaccount.fuel => 'Combustibles y gasolinas',
+    ContabilidadExpenseSubaccount.maintenance => 'Reparaciones y mantenimiento',
+    ContabilidadExpenseSubaccount.transport => 'Gastos de transporte',
+    ContabilidadExpenseSubaccount.utilities => 'Agua, luz, telefono',
+    ContabilidadExpenseSubaccount.rent => 'Renta',
+    ContabilidadExpenseSubaccount.insurance => 'Seguros',
+    ContabilidadExpenseSubaccount.operatingMisc => 'Varios',
+    ContabilidadExpenseSubaccount.professionalFees => 'Honorarios',
+    ContabilidadExpenseSubaccount.administrativePayroll =>
+      'Sueldos administrativos',
+    ContabilidadExpenseSubaccount.software => 'Software',
+    ContabilidadExpenseSubaccount.administrativeMisc => 'Varios',
+    ContabilidadExpenseSubaccount.interestPaid => 'Intereses pagados',
+    ContabilidadExpenseSubaccount.biancaInterest => '4% Bianca',
+  };
+}
+
+ContabilidadExpenseSubaccount? classifyExpenseSubaccount({
+  required ContabilidadIncomeStatementBucket bucket,
+  required String context,
+}) {
+  if (bucket != ContabilidadIncomeStatementBucket.operatingExpense &&
+      bucket != ContabilidadIncomeStatementBucket.administrativeExpense &&
+      bucket != ContabilidadIncomeStatementBucket.financialExpense &&
+      bucket != ContabilidadIncomeStatementBucket.payrollExpense) {
+    return null;
+  }
+  final value = _normalizeAccountingToken(context);
+  if (value.contains('BIANCA')) {
+    return ContabilidadExpenseSubaccount.biancaInterest;
+  }
+  if (value.contains('IMSS')) return ContabilidadExpenseSubaccount.imss;
+  if (value.contains('IMPUEST') || value.contains('SAT')) {
+    return ContabilidadExpenseSubaccount.taxes;
+  }
+  if (value.contains('DIESEL') ||
+      value.contains('GASOLINA') ||
+      value.contains('ACEITE') ||
+      value.contains('COMBUSTIBLE')) {
+    return ContabilidadExpenseSubaccount.fuel;
+  }
+  if (value.contains('REFACCION') ||
+      value.contains('MECANIC') ||
+      value.contains('TALACHA') ||
+      value.contains('MANTENIMIENTO') ||
+      value.contains('REPARACION')) {
+    return ContabilidadExpenseSubaccount.maintenance;
+  }
+  if (value.contains('CASETA') ||
+      value.contains('VIATIC') ||
+      value.contains('PERMISO') ||
+      value.contains('VERIFICACION')) {
+    return ContabilidadExpenseSubaccount.transport;
+  }
+  if (value.contains('AGUA') ||
+      value.contains('LUZ') ||
+      value.contains('CFE') ||
+      value.contains('TELEFON') ||
+      value.contains('INTERNET')) {
+    return ContabilidadExpenseSubaccount.utilities;
+  }
+  if (value.contains('RENTA') || value.contains('ARREND')) {
+    return ContabilidadExpenseSubaccount.rent;
+  }
+  if (value.contains('SEGURO') || value.contains('POLIZA')) {
+    return ContabilidadExpenseSubaccount.insurance;
+  }
+  if (value.contains('ABOGAD') ||
+      value.contains('CONTADOR') ||
+      value.contains('ARQUITECT') ||
+      value.contains('HONORARIO')) {
+    return ContabilidadExpenseSubaccount.professionalFees;
+  }
+  if (value.contains('LICENCIA') ||
+      value.contains('SOFTWARE') ||
+      value.contains('GPS') ||
+      value.contains('SUSCRIP')) {
+    return ContabilidadExpenseSubaccount.software;
+  }
+  if (bucket == ContabilidadIncomeStatementBucket.financialExpense) {
+    return ContabilidadExpenseSubaccount.interestPaid;
+  }
+  if (bucket == ContabilidadIncomeStatementBucket.payrollExpense) {
+    return value.contains('ADMIN') || value.contains('OFICINA')
+        ? ContabilidadExpenseSubaccount.administrativePayroll
+        : ContabilidadExpenseSubaccount.operatingPayroll;
+  }
+  return bucket == ContabilidadIncomeStatementBucket.administrativeExpense
+      ? ContabilidadExpenseSubaccount.administrativeMisc
+      : ContabilidadExpenseSubaccount.operatingMisc;
+}
+
 class ContabilidadAccountingFamilyDefinition {
   final ContabilidadAccountingFamily family;
   final String title;

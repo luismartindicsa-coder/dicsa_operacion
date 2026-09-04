@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../commercial/commercial_store.dart';
+import '../direction/analysis/menudeo/menudeo_analysis_models.dart';
 import '../direction/analysis/menudeo/menudeo_analysis_repository.dart';
 import '../direction/direction_cash_taxonomy_store.dart';
 import '../finanzas/finanzas_bank_accounts_store.dart';
@@ -13,6 +14,7 @@ const String _kMenCashVoucherLinesTable = 'men_cash_voucher_lines';
 
 class ContabilidadIncomeStatementSnapshot {
   final double revenue;
+  final double otherIncome;
   final double commercialCost;
   final double commercialResult;
   final double operatingExpense;
@@ -26,6 +28,7 @@ class ContabilidadIncomeStatementSnapshot {
 
   const ContabilidadIncomeStatementSnapshot({
     required this.revenue,
+    required this.otherIncome,
     required this.commercialCost,
     required this.commercialResult,
     required this.operatingExpense,
@@ -146,6 +149,7 @@ class ContabilidadIncomeStatementDataset {
   final List<ContabilidadIncomeStatementSourceRow> sourceRows;
   final List<ContabilidadIncomeStatementFamilyRow> familyExpenseRows;
   final List<ContabilidadIncomeStatementBreakdownRow> expenseBreakdown;
+  final List<ContabilidadIncomeStatementBreakdownRow> otherIncomeBreakdown;
   final List<ContabilidadIncomeStatementReviewRow> reviewRows;
   final List<ContabilidadAccountingFamilyDefinition> familyRows;
   final List<String> insights;
@@ -158,6 +162,7 @@ class ContabilidadIncomeStatementDataset {
     required this.sourceRows,
     required this.familyExpenseRows,
     required this.expenseBreakdown,
+    required this.otherIncomeBreakdown,
     required this.reviewRows,
     required this.familyRows,
     required this.insights,
@@ -167,6 +172,243 @@ class ContabilidadIncomeStatementDataset {
 
 class ContabilidadIncomeStatementStore {
   const ContabilidadIncomeStatementStore();
+
+  /// Simple cash-result reading based only on categories already captured in
+  /// Bancos, Boveda and Menudeo. It never rewrites or infers source data.
+  Future<ContabilidadIncomeStatementDataset> loadSimplified({
+    required int windowDays,
+    required DateTimeRange? dateRange,
+  }) async {
+    final range = _resolveRange(windowDays: windowDays, dateRange: dateRange);
+    final results = await Future.wait<dynamic>([
+      FinanzasBankAccountsStore.loadMovementsStrict(),
+      DirectionVaultRepository.instance.loadVouchers(),
+      MenudeoAnalysisRepository().loadCashDataset(
+        windowDays: windowDays,
+        dateRange: dateRange,
+      ),
+    ]);
+    final bankRows = results[0] as List<FinanzasBankMovementRecord>;
+    final vaultRows = results[1] as List<DirectionVaultVoucherRecord>;
+    final menudeo = results[2] as MenudeoCashDataset;
+    final reconciledTransfers = _matchBankToVaultChequeTransfers(
+      bankRows: bankRows,
+      vaultRows: vaultRows,
+      range: range,
+    );
+    final reconciledBankIds = reconciledTransfers
+        .map((match) => match.bankId)
+        .toSet();
+    final reconciledVaultIds = reconciledTransfers
+        .map((match) => match.vaultId)
+        .toSet();
+    var materialSales = 0.0;
+    var otherIncome = 0.0;
+    var materialPurchases = 0.0;
+    var expenses = 0.0;
+    final totals = <String, ({double amount, int count})>{};
+    final otherIncomeTotals = <String, ({double amount, int count})>{};
+
+    void addExpense(String label, String source, double amount) {
+      if (amount <= 0.009) return;
+      final key = '$label|$source';
+      final current = totals[key] ?? (amount: 0.0, count: 0);
+      totals[key] = (amount: current.amount + amount, count: current.count + 1);
+      expenses += amount;
+    }
+
+    void addOtherIncome(String label, String source, double amount) {
+      if (amount <= 0.009) return;
+      final key = '$label|$source';
+      final current = otherIncomeTotals[key] ?? (amount: 0.0, count: 0);
+      otherIncomeTotals[key] = (
+        amount: current.amount + amount,
+        count: current.count + 1,
+      );
+      otherIncome += amount;
+    }
+
+    for (final row in bankRows) {
+      if (!_withinRange(row.date, range) ||
+          _isSimpleInternalBank(row) ||
+          reconciledBankIds.contains(row.id)) {
+        continue;
+      }
+      final category = row.category.trim().isEmpty
+          ? 'Sin categoria'
+          : row.category.trim();
+      if (row.creditAmount > 0.009) {
+        if (_normalizeFinanceText(category) == 'VENTAS') {
+          materialSales += row.creditAmount;
+        } else {
+          addOtherIncome(category, 'Bancos', row.creditAmount);
+        }
+      }
+      if (row.debitAmount > 0.009) {
+        if (_normalizeFinanceText(category) == 'COMPRA DE MATERIAL') {
+          materialPurchases += row.debitAmount;
+        } else {
+          addExpense(category, 'Bancos', row.debitAmount);
+        }
+      }
+    }
+
+    for (final row in vaultRows) {
+      if (!_withinRange(row.date, range) ||
+          _isSimpleInternalVault(row) ||
+          reconciledVaultIds.contains(row.id)) {
+        continue;
+      }
+      final rubric = row.rubric.trim().isEmpty
+          ? 'Sin rubro'
+          : row.rubric.trim();
+      final normalized = _normalizeFinanceText(rubric);
+      if (row.type == 'deposit') {
+        if (normalized == 'VENTA DE MATERIAL') {
+          materialSales += row.total;
+        } else {
+          addOtherIncome(rubric, 'Bóveda', row.total);
+        }
+      } else if (normalized == 'COMPRA DE MATERIAL') {
+        materialPurchases += row.total;
+      } else {
+        addExpense(rubric, 'Bóveda', row.total);
+      }
+    }
+
+    for (final row in menudeo.depositRubricRows) {
+      final normalized = _normalizeFinanceText(row.label);
+      if (normalized == 'REPOSICION DE FONDO' ||
+          normalized == 'MOVIMIENTOS INTERNOS') {
+        continue;
+      }
+      if (normalized == 'VENTA DE MATERIAL') {
+        materialSales += row.total;
+      } else {
+        addOtherIncome(
+          row.label.trim().isEmpty ? 'Sin rubro' : row.label,
+          'Menudeo',
+          row.total,
+        );
+      }
+    }
+    for (final row in menudeo.expenseRubricRows) {
+      final normalized = _normalizeFinanceText(row.label);
+      if (normalized == 'REPOSICION DE FONDO' ||
+          normalized == 'MOVIMIENTOS INTERNOS') {
+        continue;
+      }
+      if (normalized == 'COMPRA DE MATERIAL') {
+        materialPurchases += row.total;
+      } else {
+        addExpense(
+          row.label.trim().isEmpty ? 'Sin rubro' : row.label,
+          'Menudeo',
+          row.total,
+        );
+      }
+    }
+
+    final grossProfit = materialSales + otherIncome - materialPurchases;
+    final netProfit = grossProfit - expenses;
+    final breakdown =
+        totals.entries
+            .map((entry) {
+              final separator = entry.key.indexOf('|');
+              return ContabilidadIncomeStatementBreakdownRow(
+                label: entry.key.substring(0, separator),
+                sourceLabel: entry.key.substring(separator + 1),
+                amount: entry.value.amount,
+                count: entry.value.count,
+              );
+            })
+            .toList(growable: false)
+          ..sort((a, b) => b.amount.compareTo(a.amount));
+    final otherIncomeBreakdown =
+        otherIncomeTotals.entries
+            .map((entry) {
+              final separator = entry.key.indexOf('|');
+              return ContabilidadIncomeStatementBreakdownRow(
+                label: entry.key.substring(0, separator),
+                sourceLabel: entry.key.substring(separator + 1),
+                amount: entry.value.amount,
+                count: entry.value.count,
+              );
+            })
+            .toList(growable: false)
+          ..sort((a, b) => b.amount.compareTo(a.amount));
+    final snapshot = ContabilidadIncomeStatementSnapshot(
+      revenue: materialSales,
+      otherIncome: otherIncome,
+      commercialCost: materialPurchases,
+      commercialResult: grossProfit,
+      operatingExpense: expenses,
+      administrativeExpense: 0,
+      financialExpense: 0,
+      payrollExpense: 0,
+      recognizedExpenses: expenses,
+      periodResult: netProfit,
+      internalExcluded: reconciledTransfers.fold<double>(
+        0,
+        (sum, match) => sum + match.amount,
+      ),
+      reviewPending: 0,
+    );
+    return ContabilidadIncomeStatementDataset(
+      range: range,
+      snapshot: snapshot,
+      lines: <ContabilidadIncomeStatementLine>[
+        ContabilidadIncomeStatementLine(
+          label: 'Ventas de material',
+          amount: materialSales,
+          emphasis: false,
+          tone: ColorTone.positive,
+        ),
+        ContabilidadIncomeStatementLine(
+          label: 'Entradas por otros medios',
+          amount: otherIncome,
+          emphasis: false,
+          tone: ColorTone.positive,
+        ),
+        ContabilidadIncomeStatementLine(
+          label: 'Compra de material',
+          amount: -materialPurchases,
+          emphasis: false,
+          tone: ColorTone.caution,
+        ),
+        ContabilidadIncomeStatementLine(
+          label: 'Utilidad bruta',
+          amount: grossProfit,
+          emphasis: true,
+          tone: grossProfit >= 0 ? ColorTone.positive : ColorTone.negative,
+        ),
+        ContabilidadIncomeStatementLine(
+          label: 'Gastos',
+          amount: -expenses,
+          emphasis: false,
+          tone: ColorTone.neutral,
+        ),
+        ContabilidadIncomeStatementLine(
+          label: 'Utilidad neta',
+          amount: netProfit,
+          emphasis: true,
+          tone: netProfit >= 0 ? ColorTone.positive : ColorTone.negative,
+        ),
+      ],
+      sourceRows: const <ContabilidadIncomeStatementSourceRow>[],
+      familyExpenseRows: const <ContabilidadIncomeStatementFamilyRow>[],
+      expenseBreakdown: breakdown,
+      otherIncomeBreakdown: otherIncomeBreakdown,
+      reviewRows: const <ContabilidadIncomeStatementReviewRow>[],
+      familyRows: const <ContabilidadAccountingFamilyDefinition>[],
+      insights: const <String>[],
+      warnings: reconciledTransfers.isEmpty
+          ? const <String>[]
+          : <String>[
+              'Se aislaron ${reconciledTransfers.length} traspasos Banco-Bóveda por cheque para no contar el mismo dinero dos veces.',
+            ],
+    );
+  }
 
   Future<ContabilidadIncomeStatementDataset> load({
     required int windowDays,
@@ -335,6 +577,7 @@ class ContabilidadIncomeStatementStore {
 
     final snapshot = ContabilidadIncomeStatementSnapshot(
       revenue: revenue,
+      otherIncome: 0,
       commercialCost: commercialCost,
       commercialResult: commercialResult,
       operatingExpense: operatingExpense,
@@ -355,43 +598,43 @@ class ContabilidadIncomeStatementStore {
         tone: ColorTone.positive,
       ),
       ContabilidadIncomeStatementLine(
-        label: 'Costo comercial',
+        label: 'Egresos',
         amount: -commercialCost,
         emphasis: false,
         tone: ColorTone.caution,
       ),
       ContabilidadIncomeStatementLine(
-        label: 'Resultado comercial',
+        label: 'Utilidad bruta',
         amount: commercialResult,
         emphasis: true,
         tone: commercialResult >= 0 ? ColorTone.positive : ColorTone.negative,
       ),
       ContabilidadIncomeStatementLine(
-        label: 'Gasto operativo',
+        label: 'Gastos de operación',
         amount: -operatingExpense,
         emphasis: false,
         tone: ColorTone.neutral,
       ),
       ContabilidadIncomeStatementLine(
-        label: 'Gasto administrativo',
+        label: 'Gastos de administración',
         amount: -administrativeExpense,
         emphasis: false,
         tone: ColorTone.neutral,
       ),
       ContabilidadIncomeStatementLine(
-        label: 'Gasto financiero',
+        label: 'Gastos financieros',
         amount: -financialExpense,
         emphasis: false,
         tone: ColorTone.neutral,
       ),
       ContabilidadIncomeStatementLine(
-        label: 'Nomina',
+        label: 'Nominas',
         amount: -payrollExpense,
         emphasis: false,
         tone: ColorTone.neutral,
       ),
       ContabilidadIncomeStatementLine(
-        label: 'Resultado del periodo',
+        label: 'Utilidad neta del ejercicio',
         amount: periodResult,
         emphasis: true,
         tone: periodResult >= 0 ? ColorTone.positive : ColorTone.negative,
@@ -473,7 +716,8 @@ class ContabilidadIncomeStatementStore {
       lines: lines,
       sourceRows: sourceRows,
       familyExpenseRows: familyExpenseRows,
-      expenseBreakdown: expenseBreakdown.take(12).toList(growable: false),
+      expenseBreakdown: expenseBreakdown,
+      otherIncomeBreakdown: const <ContabilidadIncomeStatementBreakdownRow>[],
       reviewRows: reviewBreakdown.take(16).toList(growable: false),
       familyRows: contabilidadAccountingFamilies,
       insights: insights,
@@ -495,9 +739,16 @@ class ContabilidadIncomeStatementStore {
           bucket == ContabilidadIncomeStatementBucket.commercialCost) {
         continue;
       }
-      final key = row.category.trim().isEmpty
-          ? 'Sin categoria'
-          : row.category.trim();
+      final subaccount = classifyExpenseSubaccount(
+        bucket: bucket,
+        context:
+            '${row.category} ${row.comment} ${row.reference} ${row.counterpartyNameSnapshot}',
+      );
+      final key = subaccount == null
+          ? (row.category.trim().isEmpty
+                ? 'Sin categoria'
+                : row.category.trim())
+          : contabilidadExpenseSubaccountLabel(subaccount);
       final current = totals[key] ?? (amount: 0.0, count: 0);
       totals[key] = (
         amount: current.amount + row.debitAmount,
@@ -534,7 +785,14 @@ class ContabilidadIncomeStatementStore {
           bucket == ContabilidadIncomeStatementBucket.commercialCost) {
         continue;
       }
-      final key = row.rubric.trim().isEmpty ? 'Sin rubro' : row.rubric.trim();
+      final subaccount = classifyExpenseSubaccount(
+        bucket: bucket,
+        context:
+            '${row.rubric} ${row.person} ${row.comment} ${row.lines.map((line) => '${line.concept} ${line.subconcept} ${line.company} ${line.comment}').join(' ')}',
+      );
+      final key = subaccount == null
+          ? (row.rubric.trim().isEmpty ? 'Sin rubro' : row.rubric.trim())
+          : contabilidadExpenseSubaccountLabel(subaccount);
       final current = totals[key] ?? (amount: 0.0, count: 0);
       totals[key] = (
         amount: current.amount + row.total,
@@ -859,7 +1117,8 @@ class ContabilidadIncomeStatementStore {
   }
 
   bool _looksLikeRealFinancialExpense(String value) {
-    return value.contains('INTERES') ||
+    return value.contains('BIANCA') ||
+        value.contains('INTERES') ||
         value.contains('INTERESES') ||
         value.contains('COMISION') ||
         value.contains('COMISIONES') ||
@@ -904,6 +1163,66 @@ class ContabilidadIncomeStatementStore {
       return normalized.contains('BIANCA') ||
           normalized.contains('MARICRUZ QUIROGA');
     });
+  }
+
+  bool _isSimpleInternalBank(FinanzasBankMovementRecord row) =>
+      _normalizeFinanceText(row.category) == 'MOVIMIENTOS INTERNOS';
+
+  bool _isSimpleInternalVault(DirectionVaultVoucherRecord row) {
+    final rubric = _normalizeFinanceText(row.rubric);
+    return rubric == 'REPOSICION DE FONDO' || rubric == 'MOVIMIENTOS INTERNOS';
+  }
+
+  List<_SimpleInternalTransferMatch> _matchBankToVaultChequeTransfers({
+    required List<FinanzasBankMovementRecord> bankRows,
+    required List<DirectionVaultVoucherRecord> vaultRows,
+    required DateTimeRange range,
+  }) {
+    final candidates = <_SimpleInternalTransferMatch>[];
+    for (final bank in bankRows) {
+      if (!_withinRange(bank.date, range) ||
+          _isSimpleInternalBank(bank) ||
+          bank.debitAmount <= 0.009) {
+        continue;
+      }
+      final bankCounterparty = _normalizeFinanceText(
+        bank.counterpartyNameSnapshot,
+      );
+      if (!bankCounterparty.contains('CHEQUE')) continue;
+      for (final vault in vaultRows) {
+        if (!_withinRange(vault.date, range) ||
+            _isSimpleInternalVault(vault) ||
+            vault.type != 'deposit' ||
+            _normalizeFinanceText(vault.rubric) != 'CHEQUE' ||
+            (bank.debitAmount - vault.total).abs() > 0.009) {
+          continue;
+        }
+        final dateGap = bank.date.difference(vault.date).inDays.abs();
+        if (dateGap > 1) continue;
+        candidates.add(
+          _SimpleInternalTransferMatch(
+            bankId: bank.id,
+            vaultId: vault.id,
+            amount: bank.debitAmount,
+            dateGapDays: dateGap,
+          ),
+        );
+      }
+    }
+    candidates.sort((a, b) => a.dateGapDays.compareTo(b.dateGapDays));
+    final usedBankIds = <String>{};
+    final usedVaultIds = <String>{};
+    return candidates
+        .where((candidate) {
+          if (usedBankIds.contains(candidate.bankId) ||
+              usedVaultIds.contains(candidate.vaultId)) {
+            return false;
+          }
+          usedBankIds.add(candidate.bankId);
+          usedVaultIds.add(candidate.vaultId);
+          return true;
+        })
+        .toList(growable: false);
   }
 
   void _accumulateBreakdown(
@@ -1203,6 +1522,20 @@ class ContabilidadIncomeStatementStore {
       yield items.sublist(i, end);
     }
   }
+}
+
+class _SimpleInternalTransferMatch {
+  final String bankId;
+  final String vaultId;
+  final double amount;
+  final int dateGapDays;
+
+  const _SimpleInternalTransferMatch({
+    required this.bankId,
+    required this.vaultId,
+    required this.amount,
+    required this.dateGapDays,
+  });
 }
 
 class _DetailedExpenseAggregation {

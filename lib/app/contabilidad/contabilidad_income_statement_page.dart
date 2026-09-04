@@ -36,8 +36,6 @@ class _ContabilidadIncomeStatementPageState
     extends State<ContabilidadIncomeStatementPage> {
   final ContabilidadIncomeStatementStore _store =
       const ContabilidadIncomeStatementStore();
-  final ContabilidadFlowAnalysisStore _periodicFlowStore =
-      const ContabilidadFlowAnalysisStore();
 
   bool _menuOpen = false;
   bool _loading = true;
@@ -50,9 +48,6 @@ class _ContabilidadIncomeStatementPageState
   DateTimeRange? _customRange;
   ContabilidadIncomeStatementDataset? _dataset;
   ContabilidadIncomeStatementDataset? _previousDataset;
-  ContabilidadPeriodicFlowDataset? _periodicFlowDataset;
-  ContabilidadPeriodicIncomeDataset? _periodicIncomeDataset;
-  ContabilidadPeriodicOperationalDataset? _periodicOperationalDataset;
 
   @override
   void initState() {
@@ -69,30 +64,16 @@ class _ContabilidadIncomeStatementPageState
       final currentRange = _customRange ?? _defaultWindowRange(_windowDays);
       final previousRange = _previousRange(currentRange);
       final results = await Future.wait<dynamic>([
-        _store.load(windowDays: _windowDays, dateRange: _customRange),
-        _store.load(windowDays: _windowDays, dateRange: previousRange),
-        _periodicFlowStore.loadPeriodic(
+        _store.loadSimplified(windowDays: _windowDays, dateRange: _customRange),
+        _store.loadSimplified(
           windowDays: _windowDays,
-          dateRange: _customRange,
-        ),
-        _periodicFlowStore.loadPeriodicIncome(
-          windowDays: _windowDays,
-          dateRange: _customRange,
-        ),
-        _periodicFlowStore.loadPeriodicOperational(
-          windowDays: _windowDays,
-          dateRange: _customRange,
+          dateRange: previousRange,
         ),
       ]);
       if (!mounted) return;
       setState(() {
         _dataset = results[0] as ContabilidadIncomeStatementDataset;
         _previousDataset = results[1] as ContabilidadIncomeStatementDataset;
-        _periodicFlowDataset = results[2] as ContabilidadPeriodicFlowDataset;
-        _periodicIncomeDataset =
-            results[3] as ContabilidadPeriodicIncomeDataset;
-        _periodicOperationalDataset =
-            results[4] as ContabilidadPeriodicOperationalDataset;
         _loading = false;
       });
     } catch (error) {
@@ -138,45 +119,8 @@ class _ContabilidadIncomeStatementPageState
 
   Future<void> _exportPdf() async {
     final statement = _dataset;
-    final payables = _periodicFlowDataset;
-    final income = _periodicIncomeDataset;
-    final operational = _periodicOperationalDataset;
-    if (statement == null ||
-        payables == null ||
-        income == null ||
-        operational == null) {
-      return;
-    }
-    final reviewedExpenses = <ContabilidadReviewedExpensePdfRow>[];
-    for (final row in statement.reviewRows) {
-      final draft = _reviewDrafts[_reviewKey(row)];
-      if (draft == null ||
-          !draft.isComplete ||
-          draft.treatment != _ReviewTreatment.expense ||
-          draft.family == null) {
-        continue;
-      }
-      reviewedExpenses.add(
-        ContabilidadReviewedExpensePdfRow(
-          label: row.label,
-          source: row.sourceLabel,
-          family: switch (draft.family!) {
-            _ReviewExpenseFamily.operating => 'Operativo',
-            _ReviewExpenseFamily.administrative => 'Administrativo',
-            _ReviewExpenseFamily.financial => 'Financiero',
-            _ReviewExpenseFamily.payroll => 'Nomina',
-          },
-          amount: row.amount,
-        ),
-      );
-    }
-    await exportContabilidadIncomeStatementPdf(
-      statement: statement,
-      payables: payables,
-      income: income,
-      operational: operational,
-      reviewedExpenses: reviewedExpenses,
-    );
+    if (statement == null) return;
+    await exportContabilidadIncomeStatementPdf(statement: statement);
   }
 
   Future<void> _pickCustomRange() async {
@@ -415,10 +359,9 @@ class _ContabilidadIncomeStatementPageState
                               selectedTab: _selectedTab,
                               dataset: dataset,
                               previousDataset: previousDataset,
-                              periodicFlowDataset: _periodicFlowDataset,
-                              periodicIncomeDataset: _periodicIncomeDataset,
-                              periodicOperationalDataset:
-                                  _periodicOperationalDataset,
+                              periodicFlowDataset: null,
+                              periodicIncomeDataset: null,
+                              periodicOperationalDataset: null,
                               money: _money,
                               changeLabel: _changeLabel,
                               statusLabel: _statusLabel(dataset.snapshot),
@@ -468,7 +411,14 @@ class _ContabilidadIncomeStatementPageState
   }
 }
 
-enum _IncomeStatementTab { summary, periodInvoices, expenses, review, audit }
+enum _IncomeStatementTab {
+  summary,
+  periodInvoices,
+  otherIncome,
+  expenses,
+  review,
+  audit,
+}
 
 enum _ReviewTreatment {
   expense,
@@ -532,25 +482,14 @@ class _IncomeStatementSectionTabs extends StatelessWidget {
             onTap: () => onSelectTab(_IncomeStatementTab.summary),
           ),
           _TabPill(
-            label: 'Facturas del periodo',
-            active: selectedTab == _IncomeStatementTab.periodInvoices,
-            onTap: () => onSelectTab(_IncomeStatementTab.periodInvoices),
+            label: 'Otras entradas',
+            active: selectedTab == _IncomeStatementTab.otherIncome,
+            onTap: () => onSelectTab(_IncomeStatementTab.otherIncome),
           ),
           _TabPill(
             label: 'Gastos',
             active: selectedTab == _IncomeStatementTab.expenses,
             onTap: () => onSelectTab(_IncomeStatementTab.expenses),
-          ),
-          _TabPill(
-            label: 'Revisión ${reviewCount > 0 ? '($reviewCount)' : ''}',
-            active: selectedTab == _IncomeStatementTab.review,
-            onTap: () => onSelectTab(_IncomeStatementTab.review),
-            accent: const Color(0xFFFFD58A),
-          ),
-          _TabPill(
-            label: 'Auditoría',
-            active: selectedTab == _IncomeStatementTab.audit,
-            onTap: () => onSelectTab(_IncomeStatementTab.audit),
           ),
         ],
       ),
@@ -562,18 +501,16 @@ class _TabPill extends StatelessWidget {
   final String label;
   final bool active;
   final VoidCallback onTap;
-  final Color? accent;
 
   const _TabPill({
     required this.label,
     required this.active,
     required this.onTap,
-    this.accent,
   });
 
   @override
   Widget build(BuildContext context) {
-    final color = accent ?? kContabilidadGlow;
+    const color = kContabilidadGlow;
     return InkWell(
       borderRadius: BorderRadius.circular(999),
       onTap: onTap,
@@ -664,6 +601,10 @@ class _IncomeStatementTabContent extends StatelessWidget {
         dataset: periodicFlowDataset,
         incomeDataset: periodicIncomeDataset,
         operationalDataset: periodicOperationalDataset,
+        money: money,
+      ),
+      _IncomeStatementTab.otherIncome => _IncomeStatementOtherIncomeTab(
+        dataset: dataset,
         money: money,
       ),
       _IncomeStatementTab.expenses => _IncomeStatementExpensesTab(
@@ -1036,7 +977,7 @@ class _IncomeStatementLinesPanel extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            'Utilidad del periodo = ingresos - costo comercial - gastos reconocidos.',
+            'Utilidad bruta = ventas de material + otras entradas - compra de material. Utilidad neta = utilidad bruta - gastos.',
             style: TextStyle(
               color: kContabilidadMutedInk,
               fontSize: 13.4,
@@ -1044,8 +985,6 @@ class _IncomeStatementLinesPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 14),
-          _ResultBridgeChart(snapshot: snapshot, money: money),
-          const SizedBox(height: 16),
           for (var i = 0; i < lines.length; i++) ...[
             _StatementLineTile(
               label: lines[i].label,
@@ -2710,112 +2649,37 @@ class _IncomeStatementSummaryTab extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        _SummaryTopRow(
+        _IncomeStatementLinesPanel(
           snapshot: dataset.snapshot,
-          previousSnapshot: previousDataset?.snapshot,
-          money: money,
-          changeLabel: changeLabel,
-          statusLabel: statusLabel,
-          statusColor: statusColor,
-          statusIcon: statusIcon,
-          mainReading: mainReading,
-          reviewGroups: dataset.reviewRows.length,
-        ),
-        const SizedBox(height: 16),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final singleColumn = constraints.maxWidth < 1080;
-            if (singleColumn) {
-              return Column(
-                children: [
-                  _IncomeStatementLinesPanel(
-                    snapshot: dataset.snapshot,
-                    lines: dataset.lines,
-                    money: money,
-                  ),
-                  const SizedBox(height: 16),
-                  _PeriodComparisonPanel(
-                    snapshot: dataset.snapshot,
-                    previousSnapshot: previousDataset?.snapshot,
-                    money: money,
-                    changeLabel: changeLabel,
-                  ),
-                ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 8,
-                  child: _IncomeStatementLinesPanel(
-                    snapshot: dataset.snapshot,
-                    lines: dataset.lines,
-                    money: money,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 4,
-                  child: _PeriodComparisonPanel(
-                    snapshot: dataset.snapshot,
-                    previousSnapshot: previousDataset?.snapshot,
-                    money: money,
-                    changeLabel: changeLabel,
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 16),
-        LayoutBuilder(
-          builder: (context, constraints) {
-            final singleColumn = constraints.maxWidth < 1080;
-            if (singleColumn) {
-              return Column(
-                children: [
-                  _FamilyExpensePanel(
-                    rows: dataset.familyExpenseRows,
-                    snapshot: dataset.snapshot,
-                    money: money,
-                  ),
-                  const SizedBox(height: 16),
-                  _SourceOriginPanel(rows: dataset.sourceRows, money: money),
-                ],
-              );
-            }
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  flex: 8,
-                  child: _FamilyExpensePanel(
-                    rows: dataset.familyExpenseRows,
-                    snapshot: dataset.snapshot,
-                    money: money,
-                  ),
-                ),
-                const SizedBox(width: 16),
-                Expanded(
-                  flex: 4,
-                  child: _SourceOriginPanel(
-                    rows: dataset.sourceRows,
-                    money: money,
-                  ),
-                ),
-              ],
-            );
-          },
-        ),
-        const SizedBox(height: 16),
-        _SummaryInsightsPanel(
-          snapshot: dataset.snapshot,
-          sourceRows: dataset.sourceRows,
-          reviewRows: dataset.reviewRows,
-          familyRows: dataset.familyExpenseRows,
+          lines: dataset.lines,
           money: money,
         ),
+        const SizedBox(height: 14),
+        ContractGlassCard(
+          padding: const EdgeInsets.all(16),
+          child: const Text(
+            'La lectura usa solamente movimientos ya registrados en Bancos, Bóveda y Menudeo. Ventas y compras de material se identifican por su categoría o rubro; los demás movimientos externos se muestran como entradas por otros medios o gastos.',
+            style: TextStyle(
+              color: kContabilidadMutedInk,
+              fontSize: 13.5,
+              height: 1.45,
+            ),
+          ),
+        ),
+        if (dataset.warnings.isNotEmpty) ...[
+          const SizedBox(height: 10),
+          ContractGlassCard(
+            padding: const EdgeInsets.all(16),
+            child: Text(
+              dataset.warnings.join('\n'),
+              style: const TextStyle(
+                color: kContabilidadGlow,
+                fontSize: 13.5,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
       ],
     );
   }
@@ -3392,6 +3256,62 @@ class _SummaryInsightsPanel extends StatelessWidget {
   }
 }
 
+class _IncomeStatementOtherIncomeTab extends StatelessWidget {
+  final ContabilidadIncomeStatementDataset dataset;
+  final String Function(num value) money;
+
+  const _IncomeStatementOtherIncomeTab({
+    required this.dataset,
+    required this.money,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final total = dataset.otherIncomeBreakdown.fold<double>(
+      0,
+      (sum, row) => sum + row.amount,
+    );
+    return ContractGlassCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'DESGLOSE DE OTRAS ENTRADAS',
+            style: TextStyle(
+              color: kContabilidadGlow,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.8,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Incluye toda entrada externa que no fue registrada como venta de material.',
+            style: TextStyle(color: kContabilidadMutedInk, fontSize: 13.4),
+          ),
+          const SizedBox(height: 14),
+          if (dataset.otherIncomeBreakdown.isEmpty)
+            const Text(
+              'No hay otras entradas registradas en este periodo.',
+              style: TextStyle(color: kContabilidadMutedInk),
+            )
+          else
+            for (final row in dataset.otherIncomeBreakdown) ...[
+              _SimpleTableRow(
+                leading: '${row.label} · ${row.sourceLabel}',
+                middle:
+                    '${row.count} movimientos · ${_percentOf(row.amount, total)}',
+                trailing: money(row.amount),
+              ),
+              const SizedBox(height: 10),
+            ],
+        ],
+      ),
+    );
+  }
+}
+
 class _IncomeStatementExpensesTab extends StatelessWidget {
   final ContabilidadIncomeStatementDataset dataset;
   final String Function(num value) money;
@@ -3403,19 +3323,47 @@ class _IncomeStatementExpensesTab extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        _FamilyExpensePanel(
-          rows: dataset.familyExpenseRows,
-          snapshot: dataset.snapshot,
-          money: money,
-        ),
-        const SizedBox(height: 16),
-        _ExpenseDetailTable(
-          familyRows: dataset.familyExpenseRows,
-          money: money,
-        ),
-      ],
+    final total = dataset.expenseBreakdown.fold<double>(
+      0,
+      (sum, row) => sum + row.amount,
+    );
+    return ContractGlassCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'DESGLOSE DE GASTOS',
+            style: TextStyle(
+              color: kContabilidadGlow,
+              fontSize: 12,
+              fontWeight: FontWeight.w900,
+              letterSpacing: 1.8,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Cada renglón conserva la categoría o rubro con el que fue capturado y su fuente.',
+            style: TextStyle(color: kContabilidadMutedInk, fontSize: 13.4),
+          ),
+          const SizedBox(height: 14),
+          if (dataset.expenseBreakdown.isEmpty)
+            const Text(
+              'No hay gastos registrados en este periodo.',
+              style: TextStyle(color: kContabilidadMutedInk),
+            )
+          else
+            for (final row in dataset.expenseBreakdown) ...[
+              _SimpleTableRow(
+                leading: '${row.label} · ${row.sourceLabel}',
+                middle:
+                    '${row.count} movimientos · ${_percentOf(row.amount, total)}',
+                trailing: money(row.amount),
+              ),
+              const SizedBox(height: 10),
+            ],
+        ],
+      ),
     );
   }
 }

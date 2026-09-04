@@ -9,20 +9,6 @@ import '../shared/utils/number_formatters.dart';
 import 'contabilidad_flow_analysis_store.dart';
 import 'contabilidad_income_statement_store.dart';
 
-class ContabilidadReviewedExpensePdfRow {
-  final String label;
-  final String source;
-  final String family;
-  final double amount;
-
-  const ContabilidadReviewedExpensePdfRow({
-    required this.label,
-    required this.source,
-    required this.family,
-    required this.amount,
-  });
-}
-
 Future<void> exportContabilidadFlowPdf({
   required ContabilidadFlowDataset flow,
   required ContabilidadPeriodicFlowDataset payables,
@@ -66,93 +52,46 @@ Future<void> exportContabilidadFlowPdf({
 
 Future<void> exportContabilidadIncomeStatementPdf({
   required ContabilidadIncomeStatementDataset statement,
-  required ContabilidadPeriodicFlowDataset payables,
-  required ContabilidadPeriodicIncomeDataset income,
-  required ContabilidadPeriodicOperationalDataset operational,
-  required List<ContabilidadReviewedExpensePdfRow> reviewedExpenses,
 }) async {
-  final snapshot = statement.snapshot;
-  final reviewedTotal = reviewedExpenses.fold<double>(
-    0,
-    (sum, row) => sum + row.amount,
-  );
-  final reviewedByFamily = <String, double>{};
-  for (final row in reviewedExpenses) {
-    reviewedByFamily.update(
-      row.family,
-      (value) => value + row.amount,
-      ifAbsent: () => row.amount,
-    );
-  }
   final bytes = await _buildPdf(
     title: 'Estado de Resultados',
     range: statement.range,
     sections: <_PdfSectionData>[
-      _PdfSectionData('Resultado del periodo', <_PdfMetric>[
-        _PdfMetric('Ingresos', snapshot.revenue),
-        _PdfMetric('Costo comercial', snapshot.commercialCost),
-        _PdfMetric(
-          'Gastos reconocidos',
-          snapshot.recognizedExpenses + reviewedTotal,
-        ),
-        _PdfMetric('Resultado', snapshot.periodResult - reviewedTotal),
-      ]),
-      _PdfSectionData('Desglose de gastos reconocidos', <_PdfMetric>[
-        _PdfMetric(
-          'Gasto operativo',
-          snapshot.operatingExpense + (reviewedByFamily['Operativo'] ?? 0),
-        ),
-        _PdfMetric(
-          'Gasto administrativo',
-          snapshot.administrativeExpense +
-              (reviewedByFamily['Administrativo'] ?? 0),
-        ),
-        _PdfMetric(
-          'Gasto financiero',
-          snapshot.financialExpense + (reviewedByFamily['Financiero'] ?? 0),
-        ),
-        _PdfMetric(
-          'Nomina',
-          snapshot.payrollExpense + (reviewedByFamily['Nomina'] ?? 0),
-        ),
-        _PdfMetric(
-          'Total gastos reconocidos',
-          snapshot.recognizedExpenses + reviewedTotal,
-        ),
-      ]),
       _PdfSectionData(
-        'Detalle de gastos por rubro y fuente',
-        statement.expenseBreakdown
-            .where((row) => row.amount > 0.009)
+        'Resultado del periodo',
+        statement.lines
+            .map((line) => _PdfMetric(line.label, line.amount))
+            .toList(growable: false),
+      ),
+      _PdfSectionData(
+        'Desglose de entradas por otros medios',
+        statement.otherIncomeBreakdown
             .map(
-              (row) =>
-                  _PdfMetric('${row.label} | ${row.sourceLabel}', row.amount),
+              (row) => _PdfMetric(
+                '${row.label} | ${row.sourceLabel} (${row.count})',
+                row.amount,
+              ),
             )
             .toList(growable: false),
       ),
-      if (reviewedExpenses.isNotEmpty)
-        _PdfSectionData(
-          'Gastos reconocidos desde Revision',
-          reviewedExpenses
-              .map(
-                (row) => _PdfMetric(
-                  '${row.label} | ${row.source} | ${row.family}',
-                  row.amount,
-                ),
-              )
-              .toList(growable: false),
-        ),
-      _PdfSectionData('Facturas de proveedor del periodo', <_PdfMetric>[
-        _PdfMetric('Facturado', payables.invoicedAmount),
-        _PdfMetric('Pagado', payables.paidAmount),
-        _PdfMetric('Pendiente', payables.pendingAmount),
-      ]),
-      _PdfSectionData('Ingresos - ventas mayoristas facturadas', <_PdfMetric>[
-        _PdfMetric('Facturado', income.invoicedAmount),
-        _PdfMetric('Cobrado vinculado', income.collectedCurrentAmount),
-        _PdfMetric('Por cobrar', income.pendingAmount),
-      ]),
-      _operationalSection(operational),
+      _PdfSectionData(
+        'Desglose de gastos por categoria y fuente',
+        statement.expenseBreakdown
+            .map(
+              (row) => _PdfMetric(
+                '${row.label} | ${row.sourceLabel} (${row.count})',
+                row.amount,
+              ),
+            )
+            .toList(growable: false),
+      ),
+      if (statement.snapshot.internalExcluded > 0.009)
+        _PdfSectionData('Traspasos internos aislados', <_PdfMetric>[
+          _PdfMetric(
+            'Banco a Bóveda por cheque (no afecta resultado)',
+            statement.snapshot.internalExcluded,
+          ),
+        ]),
     ],
   );
   await saveBytesAs(

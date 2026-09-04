@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,7 +22,6 @@ import '../shared/ui_contract_core/theme/contract_tokens.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/csv_file_save.dart';
 import '../shared/utils/date_picker_defaults.dart';
-import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/number_formatters.dart';
 import 'menudeo_catalog_page.dart';
 import 'menudeo_dashboard_page.dart';
@@ -150,6 +148,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   bool _creatingTicketDraft = false;
   bool _splitEnabled = false;
   bool _loadingCatalogPrices = false;
+  bool _loadingTickets = false;
   bool _exportingCsv = false;
   bool _dragSelectingRows = false;
   bool _suppressNextRowTap = false;
@@ -162,6 +161,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   int _activeRowIndex = 0;
   int _currentPage = 0;
   int _pageSize = 40;
+  int _totalTicketCount = 0;
   int? _selectionAnchorIndex;
   DateTime _selectedDate = DateTime.now();
   DateTimeRange? _ticketDateFilter;
@@ -374,11 +374,8 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   }
 
   List<_TicketGridEntry> _pageEntries(List<_TicketGridEntry> entries) {
-    if (entries.isEmpty) return const <_TicketGridEntry>[];
-    final currentPage = _effectiveCurrentPageFor(entries.length);
-    final start = currentPage * _pageSize;
-    final end = math.min(start + _pageSize, entries.length);
-    return entries.sublist(start, end);
+    // The database already returns exactly one page.
+    return entries;
   }
 
   bool _hasGridFilters() {
@@ -396,7 +393,9 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       _providerGridFilter.clear();
       _materialGridFilter.clear();
       _statusGridFilter.clear();
+      _currentPage = 0;
     });
+    unawaited(_loadTickets());
   }
 
   bool _isShortcutModifierPressed() {
@@ -1112,27 +1111,63 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   }
 
   Future<void> _loadTickets() async {
+    if (_loadingTickets) return;
+    setState(() => _loadingTickets = true);
     try {
-      final response = await fetchAllSupabaseRows(
-        (from, to) => _supa
-            .from('vw_men_tickets_grid')
-            .select()
-            .eq('direction', _flowDirection)
-            .order('ticket_date', ascending: false)
-            .order('ticket_number', ascending: true)
-            .range(from, to),
-      );
+      var pageQuery = _supa
+          .from('vw_men_tickets_grid')
+          .select()
+          .eq('direction', _flowDirection);
+      var countQuery = _supa
+          .from('vw_men_tickets_grid')
+          .count(CountOption.exact)
+          .eq('direction', _flowDirection);
+      if (_ticketDateFilter != null) {
+        final start = _formatDateIso(_ticketDateFilter!.start);
+        final end = _formatDateIso(_ticketDateFilter!.end);
+        pageQuery = pageQuery.gte('ticket_date', start).lte('ticket_date', end);
+        countQuery = countQuery
+            .gte('ticket_date', start)
+            .lte('ticket_date', end);
+      }
+      if (_ticketNumberGridFilter.isNotEmpty) {
+        final values = _ticketNumberGridFilter.toList(growable: false);
+        pageQuery = pageQuery.inFilter('ticket_number', values);
+        countQuery = countQuery.inFilter('ticket_number', values);
+      }
+      if (_providerGridFilter.isNotEmpty) {
+        final values = _providerGridFilter.toList(growable: false);
+        pageQuery = pageQuery.inFilter('counterparty_name_snapshot', values);
+        countQuery = countQuery.inFilter('counterparty_name_snapshot', values);
+      }
+      if (_materialGridFilter.isNotEmpty) {
+        final values = _materialGridFilter.toList(growable: false);
+        pageQuery = pageQuery.inFilter('material_label_snapshot', values);
+        countQuery = countQuery.inFilter('material_label_snapshot', values);
+      }
+      if (_statusGridFilter.isNotEmpty) {
+        final values = _statusGridFilter.toList(growable: false);
+        pageQuery = pageQuery.inFilter('status', values);
+        countQuery = countQuery.inFilter('status', values);
+      }
+      final count = await countQuery;
+      final page = _effectiveCurrentPageFor(count);
+      final from = page * _pageSize;
+      final response = await pageQuery
+          .order('ticket_date', ascending: false)
+          .order('ticket_number', ascending: true)
+          .range(from, from + _pageSize - 1);
       if (!mounted) return;
       setState(() {
         final loadedRows = response
             .map((row) => _normalizeTicketRow(Map<String, dynamic>.from(row)))
             .toList(growable: true);
         _ticketRows = loadedRows;
-        _activeRowIndex = _ticketRows.isEmpty
-            ? -1
-            : _activeRowIndex.clamp(0, _ticketRows.length - 1);
-        _selectedRowIndexes.removeWhere((index) => index >= _ticketRows.length);
-        if (_ticketRows.isNotEmpty && _selectedRowIndexes.isEmpty) {
+        _totalTicketCount = count;
+        _currentPage = page;
+        _activeRowIndex = _ticketRows.isEmpty ? -1 : 0;
+        _selectedRowIndexes.clear();
+        if (_ticketRows.isNotEmpty) {
           _selectedRowIndexes.add(_activeRowIndex);
         }
       });
@@ -1141,10 +1176,13 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       if (!mounted) return;
       setState(() {
         _ticketRows = <Map<String, dynamic>>[];
+        _totalTicketCount = 0;
         _activeRowIndex = -1;
         _selectedRowIndexes.clear();
       });
       _toast('No se pudieron cargar los tickets: ${e.message}');
+    } finally {
+      if (mounted) setState(() => _loadingTickets = false);
     }
   }
 
@@ -1530,16 +1568,10 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   }
 
   Future<void> _openTicketDateFilter() async {
-    final bounds = _ticketRows
-        .map((row) => _tryParseDisplayDate((row['date'] ?? '').toString()))
-        .whereType<DateTime>()
-        .toList(growable: false);
-    if (bounds.isEmpty) return;
-    final sorted = [...bounds]..sort();
     final result = await _showTicketsDateRangeFilterDialog(
       context,
       label: 'FECHA',
-      bounds: DateTimeRange(start: sorted.first, end: sorted.last),
+      bounds: DateTimeRange(start: DateTime(2024), end: DateTime(2035)),
       initialRange: _ticketDateFilter,
     );
     if (result == null || !mounted) return;
@@ -1549,7 +1581,9 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       } else {
         _ticketDateFilter = result.range;
       }
+      _currentPage = 0;
     });
+    await _loadTickets();
   }
 
   Future<void> _openValueFilter({
@@ -1565,7 +1599,11 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
       initialSelected: current,
     );
     if (result == null || !mounted) return;
-    setState(() => onApply(result.selectedValues));
+    setState(() {
+      onApply(result.selectedValues);
+      _currentPage = 0;
+    });
+    await _loadTickets();
   }
 
   Future<void> _goBack() async {
@@ -2522,8 +2560,8 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
   Widget build(BuildContext context) {
     final filteredEntries = _filteredTicketEntries;
     final visibleEntries = _pageEntries(filteredEntries);
-    final totalPages = _totalPagesFor(filteredEntries.length);
-    final currentPage = _effectiveCurrentPageFor(filteredEntries.length);
+    final totalPages = _totalPagesFor(_totalTicketCount);
+    final currentPage = _effectiveCurrentPageFor(_totalTicketCount);
     final activeVisibleIndex = visibleEntries.indexWhere(
       (entry) => entry.index == _activeRowIndex,
     );
@@ -2624,7 +2662,7 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                 formatMoney: _money,
                 exportingCsv: _exportingCsv,
                 entries: visibleEntries,
-                filteredEntryCount: filteredEntries.length,
+                filteredEntryCount: _totalTicketCount,
                 activeRowIndex: _activeRowIndex,
                 selectedRowIndexes: _selectedRowIndexes,
                 rowsScrollController: _ticketsRowsScrollController,
@@ -2714,16 +2752,23 @@ class _MenudeoTicketsPageState extends State<MenudeoTicketsPage> {
                 totalPages: totalPages,
                 pageSize: _pageSize,
                 onPreviousPage: currentPage > 0
-                    ? () => setState(() => _currentPage = currentPage - 1)
+                    ? () {
+                        setState(() => _currentPage = currentPage - 1);
+                        unawaited(_loadTickets());
+                      }
                     : null,
                 onNextPage: currentPage < totalPages - 1
-                    ? () => setState(() => _currentPage = currentPage + 1)
+                    ? () {
+                        setState(() => _currentPage = currentPage + 1);
+                        unawaited(_loadTickets());
+                      }
                     : null,
                 onPageSizeChanged: (value) {
                   setState(() {
                     _pageSize = value;
                     _currentPage = 0;
                   });
+                  unawaited(_loadTickets());
                 },
                 onTapOutsideSelection: _selectedRowIndexes.isNotEmpty
                     ? () => setState(_clearSelection)
