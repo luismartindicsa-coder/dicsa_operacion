@@ -2575,6 +2575,39 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
     return '${date.year}-$mm-$dd';
   }
 
+  Future<List<Map<String, dynamic>>> _loadTransformationOutputs(
+    Set<String> runIds,
+  ) async {
+    if (runIds.isEmpty) return const <Map<String, dynamic>>[];
+
+    // Filter through the run ids already scoped to this dashboard. Filtering
+    // through the nested `run` relation made the charts depend on an embedded
+    // PostgREST relation, which can return no rows even while Production has
+    // registered transformations.
+    const batchSize = 75;
+    final ids = runIds.toList(growable: false);
+    final batches = <Future<dynamic>>[];
+    for (var start = 0; start < ids.length; start += batchSize) {
+      final end = math.min(start + batchSize, ids.length);
+      batches.add(
+        _supa
+            .from('material_transformation_run_outputs_v2')
+            .select(
+              'run_id,output_weight_kg,output_unit_count,'
+              'commercial_material:commercial_material_id('
+              'code,name,general_material:general_material_id(code))',
+            )
+            .inFilter('run_id', ids.sublist(start, end)),
+      );
+    }
+    final responses = await Future.wait<dynamic>(batches);
+    return [
+      for (final response in responses)
+        for (final row in response as List)
+          Map<String, dynamic>.from(row as Map),
+    ];
+  }
+
   double _num(dynamic v) {
     if (v == null) return 0;
     if (v is num) return v.toDouble();
@@ -2833,15 +2866,6 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
             .gte('op_date', _sqlDate(trendStart))
             .lte('op_date', _sqlDate(asOfDate)),
         _supa
-            .from('material_transformation_run_outputs_v2')
-            .select(
-              'run_id,output_weight_kg,output_unit_count,'
-              'commercial_material:commercial_material_id(code,name,general_material:general_material_id(code)),'
-              'run:run_id(op_date,source_general_material:source_general_material_id(code),site)',
-            )
-            .gte('run.op_date', _sqlDate(trendStart))
-            .lte('run.op_date', _sqlDate(asOfDate)),
-        _supa
             .from('dashboard_yard_manual_counts')
             .select(
               'widget_key,source_kind,material,commercial_material_code,'
@@ -2857,9 +2881,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       final catalogRows = (responses[2] as List).cast<Map<String, dynamic>>();
       final transformationRuns = (responses[3] as List)
           .cast<Map<String, dynamic>>();
-      final transformationOutputs = (responses[4] as List)
-          .cast<Map<String, dynamic>>();
-      final manualCountRows = (responses[5] as List)
+      final manualCountRows = (responses[4] as List)
           .cast<Map<String, dynamic>>();
 
       final operational = <String, double>{};
@@ -2902,6 +2924,14 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
           .map((row) => (row['id'] ?? '').toString())
           .where((id) => id.isNotEmpty)
           .toSet();
+      final transformationRunsById = <String, Map<String, dynamic>>{
+        for (final row in transformationRuns)
+          if ((row['id'] ?? '').toString().isNotEmpty)
+            (row['id'] ?? '').toString(): row,
+      };
+      final transformationOutputs = await _loadTransformationOutputs(
+        allowedTransformationRunIds,
+      );
 
       for (final row in commercialBalanceRows) {
         final code = (row['code'] ?? '').toString().trim();
@@ -2944,7 +2974,7 @@ class _InventoryYardPanelState extends State<_InventoryYardPanel> {
       for (final row in transformationOutputs) {
         final runId = (row['run_id'] ?? '').toString();
         if (!allowedTransformationRunIds.contains(runId)) continue;
-        final run = (row['run'] as Map?)?.cast<String, dynamic>();
+        final run = transformationRunsById[runId];
         final commercial = (row['commercial_material'] as Map?)
             ?.cast<String, dynamic>();
         final commercialCode = (commercial?['code'] ?? '').toString().trim();
