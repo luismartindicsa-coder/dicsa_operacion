@@ -1,5 +1,7 @@
 # Conciliación del periodo 35 · Estado actual
 
+**Actualización:** los cinco ajustes fueron confirmados y aplicados. El periodo 35 ya está cerrado con 78 colaboradores publicados y total $201,793.04. El resultado definitivo está en [CIERRE_PRENOMINA35_2026-09-08.md](CIERRE_PRENOMINA35_2026-09-08.md). El contenido siguiente conserva la revisión previa al cierre.
+
 Se aplicaron las confirmaciones del usuario exclusivamente a la prenómina del **21–27 de agosto de 2026**. Los salarios vigentes de Personal y el neto oficial de CONTPAQ permanecen intactos. El periodo sigue abierto y no se publicaron nuevos borradores ni emitieron recibos.
 
 ## Confirmaciones resueltas

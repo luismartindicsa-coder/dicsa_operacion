@@ -167,6 +167,7 @@ Future<Uint8List> hrNominaPeriodReportPdfForTesting({
   required String period,
   Map<String, String> personalFiscalModes = const {},
   bool closed = false,
+  DateTime? generatedAt,
 }) {
   final rows = _buildNominaRows(
     draftRows: drafts.map(_HrNominaDraftRecord.fromRow).toList(),
@@ -178,7 +179,7 @@ Future<Uint8List> hrNominaPeriodReportPdfForTesting({
     rows: rows,
     metrics: _HrNominaMetrics.fromRows(rows),
     periodLabel: period,
-    generatedAt: DateTime(2026, 9, 8),
+    generatedAt: generatedAt ?? DateTime(2026, 9, 8),
     isPeriodClosed: closed,
   );
 }

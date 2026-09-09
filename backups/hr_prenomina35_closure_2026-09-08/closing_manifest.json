@@ -1,0 +1,48 @@
+{
+  "period": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+  "database_status": "cerrado",
+  "employees_expected": 78,
+  "saved_drafts": 78,
+  "already_published": 78,
+  "current": {
+    "fiscal": 148725.8,
+    "fiscal_deposit": 122888.4,
+    "fiscal_cash": 25837.4,
+    "envelope": 78025.08,
+    "total": 200913.48
+  },
+  "excel_cash_completed": 78741.44,
+  "cash_difference_after_all_five": 163.2,
+  "publication_reopen_nomina_receipt_check": "passed",
+  "data_written": true,
+  "period37_touched": false,
+  "user_confirmed_five_adjustments": true,
+  "confirmation_received_at": "2026-09-09T00:26:47.627226+00:00",
+  "approved_adjustments": {
+    "132": 945.12,
+    "217": 249.48,
+    "298": -315.04,
+    "153": -24.2,
+    "157": 24.2
+  },
+  "planned_totals": {
+    "fiscal": 148725.8,
+    "fiscal_deposit": 122888.4,
+    "fiscal_cash": 25837.4,
+    "envelope": 78904.64,
+    "total": 201793.04
+  },
+  "preserved_cash_difference": {
+    "manual_overtime_gabriel": 163.0,
+    "net_rounding": 0.2
+  },
+  "next_action": "completed",
+  "final_totals": {
+    "fiscal": 148725.8,
+    "fiscal_deposit": 122888.4,
+    "fiscal_cash": 25837.4,
+    "envelope": 78904.64,
+    "total": 201793.04
+  },
+  "closed_at": "2026-09-09T00:28:30.765546+00:00"
+}

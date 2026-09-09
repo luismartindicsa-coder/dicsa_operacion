@@ -1,0 +1,20 @@
+{
+  "period": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+  "status": "cerrado",
+  "closed_at": "2026-09-09T00:28:30.765546+00:00",
+  "published_rows": 78,
+  "financial_totals": {
+    "fiscal": 148725.8,
+    "fiscal_deposit": 122888.4,
+    "fiscal_cash": 25837.4,
+    "envelope": 78904.64,
+    "total": 201793.04
+  },
+  "flow_total": 53067.24,
+  "rh_adjustments_applied": 5,
+  "net_adjustment": 879.56,
+  "publication_and_close_verified": true,
+  "nomina_receipt_projection_verified": true,
+  "period37_modified": false,
+  "receipts_emitted": false
+}

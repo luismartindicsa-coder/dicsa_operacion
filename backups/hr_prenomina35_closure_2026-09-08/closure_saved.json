@@ -1,0 +1,42 @@
+{
+  "id": "0a18d1dc-c129-48d9-9a83-462278c90775",
+  "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+  "status": "cerrado",
+  "closed_at": "2026-09-09T00:28:30.765546+00:00",
+  "closed_by": "0ae2039c-0cdc-44f5-954b-65f51f64e0fa",
+  "notes": "Cierre del periodo 35 confirmado por el usuario. Cinco ajustes RH conciliados contra NOMINA35.xlsx. Diferencia de efectivo documentada: $163.00 de horas extra manuales de Gabriel y $0.20 netos de centavos. CONTPAQ y salarios vigentes conservados. Rebeca $0; Javier $4,900.",
+  "summary_snapshot": {
+    "totals": {
+      "total": 201793.04,
+      "fiscal": 148725.8,
+      "envelope": 78904.64,
+      "fiscal_cash": 25837.4,
+      "fiscal_deposit": 122888.4
+    },
+    "closed_at": "2026-09-09T00:28:30.765546+00:00",
+    "flow_total": 53067.24,
+    "period_only": true,
+    "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+    "published_rows": 78,
+    "source_reference": "NOMINA35.xlsx",
+    "difference_reasons": {
+      "net_rounding": 0.2,
+      "gabriel_manual_overtime": 163.0
+    },
+    "employees_expected": 78,
+    "confirmed_rh_adjustments": {
+      "132": 945.12,
+      "153": -24.2,
+      "157": 24.2,
+      "217": 249.48,
+      "298": -315.04
+    },
+    "excel_cash_total_original": 59208.48,
+    "cash_difference_documented": 163.2,
+    "excel_cash_total_completed": 78741.44,
+    "financial_verification_sha256": "cd92fe31bd9dd1ac2e33c808aed041c6f7a52999c105fd38a47a5f4f82a03264",
+    "official_contpaq_fiscal_preserved": true
+  },
+  "created_at": "2026-09-09T00:28:31.14721+00:00",
+  "updated_at": "2026-09-09T00:28:31.14721+00:00"
+}
