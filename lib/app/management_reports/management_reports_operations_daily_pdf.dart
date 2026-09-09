@@ -13228,6 +13228,7 @@ Future<_HrWeeklySourceBundle> _loadHrWeeklySourceBundle(
       (from, to) => client
           .from('hr_attendance_daily_records')
           .select(_kHrWeeklyAttendanceFields)
+          .neq('source_mode', 'importado')
           .order('source_date')
           .range(from, to),
     ),

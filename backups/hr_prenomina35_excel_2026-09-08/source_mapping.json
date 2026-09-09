@@ -1,0 +1,507 @@
+[
+  {
+    "id": "2",
+    "name": "JOSE LUIS CRUZ CRUZ",
+    "row": 11,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 1500.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 1500.0,
+      "excel_combined": 1500.0
+    },
+    "before_total": 2500.0
+  },
+  {
+    "id": "78",
+    "name": "JULIAN CONTRERAS RODRIGUEZ",
+    "row": 14,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 1200.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 1200.0,
+      "excel_combined": 1200.0
+    },
+    "before_total": 2205.4
+  },
+  {
+    "id": "84",
+    "name": "JOSE DE JESUS MORALES PEREZ",
+    "row": 15,
+    "changes": {
+      "transport_support_amount": 100.0,
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 2300.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 2300.0,
+      "excel_combined": 2300.0
+    },
+    "before_total": 2300.12
+  },
+  {
+    "id": "85",
+    "name": "ISRAEL ROBLES RAMIREZ",
+    "row": 16,
+    "changes": {
+      "transport_support_amount": 100.0,
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 1500.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 1500.0,
+      "excel_combined": 1500.0
+    },
+    "before_total": 2300.12
+  },
+  {
+    "id": "92",
+    "name": "EMILIO JOSE SANDOVAL MORA",
+    "row": 17,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 1000.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 1000.0,
+      "excel_combined": 1000.0
+    },
+    "before_total": 4100.12
+  },
+  {
+    "id": "104",
+    "name": "FERNANDO MUNIZ CARDENAS",
+    "row": 20,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 360.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 360.0,
+      "excel_combined": 360.0
+    },
+    "before_total": 1575.2
+  },
+  {
+    "id": "114",
+    "name": "JUAN ANTONIO MIRANDA CORNEJO",
+    "row": 21,
+    "changes": {
+      "loan_deduction_amount": 300.0,
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 600.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 600.0,
+      "excel_combined": 600.0
+    },
+    "before_total": 2205.2
+  },
+  {
+    "id": "115",
+    "name": "RODOLFO NORIEGA RAMIREZ",
+    "row": 22,
+    "changes": {
+      "loan_deduction_amount": 250.0,
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 600.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 600.0,
+      "excel_combined": 600.0
+    },
+    "before_total": 2205.2
+  },
+  {
+    "id": "118",
+    "name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+    "row": 23,
+    "changes": {
+      "loan_deduction_amount": 600.0
+    },
+    "split": null,
+    "before_total": 1591.4
+  },
+  {
+    "id": "120",
+    "name": "CELSO RIVERA HERNANDEZ",
+    "row": 24,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 1800.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 1800.0,
+      "excel_combined": 1800.0
+    },
+    "before_total": 1960.4
+  },
+  {
+    "id": "132",
+    "name": "JOSE JESUS CIENEGA HERNANDEZ",
+    "row": 26,
+    "changes": {
+      "overtime_monetized_amount": 51.0,
+      "manual_bonus_amount": 669.0
+    },
+    "split": {
+      "calculated_overtime": 51.0,
+      "approved_overtime": 51.0,
+      "bonus": 669.0,
+      "excel_combined": 720.0
+    },
+    "before_total": 3494.3199999999997
+  },
+  {
+    "id": "135",
+    "name": "JAVIER MARTINEZ BARRERA",
+    "row": 27,
+    "changes": {
+      "manual_adjustment_amount": 315.08
+    },
+    "split": null,
+    "before_total": 4584.92
+  },
+  {
+    "id": "136",
+    "name": "ANTONIO RODRIGUEZ MEDINA",
+    "row": 28,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 250.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 250.0,
+      "excel_combined": 250.0
+    },
+    "before_total": 2500.12
+  },
+  {
+    "id": "138",
+    "name": "TOMAS RODRIGUEZ RODRIGUEZ",
+    "row": 30,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 250.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 250.0,
+      "excel_combined": 250.0
+    },
+    "before_total": 2387.7200000000003
+  },
+  {
+    "id": "144",
+    "name": "FRANCISCO JAVIER GUERRERO MARTINEZ",
+    "row": 34,
+    "changes": {
+      "overtime_monetized_amount": 113.0,
+      "manual_bonus_amount": 7.0
+    },
+    "split": {
+      "calculated_overtime": 113.0,
+      "approved_overtime": 113.0,
+      "bonus": 7.0,
+      "excel_combined": 120.0
+    },
+    "before_total": 2165.12
+  },
+  {
+    "id": "174",
+    "name": "FRANCISCO JAVIER AYALA CAPILLA",
+    "row": 39,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 600.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 600.0,
+      "excel_combined": 600.0
+    },
+    "before_total": 2999.92
+  },
+  {
+    "id": "179",
+    "name": "OMAR GUADALUPE ZAMORA MORALES",
+    "row": 40,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 720.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 720.0,
+      "excel_combined": 720.0
+    },
+    "before_total": 2205.2
+  },
+  {
+    "id": "190",
+    "name": "JESUS MARTIN RODRIGUEZ JIMENEZ",
+    "row": 41,
+    "changes": {
+      "overtime_monetized_amount": 60.0,
+      "manual_bonus_amount": 140.0
+    },
+    "split": {
+      "calculated_overtime": 60.0,
+      "approved_overtime": 60.0,
+      "bonus": 140.0,
+      "excel_combined": 200.0
+    },
+    "before_total": 2335.72
+  },
+  {
+    "id": "191",
+    "name": "JOSE MANUEL MALDONADO CALZADA",
+    "row": 42,
+    "changes": {
+      "transport_support_amount": 100.0,
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 120.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 120.0,
+      "excel_combined": 120.0
+    },
+    "before_total": 1890.2
+  },
+  {
+    "id": "197",
+    "name": "ILIANA GUADALUPE MARTINEZ GOMEZ",
+    "row": 45,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 500.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 500.0,
+      "excel_combined": 500.0
+    },
+    "before_total": 2800.12
+  },
+  {
+    "id": "211",
+    "name": "MARIA DEL CARMEN MUÑOZ RAMIREZ",
+    "row": 46,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 500.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 500.0,
+      "excel_combined": 500.0
+    },
+    "before_total": 2205.2
+  },
+  {
+    "id": "213",
+    "name": "JOSE LUIS PAVANA FLORES",
+    "row": 48,
+    "changes": {
+      "overtime_monetized_amount": 85.0,
+      "manual_bonus_amount": 1115.0
+    },
+    "split": {
+      "calculated_overtime": 85.0,
+      "approved_overtime": 85.0,
+      "bonus": 1115.0,
+      "excel_combined": 1200.0
+    },
+    "before_total": 2584.92
+  },
+  {
+    "id": "217",
+    "name": "LUIS ANGEL CENTENO GONZALEZ",
+    "row": 50,
+    "changes": {
+      "cash_infonavit_deduction_amount": 276.36
+    },
+    "split": null,
+    "before_total": 2450.52
+  },
+  {
+    "id": "223",
+    "name": "CRUZ ANGEL RAMIREZ CAMPOS",
+    "row": 51,
+    "changes": {
+      "loan_deduction_amount": 100.0
+    },
+    "split": null,
+    "before_total": 1454.4
+  },
+  {
+    "id": "226",
+    "name": "FEDERICO RODRIGUEZ PACHECO",
+    "row": 52,
+    "changes": {
+      "transport_support_amount": 150.0,
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 1680.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 1680.0,
+      "excel_combined": 1680.0
+    },
+    "before_total": 2499.92
+  },
+  {
+    "id": "234",
+    "name": "RIGOBERTO GONZALEZ MALAGON",
+    "row": 53,
+    "changes": {
+      "overtime_monetized_amount": 59.0,
+      "manual_bonus_amount": 21.0
+    },
+    "split": {
+      "calculated_overtime": 59.0,
+      "approved_overtime": 59.0,
+      "bonus": 21.0,
+      "excel_combined": 80.0
+    },
+    "before_total": 2264.2
+  },
+  {
+    "id": "239",
+    "name": "EDUARDO MONTES SERVIN",
+    "row": 54,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 1400.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 1400.0,
+      "excel_combined": 1400.0
+    },
+    "before_total": 2286.12
+  },
+  {
+    "id": "255",
+    "name": "JOSE FEDERICO HUERTA ROJAS",
+    "row": 57,
+    "changes": {
+      "transport_support_amount": 150.0,
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 1280.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 1280.0,
+      "excel_combined": 1280.0
+    },
+    "before_total": 1992.72
+  },
+  {
+    "id": "257",
+    "name": "RAMON FERNANDO MIRANDA LOPEZ",
+    "row": 58,
+    "changes": {
+      "cash_vacation_amount": 1687.08
+    },
+    "split": null,
+    "before_total": 5735.320000000001
+  },
+  {
+    "id": "262",
+    "name": "JUAN DANIEL MANCERA OLVERA",
+    "row": 61,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 500.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 500.0,
+      "excel_combined": 500.0
+    },
+    "before_total": 2205.2
+  },
+  {
+    "id": "268",
+    "name": "MARICRUZ GARCIA YAÑEZ",
+    "row": 63,
+    "changes": {
+      "overtime_monetized_amount": 30.0,
+      "manual_bonus_amount": 0.0
+    },
+    "split": {
+      "calculated_overtime": 34.0,
+      "approved_overtime": 30.0,
+      "bonus": 0.0,
+      "excel_combined": 30.0
+    },
+    "before_total": 3533.92
+  },
+  {
+    "id": "294",
+    "name": "OSCAR MARTINEZ GONZALEZ",
+    "row": 74,
+    "changes": {
+      "overtime_monetized_amount": 102.0,
+      "manual_bonus_amount": 28.0
+    },
+    "split": {
+      "calculated_overtime": 102.0,
+      "approved_overtime": 102.0,
+      "bonus": 28.0,
+      "excel_combined": 130.0
+    },
+    "before_total": 2307.4
+  },
+  {
+    "id": "299",
+    "name": "JOSE PILAR RANGEL MALAGON",
+    "row": 79,
+    "changes": {
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 40.0
+    },
+    "split": {
+      "calculated_overtime": 0.0,
+      "approved_overtime": 0.0,
+      "bonus": 40.0,
+      "excel_combined": 40.0
+    },
+    "before_total": 2205.4
+  }
+]

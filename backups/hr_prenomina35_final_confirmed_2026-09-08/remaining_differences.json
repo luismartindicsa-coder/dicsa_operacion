@@ -1,0 +1,106 @@
+[
+  {
+    "id": "2",
+    "name": "JOSE LUIS CRUZ CRUZ",
+    "row": 11,
+    "app_cash": 1794.8,
+    "excel_cash_reference": 1794.72,
+    "app_minus_excel": 0.08
+  },
+  {
+    "id": "93",
+    "name": "GABRIEL RODRIGUEZ CARRANCO",
+    "row": 18,
+    "app_cash": 1457.72,
+    "excel_cash_reference": 1294.7199999999998,
+    "app_minus_excel": 163.0
+  },
+  {
+    "id": "132",
+    "name": "JOSE JESUS CIENEGA HERNANDEZ",
+    "row": 26,
+    "app_cash": 3114.72,
+    "excel_cash_reference": 4059.84,
+    "app_minus_excel": -945.12
+  },
+  {
+    "id": "135",
+    "name": "JAVIER MARTINEZ BARRERA",
+    "row": 27,
+    "app_cash": 3009.8,
+    "excel_cash_reference": 3009.76,
+    "app_minus_excel": 0.04
+  },
+  {
+    "id": "153",
+    "name": "MARITSA LOPEZ MORENO",
+    "row": 36,
+    "app_cash": 94.72,
+    "excel_cash_reference": 70.5199999999998,
+    "app_minus_excel": 24.2
+  },
+  {
+    "id": "157",
+    "name": "JOSE ANGEL LOPEZ PEREZ",
+    "row": 37,
+    "app_cash": 794.72,
+    "excel_cash_reference": 818.9199999999998,
+    "app_minus_excel": -24.2
+  },
+  {
+    "id": "217",
+    "name": "LUIS ANGEL CENTENO GONZALEZ",
+    "row": 50,
+    "app_cash": 2174.16,
+    "excel_cash_reference": 2423.64,
+    "app_minus_excel": -249.48
+  },
+  {
+    "id": "252",
+    "name": "JUAN MANUEL PAVANA SAGRERO",
+    "row": 56,
+    "app_cash": 2500.12,
+    "excel_cash_reference": 2500.0,
+    "app_minus_excel": 0.12
+  },
+  {
+    "id": "285",
+    "name": "ERNESTO RICO MENDOZA",
+    "row": 66,
+    "app_cash": 2499.92,
+    "excel_cash_reference": 2500.0,
+    "app_minus_excel": -0.08
+  },
+  {
+    "id": "289",
+    "name": "LUIS GABRIEL SALOMON CISNEROS",
+    "row": 69,
+    "app_cash": 2299.92,
+    "excel_cash_reference": 2300.0,
+    "app_minus_excel": -0.08
+  },
+  {
+    "id": "290",
+    "name": "DIANA ABRIL PAVANA FLORES",
+    "row": 70,
+    "app_cash": 2374.4,
+    "excel_cash_reference": 2374.48,
+    "app_minus_excel": -0.08
+  },
+  {
+    "id": "298",
+    "name": "FERNANDO AXEL SOTO TAMAYO",
+    "row": 78,
+    "app_cash": 2202.0,
+    "excel_cash_reference": 1886.96,
+    "app_minus_excel": 315.04
+  },
+  {
+    "id": "299",
+    "name": "JOSE PILAR RANGEL MALAGON",
+    "row": 79,
+    "app_cash": 2540.2,
+    "excel_cash_reference": 2540.0,
+    "app_minus_excel": 0.2
+  }
+]

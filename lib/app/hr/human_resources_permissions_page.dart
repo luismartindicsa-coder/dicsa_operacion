@@ -35,6 +35,7 @@ import 'human_resources_event_period_impacts.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_personnel_page.dart';
 import 'human_resources_period_context.dart';
+import 'human_resources_permission_type.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
 import 'human_resources_vacations_page.dart';
@@ -2594,7 +2595,7 @@ class _HrPermissionEditDialogState extends State<_HrPermissionEditDialog> {
       _events.add(
         _HrPermissionEventDraft(
           localId: 'manual_${DateTime.now().microsecondsSinceEpoch}',
-          permissionType: _HrPermissionType.permisoConGoce,
+          permissionType: HrPermissionType.permisoConGoce,
           requestUnit: _HrPermissionUnit.dia,
           startDate: _resolveInitialDialogDate(widget.periodLabel),
           endDate: _resolveInitialDialogDate(widget.periodLabel),
@@ -2615,16 +2616,16 @@ class _HrPermissionEditDialogState extends State<_HrPermissionEditDialog> {
   Widget build(BuildContext context) {
     final withPayCount = _events
         .where(
-          (event) => event.permissionType == _HrPermissionType.permisoConGoce,
+          (event) => event.permissionType == HrPermissionType.permisoConGoce,
         )
         .length;
     final withoutPayCount = _events
         .where(
-          (event) => event.permissionType == _HrPermissionType.permisoSinGoce,
+          (event) => event.permissionType == HrPermissionType.permisoSinGoce,
         )
         .length;
     final disabilityCount = _events
-        .where((event) => event.permissionType == _HrPermissionType.incapacidad)
+        .where((event) => event.permissionType == HrPermissionType.incapacidad)
         .length;
     return Focus(
       autofocus: true,
@@ -3291,11 +3292,11 @@ class _HrPermissionEventCard extends StatelessWidget {
                     value: draft.permissionType.label,
                     onTap: () async {
                       final value =
-                          await showSearchablePickerDialog<_HrPermissionType>(
+                          await showSearchablePickerDialog<HrPermissionType>(
                             context,
                             title: 'Tipo de permiso',
                             initialValue: draft.permissionType,
-                            options: _HrPermissionType.values
+                            options: HrPermissionType.values
                                 .map(
                                   (item) => SearchablePickerOption(
                                     value: item,
@@ -3783,16 +3784,6 @@ class _HrPermissionInlineNote extends StatelessWidget {
   }
 }
 
-enum _HrPermissionType {
-  permisoConGoce('Permiso con goce'),
-  permisoSinGoce('Permiso sin goce'),
-  incapacidad('Incapacidad'),
-  ajusteRh('Ajuste RH');
-
-  final String label;
-  const _HrPermissionType(this.label);
-}
-
 enum _HrPermissionUnit {
   dia('Día'),
   hora('Hora');
@@ -3911,7 +3902,7 @@ class _HrPermissionEventRecord {
   final String employeeName;
   final String empresa;
   final String attendancePeriodLabel;
-  final _HrPermissionType permissionType;
+  final HrPermissionType permissionType;
   final _HrPermissionUnit requestUnit;
   final DateTime startDate;
   final DateTime endDate;
@@ -3957,7 +3948,7 @@ class _HrPermissionEventRecord {
       employeeName: (row['employee_name'] ?? '').toString(),
       empresa: (row['empresa'] ?? '').toString(),
       attendancePeriodLabel: (row['attendance_period_label'] ?? '').toString(),
-      permissionType: _permissionTypeFromDb(row['permission_type']),
+      permissionType: HrPermissionType.fromDb(row['permission_type']),
       requestUnit: _permissionUnitFromDb(row['request_unit']),
       startDate: _parsePermissionDbDate(row['start_date']) ?? DateTime.now(),
       endDate: _parsePermissionDbDate(row['end_date']) ?? DateTime.now(),
@@ -3993,7 +3984,7 @@ class _HrPermissionEventRecord {
       'empresa': empresa,
       'attendance_period_label': attendancePeriodLabel,
       'payroll_period_label': attendancePeriodLabel,
-      'permission_type': permissionType.name,
+      'permission_type': permissionType.dbValue,
       'request_unit': requestUnit.name,
       'start_date': _permissionDbDate(startDate),
       'end_date': _permissionDbDate(endDate),
@@ -4074,7 +4065,7 @@ class _HrPermissionEventDraft {
   final String id;
   final String localId;
   String attendancePeriodLabel;
-  _HrPermissionType permissionType;
+  HrPermissionType permissionType;
   _HrPermissionUnit requestUnit;
   DateTime? startDate;
   DateTime? endDate;
@@ -4155,18 +4146,18 @@ List<_HrPermissionSummaryRow> _buildPermissionSummaryRows({
         final withPay = employeeEvents
             .where(
               (event) =>
-                  event.permissionType == _HrPermissionType.permisoConGoce,
+                  event.permissionType == HrPermissionType.permisoConGoce,
             )
             .toList(growable: false);
         final withoutPay = employeeEvents
             .where(
               (event) =>
-                  event.permissionType == _HrPermissionType.permisoSinGoce,
+                  event.permissionType == HrPermissionType.permisoSinGoce,
             )
             .toList(growable: false);
         final disability = employeeEvents
             .where(
-              (event) => event.permissionType == _HrPermissionType.incapacidad,
+              (event) => event.permissionType == HrPermissionType.incapacidad,
             )
             .toList(growable: false);
 
@@ -4261,7 +4252,6 @@ List<String> _permissionPeriodOptions({
 }) {
   return HumanResourcesPeriodContext.normalizedOptions([
     ...operationalPeriodLabels,
-    for (final lot in lots) _describePermissionImportPeriod(lot),
     for (final event in events) event.attendancePeriodLabel,
   ]);
 }
@@ -4559,14 +4549,6 @@ ButtonStyle _hrPermissionActionOutlinedButtonStyle() {
   );
 }
 
-_HrPermissionType _permissionTypeFromDb(Object? raw) {
-  final key = (raw ?? '').toString();
-  return _HrPermissionType.values.firstWhere(
-    (item) => item.name == key,
-    orElse: () => _HrPermissionType.permisoConGoce,
-  );
-}
-
 _HrPermissionUnit _permissionUnitFromDb(Object? raw) {
   final key = (raw ?? '').toString();
   return _HrPermissionUnit.values.firstWhere(
@@ -4719,6 +4701,7 @@ bool _permissionEventOverlapsPeriod(
 
 String _describePermissionImportPeriod(_HrPermissionImportLotLite lot) {
   final raw = lot.periodLabel.trim();
+  if (RegExp(r'^Periodo\s+\d+\s+semanal\s+·').hasMatch(raw)) return raw;
   if (raw.isEmpty) return 'Periodo no detectado';
   if (lot.source == _HrPermissionImportSource.ngteco) {
     final segments = raw.split('→').map((part) => part.trim()).toList();
@@ -4741,10 +4724,7 @@ String _describePermissionImportPeriod(_HrPermissionImportLotLite lot) {
     final week = periodMatch.group(1)!;
     final start = periodMatch.group(2)!;
     final end = periodMatch.group(3)!;
-    final time = periodMatch.group(4);
-    return time == null
-        ? 'Periodo $week semanal · $start - $end'
-        : 'Periodo $week semanal · $start - $end · Archivo $time';
+    return 'Periodo $week semanal · $start - $end';
   }
   return raw;
 }

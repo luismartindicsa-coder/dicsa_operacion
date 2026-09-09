@@ -1,3 +1,5 @@
+import 'human_resources_fiscal_payment.dart';
+import 'human_resources_fiscal_payment_card.dart';
 import 'dart:async';
 import 'dart:io';
 
@@ -13,6 +15,7 @@ import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
 import '../shared/dicsa_logo_mark.dart';
 import '../shared/page_routes.dart';
+import '../shared/ui_contract_core/dialogs/contract_dialog_shell.dart';
 import '../shared/ui_contract_core/theme/area_theme_scope.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
@@ -27,6 +30,11 @@ import 'human_resources_period_context.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
 import 'human_resources_vacations_page.dart';
+
+part 'nomina/nomina_dashboard.dart';
+part 'nomina/nomina_detail.dart';
+part 'nomina/nomina_widgets.dart';
+part 'nomina/nomina_test_support.dart';
 
 const String _kHrNominaDraftRowsTable = 'hr_prenomina_draft_rows';
 const String _kHrNominaImportLotsTable = 'hr_attendance_import_lots';
@@ -53,6 +61,33 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
   String? _selectedRowId;
   int _currentPage = 0;
   int _pageSize = 40;
+  final _searchController = TextEditingController();
+  final Set<String> _statusFilters = {};
+  String? _companyFilter;
+
+  List<_HrNominaSummaryRow> get _filteredRows => _allRows
+      .where((row) {
+        final query = _searchController.text.trim().toLowerCase();
+        return (query.isEmpty ||
+                '${row.employeeId} ${row.employeeName}'.toLowerCase().contains(
+                  query,
+                )) &&
+            (_statusFilters.isEmpty ||
+                _statusFilters.contains(row.statusLabel)) &&
+            (_companyFilter == null || row.empresa == _companyFilter);
+      })
+      .toList(growable: false);
+
+  void _applyFilters() {
+    _currentPage = 0;
+    _rebuildVisibleRows();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
 
   List<_HrNominaSummaryRow> _allRows = const <_HrNominaSummaryRow>[];
   List<_HrNominaSummaryRow> _visibleRows = const <_HrNominaSummaryRow>[];
@@ -106,6 +141,17 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
             .order('created_at', ascending: false)
             .range(from, to),
       );
+      final profilesResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from('hr_employee_profiles')
+            .select('id,fiscal_payment_mode')
+            .order('id')
+            .range(from, to),
+      );
+      final fiscalModes = <String, String>{
+        for (final profile in profilesResult)
+          profile['id'].toString(): profile['fiscal_payment_mode'].toString(),
+      };
       final importLotsResult = await fetchAllSupabaseRows(
         (from, to) => client
             .from(_kHrNominaImportLotsTable)
@@ -151,6 +197,10 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
       final rows = _buildNominaRows(
         draftRows: draftRows,
         activePeriodLabel: activePeriodLabel,
+        personalFiscalModes: fiscalModes,
+        isPeriodClosed: periodClosures.any(
+          (p) => p.periodLabel == activePeriodLabel && p.isClosed,
+        ),
       );
 
       _allRows = rows;
@@ -179,13 +229,13 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
   }
 
   void _rebuildVisibleRows() {
-    final pageCount = _allRows.isEmpty
+    final pageCount = _filteredRows.isEmpty
         ? 1
-        : ((_allRows.length - 1) ~/ _pageSize) + 1;
+        : ((_filteredRows.length - 1) ~/ _pageSize) + 1;
     _currentPage = _currentPage.clamp(0, pageCount - 1);
-    final start = (_currentPage * _pageSize).clamp(0, _allRows.length);
-    final end = (start + _pageSize).clamp(0, _allRows.length);
-    _visibleRows = _allRows.sublist(start, end);
+    final start = (_currentPage * _pageSize).clamp(0, _filteredRows.length);
+    final end = (start + _pageSize).clamp(0, _filteredRows.length);
+    _visibleRows = _filteredRows.sublist(start, end);
     if (_visibleRows.isEmpty) {
       _selectedRowId = null;
     } else if (!_visibleRows.any((row) => row.employeeId == _selectedRowId)) {
@@ -201,9 +251,9 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
   }
 
   void _nextPage() {
-    final totalPages = _allRows.isEmpty
+    final totalPages = _filteredRows.isEmpty
         ? 1
-        : ((_allRows.length - 1) ~/ _pageSize) + 1;
+        : ((_filteredRows.length - 1) ~/ _pageSize) + 1;
     if (_currentPage >= totalPages - 1) return;
     _currentPage += 1;
     _rebuildVisibleRows();
@@ -278,6 +328,12 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
         activePeriodLabel: _activePeriodLabel,
         canGenerateReceipt: _isActivePeriodClosed,
         onGenerateReceipt: _generatePayrollReceipt,
+        draft: _draftRows.where((draft) => draft.id == row.draftId).firstOrNull,
+        onExportPeriodReport: _exportPeriodPayrollReportPdf,
+        onOpenPrenomina: () async {
+          Navigator.of(context).pop();
+          await _openPrenomina();
+        },
       ),
     );
   }
@@ -460,14 +516,41 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1540),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(56, 4, 8, 0),
+                  padding: const EdgeInsets.fromLTRB(8, 4, 8, 0),
                   child: _loading
                       ? const Center(
                           child: CircularProgressIndicator(strokeWidth: 2.4),
                         )
                       : _HrNominaWorkspace(
                           rows: _visibleRows,
-                          totalRows: _allRows.length,
+                          periodRows: _allRows,
+                          draftRows: _draftRows,
+                          filters: _HrNominaFilters(
+                            rows: _allRows,
+                            controller: _searchController,
+                            statuses: _statusFilters,
+                            company: _companyFilter,
+                            onSearch: (_) => _applyFilters(),
+                            onStatus: (value) {
+                              if (value == null) {
+                                _statusFilters.clear();
+                              } else if (!_statusFilters.remove(value)) {
+                                _statusFilters.add(value);
+                              }
+                              _applyFilters();
+                            },
+                            onCompany: (value) {
+                              _companyFilter = value;
+                              _applyFilters();
+                            },
+                            onClear: () {
+                              _searchController.clear();
+                              _statusFilters.clear();
+                              _companyFilter = null;
+                              _applyFilters();
+                            },
+                          ),
+                          totalRows: _filteredRows.length,
                           selectedCount: visibleSelectionCount,
                           activePeriodLabel: _activePeriodLabel,
                           periodOptions: _periodOptions,
@@ -475,17 +558,17 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
                           metrics: metrics,
                           selectedRowId: _selectedRowId,
                           currentPage: _currentPage,
-                          totalPages: _allRows.isEmpty
+                          totalPages: _filteredRows.isEmpty
                               ? 1
-                              : ((_allRows.length - 1) ~/ _pageSize) + 1,
+                              : ((_filteredRows.length - 1) ~/ _pageSize) + 1,
                           pageSize: _pageSize,
                           onPreviousPage: _currentPage == 0
                               ? null
                               : _previousPage,
                           onNextPage:
-                              (((_allRows.isEmpty
+                              (((_filteredRows.isEmpty
                                           ? 1
-                                          : ((_allRows.length - 1) ~/
+                                          : ((_filteredRows.length - 1) ~/
                                                     _pageSize) +
                                                 1) -
                                       1) <=
@@ -532,536 +615,6 @@ class _HumanResourcesNominaPageState extends State<HumanResourcesNominaPage> {
   }
 }
 
-class _HrNominaWorkspace extends StatelessWidget {
-  final List<_HrNominaSummaryRow> rows;
-  final int totalRows;
-  final int selectedCount;
-  final String activePeriodLabel;
-  final List<String> periodOptions;
-  final bool isPeriodClosed;
-  final _HrNominaMetrics metrics;
-  final String? selectedRowId;
-  final int currentPage;
-  final int totalPages;
-  final int pageSize;
-  final VoidCallback? onPreviousPage;
-  final VoidCallback? onNextPage;
-  final ValueChanged<int> onPageSizeChanged;
-  final Future<void> Function() onOpenPrenomina;
-  final Future<void> Function() onExportPeriodReport;
-  final ValueChanged<String> onSelectPeriod;
-  final ValueChanged<_HrNominaSummaryRow> onSelectRow;
-  final ValueChanged<_HrNominaSummaryRow> onOpenRow;
-
-  const _HrNominaWorkspace({
-    required this.rows,
-    required this.totalRows,
-    required this.selectedCount,
-    required this.activePeriodLabel,
-    required this.periodOptions,
-    required this.isPeriodClosed,
-    required this.metrics,
-    required this.selectedRowId,
-    required this.currentPage,
-    required this.totalPages,
-    required this.pageSize,
-    required this.onPreviousPage,
-    required this.onNextPage,
-    required this.onPageSizeChanged,
-    required this.onOpenPrenomina,
-    required this.onExportPeriodReport,
-    required this.onSelectPeriod,
-    required this.onSelectRow,
-    required this.onOpenRow,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return ContractGlassCard(
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Nómina',
-                      style: TextStyle(
-                        fontSize: 27,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                      ),
-                    ),
-                    SizedBox(height: 3),
-                    Text(
-                      'Validación final de la corrida antes de publicar pagos.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                        color: Colors.white70,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  HumanResourcesPeriodSelector(
-                    selectedLabel: activePeriodLabel,
-                    options: periodOptions,
-                    onSelected: onSelectPeriod,
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: totalRows == 0 || activePeriodLabel.isEmpty
-                        ? null
-                        : () => unawaited(onExportPeriodReport()),
-                    style: OutlinedButton.styleFrom(
-                      foregroundColor: Colors.white,
-                      side: const BorderSide(color: Color(0xFFBFA0FF)),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      textStyle: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    icon: const Icon(Icons.picture_as_pdf_outlined),
-                    label: const Text('PDF del periodo'),
-                  ),
-                  FilledButton.icon(
-                    onPressed: onOpenPrenomina,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: const Color(0xFFAF8BFF),
-                      foregroundColor: const Color(0xFF24103D),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 14,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                      textStyle: const TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    icon: const Icon(Icons.payments_outlined),
-                    label: const Text('Volver a prenómina'),
-                  ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          _HrNominaCloseOverview(
-            activePeriodLabel: activePeriodLabel,
-            totalRows: totalRows,
-            selectedCount: selectedCount,
-            isPeriodClosed: isPeriodClosed,
-            metrics: metrics,
-          ),
-          const SizedBox(height: 14),
-          Expanded(
-            child: rows.isEmpty
-                ? _HrNominaEmptyState(onOpenPrenomina: onOpenPrenomina)
-                : Column(
-                    children: [
-                      _HrNominaGridHeader(),
-                      const SizedBox(height: 10),
-                      Expanded(
-                        child: ListView.separated(
-                          itemCount: rows.length,
-                          separatorBuilder: (_, _) =>
-                              const SizedBox(height: 10),
-                          itemBuilder: (context, index) {
-                            final row = rows[index];
-                            return _HrNominaGridRow(
-                              row: row,
-                              selected: row.employeeId == selectedRowId,
-                              onTap: () => onSelectRow(row),
-                              onOpen: () => onOpenRow(row),
-                            );
-                          },
-                        ),
-                      ),
-                      const SizedBox(height: 10),
-                      _HrNominaGridFooter(
-                        rows: rows.length,
-                        totalRows: totalRows,
-                        selectedCount: selectedCount,
-                        currentPage: currentPage,
-                        totalPages: totalPages,
-                        pageSize: pageSize,
-                        onPreviousPage: onPreviousPage,
-                        onNextPage: onNextPage,
-                        onPageSizeChanged: onPageSizeChanged,
-                      ),
-                    ],
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HrNominaCloseOverview extends StatelessWidget {
-  final String activePeriodLabel;
-  final int totalRows;
-  final int selectedCount;
-  final bool isPeriodClosed;
-  final _HrNominaMetrics metrics;
-
-  const _HrNominaCloseOverview({
-    required this.activePeriodLabel,
-    required this.totalRows,
-    required this.selectedCount,
-    required this.isPeriodClosed,
-    required this.metrics,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final periodLabel = activePeriodLabel.isEmpty
-        ? 'Sin periodo activo detectado'
-        : activePeriodLabel;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5EEFF).withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFD2BEFF)),
-      ),
-      child: Wrap(
-        spacing: 10,
-        runSpacing: 10,
-        crossAxisAlignment: WrapCrossAlignment.center,
-        children: [
-          _HrNominaOverviewLead(
-            periodLabel: periodLabel,
-            totalRows: totalRows,
-            selectedCount: selectedCount,
-            isPeriodClosed: isPeriodClosed,
-          ),
-          _HrNominaSoftPill(
-            label: isPeriodClosed ? 'Periodo cerrado' : 'Cierre pendiente',
-            emphasized: isPeriodClosed,
-          ),
-          _HrNominaSoftPill(
-            label: 'Fiscal ${_fmtHrNominaMoney(metrics.fiscal)}',
-          ),
-          _HrNominaSoftPill(
-            label: 'Depositado ${_fmtHrNominaMoney(metrics.fiscalDeposited)}',
-          ),
-          _HrNominaSoftPill(
-            label: 'Fiscal efectivo ${_fmtHrNominaMoney(metrics.fiscalCash)}',
-          ),
-          _HrNominaSoftPill(
-            label: 'Efectivo RH ${_fmtHrNominaMoney(metrics.operationalCash)}',
-          ),
-          _HrNominaSoftPill(
-            label: 'Complementos ${_fmtHrNominaMoney(metrics.complements)}',
-          ),
-          _HrNominaSoftPill(
-            label: 'Deducciones ${_fmtHrNominaMoney(metrics.deductions)}',
-          ),
-          _HrNominaSoftPill(
-            label: 'Pago fuera ${_fmtHrNominaMoney(metrics.outside)}',
-          ),
-          _HrNominaSoftPill(
-            label: 'Total app ${_fmtHrNominaMoney(metrics.total)}',
-            emphasized: true,
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HrNominaOverviewLead extends StatelessWidget {
-  final String periodLabel;
-  final int totalRows;
-  final int selectedCount;
-  final bool isPeriodClosed;
-
-  const _HrNominaOverviewLead({
-    required this.periodLabel,
-    required this.totalRows,
-    required this.selectedCount,
-    required this.isPeriodClosed,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minWidth: 260, maxWidth: 430),
-      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            isPeriodClosed ? 'CIERRE CONFIRMADO' : 'CIERRE DE NÓMINA',
-            style: TextStyle(
-              fontSize: 11,
-              letterSpacing: 1,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF6E47A8),
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            periodLabel,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF24103D),
-            ),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            '$totalRows colaboradores · Selección: $selectedCount · Fuente: Prenómina RH',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF765AA8),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HrNominaGridHeader extends StatelessWidget {
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3ECFF),
-        borderRadius: BorderRadius.circular(28),
-      ),
-      child: const Row(
-        children: [
-          SizedBox(
-            width: 90,
-            child: Text('ID', style: _kHrNominaHeaderTextStyle),
-          ),
-          Expanded(
-            flex: 3,
-            child: Text('NOMBRE', style: _kHrNominaHeaderTextStyle),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text('FISCAL', style: _kHrNominaHeaderTextStyle),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text('COMPLEMENTOS', style: _kHrNominaHeaderTextStyle),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text('DEDUCCIONES', style: _kHrNominaHeaderTextStyle),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text('TOTAL APP', style: _kHrNominaHeaderTextStyle),
-          ),
-          Expanded(
-            flex: 2,
-            child: Text('ESTADO', style: _kHrNominaHeaderTextStyle),
-          ),
-          SizedBox(
-            width: 98,
-            child: Text(
-              'ACCIONES',
-              textAlign: TextAlign.center,
-              style: _kHrNominaHeaderTextStyle,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-const TextStyle _kHrNominaHeaderTextStyle = TextStyle(
-  fontSize: 13,
-  fontWeight: FontWeight.w900,
-  color: Color(0xFF24103D),
-);
-
-class _HrNominaGridRow extends StatelessWidget {
-  final _HrNominaSummaryRow row;
-  final bool selected;
-  final VoidCallback onTap;
-  final VoidCallback onOpen;
-
-  const _HrNominaGridRow({
-    required this.row,
-    required this.selected,
-    required this.onTap,
-    required this.onOpen,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(24),
-        onTap: onTap,
-        onDoubleTap: onOpen,
-        child: Ink(
-          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 18),
-          decoration: BoxDecoration(
-            color: selected ? const Color(0xFFB7A6D6) : Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(
-              color: selected
-                  ? const Color(0xFF9C79FF)
-                  : const Color(0xFFE5D7FF),
-              width: selected ? 2 : 1.4,
-            ),
-            boxShadow: [
-              BoxShadow(
-                blurRadius: 16,
-                color: Colors.black.withValues(alpha: 0.08),
-                offset: const Offset(0, 8),
-              ),
-            ],
-          ),
-          child: Row(
-            children: [
-              SizedBox(
-                width: 90,
-                child: Text(row.employeeId, style: _rowPrimaryStyle(selected)),
-              ),
-              Expanded(
-                flex: 3,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      row.employeeName,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: _rowPrimaryStyle(selected),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(row.empresa, style: _rowSecondaryStyle(selected)),
-                  ],
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  _fmtHrNominaMoney(row.fiscalAmount),
-                  style: _rowPrimaryStyle(selected),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  _fmtHrNominaMoney(row.complementsAmount),
-                  style: _rowPrimaryStyle(selected),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Text(
-                  _fmtHrNominaMoney(row.deductionsAmount),
-                  style: _rowPrimaryStyle(selected),
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _fmtHrNominaMoney(row.totalAmount),
-                      style: _rowPrimaryStyle(selected),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      row.paymentChannelLabel,
-                      style: _rowSecondaryStyle(selected),
-                    ),
-                  ],
-                ),
-              ),
-              Expanded(
-                flex: 2,
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: _HrNominaStatusBadge(label: row.statusLabel),
-                ),
-              ),
-              SizedBox(
-                width: 98,
-                child: Center(
-                  child: IconButton(
-                    style: IconButton.styleFrom(
-                      backgroundColor: selected
-                          ? const Color(0xFF7C4DFF)
-                          : const Color(0xFFF3ECFF),
-                      foregroundColor: selected
-                          ? Colors.white
-                          : const Color(0xFF6E47A8),
-                      minimumSize: const Size(54, 54),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
-                    onPressed: onOpen,
-                    icon: const Icon(Icons.more_horiz_rounded),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-TextStyle _rowPrimaryStyle(bool selected) {
-  return TextStyle(
-    fontSize: 15,
-    fontWeight: FontWeight.w900,
-    color: selected ? const Color(0xFF24103D) : const Color(0xFF24103D),
-  );
-}
-
-TextStyle _rowSecondaryStyle(bool selected) {
-  return TextStyle(
-    fontSize: 13,
-    fontWeight: FontWeight.w800,
-    color: selected
-        ? const Color(0xFF6E47A8)
-        : const Color(0xFF6E47A8).withValues(alpha: 0.94),
-  );
-}
-
 class _HrNominaStatusBadge extends StatelessWidget {
   final String label;
 
@@ -1069,98 +622,23 @@ class _HrNominaStatusBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool review = label.toLowerCase().contains('revisión');
-    final bool published = label.toLowerCase().contains('publicado');
+    final colors = humanResourcesPayrollStatusColors(label);
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
-        color: review
-            ? const Color(0xFFFFF0F2)
-            : published
-            ? const Color(0xFFEFF7FF)
-            : const Color(0xFFF4ECFF),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: review
-              ? const Color(0xFFD59AB1)
-              : published
-              ? const Color(0xFF9BBEF9)
-              : const Color(0xFFC8ABFF),
-        ),
+        color: colors.background,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: colors.border),
       ),
       child: Text(
         label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
         style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w900,
-          color: review
-              ? const Color(0xFF913E5B)
-              : published
-              ? const Color(0xFF255691)
-              : const Color(0xFF6E47A8),
+          fontSize: 11.5,
+          fontWeight: FontWeight.w800,
+          color: colors.foreground,
         ),
-      ),
-    );
-  }
-}
-
-class _HrNominaEmptyState extends StatelessWidget {
-  final Future<void> Function() onOpenPrenomina;
-
-  const _HrNominaEmptyState({required this.onOpenPrenomina});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 28),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(
-            Icons.receipt_long_rounded,
-            size: 44,
-            color: Colors.white70,
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Este periodo todavía no tiene borradores de prenómina para validar.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 15,
-              fontWeight: FontWeight.w800,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Genera o guarda la corrida desde Prenómina y vuelve aquí para revisar los totales finales.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Colors.white.withValues(alpha: 0.74),
-            ),
-          ),
-          const SizedBox(height: 18),
-          FilledButton.icon(
-            onPressed: onOpenPrenomina,
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFFAF8BFF),
-              foregroundColor: const Color(0xFF24103D),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(18),
-              ),
-            ),
-            icon: const Icon(Icons.payments_outlined),
-            label: const Text('Abrir prenómina'),
-          ),
-        ],
       ),
     );
   }
@@ -1195,7 +673,7 @@ class _HrNominaGridFooter extends StatelessWidget {
       padding: const EdgeInsets.only(top: 8),
       child: Card(
         elevation: 0,
-        color: const Color(0xFFF0E6FF).withValues(alpha: 0.56),
+        color: humanResourcesAreaTokens.primarySoft.withValues(alpha: 0.56),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
@@ -1205,14 +683,14 @@ class _HrNominaGridFooter extends StatelessWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               OutlinedButton.icon(
-                style: _hrNominaActionOutlinedButtonStyle(),
+                style: _hrNominaActionOutlinedButtonStyle(context),
                 onPressed: onPreviousPage,
                 icon: const Icon(Icons.chevron_left),
                 label: const Text('Anterior'),
               ),
               Text('Página ${currentPage + 1} de $totalPages'),
               OutlinedButton.icon(
-                style: _hrNominaActionOutlinedButtonStyle(),
+                style: _hrNominaActionOutlinedButtonStyle(context),
                 onPressed: onNextPage,
                 icon: const Icon(Icons.chevron_right),
                 label: const Text('Siguiente'),
@@ -1222,6 +700,7 @@ class _HrNominaGridFooter extends StatelessWidget {
                 width: 90,
                 child: DropdownButtonFormField<int>(
                   initialValue: pageSize,
+                  isExpanded: true,
                   isDense: true,
                   decoration: _hrNominaFieldDecoration(),
                   items: const [40, 80, 120]
@@ -1235,9 +714,9 @@ class _HrNominaGridFooter extends StatelessWidget {
                   },
                 ),
               ),
-              Text('Mostrando: $rows'),
-              Text('Total: $totalRows'),
-              Text('Selección: $selectedCount'),
+              Text(
+                'Mostrando ${totalRows == 0 ? 0 : currentPage * pageSize + 1}–${currentPage * pageSize + rows} de $totalRows',
+              ),
             ],
           ),
         ),
@@ -1251,387 +730,44 @@ class _HrNominaHeaderBrand extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        ContractGlassCard(
-          padding: const EdgeInsets.all(8),
-          child: SizedBox(
-            width: 56,
-            height: 56,
-            child: const DicsaLogoD(size: 36, progress: 1),
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          ContractGlassCard(
+            padding: const EdgeInsets.all(8),
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: const DicsaLogoD(size: 36, progress: 1),
+            ),
           ),
-        ),
-        const SizedBox(width: 14),
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Recursos Humanos',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
-              ),
-            ),
-            SizedBox(height: 2),
-            Text(
-              'Nómina',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFFCFAEFF),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-class _HrNominaSoftPill extends StatelessWidget {
-  final String label;
-  final bool emphasized;
-
-  const _HrNominaSoftPill({required this.label, this.emphasized = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 9),
-      decoration: BoxDecoration(
-        color: emphasized ? const Color(0xFFE5D5FF) : const Color(0xFFF8F4FF),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: emphasized ? const Color(0xFF9C79FF) : const Color(0xFFD2BEFF),
-        ),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.w900,
-          color: Color(0xFF2B1946),
-        ),
-      ),
-    );
-  }
-}
-
-class _HrNominaDetailDialog extends StatelessWidget {
-  final _HrNominaSummaryRow row;
-  final String activePeriodLabel;
-  final bool canGenerateReceipt;
-  final Future<void> Function(_HrNominaSummaryRow row) onGenerateReceipt;
-
-  const _HrNominaDetailDialog({
-    required this.row,
-    required this.activePeriodLabel,
-    required this.canGenerateReceipt,
-    required this.onGenerateReceipt,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 36, vertical: 24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 1120, maxHeight: 760),
-        child: ContractGlassCard(
-          padding: const EdgeInsets.fromLTRB(24, 24, 24, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                children: [
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Detalle de nómina',
-                          style: TextStyle(
-                            fontSize: 30,
-                            fontWeight: FontWeight.w900,
-                            color: Colors.white,
-                          ),
-                        ),
-                        SizedBox(height: 6),
-                        Text(
-                          'Vista comparativa del cierre generado desde la app.',
-                          style: TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: Color(0xFFCFAEFF),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded, color: Colors.white),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Align(
-                alignment: Alignment.centerRight,
-                child: FilledButton.icon(
-                  onPressed: row.isPublished && canGenerateReceipt
-                      ? () async => onGenerateReceipt(row)
-                      : null,
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF8B5CF6),
-                    foregroundColor: Colors.white,
-                    disabledBackgroundColor: const Color(0xFFE6DAFF),
-                    disabledForegroundColor: const Color(0xFF765AA8),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  icon: const Icon(Icons.picture_as_pdf_rounded),
-                  label: Text(
-                    !canGenerateReceipt
-                        ? 'Cierra el periodo en Prenómina para emitir'
-                        : row.isPublished
-                        ? 'Generar recibo firmado'
-                        : 'Publica en Prenómina para emitir',
-                  ),
+              Text(
+                'Recursos Humanos',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
                 ),
               ),
-              const SizedBox(height: 14),
-              Expanded(
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    SizedBox(
-                      width: 280,
-                      child: Card(
-                        elevation: 0,
-                        color: const Color(0xFFF4ECFF).withValues(alpha: 0.92),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(30),
-                        ),
-                        child: Padding(
-                          padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                row.employeeName,
-                                style: const TextStyle(
-                                  fontSize: 22,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF24103D),
-                                ),
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'ID ${row.employeeId}',
-                                style: const TextStyle(
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF6E47A8),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                row.empresa,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF6E47A8),
-                                ),
-                              ),
-                              const SizedBox(height: 18),
-                              _HrNominaStatusBadge(label: row.statusLabel),
-                              const SizedBox(height: 18),
-                              _HrNominaSideData(
-                                label: 'Periodo',
-                                value: activePeriodLabel.isEmpty
-                                    ? 'Sin periodo'
-                                    : activePeriodLabel,
-                              ),
-                              _HrNominaSideData(
-                                label: 'Canal de pago',
-                                value: row.paymentChannelLabel,
-                              ),
-                              _HrNominaSideData(
-                                label: 'Referencia',
-                                value: row.paymentReference.isEmpty
-                                    ? '--'
-                                    : row.paymentReference,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 18),
-                    Expanded(
-                      child: SingleChildScrollView(
-                        child: Column(
-                          children: [
-                            _HrNominaDetailBlock(
-                              title: 'Fiscal y app',
-                              rows: [
-                                _HrNominaDetailLine(
-                                  label: 'Fiscal antes de retardo',
-                                  value: _fmtHrNominaMoney(
-                                    row.fiscalAmount +
-                                        row.fiscalLateDeductionAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Retardos fiscales',
-                                  value:
-                                      '-${_fmtHrNominaMoney(row.fiscalLateDeductionAmount)}',
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Fiscal total',
-                                  value: _fmtHrNominaMoney(row.fiscalAmount),
-                                  emphasized: true,
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Fiscal depositado',
-                                  value: _fmtHrNominaMoney(
-                                    row.fiscalDepositedAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Fiscal en efectivo',
-                                  value: _fmtHrNominaMoney(
-                                    row.fiscalCashAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Complementos RH',
-                                  value: _fmtHrNominaMoney(
-                                    row.complementsAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Deducciones RH',
-                                  value: _fmtHrNominaMoney(
-                                    row.deductionsAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Pago por fuera',
-                                  value: _fmtHrNominaMoney(
-                                    row.paymentOutsideAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Total app',
-                                  value: _fmtHrNominaMoney(row.totalAmount),
-                                  emphasized: true,
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            _HrNominaDetailBlock(
-                              title: 'Desglose operativo RH',
-                              rows: [
-                                _HrNominaDetailLine(
-                                  label: 'Sueldo efectivo',
-                                  value: _fmtHrNominaMoney(
-                                    row.cashSalaryAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Vacaciones efectivo',
-                                  value: _fmtHrNominaMoney(
-                                    row.cashVacationAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Apoyo transporte',
-                                  value: _fmtHrNominaMoney(
-                                    row.transportSupportAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Festivo',
-                                  value: _fmtHrNominaMoney(row.holidayAmount),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Horas extra',
-                                  value: _fmtHrNominaMoney(
-                                    row.overtimeMonetizedAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Bono manual',
-                                  value: _fmtHrNominaMoney(
-                                    row.manualBonusAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Ajuste manual',
-                                  value: _fmtHrNominaMoney(
-                                    row.manualAdjustmentAmount,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            _HrNominaDetailBlock(
-                              title: 'Deducciones RH',
-                              rows: [
-                                _HrNominaDetailLine(
-                                  label: 'ISR efectivo',
-                                  value: _fmtHrNominaMoney(row.cashIsrAmount),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Descuento ausencia',
-                                  value: _fmtHrNominaMoney(
-                                    row.cashAbsenceDeductionAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'INFONAVIT efectivo',
-                                  value: _fmtHrNominaMoney(
-                                    row.cashInfonavitDeductionAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'FONACOT efectivo',
-                                  value: _fmtHrNominaMoney(
-                                    row.cashFonacotDeductionAmount,
-                                  ),
-                                ),
-                                _HrNominaDetailLine(
-                                  label: 'Préstamo',
-                                  value: _fmtHrNominaMoney(
-                                    row.loanDeductionAmount,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 14),
-                            _HrNominaDetailBlock(
-                              title: 'Notas',
-                              rows: [
-                                _HrNominaDetailLine(
-                                  label: 'Observaciones',
-                                  value: row.notes.isEmpty ? '--' : row.notes,
-                                ),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
+              SizedBox(height: 2),
+              Text(
+                'Nómina',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: humanResourcesAreaTokens.badgeText,
                 ),
               ),
             ],
           ),
-        ),
+        ],
       ),
     );
   }
@@ -1645,21 +781,26 @@ class _HrNominaDetailBlock extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      elevation: 0,
-      color: const Color(0xFFF4ECFF).withValues(alpha: 0.92),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: humanResourcesAreaTokens.primarySoft.withValues(alpha: .06),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: humanResourcesAreaTokens.border.withValues(alpha: .25),
+        ),
+      ),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
               title,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF24103D),
+              style: TextStyle(
+                fontSize: 14,
+                fontWeight: FontWeight.w800,
+                color: humanResourcesAreaTokens.badgeText,
               ),
             ),
             const SizedBox(height: 14),
@@ -1687,19 +828,16 @@ class _HrNominaDetailLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Color valueColor = emphasized
-        ? const Color(0xFF24103D)
-        : const Color(0xFF3A2758);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
           child: Text(
             label,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF6E47A8),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: emphasized ? FontWeight.w800 : FontWeight.w400,
+              color: humanResourcesAreaTokens.onGlass,
             ),
           ),
         ),
@@ -1709,9 +847,9 @@ class _HrNominaDetailLine extends StatelessWidget {
             value,
             textAlign: TextAlign.right,
             style: TextStyle(
-              fontSize: emphasized ? 16 : 14,
-              fontWeight: FontWeight.w900,
-              color: valueColor,
+              fontSize: 14,
+              fontWeight: emphasized ? FontWeight.w900 : FontWeight.w600,
+              color: humanResourcesAreaTokens.onGlass,
             ),
           ),
         ),
@@ -1735,19 +873,19 @@ class _HrNominaSideData extends StatelessWidget {
         children: [
           Text(
             label,
-            style: const TextStyle(
+            style: TextStyle(
               fontSize: 12,
               fontWeight: FontWeight.w900,
-              color: Color(0xFF6E47A8),
+              color: humanResourcesAreaTokens.badgeText,
             ),
           ),
           const SizedBox(height: 4),
           Text(
             value,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF24103D),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: humanResourcesAreaTokens.onGlass,
             ),
           ),
         ],
@@ -1907,6 +1045,7 @@ class _HrNominaDraftRecord {
 }
 
 class _HrNominaSummaryRow {
+  final bool incidencesInformational;
   final String draftId;
   final String draftStatus;
   final String employeeId;
@@ -1937,6 +1076,7 @@ class _HrNominaSummaryRow {
   final double paymentOutsideAmount;
 
   const _HrNominaSummaryRow({
+    this.incidencesInformational = false,
     required this.draftId,
     required this.draftStatus,
     required this.employeeId,
@@ -1967,7 +1107,11 @@ class _HrNominaSummaryRow {
     required this.paymentOutsideAmount,
   });
 
-  double get fiscalCashAmount => checkAmount;
+  double get fiscalCashAmount =>
+      checkAmount.clamp(0, fiscalAmount.clamp(0, double.infinity));
+  String get fiscalDeliveryLabel => fiscalCashAmount > 0
+      ? (fiscalDepositedAmount > 0 ? 'Depósito + cheque' : 'Cheque · efectivo')
+      : 'Depósito';
 
   bool get isPublished => draftStatus == 'publicado';
 
@@ -2021,7 +1165,7 @@ class _HrNominaMetrics {
       operationalCash += row.operationalCashAmount;
       complements += row.complementsAmount;
       deductions += row.deductionsAmount;
-      checks += row.checkAmount;
+      checks += row.fiscalCashAmount;
       outside += row.paymentOutsideAmount;
       total += row.totalAmount;
     }
@@ -2046,61 +1190,16 @@ List<String> _nominaPeriodOptions({
   required List<_HrNominaPeriodClosure> closures,
 }) {
   return HumanResourcesPeriodContext.normalizedOptions([
-    for (final lot in lots) _describeNominaImportPeriod(lot),
     for (final draft in drafts) draft.periodLabel,
     for (final closure in closures) closure.periodLabel,
   ]);
 }
 
-String _describeNominaImportPeriod(_HrNominaImportLotLite lot) {
-  final raw = lot.periodLabel.trim();
-  if (raw.isEmpty) return '';
-  if (lot.source.toLowerCase() == 'ngteco') {
-    final segments = raw.split('→').map((item) => item.trim()).toList();
-    if (segments.length == 2) {
-      final first = _parseNominaUsImportDate(segments.first);
-      final second = _parseNominaUsImportDate(segments.last);
-      if (first != null && second != null) {
-        final dates = [first, second]..sort();
-        return '${_formatNominaDateLabel(dates.first)} - ${_formatNominaDateLabel(dates.last)}';
-      }
-    }
-    return raw;
-  }
-
-  final match = RegExp(
-    r'Periodo\s+(\d+)\s+al\s+\d+\s+Semanal\s+del\s+(\d{2}/\d{2}/\d{4})\s+al\s+(\d{2}/\d{2}/\d{4})(?:\s+·\s+Hora:\s+(\d{2}:\d{2}:\d{2}))?',
-    caseSensitive: false,
-  ).firstMatch(raw);
-  if (match == null) return raw;
-  final week = match.group(1)!;
-  final start = match.group(2)!;
-  final end = match.group(3)!;
-  final time = match.group(4);
-  return time == null
-      ? 'Periodo $week semanal · $start - $end'
-      : 'Periodo $week semanal · $start - $end · Archivo $time';
-}
-
-DateTime? _parseNominaUsImportDate(String raw) {
-  final parts = raw.trim().split('/');
-  if (parts.length != 3) return null;
-  final month = int.tryParse(parts[0]);
-  final day = int.tryParse(parts[1]);
-  final year = int.tryParse(parts[2]);
-  if (month == null || day == null || year == null) return null;
-  return DateTime(year, month, day);
-}
-
-String _formatNominaDateLabel(DateTime date) {
-  final day = date.day.toString().padLeft(2, '0');
-  final month = date.month.toString().padLeft(2, '0');
-  return '$day/$month/${date.year}';
-}
-
 List<_HrNominaSummaryRow> _buildNominaRows({
   required List<_HrNominaDraftRecord> draftRows,
   required String activePeriodLabel,
+  Map<String, String> personalFiscalModes = const {},
+  bool isPeriodClosed = false,
 }) {
   if (activePeriodLabel.isEmpty) return const <_HrNominaSummaryRow>[];
   final sourceRows = draftRows
@@ -2118,20 +1217,58 @@ List<_HrNominaSummaryRow> _buildNominaRows({
             draft.manualAdjustmentAmount;
         final deductions =
             draft.cashIsrAmount +
-            draft.cashAbsenceDeductionAmount +
+            (draft.sourceSnapshot['incidences_informational'] == true
+                ? 0
+                : draft.cashAbsenceDeductionAmount) +
             draft.cashInfonavitDeductionAmount +
             draft.cashFonacotDeductionAmount +
             draft.loanDeductionAmount;
         final fiscalAmount =
-            (draft.fiscalNetAmount - draft.fiscalLateDeductionAmount)
+            (draft.fiscalNetAmount -
+                    (draft.sourceSnapshot['incidences_informational'] == true
+                        ? 0
+                        : draft.fiscalLateDeductionAmount))
                 .clamp(0, double.infinity)
                 .toDouble();
+        final frozenDelivery =
+            isPeriodClosed ||
+            draft.draftStatus == 'publicado' ||
+            draft.sourceSnapshot['payroll_receipt'] is Map;
+        final payment = HrFiscalPayment.resolve(
+          total: fiscalAmount,
+          storedCheque: draft.checkAmount,
+          snapshot: draft.sourceSnapshot,
+          personalMode: personalFiscalModes[draft.employeeId],
+          frozen: frozenDelivery,
+        );
+        final usesPersonalMode =
+            !frozenDelivery &&
+            !HrFiscalPayment.isManual(
+              draft.sourceSnapshot,
+              draft.checkAmount,
+            ) &&
+            (personalFiscalModes.containsKey(draft.employeeId) ||
+                draft.sourceSnapshot['personal_fiscal_payment_mode'] != null);
+        final deliveryChannel = payment.cheque > 0
+            ? (payment.deposit > 0 ||
+                      complements - deductions > 0 ||
+                      draft.paymentOutsideAmount > 0
+                  ? 'mixto'
+                  : 'cheque')
+            : (payment.total > 0
+                  ? (complements - deductions > 0 ||
+                            draft.paymentOutsideAmount > 0
+                        ? 'mixto'
+                        : 'deposito')
+                  : (complements - deductions > 0 ? 'efectivo' : 'pendiente'));
         final total =
             fiscalAmount +
             draft.paymentOutsideAmount +
             complements -
             deductions;
         return _HrNominaSummaryRow(
+          incidencesInformational:
+              draft.sourceSnapshot['incidences_informational'] == true,
           draftId: draft.id,
           draftStatus: draft.draftStatus,
           employeeId: draft.employeeId,
@@ -2139,7 +1276,7 @@ List<_HrNominaSummaryRow> _buildNominaRows({
           empresa: draft.empresa,
           statusLabel: _hrNominaDraftStatusLabel(draft.draftStatus),
           paymentChannelLabel: _hrNominaPaymentChannelLabel(
-            draft.paymentChannel,
+            usesPersonalMode ? deliveryChannel : draft.paymentChannel,
           ),
           paymentReference: draft.paymentReference,
           notes: draft.notes,
@@ -2160,7 +1297,7 @@ List<_HrNominaSummaryRow> _buildNominaRows({
           cashInfonavitDeductionAmount: draft.cashInfonavitDeductionAmount,
           cashFonacotDeductionAmount: draft.cashFonacotDeductionAmount,
           loanDeductionAmount: draft.loanDeductionAmount,
-          checkAmount: draft.checkAmount,
+          checkAmount: payment.cheque,
           paymentOutsideAmount: draft.paymentOutsideAmount,
         );
       })
@@ -2236,14 +1373,8 @@ String _fmtHrNominaMoney(double value) {
   return '$sign\$$buffer.$decimal';
 }
 
-ButtonStyle _hrNominaActionOutlinedButtonStyle() {
-  return OutlinedButton.styleFrom(
-    foregroundColor: const Color(0xFF2B1946),
-    side: const BorderSide(color: Color(0xFFC8ABFF)),
-    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(18)),
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-    textStyle: const TextStyle(fontWeight: FontWeight.w900),
-  );
+ButtonStyle _hrNominaActionOutlinedButtonStyle(BuildContext context) {
+  return _nominaOutlinedStyle(context);
 }
 
 InputDecoration _hrNominaFieldDecoration() {
@@ -2251,23 +1382,31 @@ InputDecoration _hrNominaFieldDecoration() {
     isDense: true,
     contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
     filled: true,
-    fillColor: Colors.white,
+    fillColor: humanResourcesAreaTokens.onGlass.withValues(alpha: .8),
     border: OutlineInputBorder(
       borderRadius: BorderRadius.circular(16),
-      borderSide: const BorderSide(color: Color(0xFFD7C2FF)),
+      borderSide: BorderSide(
+        color: humanResourcesAreaTokens.border.withValues(alpha: .45),
+      ),
     ),
     enabledBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(16),
-      borderSide: const BorderSide(color: Color(0xFFD7C2FF)),
+      borderSide: BorderSide(
+        color: humanResourcesAreaTokens.border.withValues(alpha: .45),
+      ),
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(16),
-      borderSide: const BorderSide(color: Color(0xFF8C5CFF), width: 1.6),
+      borderSide: BorderSide(
+        color: humanResourcesAreaTokens.border,
+        width: 1.6,
+      ),
     ),
   );
 }
 
 class _HrNominaReceiptSnapshot {
+  final bool incidencesInformational;
   final String employeeId;
   final String employeeName;
   final String empresa;
@@ -2297,6 +1436,7 @@ class _HrNominaReceiptSnapshot {
   final double totalAmount;
 
   const _HrNominaReceiptSnapshot({
+    this.incidencesInformational = false,
     required this.employeeId,
     required this.employeeName,
     required this.empresa,
@@ -2343,6 +1483,7 @@ class _HrNominaReceiptSnapshot {
       paymentReference: row.paymentReference,
       notes: row.notes,
       fiscalAmount: row.fiscalAmount,
+      incidencesInformational: row.incidencesInformational,
       fiscalLateDeductionAmount: row.fiscalLateDeductionAmount,
       fiscalDepositedAmount: row.fiscalDepositedAmount,
       fiscalCashAmount: row.fiscalCashAmount,
@@ -2381,6 +1522,7 @@ class _HrNominaReceiptSnapshot {
       paymentReference: (value['payment_reference'] ?? '').toString(),
       notes: (value['notes'] ?? '').toString(),
       fiscalAmount: _parseHrNominaNumber(value['fiscal_amount']),
+      incidencesInformational: value['incidences_informational'] == true,
       fiscalLateDeductionAmount: _parseHrNominaNumber(
         value['fiscal_late_deduction_amount'],
       ),
@@ -2428,6 +1570,7 @@ class _HrNominaReceiptSnapshot {
     'payment_reference': paymentReference,
     'notes': notes,
     'fiscal_amount': fiscalAmount,
+    'incidences_informational': incidencesInformational,
     'fiscal_late_deduction_amount': fiscalLateDeductionAmount,
     'fiscal_deposited_amount': fiscalDepositedAmount,
     'fiscal_cash_amount': fiscalCashAmount,
@@ -2458,7 +1601,7 @@ class _HrNominaReceiptSnapshot {
 
   double get deductions =>
       cashIsrAmount +
-      absenceDeductionAmount +
+      (incidencesInformational ? 0 : absenceDeductionAmount) +
       infonavitDeductionAmount +
       fonacotDeductionAmount +
       loanDeductionAmount;
@@ -2493,7 +1636,12 @@ Future<Uint8List> _buildHrNominaPeriodReportPdf({
           row.employeeId,
           row.employeeName,
           row.empresa,
-          _fmtHrNominaMoney(row.fiscalAmount + row.fiscalLateDeductionAmount),
+          _fmtHrNominaMoney(
+            row.fiscalAmount +
+                (row.incidencesInformational
+                    ? 0
+                    : row.fiscalLateDeductionAmount),
+          ),
           _fmtHrNominaMoney(row.fiscalLateDeductionAmount),
           _fmtHrNominaMoney(row.fiscalAmount),
           _fmtHrNominaMoney(row.fiscalDepositedAmount),
@@ -2589,7 +1737,7 @@ Future<Uint8List> _buildHrNominaPeriodReportPdf({
                       ),
                     ),
                     pw.Text(
-                      'Formato de conciliación semanal equivalente a SEM33',
+                      'Distribución fiscal y desglose de conceptos del periodo',
                       style: pw.TextStyle(
                         color: PdfColor.fromHex('#DCC7FF'),
                         fontSize: 8.5,
@@ -2626,19 +1774,19 @@ Future<Uint8List> _buildHrNominaPeriodReportPdf({
               ink,
             ),
             _hrNominaPeriodMetric(
-              'FISCAL NETO',
+              'TOTAL FISCAL',
               _fmtHrNominaMoney(metrics.fiscal),
               lavender,
               ink,
             ),
             _hrNominaPeriodMetric(
-              'DEPOSITADO',
+              'DEPÓSITO FISCAL',
               _fmtHrNominaMoney(metrics.fiscalDeposited),
               lavender,
               ink,
             ),
             _hrNominaPeriodMetric(
-              'CHEQUE',
+              'CHEQUE FISCAL',
               _fmtHrNominaMoney(metrics.fiscalCash),
               lavender,
               ink,
@@ -2823,7 +1971,7 @@ Future<Uint8List> _buildHrNominaPeriodReportPdf({
         ),
         pw.SizedBox(height: 8),
         pw.Text(
-          'Todos los importes están en MXN. Fiscal neto ya descuenta retardos; efectivo RH es percepciones operativas menos deducciones. Los componentes internos fiscales de CONTPAQ que no se capturan en la app se conservan en su fuente fiscal.',
+          'Importes en MXN. Depósito fiscal + cheque fiscal = total fiscal. El cheque es fiscal entregado en efectivo y no se suma otra vez al flujo ni al total. El neto fiscal conserva los descuentos de su fuente; las incidencias informativas no se descuentan nuevamente. Efectivo RH corresponde al flujo después de deducciones.',
           style: pw.TextStyle(color: muted, fontSize: 6.8),
         ),
       ],
@@ -3005,9 +2153,13 @@ Future<Uint8List> _buildHrNominaReceiptPdf(
                   child: _hrNominaPdfTotals(
                     rows: [
                       (
-                        'Fiscal antes de retardo',
+                        snapshot.incidencesInformational
+                            ? 'Neto fiscal oficial'
+                            : 'Fiscal antes de retardo',
                         snapshot.fiscalAmount +
-                            snapshot.fiscalLateDeductionAmount,
+                            (snapshot.incidencesInformational
+                                ? 0
+                                : snapshot.fiscalLateDeductionAmount),
                       ),
                       ('Sueldo en efectivo', snapshot.cashSalaryAmount),
                       ('Vacaciones en efectivo', snapshot.cashVacationAmount),
@@ -3024,7 +2176,9 @@ Future<Uint8List> _buildHrNominaReceiptPdf(
                     totalLabel: 'TOTAL PERCEPCIONES',
                     total:
                         snapshot.fiscalAmount +
-                        snapshot.fiscalLateDeductionAmount +
+                        (snapshot.incidencesInformational
+                            ? 0
+                            : snapshot.fiscalLateDeductionAmount) +
                         snapshot.complements +
                         snapshot.paymentOutsideAmount,
                   ),
@@ -3037,16 +2191,28 @@ Future<Uint8List> _buildHrNominaReceiptPdf(
                   color: violet,
                   child: _hrNominaPdfTotals(
                     rows: [
-                      ('Retardos fiscales', snapshot.fiscalLateDeductionAmount),
+                      (
+                        snapshot.incidencesInformational
+                            ? 'Retardos (informativo)'
+                            : 'Retardos fiscales',
+                        snapshot.fiscalLateDeductionAmount,
+                      ),
                       ('ISR operativo', snapshot.cashIsrAmount),
-                      ('Ausencias', snapshot.absenceDeductionAmount),
+                      (
+                        snapshot.incidencesInformational
+                            ? 'Ausencias (informativo)'
+                            : 'Ausencias',
+                        snapshot.absenceDeductionAmount,
+                      ),
                       ('INFONAVIT', snapshot.infonavitDeductionAmount),
                       ('FONACOT', snapshot.fonacotDeductionAmount),
                       ('Préstamo', snapshot.loanDeductionAmount),
                     ],
                     totalLabel: 'TOTAL DEDUCCIONES',
                     total:
-                        snapshot.fiscalLateDeductionAmount +
+                        (snapshot.incidencesInformational
+                            ? 0
+                            : snapshot.fiscalLateDeductionAmount) +
                         snapshot.deductions,
                     negativeRows: true,
                   ),

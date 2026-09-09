@@ -38,11 +38,14 @@ import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_area_chrome.dart';
 import 'human_resources_dashboard_page.dart';
 import 'human_resources_employee_status.dart';
+import 'human_resources_compensation.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
 import 'human_resources_vacations_page.dart';
+
+part 'personnel/personnel_test_support.dart';
 
 const double _kHrActionsW = 118;
 const double _kHrPersonnelIdW = 84;
@@ -1003,8 +1006,11 @@ class _HumanResourcesPersonnelPageState
           'Fecha de alta',
           'Telefono',
           'No. de Cuenta',
-          'Salario',
-          'Salario percibido',
+          'Salario base',
+          'Salario flujo',
+          'Salario total',
+          'Medio de pago fiscal',
+          'Tarifa hora extra',
           'Calzado',
           'Talla de uniforme',
           'Estatus',
@@ -1027,7 +1033,10 @@ class _HumanResourcesPersonnelPageState
           row.telefono,
           row.numeroCuenta,
           row.salario,
-          row.salarioRealPercibido,
+          row.compensation.flow.toStringAsFixed(2),
+          row.compensation.total.toStringAsFixed(2),
+          row.fiscalPaymentMode == 'cheque' ? 'Cheque' : 'Depósito',
+          row.overtimeHourlyRate.toStringAsFixed(2),
           row.calzado,
           row.tallaUniforme,
           row.isTerminated ? 'Baja' : 'Activo',
@@ -1266,8 +1275,11 @@ class _HumanResourcesPersonnelPageState
           'Fecha de alta',
           'Telefono',
           'No. de Cuenta',
-          'Salario',
-          'Salario percibido',
+          'Salario base',
+          'Salario flujo',
+          'Salario total',
+          'Medio de pago fiscal',
+          'Tarifa hora extra',
           'Calzado',
           'Talla de uniforme',
         ].map(_csvCell).join(','),
@@ -1287,7 +1299,10 @@ class _HumanResourcesPersonnelPageState
           row.telefono,
           row.numeroCuenta,
           row.salario,
-          row.salarioRealPercibido,
+          row.compensation.flow.toStringAsFixed(2),
+          row.compensation.total.toStringAsFixed(2),
+          row.fiscalPaymentMode == 'cheque' ? 'Cheque' : 'Depósito',
+          row.overtimeHourlyRate.toStringAsFixed(2),
           row.calzado,
           row.tallaUniforme,
         ].map(_csvCell).join(','),
@@ -2531,8 +2546,12 @@ class _HumanResourcesEmployeeDialogState
   late final TextEditingController _salarioController = TextEditingController(
     text: widget.existing?.salario ?? '',
   );
-  late final TextEditingController _salarioRealPercibidoController =
-      TextEditingController(text: widget.existing?.salarioRealPercibido ?? '');
+  late final TextEditingController _salarioFlujoController =
+      TextEditingController(
+        text: widget.existing?.compensation.flow.toStringAsFixed(2) ?? '0.00',
+      );
+  late bool _fiscalByCheck = widget.existing?.fiscalPaymentMode == 'cheque';
+  late double _overtimeHourlyRate = widget.existing?.overtimeHourlyRate ?? 60;
   late final TextEditingController _calzadoController = TextEditingController(
     text: widget.existing?.calzado ?? '',
   );
@@ -2586,6 +2605,8 @@ class _HumanResourcesEmployeeDialogState
     _additionalAttachments = List<_HrEmployeeAttachment>.of(
       widget.existing?.additionalAttachments ?? const <_HrEmployeeAttachment>[],
     );
+    _salarioController.addListener(_handleDerivedExpedienteChanged);
+    _salarioFlujoController.addListener(_handleDerivedExpedienteChanged);
     _telefonoController.addListener(_handleDerivedExpedienteChanged);
     _cuentaController.addListener(_handleDerivedExpedienteChanged);
   }
@@ -2600,7 +2621,7 @@ class _HumanResourcesEmployeeDialogState
     _telefonoController.dispose();
     _cuentaController.dispose();
     _salarioController.dispose();
-    _salarioRealPercibidoController.dispose();
+    _salarioFlujoController.dispose();
     _calzadoController.dispose();
     _tallaUniformeController.dispose();
     _creditoDetalleController.dispose();
@@ -2834,9 +2855,9 @@ class _HumanResourcesEmployeeDialogState
       telefono: _telefonoController.text.trim(),
       numeroCuenta: _cuentaController.text.trim(),
       salario: _normalizeHrMoneyInput(_salarioController.text),
-      salarioRealPercibido: _normalizeHrMoneyInput(
-        _salarioRealPercibidoController.text,
-      ),
+      salarioFlujo: _normalizeHrMoneyInput(_salarioFlujoController.text),
+      fiscalPaymentMode: _fiscalByCheck ? 'cheque' : 'deposito',
+      overtimeHourlyRate: _overtimeHourlyRate,
       calzado: _calzadoController.text.trim(),
       tallaUniforme: _tallaUniformeController.text.trim(),
       employmentStatus:
@@ -2866,8 +2887,10 @@ class _HumanResourcesEmployeeDialogState
       _showDialogValidationSnack('Salario es obligatorio.');
       return;
     }
-    if (_normalizeHrMoneyInput(_salarioRealPercibidoController.text).isEmpty) {
-      _showDialogValidationSnack('Salario percibido es obligatorio.');
+    if (_normalizeHrMoneyInput(_salarioFlujoController.text).isEmpty) {
+      _showDialogValidationSnack(
+        'Flujo es obligatorio; captura 0 si sólo recibe fiscal.',
+      );
       return;
     }
     final nextRow = _draftEmployeeRow().copyWith(
@@ -3220,13 +3243,103 @@ class _HumanResourcesEmployeeDialogState
                                   ),
                                   const SizedBox(height: 10),
                                   _HrDialogSectionCard(
-                                    title: 'Nomina',
+                                    title: 'Salario y pago de nómina',
                                     subtitle:
-                                        'Datos operativos para calculo y dispersion.',
+                                        'Base + Flujo = Total semanal. Prenómina toma el flujo y la tarifa de este expediente.',
                                     child: Wrap(
                                       spacing: 12,
                                       runSpacing: 12,
                                       children: [
+                                        _HrDialogField(
+                                          width: 200,
+                                          label: 'Base semanal',
+                                          child: TextFormField(
+                                            key: const ValueKey(
+                                              'personalSalaryBase',
+                                            ),
+                                            controller: _salarioController,
+                                            keyboardType:
+                                                const TextInputType.numberWithOptions(
+                                                  decimal: true,
+                                                ),
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'Base',
+                                                ),
+                                            validator: _requiredMoneyValidator,
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 220,
+                                          label: 'Flujo semanal',
+                                          child: TextFormField(
+                                            key: const ValueKey(
+                                              'personalSalaryFlow',
+                                            ),
+                                            controller: _salarioFlujoController,
+                                            keyboardType:
+                                                const TextInputType.numberWithOptions(
+                                                  decimal: true,
+                                                ),
+                                            style: const TextStyle(
+                                              color: Color(0xFF24103D),
+                                            ),
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'Flujo',
+                                                ),
+                                            validator: _requiredMoneyValidator,
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 220,
+                                          label: 'Total semanal (Base + Flujo)',
+                                          child: InputDecorator(
+                                            decoration:
+                                                _hrDialogFieldDecoration(
+                                                  context,
+                                                  hintText: 'Total',
+                                                ),
+                                            child: Text(
+                                              '\$${_draftEmployeeRow().compensation.total.toStringAsFixed(2)}',
+                                              key: const ValueKey(
+                                                'personalSalaryTotal',
+                                              ),
+                                              style: TextStyle(
+                                                color: humanResourcesAreaTokens
+                                                    .primaryStrong,
+                                                fontWeight: FontWeight.w800,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                        _HrDialogField(
+                                          width: 320,
+                                          label: 'Medio de pago fiscal',
+                                          child: SwitchListTile.adaptive(
+                                            key: const ValueKey(
+                                              'personalFiscalCheck',
+                                            ),
+                                            contentPadding: EdgeInsets.zero,
+                                            value: _fiscalByCheck,
+                                            activeThumbColor:
+                                                humanResourcesAreaTokens
+                                                    .primaryStrong,
+                                            title: Text(
+                                              _fiscalByCheck
+                                                  ? 'Cheque · fiscal en efectivo'
+                                                  : 'Depósito · cuenta fiscal',
+                                            ),
+                                            onChanged: (value) => setState(
+                                              () => _fiscalByCheck = value,
+                                            ),
+                                          ),
+                                        ),
                                         _HrDialogField(
                                           width: 240,
                                           label: 'No. de Cuenta',
@@ -3243,44 +3356,45 @@ class _HumanResourcesEmployeeDialogState
                                           ),
                                         ),
                                         _HrDialogField(
-                                          width: 200,
-                                          label: 'Salario',
-                                          child: TextFormField(
-                                            controller: _salarioController,
-                                            keyboardType:
-                                                const TextInputType.numberWithOptions(
-                                                  decimal: true,
-                                                ),
-                                            style: const TextStyle(
-                                              color: Color(0xFF24103D),
-                                            ),
-                                            decoration:
-                                                _hrDialogFieldDecoration(
-                                                  context,
-                                                  hintText: 'Salario',
-                                                ),
-                                            validator: _requiredMoneyValidator,
-                                          ),
-                                        ),
-                                        _HrDialogField(
                                           width: 220,
-                                          label: 'Salario percibido',
-                                          child: TextFormField(
-                                            controller:
-                                                _salarioRealPercibidoController,
-                                            keyboardType:
-                                                const TextInputType.numberWithOptions(
-                                                  decimal: true,
-                                                ),
-                                            style: const TextStyle(
-                                              color: Color(0xFF24103D),
+                                          label: 'Pago por hora extra',
+                                          child: DropdownButtonFormField<double>(
+                                            isExpanded: true,
+                                            key: const ValueKey(
+                                              'personalOvertimeRate',
                                             ),
+                                            initialValue: _overtimeHourlyRate,
                                             decoration:
                                                 _hrDialogFieldDecoration(
                                                   context,
-                                                  hintText: 'Salario percibido',
+                                                  hintText: 'Tarifa',
                                                 ),
-                                            validator: _requiredMoneyValidator,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .bodyLarge
+                                                ?.copyWith(
+                                                  color:
+                                                      humanResourcesAreaTokens
+                                                          .primaryStrong,
+                                                ),
+                                            items: const [
+                                              DropdownMenuItem(
+                                                value: 60,
+                                                child: Text('\$60 por hora'),
+                                              ),
+                                              DropdownMenuItem(
+                                                value: 80,
+                                                child: Text('\$80 por hora'),
+                                              ),
+                                            ],
+                                            onChanged: (value) {
+                                              if (value != null) {
+                                                setState(
+                                                  () => _overtimeHourlyRate =
+                                                      value,
+                                                );
+                                              }
+                                            },
                                           ),
                                         ),
                                       ],
@@ -5294,12 +5408,6 @@ List<_HrLaborSchedule> _parseHrLaborSchedulesValue(
   return fallback.isMeaningful ? <_HrLaborSchedule>[fallback] : const [];
 }
 
-double? _hrDbMoneyValue(String value) {
-  final normalized = _normalizeHrMoneyInput(value);
-  if (normalized.isEmpty) return null;
-  return double.tryParse(normalized);
-}
-
 String _hrDbNumericToText(Object? value) {
   if (value == null) return '';
   if (value is num) {
@@ -6267,6 +6375,9 @@ class _HumanResourcesEmployeeRow {
   final String numeroCuenta;
   final String salario;
   final String salarioRealPercibido;
+  final String salarioFlujo;
+  final String fiscalPaymentMode;
+  final double overtimeHourlyRate;
   final String calzado;
   final String tallaUniforme;
   final List<_HrLaborSchedule> laborSchedules;
@@ -6297,6 +6408,9 @@ class _HumanResourcesEmployeeRow {
     required this.numeroCuenta,
     this.salario = '',
     this.salarioRealPercibido = '',
+    this.salarioFlujo = '',
+    this.fiscalPaymentMode = 'deposito',
+    this.overtimeHourlyRate = 60,
     required this.calzado,
     this.tallaUniforme = '',
     this.laborSchedules = const <_HrLaborSchedule>[],
@@ -6311,6 +6425,14 @@ class _HumanResourcesEmployeeRow {
     this.terminationNotes = '',
     this.terminatedAt = '',
     this.terminatedBy = '',
+  });
+
+  HrEmployeeCompensation get compensation => HrEmployeeCompensation.fromRow({
+    'salario': salario,
+    'salario_real_percibido': salarioRealPercibido,
+    'salario_flujo': salarioFlujo.isEmpty ? null : salarioFlujo,
+    'fiscal_payment_mode': fiscalPaymentMode,
+    'overtime_hourly_rate': overtimeHourlyRate,
   });
 
   bool get isTerminated =>
@@ -6373,6 +6495,9 @@ class _HumanResourcesEmployeeRow {
     String? numeroCuenta,
     String? salario,
     String? salarioRealPercibido,
+    String? salarioFlujo,
+    String? fiscalPaymentMode,
+    double? overtimeHourlyRate,
     String? calzado,
     String? tallaUniforme,
     List<_HrLaborSchedule>? laborSchedules,
@@ -6403,6 +6528,9 @@ class _HumanResourcesEmployeeRow {
       numeroCuenta: numeroCuenta ?? this.numeroCuenta,
       salario: salario ?? this.salario,
       salarioRealPercibido: salarioRealPercibido ?? this.salarioRealPercibido,
+      salarioFlujo: salarioFlujo ?? this.salarioFlujo,
+      fiscalPaymentMode: fiscalPaymentMode ?? this.fiscalPaymentMode,
+      overtimeHourlyRate: overtimeHourlyRate ?? this.overtimeHourlyRate,
       calzado: calzado ?? this.calzado,
       tallaUniforme: tallaUniforme ?? this.tallaUniforme,
       laborSchedules:
@@ -6630,6 +6758,12 @@ class _HrPersonnelStore {
             fechaAlta: (row['fecha_alta'] ?? '').toString(),
             telefono: (row['telefono'] ?? '').toString(),
             numeroCuenta: (row['numero_cuenta'] ?? '').toString(),
+            salarioFlujo: _hrDbNumericToText(row['salario_flujo']),
+            fiscalPaymentMode: (row['fiscal_payment_mode'] ?? 'deposito')
+                .toString(),
+            overtimeHourlyRate: HrEmployeeCompensation.fromRow(
+              row,
+            ).overtimeHourlyRate,
             salario: _hrDbNumericToText(row['salario']),
             salarioRealPercibido: _hrDbNumericToText(
               row['salario_real_percibido'],
@@ -6780,8 +6914,7 @@ class _HrPersonnelStore {
           : syncedRow.fechaAlta,
       'telefono': syncedRow.telefono,
       'numero_cuenta': syncedRow.numeroCuenta,
-      'salario': _hrDbMoneyValue(syncedRow.salario),
-      'salario_real_percibido': _hrDbMoneyValue(syncedRow.salarioRealPercibido),
+      ...syncedRow.compensation.toRow(),
       'calzado': syncedRow.calzado,
       'talla_uniforme': syncedRow.tallaUniforme,
       'employment_status': syncedRow.employmentStatus,

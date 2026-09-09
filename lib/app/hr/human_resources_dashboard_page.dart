@@ -11,6 +11,7 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_attendance_source.dart';
 import 'human_resources_employee_status.dart';
 import 'human_resources_nomina_page.dart';
 import 'human_resources_permissions_page.dart';
@@ -718,7 +719,7 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
           (from, to) => client
               .from('hr_attendance_daily_records')
               .select(
-                'period_label,employee_id,employee_name,status,late_minutes,overtime_minutes',
+                'period_label,employee_id,employee_name,status,source_mode,late_minutes,overtime_minutes',
               )
               .order('source_date')
               .range(from, to),
@@ -769,7 +770,7 @@ class _HrOperationsDashboardState extends State<_HrOperationsDashboard> {
           selectedPeriodLabel: selectedPeriodLabel,
           profiles: results[0],
           importLots: results[1],
-          attendanceRecords: results[2],
+          attendanceRecords: results[2].where(isHrOperationalAttendanceRow).toList(growable: false),
           vacationEvents: results[3],
           permissionEvents: results[4],
           prenominaDrafts: results[5],
@@ -2598,7 +2599,6 @@ class _HrDashboardData {
     };
 
     final labels = <String>[
-      for (final row in importLots) _hrDashboardDescribeImportPeriod(row),
       for (final row in attendanceRecords)
         (row['period_label'] ?? '').toString(),
       for (final row in vacationEvents)
@@ -2974,6 +2974,7 @@ List<double> _hrDashboardVacationDayTrend(
 
 String _hrDashboardDescribeImportPeriod(Map<String, dynamic> row) {
   final raw = (row['period_label'] ?? '').toString().trim();
+  if (RegExp(r'^Periodo\s+\d+\s+semanal\s+·').hasMatch(raw)) return raw;
   if (raw.isEmpty) return '';
   final source = (row['source'] ?? '').toString().toLowerCase();
   if (source == 'ngteco') {
@@ -2994,9 +2995,7 @@ String _hrDashboardDescribeImportPeriod(Map<String, dynamic> row) {
   ).firstMatch(raw);
   if (match == null) return raw;
   final week = match.group(1)!;
-  final time = match.group(4);
-  final base = 'Periodo $week semanal · ${match.group(2)} - ${match.group(3)}';
-  return time == null ? base : '$base · Archivo $time';
+  return 'Periodo $week semanal · ${match.group(2)} - ${match.group(3)}';
 }
 
 DateTime? _hrDashboardParseUsDate(String raw) {

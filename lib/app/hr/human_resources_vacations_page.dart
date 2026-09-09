@@ -1,3 +1,4 @@
+import 'human_resources_vacation_pay.dart';
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
@@ -44,6 +45,8 @@ import 'human_resources_personnel_page.dart';
 import 'human_resources_period_context.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
+
+part 'vacations/vacation_tabs_test_support.dart';
 
 const String _kHrProfilesTable = 'hr_employee_profiles';
 const String _kHrImportLotsTable = 'hr_attendance_import_lots';
@@ -544,6 +547,7 @@ class _HumanResourcesVacationsPageState
         barrierDismissible: true,
         builder: (context) => _HrVacationEditDialog(
           row: row,
+          periodOptions: _operationalPeriodLabels,
           rules: _rules,
           calculations: _calculations
               .where((item) => item.employeeId == row.employeeId)
@@ -555,6 +559,16 @@ class _HumanResourcesVacationsPageState
       if (result == null) return;
       await _saveVacationEdits(row: row, result: result);
       switch (result.action) {
+        case _HrVacationEditAction.receipt:
+          if (result.receiptEvent != null) {
+            await _generateVacationReceipts(
+              row: row,
+              balance: result.balance,
+              events: [result.receiptEvent!],
+            );
+          }
+          _focusEmployeeRow(row.employeeId);
+          return;
         case _HrVacationEditAction.save:
           _focusEmployeeRow(row.employeeId);
           return;
@@ -580,6 +594,12 @@ class _HumanResourcesVacationsPageState
     required _HrVacationSummaryRow row,
     required _HrVacationEditResult result,
   }) async {
+    if (result.balance.salaryPerceivedSnapshot <= 0 &&
+        result.events.any(_vacationEventHasPayrollFootprint)) {
+      throw StateError(
+        'Falta el salario percibido para calcular vacaciones y prima.',
+      );
+    }
     final client = Supabase.instance.client;
     final preparedEvents = await _prepareVacationEventsForPersistence(
       row: row,
@@ -677,12 +697,24 @@ class _HumanResourcesVacationsPageState
       client: client,
       eventKind: 'vacacion',
       sources: preparedEvents
+          .where((event) => !lockedEventIds.contains(event.localId))
           .map(
             (event) => HrEventPeriodImpactSource(
               eventId: event.localId,
               employeeId: row.employeeId,
-              startDate: event.startDate,
-              endDate: event.endDate,
+              startDate:
+                  event.eventType == _HrVacationEventType.vacacionesPagadas
+                  ? (HumanResourcesPeriodRange.tryParse(
+                          event.attendancePeriodLabel,
+                        )?.start ??
+                        event.startDate)
+                  : event.startDate,
+              endDate: event.eventType == _HrVacationEventType.vacacionesPagadas
+                  ? (HumanResourcesPeriodRange.tryParse(
+                          event.attendancePeriodLabel,
+                        )?.start ??
+                        event.startDate)
+                  : event.endDate,
               daysApplied: event.daysApplied,
               additionalPaidDays: event.additionalPaidDays,
               quantityHours: 0,
@@ -732,11 +764,10 @@ class _HumanResourcesVacationsPageState
     await _loadData();
     _showSnack(
       'Vacaciones de ${row.displayName} actualizadas. '
-      'El recibo no se genera desde el expediente; se controla después del cierre de Prenómina.',
+      'Pagos y eventos guardados por separado.',
     );
   }
 
-  // ignore: unused_element
   Future<int> _generateVacationReceipts({
     required _HrVacationSummaryRow row,
     required _HrVacationBalanceDraft balance,
@@ -745,32 +776,34 @@ class _HumanResourcesVacationsPageState
     final receiptEvents = events
         .where(
           (event) =>
-              event.generateReceipt &&
+              event.eventType == _HrVacationEventType.vacacionesPagadas &&
               event.status == _HrVacationEventStatus.aplicado &&
               _vacationEventHasPayrollFootprint(event),
         )
         .toList(growable: false);
     if (receiptEvents.isEmpty) return 0;
 
-    final contpaqLot = _vacationLotForPeriod(
-      _attendanceImportLots,
-      _HrVacationAttendanceImportSource.contpaq,
-      _activePeriodLabel,
-    );
-    final contpaqEntry = contpaqLot?.entries
-        .cast<_HrVacationAttendanceImportedEntry?>()
-        .firstWhere(
-          (entry) => entry?.employeeId == row.employeeId,
-          orElse: () => null,
-        );
     var generated = 0;
     for (final event in receiptEvents) {
+      final contpaqLot = _vacationLotForPeriod(
+        _attendanceImportLots,
+        _HrVacationAttendanceImportSource.contpaq,
+        event.attendancePeriodLabel,
+      );
+      final contpaqEntry = contpaqLot?.entries
+          .cast<_HrVacationAttendanceImportedEntry?>()
+          .firstWhere(
+            (entry) => entry?.employeeId == row.employeeId,
+            orElse: () => null,
+          );
       final bytes = await _buildVacationReceiptPdfBytes(
         row: row,
         balance: balance,
         event: event,
         contpaqEntry: contpaqEntry,
-        contpaqPeriodLabel: contpaqLot?.periodLabel ?? '',
+        contpaqPeriodLabel: event.attendancePeriodLabel.isNotEmpty
+            ? event.attendancePeriodLabel
+            : contpaqLot?.periodLabel ?? '',
       );
       final stamp = DateTime.now().millisecondsSinceEpoch;
       final file = File(
@@ -818,7 +851,11 @@ class _HumanResourcesVacationsPageState
         .map((item) => Map<String, dynamic>.from(item as Map))
         .toList(growable: true);
 
-    final previousSyncedDates = _collectVacationAppliedDateLabels(row.events);
+    final previousSyncedDates = _collectVacationAppliedDateLabels(
+      row.events
+          .where((e) => e.prenominaSyncStatus != _HrVacationSyncStatus.aplicado)
+          .toList(),
+    );
     final revertUpdates = <Map<String, dynamic>>[];
     for (final attendanceRow in attendanceRows) {
       final sourceDate = (attendanceRow['source_date'] ?? '').toString();
@@ -870,8 +907,14 @@ class _HumanResourcesVacationsPageState
     }
 
     for (final event in events) {
+      if (event.hasPersistedId &&
+          event.prenominaSyncStatus == _HrVacationSyncStatus.aplicado) {
+        continue;
+      }
       _normalizeVacationEventDraft(event, forceDays: !event.daysManuallyEdited);
-      event.attendancePeriodLabel = '';
+      if (event.eventType != _HrVacationEventType.vacacionesPagadas) {
+        event.attendancePeriodLabel = '';
+      }
       event.attendanceSyncStatus =
           !event.impactAttendance ||
               event.status == _HrVacationEventStatus.cancelado
@@ -3303,14 +3346,16 @@ class _HrVacationHeaderBrand extends StatelessWidget {
   }
 }
 
-enum _HrVacationEditAction { save, previous, next }
+enum _HrVacationEditAction { save, previous, next, receipt }
 
 class _HrVacationEditResult {
+  final _HrVacationEventDraft? receiptEvent;
   final _HrVacationEditAction action;
   final _HrVacationBalanceDraft balance;
   final List<_HrVacationEventDraft> events;
 
   const _HrVacationEditResult({
+    this.receiptEvent,
     required this.action,
     required this.balance,
     required this.events,
@@ -3318,6 +3363,7 @@ class _HrVacationEditResult {
 }
 
 class _HrVacationEditDialog extends StatefulWidget {
+  final List<String> periodOptions;
   final _HrVacationSummaryRow row;
   final List<_HrVacationRule> rules;
   final List<_HrVacationCalculationRecord> calculations;
@@ -3325,6 +3371,7 @@ class _HrVacationEditDialog extends StatefulWidget {
   final bool canGoNext;
 
   const _HrVacationEditDialog({
+    this.periodOptions = const [],
     required this.row,
     required this.rules,
     required this.calculations,
@@ -3337,7 +3384,15 @@ class _HrVacationEditDialog extends StatefulWidget {
 }
 
 class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
+  bool _paymentTab = true;
   final FocusNode _dialogFocusNode = FocusNode(debugLabel: 'hrVacationDialog');
+  List<_HrVacationEventDraft> get _tabEvents => _events
+      .where(
+        (e) =>
+            (e.eventType == _HrVacationEventType.vacacionesPagadas) ==
+            _paymentTab,
+      )
+      .toList();
   late final _HrVacationBalanceDraft _balance =
       _HrVacationBalanceDraft.fromSummaryRow(widget.row);
   late final List<_HrVacationEventDraft> _events = widget.row.events
@@ -3383,7 +3438,9 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
     setState(() {
       final draft = _HrVacationEventDraft(
         localId: 'event_${now.microsecondsSinceEpoch}',
-        eventType: _HrVacationEventType.vacacionesDisfrutadas,
+        eventType: _paymentTab
+            ? _HrVacationEventType.vacacionesPagadas
+            : _HrVacationEventType.vacacionesDisfrutadas,
         status: _HrVacationEventStatus.pendiente,
         startDate: DateTime(now.year, now.month, now.day),
         endDate: DateTime(now.year, now.month, now.day),
@@ -3392,9 +3449,9 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
         attendancePeriodLabel: '',
         attendanceSyncStatus: _HrVacationSyncStatus.pendiente,
         prenominaSyncStatus: _HrVacationSyncStatus.pendiente,
-        impactAttendance: true,
-        impactPrenomina: false,
-        generateReceipt: false,
+        impactAttendance: !_paymentTab,
+        impactPrenomina: true,
+        generateReceipt: _paymentTab,
         isrMethod: _HrVacationIsrMethod.tarifaSemanal,
         isrOrdinaryMonthlyIncomeOverrideText: '',
         isrRetentionOverrideText: '',
@@ -3457,6 +3514,25 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
   }
 
   bool _validateBeforeSave() {
+    if (_events.any(
+      (e) =>
+          e.eventType == _HrVacationEventType.vacacionesPagadas &&
+          e.prenominaSyncStatus != _HrVacationSyncStatus.aplicado &&
+          e.status != _HrVacationEventStatus.cancelado &&
+          e.attendancePeriodLabel.trim().isEmpty,
+    )) {
+      _showDialogSnack(
+        'Selecciona el periodo en que se hizo cada pago de vacaciones.',
+      );
+      return false;
+    }
+    if (_balance.salaryPerceivedSnapshot <= 0 &&
+        _events.any(_vacationEventHasPayrollFootprint)) {
+      _showDialogSnack(
+        'Captura el salario percibido del colaborador antes de calcular vacaciones y prima.',
+      );
+      return false;
+    }
     if (_balance.baseDatePolicy == _HrVacationBaseDatePolicy.manualRh) {
       if (_balance.baseManualDate == null) {
         _showDialogSnack('Selecciona una fecha manual RH antes de guardar.');
@@ -3470,7 +3546,10 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
     return true;
   }
 
-  void _save([_HrVacationEditAction action = _HrVacationEditAction.save]) {
+  void _save([
+    _HrVacationEditAction action = _HrVacationEditAction.save,
+    _HrVacationEventDraft? receiptEvent,
+  ]) {
     _syncDerivedTotals();
     _balance.manualOverride =
         _balance.baseDatePolicy == _HrVacationBaseDatePolicy.manualRh;
@@ -3479,6 +3558,7 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
     Navigator.of(context).pop(
       _HrVacationEditResult(
         action: action,
+        receiptEvent: receiptEvent,
         balance: _balance,
         events: List<_HrVacationEventDraft>.of(_events),
       ),
@@ -3519,25 +3599,18 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
       rules: widget.rules,
       years: _balance.antiguedadYears,
     );
-    final salaryWeekly = _parseVacationMoney(widget.row.salario);
-    final salaryPerceivedWeekly = _parseVacationMoney(
-      widget.row.salarioPercibido,
-    );
-    final salaryDaily = salaryWeekly > 0 ? salaryWeekly / 7 : 0.0;
-    final salaryPerceivedDaily = salaryPerceivedWeekly > 0
-        ? salaryPerceivedWeekly / 7
-        : 0.0;
+    final salaryWeekly = _balance.salarySnapshot;
+    final salaryPerceivedWeekly = _balance.salaryPerceivedSnapshot;
     final additionalPaidDays = _events
         .where(_vacationEventHasPayrollFootprint)
         .fold<double>(0, (sum, event) => sum + event.additionalPaidDays);
-    final payableSalaryDays = _balance.daysPaid + additionalPaidDays;
-    final vacationPay = salaryDaily * payableSalaryDays;
-    final vacationPayPerceived = salaryPerceivedDaily * payableSalaryDays;
-    final bonusPay = salaryDaily * _balance.daysPaid * 0.25;
-    final bonusPayPerceived = salaryPerceivedDaily * _balance.daysPaid * 0.25;
+    final pay = HrVacationPay(
+      perceivedWeekly: salaryPerceivedWeekly,
+      fiscalWeekly: salaryWeekly,
+      vacationDays: _balance.daysPaid,
+      additionalPaidDays: additionalPaidDays,
+    );
     final salaryDelta = salaryPerceivedWeekly - salaryWeekly;
-    final vacationDelta = vacationPayPerceived - vacationPay;
-    final bonusDelta = bonusPayPerceived - bonusPay;
 
     return Focus(
       focusNode: _dialogFocusNode,
@@ -3719,11 +3792,11 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
                                 value: widget.row.fechaAltaLabel,
                               ),
                               _HrVacationInfoLine(
-                                label: 'Salario',
+                                label: 'Salario base · referencia fiscal',
                                 value: _formatVacationMoney(salaryWeekly),
                               ),
                               _HrVacationInfoLine(
-                                label: 'Salario percibido',
+                                label: 'Salario percibido · base de vacaciones',
                                 value: _formatVacationMoney(
                                   salaryPerceivedWeekly,
                                 ),
@@ -3952,13 +4025,14 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
                                 ),
                                 _HrVacationMetricMiniCard(
                                   label: 'VACACIONES',
-                                  value: _formatVacationMoney(vacationPay),
-                                  helper: 'Base salario',
+                                  value: _formatVacationMoney(pay.vacation),
+                                  helper: 'Sobre salario percibido',
                                 ),
                                 _HrVacationMetricMiniCard(
                                   label: 'PRIMA VACACIONAL',
-                                  value: _formatVacationMoney(bonusPay),
-                                  helper: '25% sobre vacaciones',
+                                  value: _formatVacationMoney(pay.premium),
+                                  helper:
+                                      '25% sobre días vacacionales al salario percibido',
                                 ),
                                 _HrVacationMetricMiniCard(
                                   label: 'ASISTENCIA LISTA',
@@ -4058,107 +4132,166 @@ class _HrVacationEditDialogState extends State<_HrVacationEditDialog> {
                                   ),
                                   const SizedBox(height: 10),
                                   _HrVacationSectionCard(
-                                    title: 'Eventos de vacaciones',
-                                    subtitle:
-                                        'Rangos, días y trazabilidad de impacto en asistencia y prenómina.',
+                                    title: _paymentTab
+                                        ? 'Pago de vacaciones'
+                                        : 'Eventos',
+                                    subtitle: _paymentTab
+                                        ? 'Registra el pago y su periodo. Los días pagados no se suman a los disfrutados.'
+                                        : 'Disfrutes, reservas y ajustes RH. No generan un nuevo pago ni prima.',
                                     trailing: FilledButton.icon(
-                                      style: FilledButton.styleFrom(
-                                        backgroundColor: const Color(
-                                          0xFF8B5CF6,
-                                        ),
-                                        foregroundColor: Colors.white,
-                                        visualDensity: VisualDensity.compact,
-                                        padding: const EdgeInsets.symmetric(
-                                          horizontal: 12,
-                                          vertical: 10,
-                                        ),
-                                        shape: RoundedRectangleBorder(
-                                          borderRadius: BorderRadius.circular(
-                                            14,
-                                          ),
-                                        ),
-                                      ),
                                       onPressed: _addEvent,
-                                      icon: const Icon(Icons.add_rounded),
-                                      label: const Text('Evento'),
+                                      icon: const Icon(Icons.add),
+                                      label: Text(
+                                        _paymentTab ? 'Pago' : 'Evento',
+                                      ),
                                     ),
-                                    child: _events.isEmpty
-                                        ? const _HrVacationEmptyBlock(
-                                            message:
-                                                'Todavía no hay eventos capturados. Agrega un rango para comenzar a tabular vacaciones.',
-                                          )
-                                        : Column(
-                                            children: [
-                                              for (
-                                                var index = 0;
-                                                index < _events.length;
-                                                index += 1
-                                              ) ...[
-                                                _HrVacationEventCard(
-                                                  draft: _events[index],
-                                                  balance: _balance,
-                                                  onChanged: () => setState(() {
-                                                    _refreshVacationEventDraft(
-                                                      _events[index],
-                                                      forceDays: !_events[index]
-                                                          .daysManuallyEdited,
-                                                    );
-                                                    _syncDerivedTotals();
-                                                  }),
-                                                  onPickDate: _pickDate,
-                                                  onRemove: () => setState(() {
-                                                    _events.removeAt(index);
-                                                    _syncDerivedTotals();
-                                                  }),
-                                                ),
-                                                if (index != _events.length - 1)
-                                                  const SizedBox(height: 10),
-                                              ],
-                                            ],
-                                          ),
-                                  ),
-                                  const SizedBox(height: 10),
-                                  _HrVacationSectionCard(
-                                    title: 'Componentes de pago',
-                                    subtitle:
-                                        'Comparativo entre salario y salario percibido para dejar prenómina preparada.',
-                                    child: Wrap(
-                                      spacing: 12,
-                                      runSpacing: 12,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.stretch,
                                       children: [
-                                        _HrVacationPaymentCard(
-                                          title: 'Base salario',
-                                          dailyLabel:
-                                              'Diario ${_formatVacationMoney(salaryDaily)}',
-                                          payLabel:
-                                              'Vacaciones ${_formatVacationMoney(vacationPay)}',
-                                          bonusLabel:
-                                              'Prima ${_formatVacationMoney(bonusPay)}',
-                                          accentLabel: 'Base administrativa',
+                                        SegmentedButton<bool>(
+                                          segments: const [
+                                            ButtonSegment(
+                                              value: true,
+                                              label: Text('Pago de vacaciones'),
+                                              icon: Icon(
+                                                Icons.payments_outlined,
+                                              ),
+                                            ),
+                                            ButtonSegment(
+                                              value: false,
+                                              label: Text('Eventos'),
+                                              icon: Icon(Icons.event_outlined),
+                                            ),
+                                          ],
+                                          selected: {_paymentTab},
+                                          onSelectionChanged: (values) =>
+                                              setState(
+                                                () =>
+                                                    _paymentTab = values.single,
+                                              ),
                                         ),
-                                        _HrVacationPaymentCard(
-                                          title: 'Base salario percibido',
-                                          dailyLabel:
-                                              'Diario ${_formatVacationMoney(salaryPerceivedDaily)}',
-                                          payLabel:
-                                              'Vacaciones ${_formatVacationMoney(vacationPayPerceived)}',
-                                          bonusLabel:
-                                              'Prima ${_formatVacationMoney(bonusPayPerceived)}',
-                                          accentLabel: 'Base percibida',
-                                        ),
-                                        _HrVacationPaymentCard(
-                                          title: 'Diferencia entre bases',
-                                          dailyLabel:
-                                              'Semanal ${_formatVacationMoney(salaryDelta)}',
-                                          payLabel:
-                                              'Vacaciones ${_formatVacationMoney(vacationDelta)}',
-                                          bonusLabel:
-                                              'Prima ${_formatVacationMoney(bonusDelta)}',
-                                          accentLabel: 'Brecha RH',
-                                        ),
+                                        const SizedBox(height: 12),
+                                        if (_tabEvents.isEmpty)
+                                          _HrVacationEmptyBlock(
+                                            message: _paymentTab
+                                                ? 'Sin pagos registrados.'
+                                                : 'Sin eventos registrados.',
+                                          ),
+                                        for (final event in _tabEvents) ...[
+                                          if (event.prenominaSyncStatus ==
+                                              _HrVacationSyncStatus.aplicado)
+                                            const _HrVacationInlineNote(
+                                              icon: Icons.lock_outline,
+                                              message:
+                                                  'Movimiento aplicado a Prenómina. Se conserva en sólo lectura.',
+                                            ),
+                                          ExcludeFocus(
+                                            excluding:
+                                                event.prenominaSyncStatus ==
+                                                _HrVacationSyncStatus.aplicado,
+                                            child: IgnorePointer(
+                                              ignoring:
+                                                  event.prenominaSyncStatus ==
+                                                  _HrVacationSyncStatus
+                                                      .aplicado,
+                                              child: _HrVacationEventCard(
+                                                key: ValueKey(event.localId),
+                                                draft: event,
+                                                balance: _balance,
+                                                periodOptions:
+                                                    widget.periodOptions,
+                                                onChanged: () => setState(() {
+                                                  _refreshVacationEventDraft(
+                                                    event,
+                                                    forceDays: !event
+                                                        .daysManuallyEdited,
+                                                  );
+                                                  _syncDerivedTotals();
+                                                }),
+                                                onPickDate: _pickDate,
+                                                onRemove: () => setState(() {
+                                                  _events.remove(event);
+                                                  _syncDerivedTotals();
+                                                }),
+                                              ),
+                                            ),
+                                          ),
+                                          if (_paymentTab)
+                                            Align(
+                                              alignment: Alignment.centerRight,
+                                              child: TextButton.icon(
+                                                key: ValueKey(
+                                                  'vacation-receipt-${event.localId}',
+                                                ),
+                                                onPressed:
+                                                    event.status ==
+                                                        _HrVacationEventStatus
+                                                            .aplicado
+                                                    ? () => _save(
+                                                        _HrVacationEditAction
+                                                            .receipt,
+                                                        event,
+                                                      )
+                                                    : null,
+                                                icon: const Icon(
+                                                  Icons.receipt_long_outlined,
+                                                ),
+                                                label: const Text(
+                                                  'Guardar y generar recibo',
+                                                ),
+                                              ),
+                                            ),
+                                          const SizedBox(height: 10),
+                                        ],
                                       ],
                                     ),
                                   ),
+                                  const SizedBox(height: 10),
+                                  if (_paymentTab)
+                                    _HrVacationSectionCard(
+                                      title: 'Componentes de pago',
+                                      subtitle:
+                                          'Vacaciones y prima del 25% sobre salario percibido. Fiscal + Flujo = Total, antes de ISR.',
+                                      child: Wrap(
+                                        spacing: 12,
+                                        runSpacing: 12,
+                                        children: [
+                                          _HrVacationPaymentCard(
+                                            title: 'Fiscal',
+                                            dailyLabel: 'Parte fiscal del pago',
+                                            payLabel:
+                                                'Vacaciones ${_formatVacationMoney(pay.fiscalVacation)}',
+                                            bonusLabel:
+                                                'Prima ${_formatVacationMoney(pay.fiscalPremium)}',
+                                            accentLabel:
+                                                'Fiscal ${_formatVacationMoney(pay.fiscal)}',
+                                          ),
+                                          _HrVacationPaymentCard(
+                                            title: 'Flujo',
+                                            dailyLabel:
+                                                'Complemento del pago percibido',
+                                            payLabel:
+                                                'Vacaciones ${_formatVacationMoney(pay.flowVacation)}',
+                                            bonusLabel:
+                                                'Prima ${_formatVacationMoney(pay.flowPremium)}',
+                                            accentLabel:
+                                                'Flujo ${_formatVacationMoney(pay.flow)}',
+                                          ),
+                                          _HrVacationPaymentCard(
+                                            title: 'Total · salario percibido',
+                                            dailyLabel:
+                                                'Diario ${_formatVacationMoney(pay.perceivedDaily)}',
+                                            payLabel:
+                                                'Vacaciones ${_formatVacationMoney(pay.vacation)}',
+                                            bonusLabel:
+                                                'Prima 25% ${_formatVacationMoney(pay.premium)}',
+                                            accentLabel:
+                                                'Total ${_formatVacationMoney(pay.total)}',
+                                          ),
+                                        ],
+                                      ),
+                                    ),
                                 ],
                               ),
                             ),
@@ -4318,7 +4451,9 @@ class _HrVacationMetricMiniCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final detail = helper?.trim();
     return Tooltip(
-      message: detail == null || detail.isEmpty ? label : '$label\n$detail',
+      message: detail == null || detail.isEmpty
+          ? '$label: $value'
+          : '$label: $value\n$detail',
       child: Container(
         width: 144,
         height: 64,
@@ -4345,12 +4480,20 @@ class _HrVacationMetricMiniCard extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF24103D),
+            Flexible(
+              flex: 2,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerRight,
+                child: Text(
+                  value,
+                  maxLines: 1,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w900,
+                    color: Color(0xFF24103D),
+                  ),
+                ),
               ),
             ),
           ],
@@ -4776,6 +4919,7 @@ class _HrVacationEventPill extends StatelessWidget {
 }
 
 class _HrVacationEventCard extends StatelessWidget {
+  final List<String> periodOptions;
   final _HrVacationEventDraft draft;
   final _HrVacationBalanceDraft balance;
   final VoidCallback onChanged;
@@ -4783,6 +4927,8 @@ class _HrVacationEventCard extends StatelessWidget {
   final VoidCallback onRemove;
 
   const _HrVacationEventCard({
+    super.key,
+    this.periodOptions = const [],
     required this.draft,
     required this.balance,
     required this.onChanged,
@@ -4792,6 +4938,7 @@ class _HrVacationEventCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final payment = draft.eventType == _HrVacationEventType.vacacionesPagadas;
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
       decoration: BoxDecoration(
@@ -4980,6 +5127,13 @@ class _HrVacationEventCard extends StatelessWidget {
                             title: 'Tipo',
                             initialValue: draft.eventType,
                             options: _HrVacationEventType.values
+                                .where(
+                                  (type) =>
+                                      (type ==
+                                          _HrVacationEventType
+                                              .vacacionesPagadas) ==
+                                      payment,
+                                )
                                 .map(
                                   (item) => SearchablePickerOption(
                                     value: item,
@@ -4998,14 +5152,14 @@ class _HrVacationEventCard extends StatelessWidget {
               SizedBox(
                 width: 160,
                 child: _HrVacationLabeledField(
-                  label: 'Fecha inicio',
+                  label: payment ? 'Fecha de pago' : 'Fecha inicio',
                   child: _HrVacationDateField(
                     value: _formatVacationDate(draft.startDate),
                     onTap: () async {
                       final value = await onPickDate(draft.startDate);
                       if (value == null) return;
                       draft.startDate = value;
-                      if (draft.endDate.isBefore(value)) {
+                      if (payment || draft.endDate.isBefore(value)) {
                         draft.endDate = value;
                       }
                       onChanged();
@@ -5013,28 +5167,30 @@ class _HrVacationEventCard extends StatelessWidget {
                   ),
                 ),
               ),
-              SizedBox(
-                width: 160,
-                child: _HrVacationLabeledField(
-                  label: 'Fecha fin',
-                  child: _HrVacationDateField(
-                    value: _formatVacationDate(draft.endDate),
-                    onTap: () async {
-                      final value = await onPickDate(draft.endDate);
-                      if (value == null) return;
-                      draft.endDate = value.isBefore(draft.startDate)
-                          ? draft.startDate
-                          : value;
-                      onChanged();
-                    },
+              if (!payment)
+                SizedBox(
+                  width: 160,
+                  child: _HrVacationLabeledField(
+                    label: 'Fecha fin',
+                    child: _HrVacationDateField(
+                      value: _formatVacationDate(draft.endDate),
+                      onTap: () async {
+                        final value = await onPickDate(draft.endDate);
+                        if (value == null) return;
+                        draft.endDate = value.isBefore(draft.startDate)
+                            ? draft.startDate
+                            : value;
+                        onChanged();
+                      },
+                    ),
                   ),
                 ),
-              ),
               SizedBox(
                 width: 140,
                 child: _HrVacationLabeledField(
                   label: 'Días',
                   child: TextFormField(
+                    key: ValueKey('vacation-days-${draft.localId}'),
                     initialValue: _formatVacationDays(draft.daysApplied),
                     decoration: _hrVacationFieldDecoration(),
                     keyboardType: const TextInputType.numberWithOptions(
@@ -5042,7 +5198,7 @@ class _HrVacationEventCard extends StatelessWidget {
                     ),
                     onChanged: (value) {
                       final trimmed = value.trim();
-                      draft.daysManuallyEdited = trimmed.isNotEmpty;
+                      draft.daysManuallyEdited = true;
                       draft.daysApplied = trimmed.isEmpty
                           ? 0.0
                           : _parseVacationNumber(
@@ -5053,30 +5209,33 @@ class _HrVacationEventCard extends StatelessWidget {
                   ),
                 ),
               ),
-              SizedBox(
-                width: 190,
-                child: _HrVacationLabeledField(
-                  label: 'Domingos / festivos pagados',
-                  child: TextFormField(
-                    initialValue: _formatVacationDays(draft.additionalPaidDays),
-                    decoration: _hrVacationFieldDecoration(),
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+              if (payment)
+                SizedBox(
+                  width: 190,
+                  child: _HrVacationLabeledField(
+                    label: 'Domingos / festivos pagados',
+                    child: TextFormField(
+                      key: ValueKey('vacation-extra-days-${draft.localId}'),
+                      initialValue: _formatVacationDays(
+                        draft.additionalPaidDays,
+                      ),
+                      decoration: _hrVacationFieldDecoration(),
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      onChanged: (value) {
+                        final trimmed = value.trim();
+                        draft.additionalPaidDaysManuallyEdited = true;
+                        draft.additionalPaidDays = trimmed.isEmpty
+                            ? 0.0
+                            : _parseVacationNumber(
+                                trimmed,
+                              ).clamp(0, 9999).toDouble();
+                        onChanged();
+                      },
                     ),
-                    onChanged: (value) {
-                      final trimmed = value.trim();
-                      draft.additionalPaidDaysManuallyEdited =
-                          trimmed.isNotEmpty;
-                      draft.additionalPaidDays = trimmed.isEmpty
-                          ? 0.0
-                          : _parseVacationNumber(
-                              trimmed,
-                            ).clamp(0, 9999).toDouble();
-                      onChanged();
-                    },
                   ),
                 ),
-              ),
               SizedBox(
                 width: 180,
                 child: _HrVacationLabeledField(
@@ -5114,14 +5273,15 @@ class _HrVacationEventCard extends StatelessWidget {
             spacing: 18,
             runSpacing: 8,
             children: [
-              _HrVacationBooleanField(
-                label: 'Impacta asistencia',
-                value: draft.impactAttendance,
-                onChanged: (value) {
-                  draft.impactAttendance = value;
-                  onChanged();
-                },
-              ),
+              if (!payment)
+                _HrVacationBooleanField(
+                  label: 'Impacta asistencia',
+                  value: draft.impactAttendance,
+                  onChanged: (value) {
+                    draft.impactAttendance = value;
+                    onChanged();
+                  },
+                ),
               _HrVacationBooleanField(
                 label: 'Impacta prenómina',
                 value: draft.impactPrenomina,
@@ -5133,12 +5293,30 @@ class _HrVacationEventCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 10),
-          const _HrVacationInlineNote(
-            icon: Icons.lock_clock_outlined,
-            message:
-                'El evento queda pendiente de cierre. La emisión del recibo se controla desde Nómina después de publicar la prenómina del periodo.',
+          _HrVacationInlineNote(
+            icon: payment
+                ? Icons.receipt_long_outlined
+                : Icons.event_available_outlined,
+            message: payment
+                ? 'El recibo corresponde a este pago y a su periodo.'
+                : 'El disfrute consume días; los ya pagados se compensan del sueldo del periodo, sin repetir vacaciones ni prima.',
           ),
-          if (draft.impactPrenomina) ...[
+          if (payment) ...[
+            const SizedBox(height: 10),
+            HumanResourcesPeriodSelector(
+              selectedLabel: draft.attendancePeriodLabel,
+              options: {
+                ...periodOptions,
+                if (draft.attendancePeriodLabel.isNotEmpty)
+                  draft.attendancePeriodLabel,
+              }.toList(),
+              onSelected: (value) {
+                draft.attendancePeriodLabel = value;
+                onChanged();
+              },
+            ),
+          ],
+          if (payment && draft.impactPrenomina) ...[
             const SizedBox(height: 12),
             _HrVacationIsrEditor(
               draft: draft,
@@ -6214,7 +6392,7 @@ class _HrVacationEventDraft {
   double daysApplied;
   double additionalPaidDays;
   bool daysManuallyEdited;
-  bool additionalPaidDaysManuallyEdited = false;
+  bool additionalPaidDaysManuallyEdited;
   String attendancePeriodLabel;
   _HrVacationSyncStatus attendanceSyncStatus;
   _HrVacationSyncStatus prenominaSyncStatus;
@@ -6236,6 +6414,7 @@ class _HrVacationEventDraft {
     required this.daysApplied,
     required this.additionalPaidDays,
     this.daysManuallyEdited = false,
+    this.additionalPaidDaysManuallyEdited = false,
     required this.attendancePeriodLabel,
     required this.attendanceSyncStatus,
     required this.prenominaSyncStatus,
@@ -6258,7 +6437,8 @@ class _HrVacationEventDraft {
       endDate: record.endDate,
       daysApplied: record.daysApplied,
       additionalPaidDays: record.additionalPaidDays,
-      daysManuallyEdited: false,
+      daysManuallyEdited: true,
+      additionalPaidDaysManuallyEdited: true,
       attendancePeriodLabel: record.attendancePeriodLabel,
       attendanceSyncStatus: record.attendanceSyncStatus,
       prenominaSyncStatus: record.prenominaSyncStatus,
@@ -6470,12 +6650,11 @@ _HrVacationEventTotals _classifyVacationEventBuckets({
 
   final isApplied = status == _HrVacationEventStatus.aplicado;
   final carriesPayrollFootprint =
-      eventType == _HrVacationEventType.vacacionesPagadas ||
-      impactPrenomina ||
-      generateReceipt;
+      eventType == _HrVacationEventType.vacacionesPagadas;
   final canConsumeAttendance =
-      eventType == _HrVacationEventType.vacacionesDisfrutadas ||
-      impactAttendance;
+      eventType != _HrVacationEventType.vacacionesPagadas &&
+      (eventType == _HrVacationEventType.vacacionesDisfrutadas ||
+          impactAttendance);
 
   final daysPaid = isApplied && carriesPayrollFootprint ? daysApplied : 0.0;
   final daysEnjoyed = isApplied && canConsumeAttendance ? daysApplied : 0.0;
@@ -6777,18 +6956,17 @@ List<Map<String, dynamic>> _buildVacationCalculationPayloads({
   final salaryPerceivedDaily = balance.salaryPerceivedSnapshot > 0
       ? balance.salaryPerceivedSnapshot / 7
       : 0.0;
-  final grossDaily = salaryPerceivedDaily > 0
-      ? salaryPerceivedDaily
-      : salaryDaily;
+  final pay = HrVacationPay(
+    perceivedWeekly: balance.salaryPerceivedSnapshot,
+    fiscalWeekly: balance.salarySnapshot,
+    vacationDays: event.daysApplied,
+    additionalPaidDays: event.additionalPaidDays,
+  );
   final paidSalaryDays = event.daysApplied + event.additionalPaidDays;
-  final vacationPay = grossDaily * paidSalaryDays;
-  final vacationBonus = grossDaily * event.daysApplied * 0.25;
-  final totalVacationAmount = vacationPay + vacationBonus;
-  final fiscalShare = salaryPerceivedDaily > 0 && salaryDaily > 0
-      ? (salaryDaily / salaryPerceivedDaily).clamp(0, 1).toDouble()
-      : 1.0;
-  final transferComponent = totalVacationAmount * fiscalShare;
-  final cashComponent = totalVacationAmount - transferComponent;
+  final vacationPay = pay.vacation;
+  final vacationBonus = pay.premium;
+  final transferComponent = pay.fiscal;
+  final cashComponent = pay.flow;
   final isr = _calculateVacationIsr(
     balance: balance,
     event: event,
@@ -6968,12 +7146,9 @@ double _calculateVacationTariffTax(
       .toDouble();
 }
 
-bool _vacationEventHasPayrollFootprint(_HrVacationEventDraft event) {
-  if (event.status != _HrVacationEventStatus.aplicado) return false;
-  return event.eventType == _HrVacationEventType.vacacionesPagadas ||
-      event.impactPrenomina ||
-      event.generateReceipt;
-}
+bool _vacationEventHasPayrollFootprint(_HrVacationEventDraft event) =>
+    event.status == _HrVacationEventStatus.aplicado &&
+    event.eventType == _HrVacationEventType.vacacionesPagadas;
 
 bool _lotBelongsToVacationExercise(
   _HrVacationAttendanceLotLite lot,
@@ -7226,6 +7401,12 @@ void _normalizeVacationEventDraft(
   _HrVacationEventDraft draft, {
   bool forceDays = false,
 }) {
+  if (draft.hasPersistedId &&
+      draft.prenominaSyncStatus == _HrVacationSyncStatus.aplicado) {
+    return;
+  }
+  final isPayment = draft.eventType == _HrVacationEventType.vacacionesPagadas;
+  if (isPayment) draft.impactAttendance = false;
   if (draft.isrMethod != _HrVacationIsrMethod.manualRh) {
     draft.isrMethod = _HrVacationIsrMethod.tarifaSemanal;
   }
@@ -7247,7 +7428,7 @@ void _normalizeVacationEventDraft(
   if (!draft.impactAttendance ||
       draft.status == _HrVacationEventStatus.cancelado) {
     draft.attendanceSyncStatus = _HrVacationSyncStatus.omitido;
-    draft.attendancePeriodLabel = '';
+    if (!isPayment) draft.attendancePeriodLabel = '';
   } else {
     draft.attendanceSyncStatus = _HrVacationSyncStatus.pendiente;
   }
@@ -7255,8 +7436,7 @@ void _normalizeVacationEventDraft(
       !draft.impactPrenomina || draft.status == _HrVacationEventStatus.cancelado
       ? _HrVacationSyncStatus.omitido
       : _HrVacationSyncStatus.pendiente;
-  // La emisión queda exclusivamente en Nómina, tras publicar el cierre.
-  draft.generateReceipt = false;
+  draft.generateReceipt = isPayment;
 }
 
 class _HrVacationPillColorSet {
@@ -7538,7 +7718,6 @@ List<String> _vacationPeriodOptions({
 }) {
   return HumanResourcesPeriodContext.normalizedOptions([
     ...operationalPeriodLabels,
-    for (final lot in lots) _describeVacationAttendancePeriod(lot),
     for (final event in events) event.attendancePeriodLabel,
   ]);
 }
@@ -7606,6 +7785,7 @@ bool _isVacationAttendanceDateWithinRange(
 
 String _describeVacationAttendancePeriod(_HrVacationAttendanceLotLite lot) {
   final raw = lot.periodLabel.trim();
+  if (RegExp(r'^Periodo\s+\d+\s+semanal\s+·').hasMatch(raw)) return raw;
   if (raw.isEmpty) return 'Periodo no detectado';
   if (lot.source == _HrVacationAttendanceImportSource.ngteco) {
     final segments = raw.split('→').map((part) => part.trim()).toList();
@@ -7628,10 +7808,7 @@ String _describeVacationAttendancePeriod(_HrVacationAttendanceLotLite lot) {
     final week = periodMatch.group(1)!;
     final start = periodMatch.group(2)!;
     final end = periodMatch.group(3)!;
-    final time = periodMatch.group(4);
-    return time == null
-        ? 'Periodo $week semanal · $start - $end'
-        : 'Periodo $week semanal · $start - $end · Archivo $time';
+    return 'Periodo $week semanal · $start - $end';
   }
   return raw;
 }
@@ -7961,18 +8138,22 @@ Future<Uint8List> _buildVacationReceiptPdfBytes({
   final muted = PdfColor.fromHex('#6E5A8B');
   final border = PdfColor.fromHex('#D9C8F8');
   final receiptDate = DateTime.now();
-  final perceivedWeekly = balance.salaryPerceivedSnapshot > 0
-      ? balance.salaryPerceivedSnapshot
-      : balance.salarySnapshot;
+  final perceivedWeekly = balance.salaryPerceivedSnapshot;
   final fiscalWeeklyImported = _parseVacationNumber(contpaqEntry?.net);
   final fiscalWeekly = fiscalWeeklyImported > 0
       ? fiscalWeeklyImported
       : balance.salarySnapshot;
-  final dailySalary = perceivedWeekly > 0 ? perceivedWeekly / 7 : 0.0;
+  final pay = HrVacationPay(
+    perceivedWeekly: perceivedWeekly,
+    fiscalWeekly: fiscalWeekly,
+    vacationDays: event.daysApplied,
+    additionalPaidDays: event.additionalPaidDays,
+  );
+  final dailySalary = pay.perceivedDaily;
   final paidSalaryDays = event.daysApplied + event.additionalPaidDays;
-  final vacationBase = paidSalaryDays * dailySalary;
-  final vacationBonus = event.daysApplied * dailySalary * 0.25;
-  final vacationTotal = vacationBase + vacationBonus;
+  final vacationBase = pay.vacation;
+  final vacationBonus = pay.premium;
+  final vacationTotal = pay.total;
   final importedFiscalVacation = _parseVacationNumber(contpaqEntry?.vacations);
   final fiscalVacation = importedFiscalVacation > 0
       ? importedFiscalVacation

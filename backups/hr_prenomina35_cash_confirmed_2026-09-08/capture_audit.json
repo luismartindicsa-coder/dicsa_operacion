@@ -1,0 +1,27 @@
+{
+  "applied_at": "2026-09-09T00:00:47.533202+00:00",
+  "period": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+  "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596",
+  "inserted_ids": [
+    {
+      "employee_id": "NO 1",
+      "draft_id": "bd5f5896-2242-4c76-b80a-ded27ac8975b"
+    },
+    {
+      "employee_id": "NO 2",
+      "draft_id": "f86676f6-165a-44c8-8977-8d96f9d43058"
+    },
+    {
+      "employee_id": "NO 3",
+      "draft_id": "94db6a25-062b-4679-b606-77d953c1b267"
+    }
+  ],
+  "verified_count": 3,
+  "existing_drafts_unchanged": true,
+  "fields_loaded": [
+    "cash_salary_amount",
+    "cash_salary_is_manual",
+    "payment_channel"
+  ],
+  "confirmed_cash_payments_total": 4710.56
+}

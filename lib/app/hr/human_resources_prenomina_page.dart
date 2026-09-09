@@ -1,3 +1,10 @@
+import 'human_resources_fiscal_payment.dart';
+import 'human_resources_fiscal_payment_card.dart';
+import 'human_resources_compensation.dart';
+import 'human_resources_lateness.dart';
+import 'human_resources_overtime.dart';
+import 'human_resources_prepaid_vacation.dart';
+import 'human_resources_vacation_pay.dart';
 import 'dart:async';
 import 'dart:math' as math;
 
@@ -29,6 +36,7 @@ import '../shared/utils/fetch_all_supabase_rows.dart';
 import '../shared/utils/file_download_save.dart';
 import '../shared/utils/simple_xlsx_builder.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_attendance_source.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_attendance_page.dart';
 import 'human_resources_dashboard_page.dart';
@@ -40,6 +48,15 @@ import 'human_resources_personnel_page.dart';
 import 'human_resources_period_context.dart';
 import 'human_resources_theme.dart';
 import 'human_resources_vacations_page.dart';
+
+part 'prenomina/prenomina_editor_test_support.dart';
+part 'prenomina/prenomina_employee_editor.dart';
+part 'prenomina/prenomina_grid.dart';
+part 'prenomina/prenomina_grid_test_support.dart';
+part 'prenomina/prenomina_dashboard.dart';
+part 'prenomina/prenomina_employee_sidebar.dart';
+part 'prenomina/prenomina_editor_sections.dart';
+part 'prenomina/prenomina_editor_widgets.dart';
 
 const String _kHrPrenominaProfilesTable = 'hr_employee_profiles';
 const String _kHrPrenominaImportLotsTable = 'hr_attendance_import_lots';
@@ -56,15 +73,6 @@ const String _kHrPrenominaPermissionSyncPrefix = 'Permisos RH:';
 const String _kHrPrenominaContpaqReceiptPrefix = 'contpaq:';
 
 const double _kHrPrenominaHoursPerDay = 8;
-const double _kHrPrenominaOvertimeHourlyRate = 60;
-
-const double _kHrPrenominaIdW = 84;
-const double _kHrPrenominaSalaryW = 154;
-const double _kHrPrenominaAttendanceW = 170;
-const double _kHrPrenominaVacationW = 170;
-const double _kHrPrenominaPermissionW = 170;
-const double _kHrPrenominaStatusW = 150;
-const double _kHrPrenominaActionsW = 118;
 
 class HumanResourcesPrenominaPage extends StatefulWidget {
   final bool instantOpen;
@@ -84,6 +92,11 @@ class _HumanResourcesPrenominaPageState
   bool _canReturnToDirection = false;
   bool _loading = true;
   String _activePeriodLabel = '';
+  String _employeeSearch = '';
+  String? _companyFilter;
+  bool _incidencesOnly = false;
+  List<_HrPrenominaSummaryRow> _periodRows = const [];
+  Map<String, _PrenominaAttendanceDiagnostic> _attendanceDiagnostics = const {};
   String _selectedPeriodLabel = '';
   List<String> _periodOptions = const <String>[];
   String? _selectedRowId;
@@ -227,9 +240,8 @@ class _HumanResourcesPrenominaPageState
         (from, to) => client
             .from(_kHrPrenominaProfilesTable)
             .select(
-              'id,nombre,empresa,fecha_ingreso,fecha_alta,salario,salario_real_percibido',
+              'id,nombre,empresa,fecha_ingreso,fecha_alta,salario,salario_real_percibido,salario_flujo,fiscal_payment_mode,overtime_hourly_rate,employment_status,termination_date',
             )
-            .neq('employment_status', kHrEmployeeStatusTerminated)
             .order('id')
             .range(from, to),
       );
@@ -320,6 +332,7 @@ class _HumanResourcesPrenominaPageState
           .toList(growable: false);
       final attendanceRecords = attendanceResult
           .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .where(isHrOperationalAttendanceRow)
           .map(_HrPrenominaAttendanceRecord.fromRow)
           .toList(growable: false);
       final vacationEvents = vacationEventsResult
@@ -361,9 +374,7 @@ class _HumanResourcesPrenominaPageState
             client: client,
             vacationEvents: vacationEvents,
             permissionEvents: permissionEvents,
-            knownPeriodLabels: [
-              for (final lot in importLots) _describePrenominaImportPeriod(lot),
-            ],
+            knownPeriodLabels: availablePeriods,
             activePeriodLabel: activePeriod,
           );
           eventPeriodImpactsResult = await fetchAllSupabaseRows(
@@ -429,7 +440,7 @@ class _HumanResourcesPrenominaPageState
 
   int get _activePendingDraftCount => _activePeriodLabel.isEmpty
       ? 0
-      : math.max(0, _employees.length - _activePublishedDraftCount);
+      : math.max(0, _periodRows.length - _activePublishedDraftCount);
 
   void _rebuildRows() {
     final periodLabel = HumanResourcesPeriodContext.resolveSelected(
@@ -454,7 +465,22 @@ class _HumanResourcesPrenominaPageState
             activePeriodLabel: periodLabel,
             activeContpaqRawPeriodLabel: contpaqLot?.periodLabel.trim() ?? '',
           );
-    final filteredRows = _applyFilters(rows);
+    _periodRows = rows;
+    _attendanceDiagnostics = _prenominaAttendanceDiagnostics(
+      _attendanceRecords,
+      periodLabel,
+    );
+    final filteredRows = _applyFilters(rows)
+        .where(
+          (row) => _prenominaMatchesDashboardFilters(
+            row,
+            _attendanceDiagnostics[row.employeeId],
+            query: _employeeSearch,
+            company: _companyFilter,
+            incidencesOnly: _incidencesOnly,
+          ),
+        )
+        .toList(growable: false);
     final pageCount = filteredRows.isEmpty
         ? 1
         : ((filteredRows.length - 1) ~/ _pageSize) + 1;
@@ -595,6 +621,43 @@ class _HumanResourcesPrenominaPageState
         barrierDismissible: true,
         builder: (context) => _HrPrenominaEditDialog(
           row: row,
+          attendance: _attendanceRecords
+              .where(
+                (item) =>
+                    item.employeeId == row.employeeId &&
+                    item.periodLabel == _activePeriodLabel,
+              )
+              .toList(growable: false),
+          preview: (draft) {
+            final lot = _prenominaLotForPeriod(
+              _importLots,
+              _HrPrenominaImportSource.contpaq,
+              _activePeriodLabel,
+            );
+            return _buildPrenominaSummaryRows(
+              employees: _employees
+                  .where((item) => item.employeeId == row.employeeId)
+                  .toList(growable: false),
+              contpaqLot: lot,
+              attendanceRecords: _attendanceRecords,
+              vacationEvents: _vacationEvents,
+              permissionEvents: _permissionEvents,
+              eventPeriodImpacts: _eventPeriodImpacts,
+              draftRows: [
+                _HrPrenominaDraftRowRecord.fromRow(
+                  draft.toRow(
+                    periodLabel: _activePeriodLabel,
+                    employeeId: row.employeeId,
+                    employeeName: row.displayName,
+                    empresa: row.empresa,
+                    existingId: row.draftId,
+                  ),
+                ),
+              ],
+              activePeriodLabel: _activePeriodLabel,
+              activeContpaqRawPeriodLabel: lot?.periodLabel.trim() ?? '',
+            ).single;
+          },
           periodLabel: _activePeriodLabel,
           canGoPrevious: currentIndex > 0,
           canGoNext: currentIndex < _allRows.length - 1,
@@ -712,7 +775,7 @@ class _HumanResourcesPrenominaPageState
       _showSnack('Este periodo ya está cerrado y listo para Nómina.');
       return;
     }
-    if (_employees.isEmpty) {
+    if (_periodRows.isEmpty) {
       _showSnack('No hay colaboradores para validar en este periodo.');
       return;
     }
@@ -758,7 +821,7 @@ class _HumanResourcesPrenominaPageState
         'summary_snapshot': <String, dynamic>{
           'period_label': _activePeriodLabel,
           'published_rows': _activePublishedDraftCount,
-          'employees_expected': _employees.length,
+          'employees_expected': _periodRows.length,
           'closed_at': now.toIso8601String(),
         },
       },
@@ -1306,12 +1369,56 @@ class _HumanResourcesPrenominaPageState
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1540),
                 child: Padding(
-                  padding: const EdgeInsets.fromLTRB(56, 4, 8, 0),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
                   child: _loading
                       ? const Center(
                           child: CircularProgressIndicator(strokeWidth: 2.4),
                         )
                       : _HrPrenominaWorkspace(
+                          periodRows: _periodRows,
+                          diagnostics: _attendanceDiagnostics,
+                          search: _employeeSearch,
+                          company: _companyFilter,
+                          incidencesOnly: _incidencesOnly,
+                          selectedStatuses:
+                              _columnFilters['estado'] ?? const {},
+                          hasFilters:
+                              _columnFilters.isNotEmpty ||
+                              _employeeSearch.isNotEmpty ||
+                              _companyFilter != null ||
+                              _incidencesOnly,
+                          onSearch: (value) {
+                            _employeeSearch = value;
+                            _currentPage = 0;
+                            _rebuildRows();
+                          },
+                          onCompany: (value) {
+                            _companyFilter = value;
+                            _currentPage = 0;
+                            _rebuildRows();
+                          },
+                          onIncidences: (value) {
+                            _incidencesOnly = value;
+                            _currentPage = 0;
+                            _rebuildRows();
+                          },
+                          onStatuses: (value) {
+                            if (value.isEmpty) {
+                              _columnFilters.remove('estado');
+                            } else {
+                              _columnFilters['estado'] = value;
+                            }
+                            _currentPage = 0;
+                            _rebuildRows();
+                          },
+                          onClearFilters: () {
+                            _columnFilters.clear();
+                            _employeeSearch = '';
+                            _companyFilter = null;
+                            _incidencesOnly = false;
+                            _currentPage = 0;
+                            _rebuildRows();
+                          },
                           allRows: _allRows,
                           rows: _visibleRows,
                           totalRows: _allRows.length,
@@ -1413,1458 +1520,50 @@ class _HumanResourcesPrenominaPageState
   }
 }
 
-class _HrPrenominaWorkspace extends StatelessWidget {
-  final List<_HrPrenominaSummaryRow> allRows;
-  final List<_HrPrenominaSummaryRow> rows;
-  final int totalRows;
-  final int selectedCount;
-  final String activePeriodLabel;
-  final List<String> periodOptions;
-  final bool isPeriodClosed;
-  final int publishedDraftCount;
-  final int pendingDraftCount;
-  final String? hoveredRowId;
-  final GridNavigationController navigationController;
-  final GridSelectionController selectionController;
-  final ScrollController rowsScrollController;
-  final GridScrollVisibilityCoordinator visibilityCoordinator;
-  final GlobalKey rowsViewportKey;
-  final FocusNode rowsFocusNode;
-  final String? selectedRowId;
-  final GlobalKey Function(String rowId) rowKeyForId;
-  final void Function(PointerMoveEvent event, List<String> visibleIds)
-  onRowsPointerMove;
-  final void Function(_HrPrenominaSummaryRow row, int rowIndex) onTapRow;
-  final void Function(_HrPrenominaSummaryRow row, int rowIndex)
-  onPrepareRowActions;
-  final void Function(
-    String rowId,
-    List<String> visibleIds, {
-    required bool additive,
-  })
-  onBeginDragSelection;
-  final void Function(String rowId) onUpdateDragSelection;
-  final VoidCallback onEndDragSelection;
-  final Future<void> Function(
-    TapDownDetails details,
-    _HrPrenominaSummaryRow row,
-    int rowIndex,
-  )
-  onRowContextMenu;
-  final Future<void> Function(_HrPrenominaSummaryRow row) onOpenRow;
-  final int currentPage;
-  final int totalPages;
-  final int pageSize;
-  final VoidCallback? onPreviousPage;
-  final VoidCallback? onNextPage;
-  final ValueChanged<int> onPageSizeChanged;
-  final Future<void> Function() onOpenSelectedRow;
-  final Future<void> Function() onClosePeriod;
-  final Future<void> Function() onExportCashEnvelopes;
-  final ValueChanged<String> onSelectPeriod;
-  final VoidCallback onEscape;
-  final VoidCallback onOpenActiveCell;
-  final bool Function(String columnId) hasActiveFilter;
-  final Future<void> Function(String columnId, String label) onOpenFilter;
-  final ValueChanged<String?> onHoverRowChanged;
-
-  const _HrPrenominaWorkspace({
-    required this.allRows,
-    required this.rows,
-    required this.totalRows,
-    required this.selectedCount,
-    required this.activePeriodLabel,
-    required this.periodOptions,
-    required this.isPeriodClosed,
-    required this.publishedDraftCount,
-    required this.pendingDraftCount,
-    required this.hoveredRowId,
-    required this.navigationController,
-    required this.selectionController,
-    required this.rowsScrollController,
-    required this.visibilityCoordinator,
-    required this.rowsViewportKey,
-    required this.rowsFocusNode,
-    required this.selectedRowId,
-    required this.rowKeyForId,
-    required this.onRowsPointerMove,
-    required this.onTapRow,
-    required this.onPrepareRowActions,
-    required this.onBeginDragSelection,
-    required this.onUpdateDragSelection,
-    required this.onEndDragSelection,
-    required this.onRowContextMenu,
-    required this.onOpenRow,
-    required this.currentPage,
-    required this.totalPages,
-    required this.pageSize,
-    required this.onPreviousPage,
-    required this.onNextPage,
-    required this.onPageSizeChanged,
-    required this.onOpenSelectedRow,
-    required this.onClosePeriod,
-    required this.onExportCashEnvelopes,
-    required this.onSelectPeriod,
-    required this.onEscape,
-    required this.onOpenActiveCell,
-    required this.hasActiveFilter,
-    required this.onOpenFilter,
-    required this.onHoverRowChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final active = navigationController.active;
-    final activeLabel = active.zone == GridNavigationZone.grid
-        ? _kPrenominaGridColumns[active.columnIndex.clamp(
-                0,
-                _kPrenominaGridColumns.length - 1,
-              )]
-              .label
-        : null;
-    return ContractGlassCard(
-      padding: EdgeInsets.zero,
-      child: Container(
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.08),
-          borderRadius: BorderRadius.circular(24),
-        ),
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-        child: GridKeyboardShell(
-          navigationController: navigationController,
-          focusNode: rowsFocusNode,
-          onEscape: onEscape,
-          onConfirm: () => unawaited(onOpenSelectedRow()),
-          onOpenActiveCell: onOpenActiveCell,
-          onNavigated: (position) {
-            if (position.zone != GridNavigationZone.grid) return;
-            unawaited(
-              visibilityCoordinator.ensureGridRowVisible(
-                position.rowIndex,
-                alignment: 0.5,
-                allowSkipIfFullyVisible: false,
-              ),
-            );
-          },
-          child: GridEditableShell(
-            topBar: _HrPrenominaModuleTopBar(
-              rows: allRows,
-              totalRows: totalRows,
-              selectedCount: selectedCount,
-              activeCellLabel: activeLabel == null
-                  ? null
-                  : 'Celda: $activeLabel',
-              activePeriodLabel: activePeriodLabel,
-              periodOptions: periodOptions,
-              isPeriodClosed: isPeriodClosed,
-              publishedDraftCount: publishedDraftCount,
-              pendingDraftCount: pendingDraftCount,
-              onOpenSelectedRow: () => unawaited(onOpenSelectedRow()),
-              onClosePeriod: () => unawaited(onClosePeriod()),
-              onExportCashEnvelopes: () => unawaited(onExportCashEnvelopes()),
-              onSelectPeriod: onSelectPeriod,
-            ),
-            body: _HrPrenominaGrid(
-              rows: rows,
-              hoveredRowId: hoveredRowId,
-              selectedRowId: selectedRowId,
-              navigationController: navigationController,
-              selectionController: selectionController,
-              rowsScrollController: rowsScrollController,
-              visibilityCoordinator: visibilityCoordinator,
-              rowsViewportKey: rowsViewportKey,
-              rowKeyForId: rowKeyForId,
-              onRowsPointerMove: onRowsPointerMove,
-              onTapRow: onTapRow,
-              onPrepareRowActions: onPrepareRowActions,
-              onBeginDragSelection: onBeginDragSelection,
-              onUpdateDragSelection: onUpdateDragSelection,
-              onEndDragSelection: onEndDragSelection,
-              onRowContextMenu: onRowContextMenu,
-              onOpenRow: onOpenRow,
-              hasActiveFilter: hasActiveFilter,
-              onOpenFilter: onOpenFilter,
-              onHoverRowChanged: onHoverRowChanged,
-            ),
-            footer: _HrPrenominaGridFooter(
-              rows: rows.length,
-              totalRows: totalRows,
-              selectedCount: selectedCount,
-              currentPage: currentPage,
-              totalPages: totalPages,
-              pageSize: pageSize,
-              onPreviousPage: onPreviousPage,
-              onNextPage: onNextPage,
-              onPageSizeChanged: onPageSizeChanged,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HrPrenominaGrid extends StatelessWidget {
-  final List<_HrPrenominaSummaryRow> rows;
-  final String? hoveredRowId;
-  final String? selectedRowId;
-  final GridNavigationController navigationController;
-  final GridSelectionController selectionController;
-  final ScrollController rowsScrollController;
-  final GridScrollVisibilityCoordinator visibilityCoordinator;
-  final GlobalKey rowsViewportKey;
-  final GlobalKey Function(String rowId) rowKeyForId;
-  final void Function(PointerMoveEvent event, List<String> visibleIds)
-  onRowsPointerMove;
-  final void Function(_HrPrenominaSummaryRow row, int rowIndex) onTapRow;
-  final void Function(_HrPrenominaSummaryRow row, int rowIndex)
-  onPrepareRowActions;
-  final void Function(
-    String rowId,
-    List<String> visibleIds, {
-    required bool additive,
-  })
-  onBeginDragSelection;
-  final void Function(String rowId) onUpdateDragSelection;
-  final VoidCallback onEndDragSelection;
-  final Future<void> Function(_HrPrenominaSummaryRow row) onOpenRow;
-  final Future<void> Function(
-    TapDownDetails details,
-    _HrPrenominaSummaryRow row,
-    int rowIndex,
-  )
-  onRowContextMenu;
-  final bool Function(String columnId) hasActiveFilter;
-  final Future<void> Function(String columnId, String label) onOpenFilter;
-  final ValueChanged<String?> onHoverRowChanged;
-
-  const _HrPrenominaGrid({
-    required this.rows,
-    required this.hoveredRowId,
-    required this.selectedRowId,
-    required this.navigationController,
-    required this.selectionController,
-    required this.rowsScrollController,
-    required this.visibilityCoordinator,
-    required this.rowsViewportKey,
-    required this.rowKeyForId,
-    required this.onRowsPointerMove,
-    required this.onTapRow,
-    required this.onPrepareRowActions,
-    required this.onBeginDragSelection,
-    required this.onUpdateDragSelection,
-    required this.onEndDragSelection,
-    required this.onOpenRow,
-    required this.onRowContextMenu,
-    required this.hasActiveFilter,
-    required this.onOpenFilter,
-    required this.onHoverRowChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        return DecoratedBox(
-          decoration: BoxDecoration(
-            color: const Color(0xDDF0E7FF),
-            borderRadius: BorderRadius.circular(22),
-            border: Border.all(color: const Color(0x66B084FF)),
-          ),
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(22),
-            child: SizedBox(
-              width: constraints.maxWidth,
-              child: Column(
-                children: [
-                  _HrPrenominaGridHeader(
-                    hasActiveFilter: hasActiveFilter,
-                    onOpenFilter: onOpenFilter,
-                  ),
-                  Expanded(
-                    child: Listener(
-                      onPointerMove: (event) => onRowsPointerMove(
-                        event,
-                        rows
-                            .map((row) => row.employeeId)
-                            .toList(growable: false),
-                      ),
-                      onPointerUp: (_) => onEndDragSelection(),
-                      onPointerCancel: (_) => onEndDragSelection(),
-                      child: Container(
-                        key: rowsViewportKey,
-                        child: SingleChildScrollView(
-                          controller: rowsScrollController,
-                          child: ConstrainedBox(
-                            constraints: BoxConstraints(
-                              minHeight: math.max(
-                                0,
-                                constraints.maxHeight - 68,
-                              ),
-                            ),
-                            child: Column(
-                              children: [
-                                if (rows.isEmpty)
-                                  const _HrPrenominaEmptyState()
-                                else
-                                  for (
-                                    var index = 0;
-                                    index < rows.length;
-                                    index++
-                                  )
-                                    Padding(
-                                      padding: EdgeInsets.fromLTRB(
-                                        6,
-                                        index == 0 ? 8 : 2,
-                                        6,
-                                        index == rows.length - 1 ? 8 : 2,
-                                      ),
-                                      child: KeyedSubtree(
-                                        key: rowKeyForId(
-                                          rows[index].employeeId,
-                                        ),
-                                        child: _HrPrenominaGridRow(
-                                          key: visibilityCoordinator.keyForCell(
-                                            zone: GridNavigationZone.grid,
-                                            rowIndex: index,
-                                            columnIndex: 0,
-                                          ),
-                                          row: rows[index],
-                                          rowIndex: index,
-                                          hovered:
-                                              hoveredRowId ==
-                                              rows[index].employeeId,
-                                          active:
-                                              navigationController
-                                                      .active
-                                                      .zone ==
-                                                  GridNavigationZone.grid &&
-                                              navigationController
-                                                      .active
-                                                      .rowIndex ==
-                                                  index,
-                                          selected:
-                                              selectedRowId ==
-                                                  rows[index].employeeId ||
-                                              selectionController.isSelected(
-                                                rows[index].employeeId,
-                                              ),
-                                          onTap: () =>
-                                              onTapRow(rows[index], index),
-                                          onOpen: () => onOpenRow(rows[index]),
-                                          onPrepareActionsMenu: () =>
-                                              onPrepareRowActions(
-                                                rows[index],
-                                                index,
-                                              ),
-                                          onPrimaryPointerDown: (additive) =>
-                                              onBeginDragSelection(
-                                                rows[index].employeeId,
-                                                rows
-                                                    .map(
-                                                      (item) => item.employeeId,
-                                                    )
-                                                    .toList(growable: false),
-                                                additive: additive,
-                                              ),
-                                          onDragEnter: () =>
-                                              onUpdateDragSelection(
-                                                rows[index].employeeId,
-                                              ),
-                                          onPointerEnd: onEndDragSelection,
-                                          onSecondaryTapDown: (details) =>
-                                              onRowContextMenu(
-                                                details,
-                                                rows[index],
-                                                index,
-                                              ),
-                                          onHoverChanged: onHoverRowChanged,
-                                        ),
-                                      ),
-                                    ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-class _HrPrenominaEmptyState extends StatelessWidget {
-  const _HrPrenominaEmptyState();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 28),
-      decoration: const BoxDecoration(color: Color(0xDDF0E7FF)),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8F3FF).withValues(alpha: 0.90),
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0x66B68CFF)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(
-              Icons.payments_outlined,
-              size: 34,
-              color: Color(0xFFB68CFF),
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Sin coincidencias',
-              style: TextStyle(
-                color: Color(0xFF24103D),
-                fontSize: 20,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Ajusta filtros o consolida fuentes RH para comenzar el borrador semanal de prenómina.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                color: const Color(0xFF6E47A8).withValues(alpha: 0.92),
-                fontSize: 13.5,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HrPrenominaGridHeader extends StatelessWidget {
-  final bool Function(String columnId) hasActiveFilter;
-  final Future<void> Function(String columnId, String label) onOpenFilter;
-
-  const _HrPrenominaGridHeader({
-    required this.hasActiveFilter,
-    required this.onOpenFilter,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    const style = TextStyle(
-      fontSize: 12,
-      fontWeight: FontWeight.w900,
-      color: Color(0xFF24103D),
-      letterSpacing: 0.3,
-    );
-    return Card(
-      elevation: 0,
-      color: const Color(0xFFF4EEFF).withValues(alpha: 0.96),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
-        child: Row(
-          children: [
-            SizedBox(
-              width: _kHrPrenominaIdW,
-              child: _HrPrenominaHeaderText(
-                'ID',
-                style: style,
-                active: hasActiveFilter('id'),
-                onFilter: () => onOpenFilter('id', 'ID'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _HrPrenominaHeaderText(
-                'NOMBRE',
-                style: style,
-                active: hasActiveFilter('nombre'),
-                onFilter: () => onOpenFilter('nombre', 'Nombre'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: _kHrPrenominaSalaryW,
-              child: _HrPrenominaHeaderText(
-                'SUELDO',
-                style: style,
-                centered: true,
-                active: hasActiveFilter('sueldo'),
-                onFilter: () => onOpenFilter('sueldo', 'Sueldo'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: _kHrPrenominaAttendanceW,
-              child: _HrPrenominaHeaderText(
-                'ASISTENCIA',
-                style: style,
-                centered: true,
-                active: hasActiveFilter('asistencia'),
-                onFilter: () => onOpenFilter('asistencia', 'Asistencia'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: _kHrPrenominaVacationW,
-              child: _HrPrenominaHeaderText(
-                'VACACIONES',
-                style: style,
-                centered: true,
-                active: hasActiveFilter('vacaciones'),
-                onFilter: () => onOpenFilter('vacaciones', 'Vacaciones'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: _kHrPrenominaPermissionW,
-              child: _HrPrenominaHeaderText(
-                'PERMISOS',
-                style: style,
-                centered: true,
-                active: hasActiveFilter('permisos'),
-                onFilter: () => onOpenFilter('permisos', 'Permisos'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: _kHrPrenominaStatusW,
-              child: _HrPrenominaHeaderText(
-                'ESTADO',
-                style: style,
-                centered: true,
-                active: hasActiveFilter('estado'),
-                onFilter: () => onOpenFilter('estado', 'Estado'),
-              ),
-            ),
-            const SizedBox(width: 12),
-            SizedBox(
-              width: _kHrPrenominaActionsW,
-              child: const _HrPrenominaHeaderText(
-                'ACCIONES',
-                style: style,
-                centered: true,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HrPrenominaHeaderText extends StatelessWidget {
-  final String label;
-  final TextStyle style;
-  final bool centered;
-  final bool active;
-  final VoidCallback? onFilter;
-
-  const _HrPrenominaHeaderText(
-    this.label, {
-    required this.style,
-    this.centered = false,
-    this.active = false,
-    this.onFilter,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final filterIcon = onFilter == null
-        ? const SizedBox(width: 21, height: 21)
-        : InkWell(
-            borderRadius: BorderRadius.circular(12),
-            onTap: onFilter,
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              curve: Curves.easeOutCubic,
-              padding: const EdgeInsets.all(3),
-              decoration: BoxDecoration(
-                color: active
-                    ? humanResourcesAreaTokens.primary
-                    : const Color(0xFFE7D8FF).withValues(alpha: 0.88),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: active
-                      ? humanResourcesAreaTokens.primary
-                      : const Color(0xFF6E47A8).withValues(alpha: 0.26),
-                ),
-              ),
-              child: Icon(
-                active ? Icons.filter_alt : Icons.filter_alt_outlined,
-                size: 15,
-                color: active ? Colors.white : const Color(0xFF6E47A8),
-              ),
-            ),
-          );
-    return Row(
-      children: [
-        filterIcon,
-        const SizedBox(width: 5),
-        Expanded(
-          child: Text(
-            label,
-            maxLines: 1,
-            textAlign: centered ? TextAlign.center : TextAlign.left,
-            overflow: TextOverflow.ellipsis,
-            style: style,
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _HrPrenominaCellSummary extends StatelessWidget {
-  final String primary;
-  final String secondary;
-  final TextAlign align;
-
-  const _HrPrenominaCellSummary({
-    required this.primary,
-    required this.secondary,
-    this.align = TextAlign.left,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: align == TextAlign.center
-          ? CrossAxisAlignment.center
-          : CrossAxisAlignment.start,
-      children: [
-        Text(
-          primary,
-          textAlign: align,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 11.8,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF24103D),
-          ),
-        ),
-        const SizedBox(height: 2),
-        Text(
-          secondary,
-          textAlign: align,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(
-            fontSize: 9.9,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF6E47A8),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _HrPrenominaGridRow extends StatelessWidget {
-  final _HrPrenominaSummaryRow row;
-  final int rowIndex;
-  final bool hovered;
-  final bool active;
-  final bool selected;
-  final VoidCallback onTap;
-  final Future<void> Function() onOpen;
-  final VoidCallback onPrepareActionsMenu;
-  final ValueChanged<bool>? onPrimaryPointerDown;
-  final VoidCallback? onDragEnter;
-  final VoidCallback? onPointerEnd;
-  final GestureTapDownCallback? onSecondaryTapDown;
-  final ValueChanged<String?> onHoverChanged;
-
-  const _HrPrenominaGridRow({
-    super.key,
-    required this.row,
-    required this.rowIndex,
-    required this.hovered,
-    required this.active,
-    required this.selected,
-    required this.onTap,
-    required this.onOpen,
-    required this.onPrepareActionsMenu,
-    this.onPrimaryPointerDown,
-    this.onDragEnter,
-    this.onPointerEnd,
-    this.onSecondaryTapDown,
-    required this.onHoverChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final hasSelection = active || selected;
-    final hoverOnly = hovered && !hasSelection;
-    final rowBg = hasSelection
-        ? const Color(0xFF9F6BFF).withValues(alpha: 0.18)
-        : hoverOnly
-        ? const Color(0xFFF6F0FF)
-        : Colors.white;
-    final hoverLift = hasSelection
-        ? -1.4
-        : hovered
-        ? -1.15
-        : 0.0;
-    final hoverElevation = hasSelection
-        ? 3.2
-        : hovered
-        ? 2.7
-        : 0.5;
-
-    return MouseRegion(
-      onEnter: (_) {
-        onHoverChanged(row.employeeId);
-        onDragEnter?.call();
-      },
-      onExit: (_) => onHoverChanged(null),
-      child: Listener(
-        onPointerDown: (event) {
-          if ((event.buttons & kPrimaryMouseButton) != 0) {
-            final pressed = HardwareKeyboard.instance.logicalKeysPressed;
-            final additive =
-                pressed.contains(LogicalKeyboardKey.controlLeft) ||
-                pressed.contains(LogicalKeyboardKey.controlRight) ||
-                pressed.contains(LogicalKeyboardKey.metaLeft) ||
-                pressed.contains(LogicalKeyboardKey.metaRight);
-            onPrimaryPointerDown?.call(additive);
-          }
-        },
-        onPointerUp: (_) => onPointerEnd?.call(),
-        onPointerCancel: (_) => onPointerEnd?.call(),
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: onTap,
-            onDoubleTap: () async => onOpen(),
-            onSecondaryTapDown: onSecondaryTapDown,
-            child: AnimatedContainer(
-              duration: Duration.zero,
-              curve: Curves.easeOutCubic,
-              transform: Matrix4.translationValues(0, hoverLift, 0),
-              child: Card(
-                elevation: hoverElevation,
-                color: rowBg,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                  side: BorderSide(
-                    color: hasSelection
-                        ? const Color(0xFF9F6BFF).withValues(alpha: 0.72)
-                        : Colors.white.withValues(alpha: 0.0),
-                  ),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 9,
-                  ),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: _kHrPrenominaIdW,
-                        child: Text(
-                          row.employeeId,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            fontWeight: FontWeight.w800,
-                            color: Color(0xFF24103D),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              row.displayName,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 12.5,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF24103D),
-                              ),
-                            ),
-                            const SizedBox(height: 2),
-                            Text(
-                              row.empresa.isEmpty
-                                  ? 'Empresa pendiente'
-                                  : row.empresa,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 10.5,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF6E47A8),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: _kHrPrenominaSalaryW,
-                        child: _HrPrenominaCellSummary(
-                          primary: _formatPrenominaMoney(row.salaryWeekly),
-                          secondary: row.weeklyPaymentVisibleAmount > 0
-                              ? 'Semana ${_formatPrenominaMoneyZero(row.weeklyPaymentVisibleAmount)}'
-                              : 'Borrador ${_formatPrenominaMoneyZero(row.preliminarySubtotalAmount)}',
-                          align: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: _kHrPrenominaAttendanceW,
-                        child: _HrPrenominaCellSummary(
-                          primary: row.attendanceSummaryPrimary,
-                          secondary: row.attendanceSummarySecondary,
-                          align: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: _kHrPrenominaVacationW,
-                        child: _HrPrenominaCellSummary(
-                          primary: row.vacationSummaryPrimary,
-                          secondary: row.vacationSummarySecondary,
-                          align: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: _kHrPrenominaPermissionW,
-                        child: _HrPrenominaCellSummary(
-                          primary: row.permissionSummaryPrimary,
-                          secondary: row.permissionSummarySecondary,
-                          align: TextAlign.center,
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: _kHrPrenominaStatusW,
-                        child: Center(
-                          child: _HrPrenominaStatusBadge(
-                            label: row.statusLabel,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      SizedBox(
-                        width: _kHrPrenominaActionsW,
-                        child: Center(
-                          child: Container(
-                            width: 44,
-                            height: 36,
-                            decoration: BoxDecoration(
-                              color: hasSelection
-                                  ? const Color(0xFF6E47A8)
-                                  : const Color(0xFFF3EBFF),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(
-                                color: hasSelection
-                                    ? const Color(
-                                        0xFF9F6BFF,
-                                      ).withValues(alpha: 0.86)
-                                    : const Color(
-                                        0xFFB68CFF,
-                                      ).withValues(alpha: 0.38),
-                              ),
-                            ),
-                            child:
-                                EditableRowActionsButton<_HrPrenominaRowAction>(
-                                  tooltip: 'Acciones de prenómina',
-                                  iconColor: hasSelection
-                                      ? Colors.white
-                                      : const Color(0xFF6E47A8),
-                                  onBeforeOpen: onPrepareActionsMenu,
-                                  entries: const [
-                                    ContractMenuEntry(
-                                      value: _HrPrenominaRowAction.open,
-                                      label: 'Editar borrador',
-                                      icon: Icons.payments_outlined,
-                                    ),
-                                  ],
-                                  onSelected: (_) async => onOpen(),
-                                ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HrPrenominaModuleTopBar extends StatelessWidget {
-  final List<_HrPrenominaSummaryRow> rows;
-  final int totalRows;
-  final int selectedCount;
-  final String? activeCellLabel;
-  final String activePeriodLabel;
-  final List<String> periodOptions;
-  final bool isPeriodClosed;
-  final int publishedDraftCount;
-  final int pendingDraftCount;
-  final VoidCallback onOpenSelectedRow;
-  final VoidCallback onClosePeriod;
-  final VoidCallback onExportCashEnvelopes;
-  final ValueChanged<String> onSelectPeriod;
-
-  const _HrPrenominaModuleTopBar({
-    required this.rows,
-    required this.totalRows,
-    required this.selectedCount,
-    required this.activeCellLabel,
-    required this.activePeriodLabel,
-    required this.periodOptions,
-    required this.isPeriodClosed,
-    required this.publishedDraftCount,
-    required this.pendingDraftCount,
-    required this.onOpenSelectedRow,
-    required this.onClosePeriod,
-    required this.onExportCashEnvelopes,
-    required this.onSelectPeriod,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        Row(
-          children: [
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Prenómina',
-                    style: TextStyle(
-                      fontSize: 22,
-                      fontWeight: FontWeight.w900,
-                      color: Colors.white,
-                    ),
-                  ),
-                  SizedBox(height: 3),
-                  Text(
-                    'Consolidado semanal previo a nómina final y validación RH.',
-                    style: TextStyle(
-                      fontSize: 12.5,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xD9D9C7FF),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                HumanResourcesPeriodSelector(
-                  selectedLabel: activePeriodLabel,
-                  options: periodOptions,
-                  onSelected: onSelectPeriod,
-                ),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.white,
-                    side: const BorderSide(color: Color(0xFFB794FF)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  onPressed:
-                      totalRows == 0 ||
-                          activePeriodLabel.isEmpty ||
-                          isPeriodClosed
-                      ? null
-                      : onClosePeriod,
-                  icon: Icon(
-                    isPeriodClosed
-                        ? Icons.lock_rounded
-                        : Icons.lock_outline_rounded,
-                  ),
-                  label: Text(
-                    isPeriodClosed ? 'Periodo cerrado' : 'Cerrar periodo',
-                  ),
-                ),
-                OutlinedButton.icon(
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFF4ECFF),
-                    side: const BorderSide(color: Color(0xFFB794FF)),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  onPressed: totalRows == 0 || activePeriodLabel.isEmpty
-                      ? null
-                      : onExportCashEnvelopes,
-                  icon: const Icon(Icons.print_outlined),
-                  label: const Text('Exportar sobres'),
-                ),
-                FilledButton.icon(
-                  style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFFB794FF),
-                    foregroundColor: const Color(0xFF24103D),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    textStyle: const TextStyle(fontWeight: FontWeight.w900),
-                  ),
-                  onPressed:
-                      totalRows == 0 ||
-                          activePeriodLabel.isEmpty ||
-                          isPeriodClosed
-                      ? null
-                      : onOpenSelectedRow,
-                  icon: const Icon(Icons.payments_outlined),
-                  label: const Text('Editar borrador'),
-                ),
-              ],
-            ),
-          ],
-        ),
-        const SizedBox(height: 10),
-        Container(
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                const Color(0xFFF4ECFF).withValues(alpha: 0.60),
-                const Color(0xFFE8D8FF).withValues(alpha: 0.42),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(18),
-            border: Border.all(color: const Color(0x44C7A7FF)),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF130B22).withValues(alpha: 0.10),
-                blurRadius: 18,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          padding: const EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                activePeriodLabel.isEmpty
-                    ? 'Sin periodo operativo activo'
-                    : activePeriodLabel,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w900,
-                  color: Color(0xFF24103D),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  _HrPrenominaTopMetaPill(
-                    label: 'Colaboradores',
-                    value: '$totalRows',
-                  ),
-                  _HrPrenominaTopMetaPill(
-                    label: 'Selección',
-                    value: '$selectedCount',
-                  ),
-                  if (activeCellLabel != null)
-                    _HrPrenominaTopMetaPill(
-                      label: 'Celda',
-                      value: activeCellLabel!.replaceFirst('Celda: ', ''),
-                    ),
-                  _HrPrenominaTopMetaPill(
-                    label: 'Estado',
-                    value: isPeriodClosed
-                        ? 'Periodo cerrado'
-                        : 'Borrador semanal',
-                  ),
-                  _HrPrenominaTopMetaPill(
-                    label: 'Publicados',
-                    value: '$publishedDraftCount/$totalRows',
-                  ),
-                  if (!isPeriodClosed && pendingDraftCount > 0)
-                    _HrPrenominaTopMetaPill(
-                      label: 'Pendientes',
-                      value: '$pendingDraftCount',
-                    ),
-                  const _HrPrenominaSoftPill(label: 'Fuente: RH'),
-                ],
-              ),
-              const SizedBox(height: 8),
-              _HrPrenominaMetricCard(totalRows: totalRows, rows: rows),
-            ],
-          ),
-        ),
-        const SizedBox(height: 12),
-      ],
-    );
-  }
-}
-
-class _HrPrenominaMetricCard extends StatelessWidget {
-  final int totalRows;
-  final List<_HrPrenominaSummaryRow> rows;
-
-  const _HrPrenominaMetricCard({required this.totalRows, required this.rows});
-
-  @override
-  Widget build(BuildContext context) {
-    final readyRows = rows.where((row) => row.statusLabel == 'Listo').length;
-    final reviewRows = rows
-        .where((row) => row.statusLabel == 'Revisión RH')
-        .length;
-    final lateMinutes = rows.fold<int>(
-      0,
-      (sum, row) => sum + row.lateMinutesSum,
-    );
-    final overtimeMinutes = rows.fold<int>(
-      0,
-      (sum, row) => sum + row.overtimeMinutesSum,
-    );
-    final vacationDays = rows.fold<double>(
-      0,
-      (sum, row) => sum + row.vacationTotalDays,
-    );
-    final permissionDays = rows.fold<double>(
-      0,
-      (sum, row) => sum + row.permissionImpactDays,
-    );
-    final preliminarySubtotal = rows.fold<double>(
-      0,
-      (sum, row) => sum + row.preliminarySubtotalAmount,
-    );
-    final weeklyVisibleTotal = rows.fold<double>(
-      0,
-      (sum, row) => sum + row.weeklyPaymentVisibleAmount,
-    );
-    final fiscalTotal = rows.fold<double>(
-      0,
-      (sum, row) => sum + row.fiscalTotalAmount,
-    );
-    final fiscalCashTotal = rows.fold<double>(
-      0,
-      (sum, row) => sum + row.fiscalCashAmount,
-    );
-    final fiscalDepositedTotal = rows.fold<double>(
-      0,
-      (sum, row) => sum + row.fiscalDepositedAmount,
-    );
-    final operationalCashTotal = rows.fold<double>(
-      0,
-      (sum, row) => sum + row.operationalCashTotalAmount,
-    );
-    final fiscalRows = rows
-        .where((row) => row.hasFiscalVacationFootprint)
-        .length;
-    final permissionPendingRows = rows
-        .where((row) => row.permissionPendingPrenominaCount > 0)
-        .length;
-    return Wrap(
-      spacing: 8,
-      runSpacing: 8,
-      children: [
-        _HrPrenominaMetricPill(label: 'Listo: $readyRows'),
-        _HrPrenominaMetricPill(label: 'Revisión RH: $reviewRows'),
-        _HrPrenominaMetricPill(
-          label: 'Retardo: ${_formatPrenominaMinutesAsHourRatio(lateMinutes)}',
-        ),
-        _HrPrenominaMetricPill(
-          label:
-              'Horas extra: ${_formatPrenominaMinutesAsHourRatio(overtimeMinutes)}',
-        ),
-        _HrPrenominaMetricPill(
-          label: 'Vacaciones: ${_formatPrenominaDays(vacationDays)} d',
-        ),
-        _HrPrenominaMetricPill(
-          label: 'Permisos: ${_formatPrenominaDays(permissionDays)} d',
-        ),
-        _HrPrenominaMetricPill(
-          label:
-              'Preliminar: ${_formatPrenominaMoneyZero(preliminarySubtotal)}',
-          emphasized: true,
-        ),
-        _HrPrenominaMetricPill(
-          label: 'Fiscal: ${_formatPrenominaMoneyZero(fiscalTotal)}',
-        ),
-        _HrPrenominaMetricPill(
-          label:
-              'Fiscal depositado: ${_formatPrenominaMoneyZero(fiscalDepositedTotal)}',
-        ),
-        _HrPrenominaMetricPill(
-          label:
-              'Fiscal en efectivo: ${_formatPrenominaMoneyZero(fiscalCashTotal)}',
-        ),
-        _HrPrenominaMetricPill(
-          label:
-              'Efectivo RH: ${_formatPrenominaMoneyZero(operationalCashTotal)}',
-        ),
-        _HrPrenominaMetricPill(
-          label: 'Semana: ${_formatPrenominaMoneyZero(weeklyVisibleTotal)}',
-          emphasized: true,
-        ),
-        _HrPrenominaMetricPill(label: 'Fiscal CONTPAQ: $fiscalRows'),
-        _HrPrenominaMetricPill(
-          label: 'Permisos pendientes: $permissionPendingRows',
-        ),
-      ],
-    );
-  }
-}
-
-class _HrPrenominaMetricPill extends StatelessWidget {
-  final String label;
-  final bool emphasized;
-
-  const _HrPrenominaMetricPill({required this.label, this.emphasized = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-      decoration: BoxDecoration(
-        color: emphasized ? const Color(0xFFDBC2FF) : const Color(0xFFE9DAFF),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(
-          color: emphasized ? const Color(0xAA9F6BFF) : const Color(0x55B084FF),
-        ),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 11.5,
-          fontWeight: FontWeight.w800,
-          color: Color(0xFF24103D),
-        ),
-      ),
-    );
-  }
-}
-
-class _HrPrenominaTopMetaPill extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _HrPrenominaTopMetaPill({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-      decoration: BoxDecoration(
-        color: const Color(0xFFEDE1FF),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0x55B084FF)),
-      ),
-      child: RichText(
-        text: TextSpan(
-          style: const TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w800,
-            color: Color(0xFF24103D),
-          ),
-          children: [
-            TextSpan(
-              text: '$label: ',
-              style: const TextStyle(color: Color(0xFF6E47A8)),
-            ),
-            TextSpan(text: value),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HrPrenominaSoftPill extends StatelessWidget {
-  final String label;
-
-  const _HrPrenominaSoftPill({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7F0FF),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0x44B084FF)),
-      ),
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontSize: 12.5,
-          fontWeight: FontWeight.w800,
-          color: Color(0xFF6E47A8),
-        ),
-      ),
-    );
-  }
-}
-
-class _HrPrenominaGridFooter extends StatelessWidget {
-  final int rows;
-  final int totalRows;
-  final int selectedCount;
-  final int currentPage;
-  final int totalPages;
-  final int pageSize;
-  final VoidCallback? onPreviousPage;
-  final VoidCallback? onNextPage;
-  final ValueChanged<int> onPageSizeChanged;
-
-  const _HrPrenominaGridFooter({
-    required this.rows,
-    required this.totalRows,
-    required this.selectedCount,
-    required this.currentPage,
-    required this.totalPages,
-    required this.pageSize,
-    required this.onPreviousPage,
-    required this.onNextPage,
-    required this.onPageSizeChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Card(
-        elevation: 0,
-        color: const Color(0xFFF0E6FF).withValues(alpha: 0.56),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            crossAxisAlignment: WrapCrossAlignment.center,
-            children: [
-              OutlinedButton.icon(
-                style: _hrPrenominaActionOutlinedButtonStyle(),
-                onPressed: onPreviousPage,
-                icon: const Icon(Icons.chevron_left),
-                label: const Text('Anterior'),
-              ),
-              Text(
-                'Página ${_fmtPrenominaInt(currentPage + 1)} de ${_fmtPrenominaInt(totalPages)}',
-              ),
-              OutlinedButton.icon(
-                style: _hrPrenominaActionOutlinedButtonStyle(),
-                onPressed: onNextPage,
-                icon: const Icon(Icons.chevron_right),
-                label: const Text('Siguiente'),
-              ),
-              const Text('Filas/pág:'),
-              SizedBox(
-                width: 90,
-                child: DropdownButtonFormField<int>(
-                  initialValue: pageSize,
-                  isDense: true,
-                  decoration: _hrPrenominaFieldDecoration(),
-                  items: const [40, 80, 120]
-                      .map(
-                        (e) =>
-                            DropdownMenuItem<int>(value: e, child: Text('$e')),
-                      )
-                      .toList(),
-                  onChanged: (value) {
-                    if (value != null) onPageSizeChanged(value);
-                  },
-                ),
-              ),
-              Text('Mostrando: ${_fmtPrenominaInt(rows)}'),
-              Text('Total: ${_fmtPrenominaInt(totalRows)}'),
-              Text('Selección: ${_fmtPrenominaInt(selectedCount)}'),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 class _HrPrenominaHeaderBrand extends StatelessWidget {
   const _HrPrenominaHeaderBrand();
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        ContractGlassCard(
-          padding: const EdgeInsets.all(8),
-          child: SizedBox(
-            width: 56,
-            height: 56,
-            child: const DicsaLogoD(size: 36, progress: 1),
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          ContractGlassCard(
+            padding: const EdgeInsets.all(8),
+            child: SizedBox(
+              width: 56,
+              height: 56,
+              child: const DicsaLogoD(size: 36, progress: 1),
+            ),
           ),
-        ),
-        const SizedBox(width: 14),
-        const Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Recursos Humanos',
-              style: TextStyle(
-                fontSize: 24,
-                fontWeight: FontWeight.w900,
-                color: Colors.white,
+          const SizedBox(width: 14),
+          const Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Recursos Humanos',
+                style: TextStyle(
+                  fontSize: 24,
+                  fontWeight: FontWeight.w900,
+                  color: Colors.white,
+                ),
               ),
-            ),
-            SizedBox(height: 2),
-            Text(
-              'Prenómina',
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: Color(0xFFCFAEFF),
+              SizedBox(height: 2),
+              Text(
+                'Prenómina',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFCFAEFF),
+                ),
               ),
-            ),
-          ],
-        ),
-      ],
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -2876,1563 +1575,6 @@ class _HrPrenominaEditResult {
   final _HrPrenominaDraftDraft draft;
 
   const _HrPrenominaEditResult({required this.action, required this.draft});
-}
-
-class _HrPrenominaEditDialog extends StatefulWidget {
-  final _HrPrenominaSummaryRow row;
-  final String periodLabel;
-  final bool canGoPrevious;
-  final bool canGoNext;
-
-  const _HrPrenominaEditDialog({
-    required this.row,
-    required this.periodLabel,
-    required this.canGoPrevious,
-    required this.canGoNext,
-  });
-
-  @override
-  State<_HrPrenominaEditDialog> createState() => _HrPrenominaEditDialogState();
-}
-
-class _HrPrenominaEditDialogState extends State<_HrPrenominaEditDialog> {
-  final FocusNode _dialogFocusNode = FocusNode(debugLabel: 'hrPrenominaDialog');
-  late final _HrPrenominaDraftDraft _draft =
-      _HrPrenominaDraftDraft.fromSummaryRow(widget.row);
-  String? _moneyValidationMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) _dialogFocusNode.requestFocus();
-    });
-  }
-
-  @override
-  void dispose() {
-    _dialogFocusNode.dispose();
-    super.dispose();
-  }
-
-  bool _hasEditableTextFocus() {
-    final focusedWidget = FocusManager.instance.primaryFocus?.context?.widget;
-    return focusedWidget is EditableText;
-  }
-
-  void _save([_HrPrenominaEditAction action = _HrPrenominaEditAction.save]) {
-    final invalidField = _draft.firstInvalidMoneyFieldLabel;
-    if (invalidField != null) {
-      setState(() {
-        _moneyValidationMessage =
-            'Revisa "$invalidField". Captura un monto válido, por ejemplo 1250.50.';
-      });
-      return;
-    }
-    Navigator.of(
-      context,
-    ).pop(_HrPrenominaEditResult(action: action, draft: _draft));
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Focus(
-      autofocus: true,
-      focusNode: _dialogFocusNode,
-      onKeyEvent: (node, event) {
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.logicalKey == LogicalKeyboardKey.escape) {
-          Navigator.of(context).pop();
-          return KeyEventResult.handled;
-        }
-        if (!_hasEditableTextFocus() &&
-            (event.logicalKey == LogicalKeyboardKey.enter ||
-                event.logicalKey == LogicalKeyboardKey.numpadEnter)) {
-          _save();
-          return KeyEventResult.handled;
-        }
-        if (!_hasEditableTextFocus() &&
-            event.logicalKey == LogicalKeyboardKey.arrowLeft &&
-            widget.canGoPrevious) {
-          _save(_HrPrenominaEditAction.previous);
-          return KeyEventResult.handled;
-        }
-        if (!_hasEditableTextFocus() &&
-            event.logicalKey == LogicalKeyboardKey.arrowRight &&
-            widget.canGoNext) {
-          _save(_HrPrenominaEditAction.next);
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: ContractDialogShell(
-        insetPadding: const EdgeInsets.all(24),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-          child: Container(
-            width: 1080,
-            constraints: BoxConstraints(
-              maxWidth: 1080,
-              maxHeight: MediaQuery.sizeOf(context).height - 48,
-            ),
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF6F0FF).withValues(alpha: 0.97),
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: const Color(0x66B084FF)),
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                HumanResourcesCompactDialogHeader(
-                  title: 'Prenómina',
-                  contextLabel: widget.periodLabel.isEmpty
-                      ? 'Borrador semanal por colaborador'
-                      : widget.periodLabel,
-                  onClose: () => Navigator.of(context).pop(),
-                ),
-                const SizedBox(height: 12),
-                if (_moneyValidationMessage != null) ...[
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 12,
-                      vertical: 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFFFEEF2),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: const Color(0xFFE5A1B5)),
-                    ),
-                    child: Text(
-                      _moneyValidationMessage!,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        fontWeight: FontWeight.w800,
-                        color: Color(0xFF8B2D50),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                ],
-                Flexible(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      SizedBox(
-                        width: 250,
-                        child: Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                          decoration: BoxDecoration(
-                            color: const Color(
-                              0xFFF3E9FF,
-                            ).withValues(alpha: 0.92),
-                            borderRadius: BorderRadius.circular(16),
-                            border: Border.all(color: const Color(0x55B084FF)),
-                          ),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                widget.row.displayName,
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.w900,
-                                  color: Color(0xFF24103D),
-                                ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'ID #${widget.row.employeeId}',
-                                style: const TextStyle(
-                                  fontSize: 12.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF6E47A8),
-                                ),
-                              ),
-                              const SizedBox(height: 3),
-                              Text(
-                                widget.row.empresa.isEmpty
-                                    ? 'Empresa pendiente'
-                                    : widget.row.empresa,
-                                style: const TextStyle(
-                                  fontSize: 11.5,
-                                  fontWeight: FontWeight.w800,
-                                  color: Color(0xFF6E47A8),
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              const Divider(
-                                color: Color(0x44B084FF),
-                                height: 1,
-                              ),
-                              const SizedBox(height: 10),
-                              _HrPrenominaInfoLine(
-                                label: 'Periodo',
-                                value: widget.periodLabel.isEmpty
-                                    ? 'Sin periodo activo'
-                                    : widget.periodLabel,
-                              ),
-                              _HrPrenominaInfoLine(
-                                label: 'Estado',
-                                value: widget.row.statusLabel,
-                              ),
-                              const SizedBox(height: 2),
-                              Wrap(
-                                spacing: 8,
-                                runSpacing: 8,
-                                children: [
-                                  _HrPrenominaCompactInfoTile(
-                                    label: 'Salario',
-                                    value: _formatPrenominaMoney(
-                                      widget.row.salaryWeekly,
-                                    ),
-                                  ),
-                                  _HrPrenominaCompactInfoTile(
-                                    label: 'Percibido',
-                                    value: _formatPrenominaMoney(
-                                      widget.row.salaryPerceivedWeekly,
-                                    ),
-                                  ),
-                                  _HrPrenominaCompactInfoTile(
-                                    label: 'Base',
-                                    value: _formatPrenominaMoneyZero(
-                                      widget.row.visibleDraftBaseAmount,
-                                    ),
-                                  ),
-                                  _HrPrenominaCompactInfoTile(
-                                    label: 'Prev',
-                                    value: _formatPrenominaMoneyZero(
-                                      widget.row.preliminarySubtotalAmount,
-                                    ),
-                                  ),
-                                  _HrPrenominaCompactInfoTile(
-                                    label: 'Fiscal',
-                                    value: _formatPrenominaMoneyZero(
-                                      widget.row.fiscalTotalAmount,
-                                    ),
-                                  ),
-                                  _HrPrenominaCompactInfoTile(
-                                    label: 'Semana',
-                                    value: _formatPrenominaMoneyZero(
-                                      widget.row.weeklyPaymentVisibleAmount,
-                                    ),
-                                    emphasized: true,
-                                  ),
-                                ],
-                              ),
-                              const SizedBox(height: 10),
-                              _HrPrenominaMiniLedgerLine(
-                                label: 'Asistencia',
-                                value: widget.row.attendanceSummary,
-                              ),
-                              const SizedBox(height: 8),
-                              _HrPrenominaMiniLedgerLine(
-                                label: 'Vacaciones',
-                                value: widget.row.vacationSummary,
-                              ),
-                              const SizedBox(height: 8),
-                              _HrPrenominaMiniLedgerLine(
-                                label: 'Permisos',
-                                value: widget.row.permissionSummary,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: SingleChildScrollView(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _HrPrenominaSectionCard(
-                                title: 'Resumen fuente',
-                                subtitle:
-                                    'Consolidado semanal aprobado desde asistencia, vacaciones y permisos.',
-                                child: Wrap(
-                                  spacing: 12,
-                                  runSpacing: 12,
-                                  children: [
-                                    _HrPrenominaMetricMiniCard(
-                                      label: 'ASISTENCIA LISTA',
-                                      value:
-                                          '${widget.row.attendanceReadyDays}',
-                                    ),
-                                    _HrPrenominaMetricMiniCard(
-                                      label: 'REVISION RH',
-                                      value:
-                                          '${widget.row.attendanceReviewDays}',
-                                    ),
-                                    _HrPrenominaMetricMiniCard(
-                                      label: 'RETARDO',
-                                      value: _formatPrenominaMinutesAsHourRatio(
-                                        widget.row.lateMinutesSum,
-                                      ),
-                                    ),
-                                    _HrPrenominaMetricMiniCard(
-                                      label: 'HORAS EXTRA',
-                                      value: _formatPrenominaMinutesAsHourRatio(
-                                        widget.row.overtimeMinutesSum,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              _HrPrenominaSectionCard(
-                                title: 'Lectura base RH',
-                                subtitle:
-                                    'Base visible del borrador semanal antes de fórmulas finales de nómina.',
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Wrap(
-                                      spacing: 12,
-                                      runSpacing: 12,
-                                      children: [
-                                        _HrPrenominaMetricMiniCard(
-                                          label: 'SUELDO SEMANAL',
-                                          value: _formatPrenominaMoneyZero(
-                                            widget.row.salaryWeekly,
-                                          ),
-                                        ),
-                                        _HrPrenominaMetricMiniCard(
-                                          label: 'PERCIBIDO SEMANAL',
-                                          value: _formatPrenominaMoneyZero(
-                                            widget.row.salaryPerceivedWeekly,
-                                          ),
-                                        ),
-                                        _HrPrenominaMetricMiniCard(
-                                          label: 'AJUSTE RH',
-                                          value: _formatPrenominaSignedMoney(
-                                            widget.row.manualAdjustmentAmount,
-                                          ),
-                                        ),
-                                        _HrPrenominaMetricMiniCard(
-                                          label: 'BASE VISIBLE',
-                                          value: _formatPrenominaMoneyZero(
-                                            widget.row.visibleDraftBaseAmount,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    const _HrPrenominaInlineNote(
-                                      icon: Icons.calculate_outlined,
-                                      message:
-                                          'Base visible = salario percibido semanal + ajuste manual RH. Todavía no representa el neto final de nómina.',
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              _HrPrenominaSectionCard(
-                                title: 'Corrida preliminar RH',
-                                subtitle:
-                                    'Valoración transparente previa a nómina final, usando solo supuestos visibles.',
-                                child: Column(
-                                  children: [
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Salario diario fiscal',
-                                      detail:
-                                          'Referencia semanal fiscal dividida entre 7 días.',
-                                      value: _formatPrenominaMoneyZero(
-                                        widget.row.fiscalDailyRate,
-                                      ),
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Salario diario percibido',
-                                      detail:
-                                          'Referencia semanal percibida dividida entre 7 días.',
-                                      value: _formatPrenominaMoneyZero(
-                                        widget.row.perceivedDailyRate,
-                                      ),
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Vacaciones estimadas',
-                                      detail:
-                                          'Días pagados del periodo por salario percibido diario.',
-                                      value: _formatPrenominaMoneyZero(
-                                        widget.row.preliminaryVacationPayAmount,
-                                      ),
-                                      emphasized:
-                                          widget
-                                              .row
-                                              .preliminaryVacationPayAmount !=
-                                          0,
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Descuento preliminar sin goce',
-                                      detail:
-                                          widget.row.permissionWithoutPayHours >
-                                              0
-                                          ? 'Incluye días y horas sin goce con supuesto operativo de 8 h por día.'
-                                          : 'Calculado solo sobre días sin goce capturados.',
-                                      value: _formatPrenominaSignedMoney(
-                                        -widget
-                                            .row
-                                            .preliminaryWithoutPayDeductionAmount,
-                                      ),
-                                      emphasized:
-                                          widget
-                                              .row
-                                              .preliminaryWithoutPayDeductionAmount !=
-                                          0,
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept:
-                                          'Permisos con goce de referencia',
-                                      detail:
-                                          widget.row.permissionWithPayHours > 0
-                                          ? 'Valor visible de días y horas con goce; no suma extra sobre la base semanal.'
-                                          : 'Referencia visible de días con goce dentro del periodo.',
-                                      value: _formatPrenominaMoneyZero(
-                                        widget
-                                            .row
-                                            .preliminaryWithPayReferenceAmount,
-                                      ),
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Retardo fiscal calculado',
-                                      detail:
-                                          'Salario base por hora x minutos de retardo / 60.',
-                                      value: _formatPrenominaSignedMoney(
-                                        -widget.row.fiscalLateDeductionAmount,
-                                      ),
-                                      emphasized:
-                                          widget
-                                              .row
-                                              .fiscalLateDeductionAmount !=
-                                          0,
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Horas extra en efectivo',
-                                      detail:
-                                          '\$60.00 por hora, proporcional a ${_formatPrenominaMinutesAsHourRatio(widget.row.overtimeMinutesSum)}.',
-                                      value: _formatPrenominaMoneyZero(
-                                        widget.row.overtimeMonetizedAmount,
-                                      ),
-                                      emphasized:
-                                          widget.row.overtimeMonetizedAmount !=
-                                          0,
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Subtotal preliminar RH',
-                                      detail:
-                                          'Base visible + vacaciones estimadas - descuentos preliminares sin goce.',
-                                      value: _formatPrenominaMoneyZero(
-                                        widget.row.preliminarySubtotalAmount,
-                                      ),
-                                      emphasized: true,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              _HrPrenominaSectionCard(
-                                title: 'Conceptos del borrador',
-                                subtitle:
-                                    'Lectura operativa por concepto antes de construir el cálculo final de nómina.',
-                                child: Column(
-                                  children: [
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Asistencia consolidada',
-                                      detail:
-                                          '${widget.row.attendanceReadyDays} día(s) listos · ${widget.row.attendanceReviewDays} en revisión',
-                                      value:
-                                          widget.row.attendanceOperationalLabel,
-                                      emphasized:
-                                          widget.row.attendanceReviewDays == 0,
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Retardo acumulado',
-                                      detail:
-                                          'Lectura operativa importada y cerrada desde asistencia',
-                                      value: _formatPrenominaMinutesAsHourRatio(
-                                        widget.row.lateMinutesSum,
-                                      ),
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Horas extra acumuladas',
-                                      detail:
-                                          'Huella semanal validada en el cierre editable de asistencia',
-                                      value: _formatPrenominaMinutesAsHourRatio(
-                                        widget.row.overtimeMinutesSum,
-                                      ),
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Vacaciones pagadas',
-                                      detail:
-                                          widget.row.hasFiscalVacationFootprint
-                                          ? 'Con huella fiscal visible de CONTPAQ'
-                                          : 'Sin huella fiscal registrada en el periodo',
-                                      value:
-                                          '${_formatPrenominaDays(widget.row.vacationPaidDays)} d',
-                                      emphasized:
-                                          widget.row.hasFiscalVacationFootprint,
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Vacaciones disfrutadas',
-                                      detail:
-                                          'Consumen disponibilidad operativa del ejercicio',
-                                      value:
-                                          '${_formatPrenominaDays(widget.row.vacationEnjoyedDays)} d',
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Vacaciones reservadas',
-                                      detail:
-                                          'Compromiso RH todavía visible para periodos posteriores',
-                                      value:
-                                          '${_formatPrenominaDays(widget.row.vacationReservedDays)} d',
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Permisos con goce',
-                                      detail:
-                                          'Eventos administrativos con impacto nominal positivo',
-                                      value:
-                                          '${_formatPrenominaDays(widget.row.permissionWithPayDays)} d',
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Permisos sin goce',
-                                      detail:
-                                          'Eventos administrativos que RH debe descontar después',
-                                      value:
-                                          '${_formatPrenominaDays(widget.row.permissionWithoutPayDays)} d',
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Incapacidades',
-                                      detail:
-                                          'Días trazados por incapacidad dentro del periodo activo',
-                                      value:
-                                          '${_formatPrenominaDays(widget.row.disabilityDays)} d',
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Ajuste manual RH',
-                                      detail:
-                                          'Corrección nominal capturada manualmente por RH',
-                                      value: _formatPrenominaSignedMoney(
-                                        widget.row.manualAdjustmentAmount,
-                                      ),
-                                      emphasized:
-                                          widget.row.manualAdjustmentAmount !=
-                                          0,
-                                    ),
-                                    _HrPrenominaConceptLine(
-                                      concept: 'Base visible semanal',
-                                      detail:
-                                          'Salario percibido semanal más ajuste RH visible',
-                                      value: _formatPrenominaMoneyZero(
-                                        widget.row.visibleDraftBaseAmount,
-                                      ),
-                                      emphasized: true,
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              _HrPrenominaSectionCard(
-                                title: 'Vacaciones y permisos',
-                                subtitle:
-                                    'Trazabilidad de eventos que ya dejan huella en el borrador semanal.',
-                                child: Wrap(
-                                  spacing: 12,
-                                  runSpacing: 12,
-                                  children: [
-                                    _HrPrenominaMetricMiniCard(
-                                      label: 'VAC PAGADAS',
-                                      value: _formatPrenominaDays(
-                                        widget.row.vacationPaidDays,
-                                      ),
-                                    ),
-                                    _HrPrenominaMetricMiniCard(
-                                      label: 'VAC DISFRUTADAS',
-                                      value: _formatPrenominaDays(
-                                        widget.row.vacationEnjoyedDays,
-                                      ),
-                                    ),
-                                    _HrPrenominaMetricMiniCard(
-                                      label: 'VAC RESERVADAS',
-                                      value: _formatPrenominaDays(
-                                        widget.row.vacationReservedDays,
-                                      ),
-                                    ),
-                                    _HrPrenominaMetricMiniCard(
-                                      label: 'PERM GOCE',
-                                      value: _formatPrenominaDays(
-                                        widget.row.permissionWithPayDays,
-                                      ),
-                                    ),
-                                    _HrPrenominaMetricMiniCard(
-                                      label: 'PERM SIN GOCE',
-                                      value: _formatPrenominaDays(
-                                        widget.row.permissionWithoutPayDays,
-                                      ),
-                                    ),
-                                    _HrPrenominaMetricMiniCard(
-                                      label: 'INCAPACIDAD',
-                                      value: _formatPrenominaDays(
-                                        widget.row.disabilityDays,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              _HrPrenominaSectionCard(
-                                title: 'Huella fiscal CONTPAQ',
-                                subtitle:
-                                    'Referencias fiscales del periodo. Si el lote no las trajo, RH puede capturarlas manualmente.',
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Wrap(
-                                      spacing: 12,
-                                      runSpacing: 12,
-                                      children: [
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Neto fiscal',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue:
-                                                  _draft.fiscalNetAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.fiscalNetAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'IMSS fiscal',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue:
-                                                  _draft.fiscalImssAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.fiscalImssAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'INFONAVIT fiscal',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .fiscalInfonavitAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.fiscalInfonavitAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'FONACOT fiscal',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .fiscalFonacotAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.fiscalFonacotAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Faltas fiscales',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .fiscalAbsenceAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.fiscalAbsenceAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Retardos fiscales',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .fiscalLateDeductionAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.fiscalLateDeductionAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Vacaciones fiscales',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .fiscalVacationAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.fiscalVacationAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    _HrPrenominaInlineNote(
-                                      icon: Icons.account_balance_outlined,
-                                      message:
-                                          'Retardo calculado: ${_formatPrenominaMinutesAsHourRatio(widget.row.lateMinutesSum)} x ${_formatPrenominaMoney(widget.row.fiscalHourlyRate)}/h = ${_formatPrenominaMoney(widget.row.fiscalLateDeductionAmount)}. Se descuenta del fiscal; si CONTPAQ ya lo aplicó, captura \$0.00 para no duplicarlo.',
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              _HrPrenominaSectionCard(
-                                title: 'Bolsa operativa RH',
-                                subtitle:
-                                    'Efectivo, bonos y descuentos fuera del neto fiscal. Las horas extra se proponen a \$60.00 por hora, proporcionales a los minutos.',
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Wrap(
-                                      spacing: 12,
-                                      runSpacing: 12,
-                                      children: [
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Sueldo en efectivo',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue:
-                                                  _draft.cashSalaryAmountText,
-                                              onChanged: (value) {
-                                                _draft.cashSalaryAmountText =
-                                                    value;
-                                                _draft.cashSalaryIsManual =
-                                                    true;
-                                              },
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Vacaciones en efectivo',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue:
-                                                  _draft.cashVacationAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.cashVacationAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'ISR operativo',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue:
-                                                  _draft.cashIsrAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.cashIsrAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Apoyo transporte',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .transportSupportAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.transportSupportAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Día festivo',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue:
-                                                  _draft.holidayAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.holidayAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Horas extra en efectivo',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .overtimeMonetizedAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.overtimeMonetizedAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Bono manual en efectivo',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue:
-                                                  _draft.manualBonusAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.manualBonusAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Descuento faltas',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .cashAbsenceDeductionAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.cashAbsenceDeductionAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Descuento INFONAVIT',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .cashInfonavitDeductionAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.cashInfonavitDeductionAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Descuento FONACOT',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .cashFonacotDeductionAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.cashFonacotDeductionAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Descuento préstamo',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .loanDeductionAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.loanDeductionAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Fiscal en efectivo',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue:
-                                                  _draft.checkAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.checkAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 210,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Pago por fuera',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .paymentOutsideAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.paymentOutsideAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Column(
-                                      children: [
-                                        _HrPrenominaConceptLine(
-                                          concept: 'Bolsa operativa RH',
-                                          detail:
-                                              'Suma de sueldo en efectivo, vacaciones, transporte, festivo y bonos.',
-                                          value: _formatPrenominaMoneyZero(
-                                            widget
-                                                .row
-                                                .operationalCashSubtotalAmount,
-                                          ),
-                                        ),
-                                        _HrPrenominaConceptLine(
-                                          concept: 'Descuentos operativos RH',
-                                          detail:
-                                              'ISR, faltas, INFONAVIT, FONACOT y préstamo fuera del neto fiscal.',
-                                          value: _formatPrenominaSignedMoney(
-                                            -widget
-                                                .row
-                                                .operationalCashDeductionsTotalAmount,
-                                          ),
-                                          emphasized:
-                                              widget
-                                                  .row
-                                                  .operationalCashDeductionsTotalAmount !=
-                                              0,
-                                        ),
-                                        _HrPrenominaConceptLine(
-                                          concept: 'Operativo neto RH',
-                                          detail:
-                                              'Resultado operativo visible antes de sumarse al depósito fiscal.',
-                                          value: _formatPrenominaMoneyZero(
-                                            widget
-                                                .row
-                                                .operationalCashTotalAmount,
-                                          ),
-                                          emphasized: true,
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    _HrPrenominaInlineNote(
-                                      icon: Icons.calculate_outlined,
-                                      message: _draft.cashSalaryIsManual
-                                          ? 'RH fijó manualmente el sueldo en efectivo para este cierre.'
-                                          : 'Sueldo en efectivo calculado: percibido menos neto fiscal. Sin incidencias, el total semanal coincide con el salario percibido.',
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(height: 10),
-                              _HrPrenominaSectionCard(
-                                title: 'Borrador RH',
-                                subtitle:
-                                    'Control semanal de estatus, canal de pago y observaciones antes de publicar la corrida.',
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Wrap(
-                                      spacing: 12,
-                                      runSpacing: 12,
-                                      children: [
-                                        SizedBox(
-                                          width: 220,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Estatus RH',
-                                            child: _HrPrenominaPickerField(
-                                              value: _draft.draftStatus.label,
-                                              onTap: () async {
-                                                final value =
-                                                    await showSearchablePickerDialog<
-                                                      _HrPrenominaDraftStatus
-                                                    >(
-                                                      context,
-                                                      title: 'Estatus RH',
-                                                      initialValue:
-                                                          _draft.draftStatus,
-                                                      options: _HrPrenominaDraftStatus
-                                                          .values
-                                                          .map(
-                                                            (item) =>
-                                                                SearchablePickerOption(
-                                                                  value: item,
-                                                                  label: item
-                                                                      .label,
-                                                                ),
-                                                          )
-                                                          .toList(
-                                                            growable: false,
-                                                          ),
-                                                    );
-                                                if (value == null) return;
-                                                setState(
-                                                  () => _draft.draftStatus =
-                                                      value,
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 220,
-                                          child: _HrPrenominaLabeledField(
-                                            label:
-                                                'Ajuste RH en efectivo (+/-)',
-                                            child: _HrPrenominaMoneyTextField(
-                                              initialValue: _draft
-                                                  .manualAdjustmentAmountText,
-                                              onChanged: (value) =>
-                                                  _draft.manualAdjustmentAmountText =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 220,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Canal de pago',
-                                            child: _HrPrenominaPickerField(
-                                              value:
-                                                  _draft.paymentChannel.label,
-                                              onTap: () async {
-                                                final value =
-                                                    await showSearchablePickerDialog<
-                                                      _HrPrenominaPaymentChannel
-                                                    >(
-                                                      context,
-                                                      title: 'Canal de pago',
-                                                      initialValue:
-                                                          _draft.paymentChannel,
-                                                      options: _HrPrenominaPaymentChannel
-                                                          .values
-                                                          .map(
-                                                            (item) =>
-                                                                SearchablePickerOption(
-                                                                  value: item,
-                                                                  label: item
-                                                                      .label,
-                                                                ),
-                                                          )
-                                                          .toList(
-                                                            growable: false,
-                                                          ),
-                                                    );
-                                                if (value == null) return;
-                                                setState(
-                                                  () => _draft.paymentChannel =
-                                                      value,
-                                                );
-                                              },
-                                            ),
-                                          ),
-                                        ),
-                                        SizedBox(
-                                          width: 300,
-                                          child: _HrPrenominaLabeledField(
-                                            label: 'Referencia de pago',
-                                            child: TextFormField(
-                                              initialValue:
-                                                  _draft.paymentReference,
-                                              decoration:
-                                                  _hrPrenominaFieldDecoration(),
-                                              onChanged: (value) =>
-                                                  _draft.paymentReference =
-                                                      value,
-                                            ),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    Column(
-                                      children: [
-                                        _HrPrenominaConceptLine(
-                                          concept: 'Fiscal total',
-                                          detail:
-                                              'Huella semanal tomada de CONTPAQ y validada por RH.',
-                                          value: _formatPrenominaMoneyZero(
-                                            widget.row.fiscalTotalAmount,
-                                          ),
-                                        ),
-                                        _HrPrenominaConceptLine(
-                                          concept: 'Fiscal depositado',
-                                          detail:
-                                              'Parte fiscal que sí se deposita a colaboradores con cuenta.',
-                                          value: _formatPrenominaMoneyZero(
-                                            widget.row.fiscalDepositedAmount,
-                                          ),
-                                        ),
-                                        _HrPrenominaConceptLine(
-                                          concept: 'Fiscal en efectivo',
-                                          detail:
-                                              'Parte fiscal que no se deposita y se entrega en efectivo.',
-                                          value: _formatPrenominaMoneyZero(
-                                            widget.row.fiscalCashAmount,
-                                          ),
-                                          emphasized:
-                                              widget.row.fiscalCashAmount != 0,
-                                        ),
-                                        _HrPrenominaConceptLine(
-                                          concept: 'Ajuste RH en efectivo',
-                                          detail:
-                                              'Diferencia excepcional positiva o negativa, fuera del fiscal.',
-                                          value: _formatPrenominaSignedMoney(
-                                            widget.row.manualAdjustmentAmount,
-                                          ),
-                                          emphasized:
-                                              widget
-                                                  .row
-                                                  .manualAdjustmentAmount !=
-                                              0,
-                                        ),
-                                        _HrPrenominaConceptLine(
-                                          concept: 'Pago por fuera',
-                                          detail:
-                                              'Monto fuera del fiscal y fuera del operativo visible.',
-                                          value: _formatPrenominaMoneyZero(
-                                            widget.row.paymentOutsideAmount,
-                                          ),
-                                          emphasized:
-                                              widget.row.paymentOutsideAmount !=
-                                              0,
-                                        ),
-                                        _HrPrenominaConceptLine(
-                                          concept: 'Total semanal visible',
-                                          detail:
-                                              'Fiscal total + operativo RH + pago por fuera, sin duplicar el fiscal en efectivo.',
-                                          value: _formatPrenominaMoneyZero(
-                                            widget
-                                                .row
-                                                .weeklyPaymentVisibleAmount,
-                                          ),
-                                          emphasized: true,
-                                        ),
-                                      ],
-                                    ),
-                                    const SizedBox(height: 12),
-                                    if (_draftNeedsOperationalNote(
-                                      widget.row,
-                                    )) ...[
-                                      _HrPrenominaInlineNote(
-                                        icon: Icons.info_outline_rounded,
-                                        message: _draftOperationalNote(
-                                          widget.row,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 12),
-                                    ],
-                                    _HrPrenominaLabeledField(
-                                      label: 'Notas RH',
-                                      child: TextFormField(
-                                        initialValue: _draft.notes,
-                                        decoration:
-                                            _hrPrenominaFieldDecoration(),
-                                        minLines: 3,
-                                        maxLines: 5,
-                                        onChanged: (value) =>
-                                            _draft.notes = value,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 14),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFEFE4FF).withValues(alpha: 0.86),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0x55B084FF)),
-                  ),
-                  child: Row(
-                    children: [
-                      const Expanded(
-                        child: _HrPrenominaInlineNote(
-                          icon: Icons.info_outline_rounded,
-                          message:
-                              'Esta primera versión consolida fuentes reales y ajustes RH. La fórmula final de nómina vendrá después sobre este borrador ya limpio.',
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      if (widget.canGoPrevious) ...[
-                        OutlinedButton.icon(
-                          style: _hrPrenominaActionOutlinedButtonStyle(),
-                          onPressed: () =>
-                              _save(_HrPrenominaEditAction.previous),
-                          icon: const Icon(Icons.chevron_left_rounded),
-                          label: const Text('Anterior'),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      if (widget.canGoNext) ...[
-                        OutlinedButton.icon(
-                          style: _hrPrenominaActionOutlinedButtonStyle(),
-                          onPressed: () => _save(_HrPrenominaEditAction.next),
-                          icon: const Icon(Icons.chevron_right_rounded),
-                          label: const Text('Siguiente'),
-                        ),
-                        const SizedBox(width: 8),
-                      ],
-                      OutlinedButton(
-                        style: _hrPrenominaActionOutlinedButtonStyle(),
-                        onPressed: () => Navigator.of(context).pop(),
-                        child: const Text('Cancelar'),
-                      ),
-                      const SizedBox(width: 8),
-                      FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: const Color(0xFF8B5CF6),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 18,
-                            vertical: 12,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          textStyle: const TextStyle(
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        onPressed: _save,
-                        child: const Text('Guardar borrador'),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _HrPrenominaSectionCard extends StatelessWidget {
-  final String title;
-  final String subtitle;
-  final Widget child;
-
-  const _HrPrenominaSectionCard({
-    required this.title,
-    required this.subtitle,
-    required this.child,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3E9FF).withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0x55B084FF)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF24103D),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF6E47A8),
-            ),
-          ),
-          const SizedBox(height: 12),
-          child,
-        ],
-      ),
-    );
-  }
-}
-
-class _HrPrenominaMetricMiniCard extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _HrPrenominaMetricMiniCard({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Tooltip(
-      message: label,
-      child: Container(
-        width: 144,
-        height: 58,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: const Color(0xFFFFFBFF),
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0x44B084FF)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF6E47A8),
-                letterSpacing: 0.35,
-              ),
-            ),
-            Text(
-              value,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 17,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF24103D),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HrPrenominaCompactInfoTile extends StatelessWidget {
-  final String label;
-  final String value;
-  final bool emphasized;
-
-  const _HrPrenominaCompactInfoTile({
-    required this.label,
-    required this.value,
-    this.emphasized = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 105,
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: emphasized ? const Color(0xFFE9DAFF) : const Color(0xFFFFFBFF),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: emphasized ? const Color(0x669F6BFF) : const Color(0x44B084FF),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF6E47A8),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF24103D),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HrPrenominaConceptLine extends StatelessWidget {
-  final String concept;
-  final String detail;
-  final String value;
-  final bool emphasized;
-
-  const _HrPrenominaConceptLine({
-    required this.concept,
-    required this.detail,
-    required this.value,
-    this.emphasized = false,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 10),
-      padding: const EdgeInsets.fromLTRB(12, 11, 12, 11),
-      decoration: BoxDecoration(
-        color: emphasized ? const Color(0xFFF8F2FF) : const Color(0xFFFFFBFF),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(
-          color: emphasized ? const Color(0x669F6BFF) : const Color(0x44B084FF),
-        ),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  concept,
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    fontWeight: FontWeight.w900,
-                    color: Color(0xFF24103D),
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  detail,
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF6E47A8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(width: 12),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
-            decoration: BoxDecoration(
-              color: emphasized
-                  ? const Color(0xFFE6D5FF)
-                  : const Color(0xFFF1E6FF),
-              borderRadius: BorderRadius.circular(999),
-              border: Border.all(
-                color: emphasized
-                    ? const Color(0xFF9F6BFF)
-                    : const Color(0x55B084FF),
-              ),
-            ),
-            child: Text(
-              value,
-              style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w900,
-                color: Color(0xFF24103D),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HrPrenominaMiniLedgerLine extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _HrPrenominaMiniLedgerLine({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        SizedBox(
-          width: 74,
-          child: Text(
-            label,
-            style: const TextStyle(
-              fontSize: 10.5,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF6E47A8),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            value,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 11.5,
-              fontWeight: FontWeight.w800,
-              color: Color(0xFF24103D),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _HrPrenominaInfoLine extends StatelessWidget {
-  final String label;
-  final String value;
-
-  const _HrPrenominaInfoLine({required this.label, required this.value});
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w900,
-              color: Color(0xFF6E47A8),
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF24103D),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 class _HrPrenominaStatusBadge extends StatelessWidget {
@@ -4464,122 +1606,8 @@ class _HrPrenominaStatusBadge extends StatelessWidget {
   }
 }
 
-class _HrPrenominaLabeledField extends StatelessWidget {
-  final String label;
-  final Widget child;
-
-  const _HrPrenominaLabeledField({required this.label, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          label,
-          style: const TextStyle(
-            fontSize: 11.5,
-            fontWeight: FontWeight.w900,
-            color: Color(0xFF6E47A8),
-          ),
-        ),
-        const SizedBox(height: 6),
-        child,
-      ],
-    );
-  }
-}
-
-class _HrPrenominaPickerField extends StatelessWidget {
-  final String value;
-  final VoidCallback onTap;
-
-  const _HrPrenominaPickerField({required this.value, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: InputDecorator(
-        decoration: _hrPrenominaFieldDecoration(),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                value,
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF24103D),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            const Icon(
-              Icons.keyboard_arrow_down_rounded,
-              size: 18,
-              color: Color(0xFF6E47A8),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _HrPrenominaMoneyTextField extends StatelessWidget {
-  final String initialValue;
-  final ValueChanged<String> onChanged;
-
-  const _HrPrenominaMoneyTextField({
-    required this.initialValue,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return TextFormField(
-      initialValue: initialValue,
-      decoration: _hrPrenominaFieldDecoration(),
-      keyboardType: const TextInputType.numberWithOptions(
-        decimal: true,
-        signed: true,
-      ),
-      onChanged: onChanged,
-    );
-  }
-}
-
-class _HrPrenominaInlineNote extends StatelessWidget {
-  final IconData icon;
-  final String message;
-
-  const _HrPrenominaInlineNote({required this.icon, required this.message});
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 18, color: const Color(0xFF6E47A8)),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            message,
-            style: const TextStyle(
-              fontSize: 12.5,
-              fontWeight: FontWeight.w700,
-              color: Color(0xFF6E47A8),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
 class _HrPrenominaEmployeeMaster {
+  final HrEmployeeCompensation compensation;
   final String employeeId;
   final String displayName;
   final String empresa;
@@ -4587,8 +1615,11 @@ class _HrPrenominaEmployeeMaster {
   final double salaryPerceivedWeekly;
   final DateTime? fechaIngreso;
   final DateTime? fechaAlta;
+  final String employmentStatus;
+  final DateTime? terminationDate;
 
   const _HrPrenominaEmployeeMaster({
+    required this.compensation,
     required this.employeeId,
     required this.displayName,
     required this.empresa,
@@ -4596,20 +1627,44 @@ class _HrPrenominaEmployeeMaster {
     required this.salaryPerceivedWeekly,
     required this.fechaIngreso,
     required this.fechaAlta,
+    required this.employmentStatus,
+    required this.terminationDate,
   });
 
   factory _HrPrenominaEmployeeMaster.fromRow(Map<String, dynamic> row) {
+    final compensation = HrEmployeeCompensation.fromRow(row);
     return _HrPrenominaEmployeeMaster(
+      compensation: compensation,
       employeeId: (row['id'] ?? '').toString(),
       displayName: (row['nombre'] ?? '').toString(),
       empresa: (row['empresa'] ?? '').toString(),
       salaryWeekly: _parsePrenominaNumber(row['salario']),
-      salaryPerceivedWeekly: _parsePrenominaNumber(
-        row['salario_real_percibido'],
-      ),
+      salaryPerceivedWeekly: row['salario_flujo'] != null
+          ? compensation.total
+          : _parsePrenominaNumber(row['salario_real_percibido']),
       fechaIngreso: _parsePrenominaDbDate(row['fecha_ingreso']),
       fechaAlta: _parsePrenominaDbDate(row['fecha_alta']),
+      employmentStatus: (row['employment_status'] ?? kHrEmployeeStatusActive)
+          .toString(),
+      terminationDate: _parsePrenominaDbDate(row['termination_date']),
     );
+  }
+
+  bool belongsToPeriod(
+    HumanResourcesPeriodRange? period, {
+    required bool hasDraft,
+  }) {
+    // A later termination must not erase an earlier payroll. Saved period
+    // records remain visible even when Personal no longer marks them active.
+    if (hasDraft || employmentStatus != kHrEmployeeStatusTerminated) {
+      return true;
+    }
+    if (period == null || terminationDate == null) return false;
+    final start = fechaIngreso ?? fechaAlta;
+    if (start != null && start.isAfter(period.end)) return false;
+    // Preserve the existing exclusion for the termination period and later;
+    // this change only restores complete periods preceding the effective baja.
+    return terminationDate!.isAfter(period.end);
   }
 }
 
@@ -4733,8 +1788,10 @@ class _HrPrenominaAttendanceRecord {
         orElse: () => _HrPrenominaAttendanceStatus.noAplica,
       ),
       sourceMode: (row['source_mode'] ?? 'manual').toString(),
-      lateMinutes: _asPrenominaInt(row['late_minutes']),
-      overtimeMinutes: _asPrenominaInt(row['overtime_minutes']),
+      lateMinutes: hrEligibleLateMinutes(_asPrenominaInt(row['late_minutes'])),
+      overtimeMinutes: hrEligibleOvertimeMinutes(
+        _asPrenominaInt(row['overtime_minutes']),
+      ),
       notes: (row['notes'] ?? '').toString(),
     );
   }
@@ -4752,6 +1809,7 @@ enum _HrPrenominaSyncStatus { pendiente, aplicado, omitido }
 enum _HrPrenominaEventStatus { pendiente, aprobado, aplicado, cancelado }
 
 class _HrPrenominaVacationEventRecord {
+  final int exerciseYear;
   final String id;
   final String employeeId;
   final String attendancePeriodLabel;
@@ -4766,6 +1824,7 @@ class _HrPrenominaVacationEventRecord {
   final _HrPrenominaSyncStatus prenominaSyncStatus;
 
   const _HrPrenominaVacationEventRecord({
+    this.exerciseYear = 0,
     required this.id,
     required this.employeeId,
     required this.attendancePeriodLabel,
@@ -4782,6 +1841,10 @@ class _HrPrenominaVacationEventRecord {
 
   factory _HrPrenominaVacationEventRecord.fromRow(Map<String, dynamic> row) {
     return _HrPrenominaVacationEventRecord(
+      exerciseYear:
+          int.tryParse('${row['exercise_year']}') ??
+          DateTime.tryParse('${row['start_date']}')?.year ??
+          0,
       id: (row['id'] ?? '').toString(),
       employeeId: (row['employee_id'] ?? '').toString(),
       attendancePeriodLabel: (row['attendance_period_label'] ?? '').toString(),
@@ -4812,6 +1875,23 @@ class _HrPrenominaVacationEventRecord {
     );
   }
 
+  _HrPrenominaVacationEventRecord withDays(double days) =>
+      _HrPrenominaVacationEventRecord(
+        exerciseYear: exerciseYear,
+        id: id,
+        employeeId: employeeId,
+        attendancePeriodLabel: attendancePeriodLabel,
+        receiptGroupKey: receiptGroupKey,
+        startDate: startDate,
+        endDate: endDate,
+        eventType: eventType,
+        status: status,
+        daysApplied: days,
+        additionalPaidDays: additionalPaidDays,
+        impactPrenomina: impactPrenomina,
+        prenominaSyncStatus: prenominaSyncStatus,
+      );
+
   bool get isContpaqImported =>
       receiptGroupKey.startsWith(_kHrPrenominaContpaqReceiptPrefix);
 
@@ -4819,6 +1899,7 @@ class _HrPrenominaVacationEventRecord {
     HrEventPeriodImpactRecord impact,
   ) {
     return _HrPrenominaVacationEventRecord(
+      exerciseYear: exerciseYear,
       id: id,
       employeeId: employeeId,
       attendancePeriodLabel: impact.periodLabel,
@@ -4951,6 +2032,7 @@ enum _HrPrenominaPaymentChannel {
 }
 
 class _HrPrenominaDraftRowRecord {
+  final Map<String, dynamic> sourceSnapshot;
   final String id;
   final String periodLabel;
   final String employeeId;
@@ -4984,6 +2066,7 @@ class _HrPrenominaDraftRowRecord {
   final String notes;
 
   const _HrPrenominaDraftRowRecord({
+    this.sourceSnapshot = const {},
     required this.id,
     required this.periodLabel,
     required this.employeeId,
@@ -5018,7 +2101,12 @@ class _HrPrenominaDraftRowRecord {
   });
 
   factory _HrPrenominaDraftRowRecord.fromRow(Map<String, dynamic> row) {
+    final snapshot = row['source_snapshot'] is Map
+        ? Map<String, dynamic>.from(row['source_snapshot'] as Map)
+        : <String, dynamic>{};
+    final prepaid = HrPrepaidVacationDeduction.fromSnapshot(snapshot);
     return _HrPrenominaDraftRowRecord(
+      sourceSnapshot: snapshot,
       id: (row['id'] ?? '').toString(),
       periodLabel: (row['period_label'] ?? '').toString(),
       employeeId: (row['employee_id'] ?? '').toString(),
@@ -5028,7 +2116,9 @@ class _HrPrenominaDraftRowRecord {
       manualAdjustmentAmount: _parsePrenominaNumber(
         row['manual_adjustment_amount'],
       ),
-      fiscalNetAmount: _parsePrenominaNullableNumber(row['fiscal_net_amount']),
+      fiscalNetAmount: row['fiscal_net_amount'] == null
+          ? null
+          : _parsePrenominaNumber(row['fiscal_net_amount']) + prepaid.fiscal,
       fiscalImssAmount: _parsePrenominaNullableNumber(
         row['fiscal_imss_amount'],
       ),
@@ -5047,9 +2137,9 @@ class _HrPrenominaDraftRowRecord {
       fiscalVacationAmount: _parsePrenominaNullableNumber(
         row['fiscal_vacation_amount'],
       ),
-      cashSalaryAmount: _parsePrenominaNullableNumber(
-        row['cash_salary_amount'],
-      ),
+      cashSalaryAmount: row['cash_salary_amount'] == null
+          ? null
+          : _parsePrenominaNumber(row['cash_salary_amount']) + prepaid.flow,
       cashSalaryIsManual: _parsePrenominaBoolean(row['cash_salary_is_manual']),
       cashVacationAmount: _parsePrenominaNullableNumber(
         row['cash_vacation_amount'],
@@ -5114,6 +2204,8 @@ class _HrPrenominaPeriodClosure {
 }
 
 class _HrPrenominaSummaryRow {
+  final HrPrepaidVacationDeduction prepaidVacation;
+  final Map<String, dynamic> sourceSnapshot;
   final String draftId;
   final String employeeId;
   final String displayName;
@@ -5174,6 +2266,8 @@ class _HrPrenominaSummaryRow {
   final String notes;
 
   const _HrPrenominaSummaryRow({
+    this.prepaidVacation = const HrPrepaidVacationDeduction(),
+    this.sourceSnapshot = const {},
     required this.draftId,
     required this.employeeId,
     required this.displayName,
@@ -5258,10 +2352,16 @@ class _HrPrenominaSummaryRow {
       permissionWithPayDays + permissionWithoutPayDays + disabilityDays;
   double get fiscalDailyRate => salaryWeekly == 0 ? 0 : salaryWeekly / 7;
   double get fiscalHourlyRate => fiscalDailyRate / _kHrPrenominaHoursPerDay;
-  double get calculatedCashSalaryAmount => _suggestPrenominaCashSalaryAmount(
-    salaryPerceivedWeekly: salaryPerceivedWeekly,
-    fiscalNetAmount: fiscalNetAmount,
-  );
+  double get calculatedCashSalaryAmount =>
+      _parsePrenominaNumber(sourceSnapshot['personal_flow']);
+  double get overtimeHourlyRate =>
+      _parsePrenominaNumber(sourceSnapshot['personal_overtime_hourly_rate']);
+  String get fiscalDeliveryLabel => fiscalCashAmount > 0
+      ? (fiscalDepositedAmount > 0 ? 'Depósito + cheque' : 'Cheque · efectivo')
+      : (sourceSnapshot['personal_fiscal_payment_mode'] == 'cheque' &&
+                fiscalTotalAmount == 0
+            ? 'Cheque · sin pago'
+            : 'Depósito');
   double get perceivedDailyRate =>
       salaryPerceivedWeekly == 0 ? 0 : salaryPerceivedWeekly / 7;
   double get perceivedHourlyRate =>
@@ -5278,7 +2378,8 @@ class _HrPrenominaSummaryRow {
   double get preliminarySubtotalAmount =>
       visibleDraftBaseAmount +
       preliminaryVacationPayAmount -
-      preliminaryWithoutPayDeductionAmount;
+      preliminaryWithoutPayDeductionAmount -
+      prepaidVacation.total;
   double get operationalBonusTotalAmount =>
       overtimeMonetizedAmount + manualBonusAmount;
   double get operationalCashSubtotalAmount =>
@@ -5289,19 +2390,30 @@ class _HrPrenominaSummaryRow {
       operationalBonusTotalAmount;
   double get operationalCashDeductionsTotalAmount =>
       cashIsrAmount +
-      cashAbsenceDeductionAmount +
+      (sourceSnapshot['incidences_informational'] == true
+          ? 0
+          : cashAbsenceDeductionAmount) +
       cashInfonavitDeductionAmount +
       cashFonacotDeductionAmount +
-      loanDeductionAmount;
+      loanDeductionAmount +
+      prepaidVacation.flow;
   double get operationalCashTotalAmount =>
       operationalCashSubtotalAmount - operationalCashDeductionsTotalAmount;
   double get fiscalNetAfterLateDeductionAmount {
-    final amount = fiscalNetAmount - fiscalLateDeductionAmount;
+    final amount =
+        fiscalNetAmount -
+        (sourceSnapshot['incidences_informational'] == true
+            ? 0
+            : fiscalLateDeductionAmount) -
+        prepaidVacation.fiscal;
     return amount < 0 ? 0 : amount;
   }
 
   double get fiscalTotalAmount =>
-      fiscalNetAfterLateDeductionAmount + fiscalVacationAmount;
+      fiscalNetAfterLateDeductionAmount +
+      (sourceSnapshot['contpaq_official_net'] != null
+          ? 0
+          : fiscalVacationAmount);
   double get fiscalCashAmount => checkAmount.clamp(0, fiscalTotalAmount);
   double get fiscalDepositedAmount {
     final amount = fiscalTotalAmount - fiscalCashAmount;
@@ -5325,6 +2437,9 @@ class _HrPrenominaSummaryRow {
 }
 
 class _HrPrenominaDraftDraft {
+  final HrPrepaidVacationDeduction prepaidVacation;
+  final double perceivedWeekly;
+  final Map<String, dynamic> sourceSnapshot;
   final String id;
   _HrPrenominaDraftStatus draftStatus;
   String manualAdjustmentAmountText;
@@ -5354,6 +2469,9 @@ class _HrPrenominaDraftDraft {
   String notes;
 
   _HrPrenominaDraftDraft({
+    this.prepaidVacation = const HrPrepaidVacationDeduction(),
+    this.perceivedWeekly = 0,
+    this.sourceSnapshot = const {},
     required this.id,
     required this.draftStatus,
     required this.manualAdjustmentAmountText,
@@ -5385,6 +2503,9 @@ class _HrPrenominaDraftDraft {
 
   factory _HrPrenominaDraftDraft.fromSummaryRow(_HrPrenominaSummaryRow row) {
     return _HrPrenominaDraftDraft(
+      prepaidVacation: row.prepaidVacation,
+      perceivedWeekly: row.salaryPerceivedWeekly,
+      sourceSnapshot: Map<String, dynamic>.of(row.sourceSnapshot),
       id: row.draftId,
       draftStatus: row.draftStatus,
       manualAdjustmentAmountText: row.manualAdjustmentAmount == 0
@@ -5399,7 +2520,7 @@ class _HrPrenominaDraftDraft {
         row.fiscalLateDeductionAmount,
       ),
       fiscalVacationAmountText: _draftMoneyText(row.fiscalVacationAmount),
-      cashSalaryAmountText: _draftMoneyText(row.cashSalaryAmount),
+      cashSalaryAmountText: row.cashSalaryAmount.toStringAsFixed(2),
       cashSalaryIsManual: row.cashSalaryIsManual,
       cashVacationAmountText: _draftMoneyText(row.cashVacationAmount),
       cashIsrAmountText: _draftMoneyText(row.cashIsrAmount),
@@ -5417,7 +2538,7 @@ class _HrPrenominaDraftDraft {
         row.cashFonacotDeductionAmount,
       ),
       loanDeductionAmountText: _draftMoneyText(row.loanDeductionAmount),
-      checkAmountText: _draftMoneyText(row.checkAmount),
+      checkAmountText: row.checkAmount.toStringAsFixed(2),
       paymentOutsideAmountText: _draftMoneyText(row.paymentOutsideAmount),
       paymentChannel: row.paymentChannel,
       paymentReference: row.paymentReference,
@@ -5462,6 +2583,32 @@ class _HrPrenominaDraftDraft {
     required String empresa,
     required String existingId,
   }) {
+    final fiscal = sourceSnapshot['contpaq_official_net'] != null
+        ? _parsePrenominaNumber(sourceSnapshot['contpaq_official_net'])
+        : _parsePrenominaDraftText(fiscalNetAmountText);
+    final flow = _parsePrenominaDraftText(cashSalaryAmountText) ?? 0.0;
+    final calculatedSettlement = HrPrepaidVacationDeduction.calculate(
+      days: prepaidVacation.days,
+      perceivedWeekly: perceivedWeekly,
+      fiscalAvailable: (fiscal ?? 0).clamp(0, double.infinity).toDouble(),
+      flowAvailable: flow,
+    );
+    // Prepaid vacation settles salary already paid, independently of the
+    // informational attendance deductions included in CONTPAQ's net.
+    final settlement = calculatedSettlement;
+    final payableFiscal =
+        ((fiscal ?? 0) - settlement.fiscal).clamp(0, double.infinity) +
+        (sourceSnapshot['contpaq_official_net'] != null
+            ? 0
+            : (_parsePrenominaDraftText(fiscalVacationAmountText) ?? 0));
+    final fiscalInCash = sourceSnapshot['fiscal_payment_is_manual'] == false
+        ? (sourceSnapshot['personal_fiscal_payment_mode'] == 'cheque'
+              ? payableFiscal
+              : 0.0)
+        : (_parsePrenominaDraftText(checkAmountText) ?? 0).clamp(
+            0,
+            payableFiscal,
+          );
     return {
       if (existingId.trim().isNotEmpty) 'id': existingId,
       'period_label': periodLabel,
@@ -5471,7 +2618,7 @@ class _HrPrenominaDraftDraft {
       'draft_status': _draftStatusToDb(draftStatus),
       'manual_adjustment_amount':
           _parsePrenominaDraftText(manualAdjustmentAmountText) ?? 0.0,
-      'fiscal_net_amount': _parsePrenominaDraftText(fiscalNetAmountText),
+      'fiscal_net_amount': fiscal == null ? null : fiscal - settlement.fiscal,
       'fiscal_imss_amount': _parsePrenominaDraftText(fiscalImssAmountText),
       'fiscal_infonavit_amount': _parsePrenominaDraftText(
         fiscalInfonavitAmountText,
@@ -5488,7 +2635,7 @@ class _HrPrenominaDraftDraft {
       'fiscal_vacation_amount': _parsePrenominaDraftText(
         fiscalVacationAmountText,
       ),
-      'cash_salary_amount': _parsePrenominaDraftText(cashSalaryAmountText),
+      'cash_salary_amount': flow - settlement.flow,
       'cash_salary_is_manual': cashSalaryIsManual,
       'cash_vacation_amount': _parsePrenominaDraftText(cashVacationAmountText),
       'cash_isr_amount': _parsePrenominaDraftText(cashIsrAmountText),
@@ -5512,14 +2659,19 @@ class _HrPrenominaDraftDraft {
       'loan_deduction_amount': _parsePrenominaDraftText(
         loanDeductionAmountText,
       ),
-      'check_amount': _parsePrenominaDraftText(checkAmountText),
+      'check_amount': fiscalInCash,
       'payment_outside_amount': _parsePrenominaDraftText(
         paymentOutsideAmountText,
       ),
       'payment_channel': paymentChannel.name,
       'payment_reference': paymentReference.trim(),
       'notes': notes.trim(),
-      'source_snapshot': <String, dynamic>{},
+      'source_snapshot': <String, dynamic>{
+        ...sourceSnapshot,
+        if (settlement.days > 0 ||
+            sourceSnapshot.containsKey('prepaid_vacation'))
+          'prepaid_vacation': settlement.toJson(),
+      },
     };
   }
 }
@@ -5532,6 +2684,9 @@ const List<_HrPrenominaGridColumn> _kPrenominaGridColumns =
       _HrPrenominaGridColumn(id: 'asistencia', label: 'Asistencia'),
       _HrPrenominaGridColumn(id: 'vacaciones', label: 'Vacaciones'),
       _HrPrenominaGridColumn(id: 'permisos', label: 'Permisos'),
+      _HrPrenominaGridColumn(id: 'fiscal', label: 'Pago fiscal'),
+      _HrPrenominaGridColumn(id: 'flujo', label: 'Pago flujo'),
+      _HrPrenominaGridColumn(id: 'total', label: 'Total'),
       _HrPrenominaGridColumn(id: 'estado', label: 'Estado'),
       _HrPrenominaGridColumn(id: 'acciones', label: 'Acciones'),
     ];
@@ -5566,8 +2721,22 @@ Future<void> _syncPrenominaPendingEventImpacts({
           (event) => HrEventPeriodImpactSource(
             eventId: event.id,
             employeeId: event.employeeId,
-            startDate: event.startDate,
-            endDate: event.endDate,
+            startDate:
+                event.eventType ==
+                    _HrPrenominaVacationEventType.vacacionesPagadas
+                ? (HumanResourcesPeriodRange.tryParse(
+                        event.attendancePeriodLabel,
+                      )?.start ??
+                      event.startDate)
+                : event.startDate,
+            endDate:
+                event.eventType ==
+                    _HrPrenominaVacationEventType.vacacionesPagadas
+                ? (HumanResourcesPeriodRange.tryParse(
+                        event.attendancePeriodLabel,
+                      )?.start ??
+                      event.startDate)
+                : event.endDate,
             daysApplied: event.daysApplied,
             additionalPaidDays: event.additionalPaidDays,
             quantityHours: 0,
@@ -5620,7 +2789,6 @@ List<String> _prenominaPeriodOptions({
   required List<_HrPrenominaPeriodClosure> closures,
 }) {
   return HumanResourcesPeriodContext.normalizedOptions([
-    for (final lot in lots) _describePrenominaImportPeriod(lot),
     for (final record in attendanceRecords) record.periodLabel,
     for (final event in vacationEvents) event.attendancePeriodLabel,
     for (final event in permissionEvents) event.attendancePeriodLabel,
@@ -5670,6 +2838,7 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
   required String activePeriodLabel,
   required String activeContpaqRawPeriodLabel,
 }) {
+  final activeRange = HumanResourcesPeriodRange.tryParse(activePeriodLabel);
   final draftByEmployee = {
     for (final draft in draftRows.where(
       (item) => item.periodLabel == activePeriodLabel,
@@ -5704,12 +2873,66 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
     target.putIfAbsent(impact.parentEventId, () => []).add(impact);
   }
 
+  // The same period allocation drives visible enjoyment and salary settlement.
+  // Applied sync status does not erase enjoyment from its original period.
+  final enjoymentDaysByEvent = <String, double>{};
   final vacationsByEmployee = <String, List<_HrPrenominaVacationEventRecord>>{};
   for (final event in vacationEvents.where(
     (item) =>
         item.impactPrenomina &&
         item.status != _HrPrenominaEventStatus.cancelado,
   )) {
+    if (event.eventType ==
+        _HrPrenominaVacationEventType.vacacionesDisfrutadas) {
+      if (activeRange == null ||
+          event.endDate.isBefore(activeRange.start) ||
+          event.startDate.isAfter(activeRange.end)) {
+        continue;
+      }
+      final allocations = eventPeriodImpacts.where(
+        (impact) =>
+            impact.eventKind == 'vacacion' && impact.parentEventId == event.id,
+      );
+      if (allocations.isNotEmpty) {
+        if (!allocations.any(
+          (impact) =>
+              impact.impactPrenomina &&
+              impact.matchesPeriod(activePeriodLabel) &&
+              impact.daysApplied > 0,
+        )) {
+          continue;
+        }
+      } else {
+        final assigned = HumanResourcesPeriodRange.tryParse(
+          event.attendancePeriodLabel,
+        );
+        final matches =
+            event.attendancePeriodLabel.isEmpty ||
+            event.attendancePeriodLabel == activePeriodLabel ||
+            (assigned?.start == activeRange.start &&
+                assigned?.end == activeRange.end);
+        if (!matches) continue;
+      }
+      final start = event.startDate.isBefore(activeRange.start)
+          ? activeRange.start
+          : event.startDate;
+      final end = event.endDate.isAfter(activeRange.end)
+          ? activeRange.end
+          : event.endDate;
+      // Period allocations identify membership; their historical proportional
+      // bank-day amounts are not salary days. Use the actual absence dates.
+      final days = event.daysApplied > 0
+          ? (end.difference(start).inDays + 1).toDouble()
+          : 0.0;
+      if (days <= 0) continue;
+      if (event.status == _HrPrenominaEventStatus.aplicado) {
+        enjoymentDaysByEvent[event.id] = days;
+      }
+      vacationsByEmployee
+          .putIfAbsent(event.employeeId, () => [])
+          .add(event.withDays(days));
+      continue;
+    }
     final impacts = vacationImpactsByEvent[event.id];
     if (impacts != null) {
       for (final impact in impacts) {
@@ -5734,6 +2957,33 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
           .add(event);
     }
   }
+
+  final prepaidByEvent = activeRange == null
+      ? <String, double>{}
+      : hrPrepaidVacationDays(
+          eligibleDaysByEvent: enjoymentDaysByEvent,
+          periodStart: activeRange.start,
+          periodEnd: activeRange.end,
+          events: [
+            for (final e in vacationEvents)
+              {
+                'id': e.id,
+                'employee_id': e.employeeId,
+                'exercise_year': e.exerciseYear,
+                'event_type': switch (e.eventType) {
+                  _HrPrenominaVacationEventType.vacacionesPagadas =>
+                    'vacaciones_pagadas',
+                  _HrPrenominaVacationEventType.vacacionesDisfrutadas =>
+                    'vacaciones_disfrutadas',
+                  _ => '',
+                },
+                'status': e.status.name,
+                'days_applied': e.daysApplied,
+                'start_date': e.startDate.toIso8601String(),
+                'end_date': e.endDate.toIso8601String(),
+              },
+          ],
+        );
 
   final permissionsByEmployee =
       <String, List<_HrPrenominaPermissionEventRecord>>{};
@@ -5772,6 +3022,12 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
   };
 
   return employees
+      .where(
+        (employee) => employee.belongsToPeriod(
+          activeRange,
+          hasDraft: draftByEmployee.containsKey(employee.employeeId),
+        ),
+      )
       .map((employee) {
         final attendance =
             attendanceByEmployee[employee.employeeId] ?? const [];
@@ -5789,11 +3045,11 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
             .length;
         final lateMinutesSum = attendance.fold<int>(
           0,
-          (sum, item) => sum + item.lateMinutes,
+          (sum, item) => sum + hrEligibleLateMinutes(item.lateMinutes),
         );
         final overtimeMinutesSum = attendance.fold<int>(
           0,
-          (sum, item) => sum + item.overtimeMinutes,
+          (sum, item) => sum + hrEligibleOvertimeMinutes(item.overtimeMinutes),
         );
 
         double vacationPaidDays = 0;
@@ -5817,9 +3073,8 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
             .where(
               (event) =>
                   event.status == _HrPrenominaEventStatus.aplicado &&
-                  (event.eventType ==
-                          _HrPrenominaVacationEventType.vacacionesPagadas ||
-                      event.impactPrenomina),
+                  event.eventType ==
+                      _HrPrenominaVacationEventType.vacacionesPagadas,
             )
             .fold<double>(
               0,
@@ -5827,9 +3082,10 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
                   sum +
                   _calculatePrenominaVacationAmount(
                     event: event,
+                    prepaidDays: prepaidByEvent[event.id] ?? 0,
                     perceivedDailyRate: employee.salaryPerceivedWeekly > 0
                         ? employee.salaryPerceivedWeekly / 7
-                        : employee.salaryWeekly / 7,
+                        : 0,
                   ),
             );
 
@@ -5895,7 +3151,16 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
         final contpaqFonacotAmount = _parsePrenominaImportedAmount(
           contpaq?.fonacot,
         );
-        final fiscalNetAmount = draft?.fiscalNetAmount ?? contpaqNetAmount;
+        final isPublished =
+            draft?.draftStatus == _HrPrenominaDraftStatus.publicado;
+        final officialNet = isPublished
+            ? null
+            : contpaq != null
+            ? contpaqNetAmount
+            : draft?.sourceSnapshot['contpaq_official_net'];
+        final fiscalNetAmount = officialNet != null
+            ? _parsePrenominaNumber(officialNet)
+            : draft?.fiscalNetAmount ?? contpaqNetAmount;
         final fiscalImssAmount = draft?.fiscalImssAmount ?? contpaqImssAmount;
         final fiscalInfonavitAmount =
             draft?.fiscalInfonavitAmount ?? contpaqInfonavitAmount;
@@ -5909,21 +3174,33 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
               salaryWeekly: employee.salaryWeekly,
               lateMinutes: lateMinutesSum,
             );
+        final prepaidDays =
+            draft?.draftStatus == _HrPrenominaDraftStatus.publicado
+            ? 0.0
+            : vacationEvents
+                  .where((e) => e.employeeId == employee.employeeId)
+                  .fold<double>(
+                    0,
+                    (sum, e) => sum + (prepaidByEvent[e.id] ?? 0),
+                  );
         final fiscalVacationAmount =
-            draft?.fiscalVacationAmount ??
-            (contpaqVacationAmount > 0
-                ? contpaqVacationAmount
-                : _suggestPrenominaFiscalVacationAmount(
-                    vacationCalculatedAmount: vacationCalculatedAmount,
-                    fiscalWeeklyAmount: contpaqSalaryAmount > 0
-                        ? contpaqSalaryAmount
-                        : employee.salaryWeekly,
-                    perceivedWeeklyAmount: employee.salaryPerceivedWeekly,
-                  ));
-        final suggestedCashSalaryAmount = _suggestPrenominaCashSalaryAmount(
-          salaryPerceivedWeekly: employee.salaryPerceivedWeekly,
-          fiscalNetAmount: fiscalNetAmount,
-        );
+            prepaidDays > 0 && contpaqVacationAmount <= 0
+            ? _suggestPrenominaFiscalVacationAmount(
+                vacationCalculatedAmount: vacationCalculatedAmount,
+                fiscalWeeklyAmount: employee.salaryWeekly,
+                perceivedWeeklyAmount: employee.salaryPerceivedWeekly,
+              )
+            : draft?.fiscalVacationAmount ??
+                  (contpaqVacationAmount > 0
+                      ? contpaqVacationAmount
+                      : _suggestPrenominaFiscalVacationAmount(
+                          vacationCalculatedAmount: vacationCalculatedAmount,
+                          fiscalWeeklyAmount: contpaqSalaryAmount > 0
+                              ? contpaqSalaryAmount
+                              : employee.salaryWeekly,
+                          perceivedWeeklyAmount: employee.salaryPerceivedWeekly,
+                        ));
+        final suggestedCashSalaryAmount = employee.compensation.flow;
         final suggestedCashVacationAmount = _suggestPrenominaCashVacationAmount(
           vacationCalculatedAmount: vacationCalculatedAmount,
           fiscalVacationAmount: fiscalVacationAmount,
@@ -5940,18 +3217,41 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
         final suggestedOvertimeMonetizedAmount =
             _suggestPrenominaOvertimeMonetizedAmount(
               overtimeMinutes: overtimeMinutesSum,
+              hourlyRate: employee.compensation.overtimeHourlyRate,
             );
         final cashSalaryIsManual = draft?.cashSalaryIsManual ?? false;
-        final cashSalaryAmount = cashSalaryIsManual
-            ? (draft?.cashSalaryAmount ?? suggestedCashSalaryAmount)
+        final cashSalaryAmount =
+            (cashSalaryIsManual ||
+                draft?.draftStatus == _HrPrenominaDraftStatus.publicado)
+            ? (draft?.cashSalaryAmount ??
+                  (cashSalaryIsManual ? 0 : suggestedCashSalaryAmount))
             : suggestedCashSalaryAmount;
-        final cashVacationAmount =
-            draft?.cashVacationAmount ?? suggestedCashVacationAmount;
+        final calculatedPrepaidVacation =
+            draft?.draftStatus == _HrPrenominaDraftStatus.publicado
+            ? HrPrepaidVacationDeduction.fromSnapshot(draft!.sourceSnapshot)
+            : HrPrepaidVacationDeduction.calculate(
+                days: prepaidDays,
+                perceivedWeekly: employee.salaryPerceivedWeekly,
+                fiscalAvailable: fiscalNetAmount
+                    .clamp(0, double.infinity)
+                    .toDouble(),
+                flowAvailable: cashSalaryAmount,
+              );
+        final prepaidVacation = calculatedPrepaidVacation;
+        final cashVacationAmount = prepaidDays > 0
+            ? suggestedCashVacationAmount
+            : draft?.cashVacationAmount ?? suggestedCashVacationAmount;
         final cashIsrAmount = draft?.cashIsrAmount ?? 0;
         final transportSupportAmount = draft?.transportSupportAmount ?? 0;
         final holidayAmount = draft?.holidayAmount ?? 0;
-        final overtimeMonetizedAmount =
-            draft?.overtimeMonetizedAmount ?? suggestedOvertimeMonetizedAmount;
+        final overtimeIsManual =
+            draft?.sourceSnapshot['overtime_is_manual'] == true ||
+            (draft != null &&
+                !draft.sourceSnapshot.containsKey('overtime_is_manual') &&
+                draft.overtimeMonetizedAmount != null);
+        final overtimeMonetizedAmount = (isPublished || overtimeIsManual)
+            ? (draft?.overtimeMonetizedAmount ?? 0)
+            : suggestedOvertimeMonetizedAmount;
         final manualBonusAmount = draft?.manualBonusAmount ?? 0;
         final cashAbsenceDeductionAmount =
             draft?.cashAbsenceDeductionAmount ??
@@ -5961,13 +3261,38 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
         final cashFonacotDeductionAmount =
             draft?.cashFonacotDeductionAmount ?? 0;
         final loanDeductionAmount = draft?.loanDeductionAmount ?? 0;
-        final checkAmount = draft?.checkAmount ?? 0;
+        final fiscalPaymentIsManual = HrFiscalPayment.isManual(
+          draft?.sourceSnapshot ?? const {},
+          draft?.checkAmount,
+        );
+        final payableFiscal =
+            (fiscalNetAmount - (isPublished ? 0 : prepaidVacation.fiscal))
+                .clamp(0, double.infinity) +
+            (officialNet != null ||
+                    draft?.sourceSnapshot['contpaq_official_net'] != null
+                ? 0
+                : fiscalVacationAmount);
+        final checkAmount = HrFiscalPayment.resolve(
+          total: payableFiscal.toDouble(),
+          storedCheque: draft?.checkAmount,
+          snapshot: draft?.sourceSnapshot ?? const {},
+          personalMode: employee.compensation.fiscalByCheck
+              ? 'cheque'
+              : 'deposito',
+          frozen: isPublished,
+        ).cheque;
         final paymentOutsideAmount = draft?.paymentOutsideAmount ?? 0;
-        final paymentChannel = draft?.paymentChannel.trim().isNotEmpty == true
+        final paymentChannel =
+            (isPublished || fiscalPaymentIsManual) &&
+                draft?.paymentChannel.trim().isNotEmpty == true
             ? _paymentChannelFromDb(draft!.paymentChannel)
             : _suggestPrenominaPaymentChannel(
-                fiscalNetAmount: fiscalNetAmount,
-                cashSalaryAmount: cashSalaryAmount,
+                fiscalNetAmount: payableFiscal.toDouble(),
+                cashSalaryAmount:
+                    (cashSalaryAmount -
+                            (isPublished ? 0 : prepaidVacation.flow))
+                        .clamp(0, double.infinity)
+                        .toDouble(),
                 cashVacationAmount: cashVacationAmount,
                 cashIsrAmount: cashIsrAmount,
                 transportSupportAmount: transportSupportAmount,
@@ -6007,6 +3332,40 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
           disabilityHours: disabilityHours,
           permissionPendingPrenominaCount: permissionPendingPrenominaCount,
           hasFiscalVacationFootprint: hasFiscalVacationFootprint,
+          prepaidVacation: prepaidVacation,
+          sourceSnapshot: {
+            ...?draft?.sourceSnapshot,
+            if (!isPublished) ...{
+              'incidences_informational': true,
+              'personal_flow': employee.compensation.flow,
+              'personal_overtime_hourly_rate':
+                  employee.compensation.overtimeHourlyRate,
+              'personal_fiscal_payment_mode':
+                  employee.compensation.fiscalByCheck ? 'cheque' : 'deposito',
+              'overtime_is_manual': overtimeIsManual,
+              'fiscal_payment_is_manual': fiscalPaymentIsManual,
+            },
+            'contpaq_official_net': ?officialNet,
+            'attendance_absence_reference': _roundPrenominaMoney(
+              attendance
+                      .where(
+                        (r) => r.status == _HrPrenominaAttendanceStatus.falto,
+                      )
+                      .length *
+                  employee.salaryWeekly /
+                  7,
+            ),
+            'attendance_late_reference': _calculatePrenominaFiscalLateDeduction(
+              salaryWeekly: employee.salaryWeekly,
+              lateMinutes: lateMinutesSum,
+            ),
+            'permission_reference': _roundPrenominaMoney(
+              employee.salaryWeekly /
+                  7 *
+                  (permissionWithoutPayDays +
+                      permissionWithoutPayHours / _kHrPrenominaHoursPerDay),
+            ),
+          },
           draftStatus: draft?.draftStatus ?? derivedStatus,
           manualAdjustmentAmount: draft?.manualAdjustmentAmount ?? 0,
           contpaqSalaryAmount: contpaqSalaryAmount,
@@ -6046,15 +3405,6 @@ List<_HrPrenominaSummaryRow> _buildPrenominaSummaryRows({
       .toList(growable: false);
 }
 
-double _suggestPrenominaCashSalaryAmount({
-  required double salaryPerceivedWeekly,
-  required double fiscalNetAmount,
-}) {
-  if (salaryPerceivedWeekly <= 0) return 0;
-  final amount = salaryPerceivedWeekly - fiscalNetAmount;
-  return amount > 0 ? amount : 0;
-}
-
 double _suggestPrenominaCashVacationAmount({
   required double vacationCalculatedAmount,
   required double fiscalVacationAmount,
@@ -6082,12 +3432,19 @@ double _suggestPrenominaFiscalVacationAmount({
 double _calculatePrenominaVacationAmount({
   required _HrPrenominaVacationEventRecord event,
   required double perceivedDailyRate,
+  double prepaidDays = 0,
 }) {
   if (perceivedDailyRate <= 0 || event.daysApplied <= 0) return 0;
-  final salaryDays = event.daysApplied + event.additionalPaidDays;
-  final vacationPay = salaryDays * perceivedDailyRate;
-  final vacationBonus = event.daysApplied * perceivedDailyRate * 0.25;
-  return vacationPay + vacationBonus;
+  return HrVacationPay(
+    perceivedWeekly: perceivedDailyRate * 7,
+    fiscalWeekly: 0,
+    vacationDays: (event.daysApplied - prepaidDays)
+        .clamp(0, event.daysApplied)
+        .toDouble(),
+    additionalPaidDays: prepaidDays >= event.daysApplied
+        ? 0
+        : event.additionalPaidDays,
+  ).total;
 }
 
 double _suggestPrenominaCashAbsenceDeductionAmount({
@@ -6107,11 +3464,10 @@ double _suggestPrenominaCashAbsenceDeductionAmount({
 
 double _suggestPrenominaOvertimeMonetizedAmount({
   required int overtimeMinutes,
+  required double hourlyRate,
 }) {
   if (overtimeMinutes <= 0) return 0;
-  return _roundPrenominaMoney(
-    (overtimeMinutes / 60) * _kHrPrenominaOvertimeHourlyRate,
-  );
+  return _roundPrenominaMoney((overtimeMinutes / 60) * hourlyRate);
 }
 
 double _calculatePrenominaFiscalLateDeduction({
@@ -6156,7 +3512,10 @@ _HrPrenominaPaymentChannel _suggestPrenominaPaymentChannel({
       cashFonacotDeductionAmount +
       loanDeductionAmount;
   final operationalCashTotal = operationalSubtotal - operationalDeductions;
-  final hasFiscal = fiscalNetAmount > 0;
+  final hasFiscal =
+      fiscalNetAmount -
+          checkAmount.clamp(0, fiscalNetAmount.clamp(0, double.infinity)) >
+      0;
   final hasCash = operationalCashTotal > 0;
   final hasCheck = checkAmount > 0;
   final hasOutside = paymentOutsideAmount > 0;
@@ -6170,6 +3529,11 @@ _HrPrenominaPaymentChannel _suggestPrenominaPaymentChannel({
     return _HrPrenominaPaymentChannel.mixto;
   }
   if (hasFiscal) return _HrPrenominaPaymentChannel.deposito;
+  if (hasCheck) {
+    return hasCash || hasOutside
+        ? _HrPrenominaPaymentChannel.mixto
+        : _HrPrenominaPaymentChannel.cheque;
+  }
   if (hasCash) return _HrPrenominaPaymentChannel.efectivo;
   return _HrPrenominaPaymentChannel.pendiente;
 }
@@ -6349,6 +3713,7 @@ String _prenominaFileSafeLabel(String value) {
 
 String _describePrenominaImportPeriod(_HrPrenominaImportLotLite lot) {
   final raw = lot.periodLabel.trim();
+  if (RegExp(r'^Periodo\s+\d+\s+semanal\s+·').hasMatch(raw)) return raw;
   if (raw.isEmpty) return 'Periodo no detectado';
   if (lot.source == _HrPrenominaImportSource.ngteco) {
     final segments = raw.split('→').map((part) => part.trim()).toList();
@@ -6371,10 +3736,7 @@ String _describePrenominaImportPeriod(_HrPrenominaImportLotLite lot) {
     final week = periodMatch.group(1)!;
     final start = periodMatch.group(2)!;
     final end = periodMatch.group(3)!;
-    final time = periodMatch.group(4);
-    return time == null
-        ? 'Periodo $week semanal · $start - $end'
-        : 'Periodo $week semanal · $start - $end · Archivo $time';
+    return 'Periodo $week semanal · $start - $end';
   }
   return raw;
 }
@@ -6450,12 +3812,6 @@ String _formatPrenominaMoneyZero(double value) {
   return '$prefix${buffer.toString()}.$decimals';
 }
 
-String _formatPrenominaSignedMoney(double value) {
-  if (value == 0) return '\$0.00';
-  final absValue = _formatPrenominaMoneyZero(value.abs());
-  return value > 0 ? '+$absValue' : absValue.replaceFirst('\$', '-\$');
-}
-
 String _formatPrenominaDays(double value) {
   if (value == 0) return '--';
   if (value == value.roundToDouble()) return value.toStringAsFixed(0);
@@ -6522,31 +3878,10 @@ class _HrPrenominaPillColorSet {
 }
 
 _HrPrenominaPillColorSet _prenominaStatusBadgeColorSet(String label) {
-  switch (label) {
-    case 'Revisión RH':
-      return const _HrPrenominaPillColorSet(
-        background: Color(0xFFF4E3EA),
-        border: Color(0xFFD69BB3),
-        foreground: Color(0xFF7A284C),
-      );
-    case 'Publicado':
-      return const _HrPrenominaPillColorSet(
-        background: Color(0xFFDCC5FF),
-        border: Color(0xFF8B5CF6),
-        foreground: Color(0xFF24103D),
-      );
-    case 'Listo':
-      return const _HrPrenominaPillColorSet(
-        background: Color(0xFFEFE4FF),
-        border: Color(0xFFB084FF),
-        foreground: Color(0xFF6E47A8),
-      );
-    case 'Borrador':
-    default:
-      return const _HrPrenominaPillColorSet(
-        background: Color(0xFFE8D9FF),
-        border: Color(0x66B084FF),
-        foreground: Color(0xFF24103D),
-      );
-  }
+  final colors = humanResourcesPayrollStatusColors(label);
+  return _HrPrenominaPillColorSet(
+    background: colors.background,
+    border: colors.border,
+    foreground: colors.foreground,
+  );
 }

@@ -40,6 +40,31 @@ const Color kHumanResourcesPanelShadow = Color(0xFF2C1554);
 const Color kHumanResourcesSurfaceText = Color(0xFF221836);
 const Color kHumanResourcesMutedText = Color(0xFF675985);
 
+/// Payroll status palette shared by Prenómina and Nómina.
+({Color background, Color border, Color foreground})
+humanResourcesPayrollStatusColors(String label) => switch (label) {
+  'Revisión RH' => (
+    background: const Color(0xFFF4E3EA),
+    border: const Color(0xFFD69BB3),
+    foreground: const Color(0xFF7A284C),
+  ),
+  'Publicado' => (
+    background: const Color(0xFFDCC5FF),
+    border: const Color(0xFF8B5CF6),
+    foreground: const Color(0xFF24103D),
+  ),
+  'Listo' => (
+    background: const Color(0xFFEFE4FF),
+    border: humanResourcesAreaTokens.border,
+    foreground: humanResourcesAreaTokens.surfaceTint,
+  ),
+  _ => (
+    background: const Color(0xFFE8D9FF),
+    border: const Color(0x66B084FF),
+    foreground: const Color(0xFF24103D),
+  ),
+};
+
 /// Shared compact header for RH operational dialogs.
 /// Employee identity stays in the fixed side card, leaving the dialog body
 /// with enough vertical space to operate and scroll.

@@ -1,0 +1,11 @@
+{
+  "manual_records": 372,
+  "manual_employees": 77,
+  "legacy_imported_records": 125,
+  "manual_late_minutes": 457,
+  "manual_overtime_minutes": 990,
+  "all_497_attendance_rows_unchanged": true,
+  "latest_manual_update": "2026-08-27T16:47:32.105887+00:00",
+  "linked_import_lots": 2,
+  "attendance_sha256": "50594efafffd6a10ee20e24bf2ef10496e2c78bbb2094f36e167595cf1cb03e3"
+}

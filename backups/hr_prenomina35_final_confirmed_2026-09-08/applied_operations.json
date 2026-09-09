@@ -1,0 +1,970 @@
+[
+  {
+    "employee_id": "118",
+    "kind": "update",
+    "fields": {
+      "source_snapshot": {
+        "personal_flow": 0.0,
+        "overtime_is_manual": false,
+        "contpaq_official_net": 1591.4,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 23,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "AD23": 600.0
+          },
+          "loaded_fields": {
+            "loan_deduction_amount": 600.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596"
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 23.63,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "deposito",
+        "personal_overtime_hourly_rate": 60.0,
+        "separate_cash_loan_collection": {
+          "amount": 600.0,
+          "status": "collected",
+          "confirmed_by_user": true,
+          "collection_method": "cash_separate_from_payroll",
+          "previous_payroll_deduction": 600.0
+        },
+        "period35_confirmed_correction": {
+          "confirmed_by_user": true,
+          "period_only": true,
+          "separate_cash_loan_collected": 600.0,
+          "payroll_loan_deduction": 0.0
+        }
+      },
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 23 (AD23).\nPréstamo de 600.00 MXN ya cobrado por separado en efectivo, confirmado por el usuario. No se retiene nuevamente de la nómina del periodo 35. El cobro queda documentado en estas notas.",
+      "payment_channel": "deposito",
+      "loan_deduction_amount": 0.0
+    },
+    "before": {
+      "id": "66e3a4fe-ae49-4254-9abd-9cdff7f245bc",
+      "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+      "employee_id": "118",
+      "employee_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+      "empresa": "DICSA CELAYA",
+      "draft_status": "borrador",
+      "manual_adjustment_amount": 0.0,
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 23 (AD23).",
+      "source_snapshot": {
+        "personal_flow": 0.0,
+        "overtime_is_manual": false,
+        "contpaq_official_net": 1591.4,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 23,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "AD23": 600.0
+          },
+          "loaded_fields": {
+            "loan_deduction_amount": 600.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596"
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 23.63,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "deposito",
+        "personal_overtime_hourly_rate": 60.0
+      },
+      "created_at": "2026-09-08T23:48:06.151289+00:00",
+      "updated_at": "2026-09-08T23:48:06.151289+00:00",
+      "fiscal_net_amount": 1591.4,
+      "fiscal_imss_amount": null,
+      "fiscal_infonavit_amount": null,
+      "fiscal_fonacot_amount": null,
+      "fiscal_absence_amount": null,
+      "fiscal_vacation_amount": null,
+      "cash_salary_amount": 0.0,
+      "cash_vacation_amount": null,
+      "cash_isr_amount": null,
+      "transport_support_amount": null,
+      "holiday_amount": null,
+      "overtime_monetized_amount": null,
+      "manual_bonus_amount": null,
+      "cash_absence_deduction_amount": null,
+      "cash_infonavit_deduction_amount": null,
+      "cash_fonacot_deduction_amount": null,
+      "loan_deduction_amount": 600.0,
+      "check_amount": 0.0,
+      "payment_outside_amount": null,
+      "payment_channel": "deposito",
+      "payment_reference": "",
+      "fiscal_late_deduction_amount": 23.63,
+      "cash_salary_is_manual": false
+    },
+    "after": {
+      "id": "66e3a4fe-ae49-4254-9abd-9cdff7f245bc",
+      "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+      "employee_id": "118",
+      "employee_name": "MIGUEL ANGEL ABUNDIS CORNEJO",
+      "empresa": "DICSA CELAYA",
+      "draft_status": "borrador",
+      "manual_adjustment_amount": 0.0,
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 23 (AD23).\nPréstamo de 600.00 MXN ya cobrado por separado en efectivo, confirmado por el usuario. No se retiene nuevamente de la nómina del periodo 35. El cobro queda documentado en estas notas.",
+      "source_snapshot": {
+        "personal_flow": 0.0,
+        "overtime_is_manual": false,
+        "contpaq_official_net": 1591.4,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 23,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "AD23": 600.0
+          },
+          "loaded_fields": {
+            "loan_deduction_amount": 600.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596"
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 23.63,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "deposito",
+        "period35_confirmed_correction": {
+          "period_only": true,
+          "confirmed_by_user": true,
+          "payroll_loan_deduction": 0.0,
+          "separate_cash_loan_collected": 600.0
+        },
+        "personal_overtime_hourly_rate": 60.0,
+        "separate_cash_loan_collection": {
+          "amount": 600.0,
+          "status": "collected",
+          "collection_method": "cash_separate_from_payroll",
+          "confirmed_by_user": true,
+          "previous_payroll_deduction": 600.0
+        }
+      },
+      "created_at": "2026-09-08T23:48:06.151289+00:00",
+      "updated_at": "2026-09-09T00:08:51.636814+00:00",
+      "fiscal_net_amount": 1591.4,
+      "fiscal_imss_amount": null,
+      "fiscal_infonavit_amount": null,
+      "fiscal_fonacot_amount": null,
+      "fiscal_absence_amount": null,
+      "fiscal_vacation_amount": null,
+      "cash_salary_amount": 0.0,
+      "cash_vacation_amount": null,
+      "cash_isr_amount": null,
+      "transport_support_amount": null,
+      "holiday_amount": null,
+      "overtime_monetized_amount": null,
+      "manual_bonus_amount": null,
+      "cash_absence_deduction_amount": null,
+      "cash_infonavit_deduction_amount": null,
+      "cash_fonacot_deduction_amount": null,
+      "loan_deduction_amount": 0.0,
+      "check_amount": 0.0,
+      "payment_outside_amount": null,
+      "payment_channel": "deposito",
+      "payment_reference": "",
+      "fiscal_late_deduction_amount": 23.63,
+      "cash_salary_is_manual": false
+    }
+  },
+  {
+    "employee_id": "223",
+    "kind": "update",
+    "fields": {
+      "source_snapshot": {
+        "personal_flow": 0.0,
+        "overtime_is_manual": false,
+        "contpaq_official_net": 1454.4,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 51,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "AD51": 100.0
+          },
+          "loaded_fields": {
+            "loan_deduction_amount": 100.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596"
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 315.04,
+        "personal_fiscal_payment_mode": "deposito",
+        "personal_overtime_hourly_rate": 60.0,
+        "separate_cash_loan_collection": {
+          "amount": 100.0,
+          "status": "collected",
+          "confirmed_by_user": true,
+          "collection_method": "cash_separate_from_payroll",
+          "previous_payroll_deduction": 100.0
+        },
+        "period35_confirmed_correction": {
+          "confirmed_by_user": true,
+          "period_only": true,
+          "separate_cash_loan_collected": 100.0,
+          "payroll_loan_deduction": 0.0
+        }
+      },
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 51 (AD51).\nPréstamo de 100.00 MXN ya cobrado por separado en efectivo, confirmado por el usuario. No se retiene nuevamente de la nómina del periodo 35. El cobro queda documentado en estas notas.",
+      "payment_channel": "deposito",
+      "loan_deduction_amount": 0.0
+    },
+    "before": {
+      "id": "96804acf-f1b9-4f3a-b4ea-788d7c7cb510",
+      "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+      "employee_id": "223",
+      "employee_name": "CRUZ ANGEL RAMIREZ CAMPOS",
+      "empresa": "WHIRLPOOL",
+      "draft_status": "borrador",
+      "manual_adjustment_amount": 0.0,
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 51 (AD51).",
+      "source_snapshot": {
+        "personal_flow": 0.0,
+        "overtime_is_manual": false,
+        "contpaq_official_net": 1454.4,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 51,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "AD51": 100.0
+          },
+          "loaded_fields": {
+            "loan_deduction_amount": 100.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596"
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 315.04,
+        "personal_fiscal_payment_mode": "deposito",
+        "personal_overtime_hourly_rate": 60.0
+      },
+      "created_at": "2026-09-08T23:48:06.151289+00:00",
+      "updated_at": "2026-09-08T23:48:06.151289+00:00",
+      "fiscal_net_amount": 1454.4,
+      "fiscal_imss_amount": null,
+      "fiscal_infonavit_amount": null,
+      "fiscal_fonacot_amount": 335.92,
+      "fiscal_absence_amount": null,
+      "fiscal_vacation_amount": null,
+      "cash_salary_amount": 0.0,
+      "cash_vacation_amount": null,
+      "cash_isr_amount": null,
+      "transport_support_amount": null,
+      "holiday_amount": null,
+      "overtime_monetized_amount": null,
+      "manual_bonus_amount": null,
+      "cash_absence_deduction_amount": null,
+      "cash_infonavit_deduction_amount": null,
+      "cash_fonacot_deduction_amount": null,
+      "loan_deduction_amount": 100.0,
+      "check_amount": 0.0,
+      "payment_outside_amount": null,
+      "payment_channel": "deposito",
+      "payment_reference": "",
+      "fiscal_late_deduction_amount": null,
+      "cash_salary_is_manual": false
+    },
+    "after": {
+      "id": "96804acf-f1b9-4f3a-b4ea-788d7c7cb510",
+      "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+      "employee_id": "223",
+      "employee_name": "CRUZ ANGEL RAMIREZ CAMPOS",
+      "empresa": "WHIRLPOOL",
+      "draft_status": "borrador",
+      "manual_adjustment_amount": 0.0,
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 51 (AD51).\nPréstamo de 100.00 MXN ya cobrado por separado en efectivo, confirmado por el usuario. No se retiene nuevamente de la nómina del periodo 35. El cobro queda documentado en estas notas.",
+      "source_snapshot": {
+        "personal_flow": 0.0,
+        "overtime_is_manual": false,
+        "contpaq_official_net": 1454.4,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 51,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "AD51": 100.0
+          },
+          "loaded_fields": {
+            "loan_deduction_amount": 100.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596"
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 315.04,
+        "personal_fiscal_payment_mode": "deposito",
+        "period35_confirmed_correction": {
+          "period_only": true,
+          "confirmed_by_user": true,
+          "payroll_loan_deduction": 0.0,
+          "separate_cash_loan_collected": 100.0
+        },
+        "personal_overtime_hourly_rate": 60.0,
+        "separate_cash_loan_collection": {
+          "amount": 100.0,
+          "status": "collected",
+          "collection_method": "cash_separate_from_payroll",
+          "confirmed_by_user": true,
+          "previous_payroll_deduction": 100.0
+        }
+      },
+      "created_at": "2026-09-08T23:48:06.151289+00:00",
+      "updated_at": "2026-09-09T00:08:52.003413+00:00",
+      "fiscal_net_amount": 1454.4,
+      "fiscal_imss_amount": null,
+      "fiscal_infonavit_amount": null,
+      "fiscal_fonacot_amount": 335.92,
+      "fiscal_absence_amount": null,
+      "fiscal_vacation_amount": null,
+      "cash_salary_amount": 0.0,
+      "cash_vacation_amount": null,
+      "cash_isr_amount": null,
+      "transport_support_amount": null,
+      "holiday_amount": null,
+      "overtime_monetized_amount": null,
+      "manual_bonus_amount": null,
+      "cash_absence_deduction_amount": null,
+      "cash_infonavit_deduction_amount": null,
+      "cash_fonacot_deduction_amount": null,
+      "loan_deduction_amount": 0.0,
+      "check_amount": 0.0,
+      "payment_outside_amount": null,
+      "payment_channel": "deposito",
+      "payment_reference": "",
+      "fiscal_late_deduction_amount": null,
+      "cash_salary_is_manual": false
+    }
+  },
+  {
+    "employee_id": "257",
+    "kind": "update",
+    "fields": {
+      "source_snapshot": {
+        "personal_flow": 694.72,
+        "overtime_is_manual": false,
+        "contpaq_official_net": 5040.6,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 58,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "V58": 1687.08
+          },
+          "loaded_fields": {
+            "cash_vacation_amount": 1687.08
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596"
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "deposito",
+        "personal_overtime_hourly_rate": 60.0,
+        "period35_confirmed_correction": {
+          "confirmed_by_user": true,
+          "period_only": true,
+          "fiscal": 5040.6,
+          "cash_vacation": 1687.08,
+          "ordinary_flow": 0.0
+        }
+      },
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 58 (V58).\nPeriodo 35 confirmado sin flujo ordinario: fiscal $5040.60 y vacaciones en efectivo $1687.08. Personal se conserva.",
+      "payment_channel": "mixto",
+      "cash_salary_amount": 0.0,
+      "cash_salary_is_manual": true
+    },
+    "before": {
+      "id": "e02385ed-4d5c-40cd-8d44-f2a15f65c470",
+      "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+      "employee_id": "257",
+      "employee_name": "RAMON FERNANDO MIRANDA LOPEZ",
+      "empresa": "DICSA CELAYA",
+      "draft_status": "borrador",
+      "manual_adjustment_amount": 0.0,
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 58 (V58).",
+      "source_snapshot": {
+        "personal_flow": 694.72,
+        "overtime_is_manual": false,
+        "contpaq_official_net": 5040.6,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 58,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "V58": 1687.08
+          },
+          "loaded_fields": {
+            "cash_vacation_amount": 1687.08
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596"
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "deposito",
+        "personal_overtime_hourly_rate": 60.0
+      },
+      "created_at": "2026-09-08T23:48:06.151289+00:00",
+      "updated_at": "2026-09-08T23:48:06.151289+00:00",
+      "fiscal_net_amount": 5040.6,
+      "fiscal_imss_amount": null,
+      "fiscal_infonavit_amount": null,
+      "fiscal_fonacot_amount": null,
+      "fiscal_absence_amount": null,
+      "fiscal_vacation_amount": 4410.56,
+      "cash_salary_amount": 694.72,
+      "cash_vacation_amount": 1687.08,
+      "cash_isr_amount": null,
+      "transport_support_amount": null,
+      "holiday_amount": null,
+      "overtime_monetized_amount": null,
+      "manual_bonus_amount": null,
+      "cash_absence_deduction_amount": null,
+      "cash_infonavit_deduction_amount": null,
+      "cash_fonacot_deduction_amount": null,
+      "loan_deduction_amount": null,
+      "check_amount": 0.0,
+      "payment_outside_amount": null,
+      "payment_channel": "mixto",
+      "payment_reference": "",
+      "fiscal_late_deduction_amount": null,
+      "cash_salary_is_manual": false
+    },
+    "after": {
+      "id": "e02385ed-4d5c-40cd-8d44-f2a15f65c470",
+      "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+      "employee_id": "257",
+      "employee_name": "RAMON FERNANDO MIRANDA LOPEZ",
+      "empresa": "DICSA CELAYA",
+      "draft_status": "borrador",
+      "manual_adjustment_amount": 0.0,
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 58 (V58).\nPeriodo 35 confirmado sin flujo ordinario: fiscal $5040.60 y vacaciones en efectivo $1687.08. Personal se conserva.",
+      "source_snapshot": {
+        "personal_flow": 694.72,
+        "overtime_is_manual": false,
+        "contpaq_official_net": 5040.6,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 58,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "V58": 1687.08
+          },
+          "loaded_fields": {
+            "cash_vacation_amount": 1687.08
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596"
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "deposito",
+        "period35_confirmed_correction": {
+          "fiscal": 5040.6,
+          "period_only": true,
+          "cash_vacation": 1687.08,
+          "ordinary_flow": 0.0,
+          "confirmed_by_user": true
+        },
+        "personal_overtime_hourly_rate": 60.0
+      },
+      "created_at": "2026-09-08T23:48:06.151289+00:00",
+      "updated_at": "2026-09-09T00:08:52.360339+00:00",
+      "fiscal_net_amount": 5040.6,
+      "fiscal_imss_amount": null,
+      "fiscal_infonavit_amount": null,
+      "fiscal_fonacot_amount": null,
+      "fiscal_absence_amount": null,
+      "fiscal_vacation_amount": 4410.56,
+      "cash_salary_amount": 0.0,
+      "cash_vacation_amount": 1687.08,
+      "cash_isr_amount": null,
+      "transport_support_amount": null,
+      "holiday_amount": null,
+      "overtime_monetized_amount": null,
+      "manual_bonus_amount": null,
+      "cash_absence_deduction_amount": null,
+      "cash_infonavit_deduction_amount": null,
+      "cash_fonacot_deduction_amount": null,
+      "loan_deduction_amount": null,
+      "check_amount": 0.0,
+      "payment_outside_amount": null,
+      "payment_channel": "mixto",
+      "payment_reference": "",
+      "fiscal_late_deduction_amount": null,
+      "cash_salary_is_manual": true
+    }
+  },
+  {
+    "employee_id": "268",
+    "kind": "update",
+    "fields": {
+      "source_snapshot": {
+        "personal_flow": 1294.72,
+        "overtime_is_manual": true,
+        "contpaq_official_net": 2205.2,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 63,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "Z63": 30.0
+          },
+          "loaded_fields": {
+            "manual_bonus_amount": 0.0,
+            "overtime_monetized_amount": 30.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596",
+          "bonus_overtime_split": {
+            "bonus": 0.0,
+            "excel_combined": 30.0,
+            "approved_overtime": 30.0,
+            "calculated_overtime": 34.0
+          }
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "deposito",
+        "personal_overtime_hourly_rate": 60.0,
+        "period35_confirmed_correction": {
+          "confirmed_by_user": true,
+          "period_only": true,
+          "salary_total": 3000.0,
+          "salary_base": 2205.28,
+          "flow": 794.72
+        }
+      },
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 63 (Z63). Bonos y horas extra: $30.00 en conjunto; horas extra $30.00, bonos $0.00.\nSalario confirmado para el periodo 35: $3000.00 = base $2205.28 + flujo $794.72. Conserva el salario vigente de Personal.",
+      "payment_channel": "mixto",
+      "cash_salary_amount": 794.72,
+      "cash_salary_is_manual": true
+    },
+    "before": {
+      "id": "c037e691-115b-452e-8af4-8f5c30c77965",
+      "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+      "employee_id": "268",
+      "employee_name": "MARICRUZ GARCIA YAÑEZ",
+      "empresa": "DICSA CELAYA",
+      "draft_status": "borrador",
+      "manual_adjustment_amount": 0.0,
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 63 (Z63). Bonos y horas extra: $30.00 en conjunto; horas extra $30.00, bonos $0.00.",
+      "source_snapshot": {
+        "personal_flow": 1294.72,
+        "overtime_is_manual": true,
+        "contpaq_official_net": 2205.2,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 63,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "Z63": 30.0
+          },
+          "loaded_fields": {
+            "manual_bonus_amount": 0.0,
+            "overtime_monetized_amount": 30.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596",
+          "bonus_overtime_split": {
+            "bonus": 0.0,
+            "excel_combined": 30.0,
+            "approved_overtime": 30.0,
+            "calculated_overtime": 34.0
+          }
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "deposito",
+        "personal_overtime_hourly_rate": 60.0
+      },
+      "created_at": "2026-09-08T23:48:06.151289+00:00",
+      "updated_at": "2026-09-08T23:48:06.151289+00:00",
+      "fiscal_net_amount": 2205.2,
+      "fiscal_imss_amount": null,
+      "fiscal_infonavit_amount": null,
+      "fiscal_fonacot_amount": null,
+      "fiscal_absence_amount": null,
+      "fiscal_vacation_amount": null,
+      "cash_salary_amount": 1294.72,
+      "cash_vacation_amount": null,
+      "cash_isr_amount": null,
+      "transport_support_amount": null,
+      "holiday_amount": null,
+      "overtime_monetized_amount": 30.0,
+      "manual_bonus_amount": 0.0,
+      "cash_absence_deduction_amount": null,
+      "cash_infonavit_deduction_amount": null,
+      "cash_fonacot_deduction_amount": null,
+      "loan_deduction_amount": null,
+      "check_amount": 0.0,
+      "payment_outside_amount": null,
+      "payment_channel": "mixto",
+      "payment_reference": "",
+      "fiscal_late_deduction_amount": null,
+      "cash_salary_is_manual": false
+    },
+    "after": {
+      "id": "c037e691-115b-452e-8af4-8f5c30c77965",
+      "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+      "employee_id": "268",
+      "employee_name": "MARICRUZ GARCIA YAÑEZ",
+      "empresa": "DICSA CELAYA",
+      "draft_status": "borrador",
+      "manual_adjustment_amount": 0.0,
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 63 (Z63). Bonos y horas extra: $30.00 en conjunto; horas extra $30.00, bonos $0.00.\nSalario confirmado para el periodo 35: $3000.00 = base $2205.28 + flujo $794.72. Conserva el salario vigente de Personal.",
+      "source_snapshot": {
+        "personal_flow": 1294.72,
+        "overtime_is_manual": true,
+        "contpaq_official_net": 2205.2,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 63,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "Z63": 30.0
+          },
+          "loaded_fields": {
+            "manual_bonus_amount": 0.0,
+            "overtime_monetized_amount": 30.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596",
+          "bonus_overtime_split": {
+            "bonus": 0.0,
+            "excel_combined": 30.0,
+            "approved_overtime": 30.0,
+            "calculated_overtime": 34.0
+          }
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "deposito",
+        "period35_confirmed_correction": {
+          "flow": 794.72,
+          "period_only": true,
+          "salary_base": 2205.28,
+          "salary_total": 3000.0,
+          "confirmed_by_user": true
+        },
+        "personal_overtime_hourly_rate": 60.0
+      },
+      "created_at": "2026-09-08T23:48:06.151289+00:00",
+      "updated_at": "2026-09-09T00:08:52.759723+00:00",
+      "fiscal_net_amount": 2205.2,
+      "fiscal_imss_amount": null,
+      "fiscal_infonavit_amount": null,
+      "fiscal_fonacot_amount": null,
+      "fiscal_absence_amount": null,
+      "fiscal_vacation_amount": null,
+      "cash_salary_amount": 794.72,
+      "cash_vacation_amount": null,
+      "cash_isr_amount": null,
+      "transport_support_amount": null,
+      "holiday_amount": null,
+      "overtime_monetized_amount": 30.0,
+      "manual_bonus_amount": 0.0,
+      "cash_absence_deduction_amount": null,
+      "cash_infonavit_deduction_amount": null,
+      "cash_fonacot_deduction_amount": null,
+      "loan_deduction_amount": null,
+      "check_amount": 0.0,
+      "payment_outside_amount": null,
+      "payment_channel": "mixto",
+      "payment_reference": "",
+      "fiscal_late_deduction_amount": null,
+      "cash_salary_is_manual": true
+    }
+  },
+  {
+    "employee_id": "293",
+    "kind": "insert",
+    "before": null,
+    "after": {
+      "id": "033ae407-587a-471a-9971-5b23dae84ac2",
+      "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+      "employee_id": "293",
+      "employee_name": "DANIA DE LA VEGA GARCIA",
+      "empresa": "DICSA CELAYA",
+      "draft_status": "borrador",
+      "manual_adjustment_amount": 0.0,
+      "notes": "Pago confirmado del periodo 35: $2260.00 íntegros en efectivo; fiscal CONTPAQ $2177.60 como cheque y flujo $82.40. Personal se conserva.",
+      "source_snapshot": {
+        "personal_flow": 94.8,
+        "overtime_is_manual": false,
+        "contpaq_official_net": 2177.6,
+        "permission_reference": 0.0,
+        "fiscal_payment_is_manual": true,
+        "incidences_informational": true,
+        "attendance_late_reference": 36.1,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "deposito",
+        "period35_confirmed_correction": {
+          "flow": 82.4,
+          "cash_total": 2260.0,
+          "period_only": true,
+          "fiscal_in_cash": 2177.6,
+          "confirmed_by_user": true
+        },
+        "personal_overtime_hourly_rate": 60.0
+      },
+      "created_at": "2026-09-09T00:08:53.103684+00:00",
+      "updated_at": "2026-09-09T00:08:53.103684+00:00",
+      "fiscal_net_amount": 2177.6,
+      "fiscal_imss_amount": null,
+      "fiscal_infonavit_amount": null,
+      "fiscal_fonacot_amount": null,
+      "fiscal_absence_amount": null,
+      "fiscal_vacation_amount": null,
+      "cash_salary_amount": 82.4,
+      "cash_vacation_amount": null,
+      "cash_isr_amount": null,
+      "transport_support_amount": null,
+      "holiday_amount": null,
+      "overtime_monetized_amount": null,
+      "manual_bonus_amount": null,
+      "cash_absence_deduction_amount": null,
+      "cash_infonavit_deduction_amount": null,
+      "cash_fonacot_deduction_amount": null,
+      "loan_deduction_amount": null,
+      "check_amount": 2177.6,
+      "payment_outside_amount": null,
+      "payment_channel": "mixto",
+      "payment_reference": "",
+      "fiscal_late_deduction_amount": 36.1,
+      "cash_salary_is_manual": true
+    }
+  },
+  {
+    "employee_id": "299",
+    "kind": "update",
+    "fields": {
+      "source_snapshot": {
+        "personal_flow": 0.0,
+        "overtime_is_manual": true,
+        "contpaq_official_net": 2205.4,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 79,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "Z79": 40.0
+          },
+          "loaded_fields": {
+            "manual_bonus_amount": 40.0,
+            "overtime_monetized_amount": 0.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596",
+          "bonus_overtime_split": {
+            "bonus": 40.0,
+            "excel_combined": 40.0,
+            "approved_overtime": 0.0,
+            "calculated_overtime": 0.0
+          }
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "cheque",
+        "personal_overtime_hourly_rate": 60.0,
+        "period35_confirmed_correction": {
+          "confirmed_by_user": true,
+          "period_only": true,
+          "salary_total": 2500.0,
+          "salary_base": 2205.2,
+          "flow": 294.8
+        }
+      },
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 79 (Z79). Bonos y horas extra: $40.00 en conjunto; horas extra $0.00, bonos $40.00.\nSalario confirmado para el periodo 35: $2500.00 = base $2205.20 + flujo $294.80. Conserva el neto CONTPAQ y el salario vigente de Personal.",
+      "payment_channel": "mixto",
+      "cash_salary_amount": 294.8,
+      "cash_salary_is_manual": true
+    },
+    "before": {
+      "id": "769f7933-73e3-4164-a3f3-cca054adcd96",
+      "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+      "employee_id": "299",
+      "employee_name": "JOSE PILAR RANGEL MALAGON",
+      "empresa": "DICSA CELAYA",
+      "draft_status": "borrador",
+      "manual_adjustment_amount": 0.0,
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 79 (Z79). Bonos y horas extra: $40.00 en conjunto; horas extra $0.00, bonos $40.00.",
+      "source_snapshot": {
+        "personal_flow": 0.0,
+        "overtime_is_manual": true,
+        "contpaq_official_net": 2205.4,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 79,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "Z79": 40.0
+          },
+          "loaded_fields": {
+            "manual_bonus_amount": 40.0,
+            "overtime_monetized_amount": 0.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596",
+          "bonus_overtime_split": {
+            "bonus": 40.0,
+            "excel_combined": 40.0,
+            "approved_overtime": 0.0,
+            "calculated_overtime": 0.0
+          }
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "cheque",
+        "personal_overtime_hourly_rate": 60.0
+      },
+      "created_at": "2026-09-08T23:48:06.151289+00:00",
+      "updated_at": "2026-09-08T23:48:06.151289+00:00",
+      "fiscal_net_amount": 2205.4,
+      "fiscal_imss_amount": null,
+      "fiscal_infonavit_amount": null,
+      "fiscal_fonacot_amount": null,
+      "fiscal_absence_amount": null,
+      "fiscal_vacation_amount": null,
+      "cash_salary_amount": 0.0,
+      "cash_vacation_amount": null,
+      "cash_isr_amount": null,
+      "transport_support_amount": null,
+      "holiday_amount": null,
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 40.0,
+      "cash_absence_deduction_amount": null,
+      "cash_infonavit_deduction_amount": null,
+      "cash_fonacot_deduction_amount": null,
+      "loan_deduction_amount": null,
+      "check_amount": 2205.4,
+      "payment_outside_amount": null,
+      "payment_channel": "cheque",
+      "payment_reference": "",
+      "fiscal_late_deduction_amount": null,
+      "cash_salary_is_manual": false
+    },
+    "after": {
+      "id": "769f7933-73e3-4164-a3f3-cca054adcd96",
+      "period_label": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+      "employee_id": "299",
+      "employee_name": "JOSE PILAR RANGEL MALAGON",
+      "empresa": "DICSA CELAYA",
+      "draft_status": "borrador",
+      "manual_adjustment_amount": 0.0,
+      "notes": "Captura NOMINA35.xlsx · Hoja1 · fila 79 (Z79). Bonos y horas extra: $40.00 en conjunto; horas extra $0.00, bonos $40.00.\nSalario confirmado para el periodo 35: $2500.00 = base $2205.20 + flujo $294.80. Conserva el neto CONTPAQ y el salario vigente de Personal.",
+      "source_snapshot": {
+        "personal_flow": 0.0,
+        "overtime_is_manual": true,
+        "contpaq_official_net": 2205.4,
+        "permission_reference": 0.0,
+        "nomina35_excel_capture": {
+          "sheet": "Hoja1",
+          "excel_row": 79,
+          "blank_cells": "preserved_existing_values",
+          "source_file": "NOMINA35.xlsx",
+          "source_cells": {
+            "Z79": 40.0
+          },
+          "loaded_fields": {
+            "manual_bonus_amount": 40.0,
+            "overtime_monetized_amount": 0.0
+          },
+          "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596",
+          "bonus_overtime_split": {
+            "bonus": 40.0,
+            "excel_combined": 40.0,
+            "approved_overtime": 0.0,
+            "calculated_overtime": 0.0
+          }
+        },
+        "fiscal_payment_is_manual": false,
+        "incidences_informational": true,
+        "attendance_late_reference": 0.0,
+        "attendance_absence_reference": 0.0,
+        "personal_fiscal_payment_mode": "cheque",
+        "period35_confirmed_correction": {
+          "flow": 294.8,
+          "period_only": true,
+          "salary_base": 2205.2,
+          "salary_total": 2500.0,
+          "confirmed_by_user": true
+        },
+        "personal_overtime_hourly_rate": 60.0
+      },
+      "created_at": "2026-09-08T23:48:06.151289+00:00",
+      "updated_at": "2026-09-09T00:08:53.44544+00:00",
+      "fiscal_net_amount": 2205.4,
+      "fiscal_imss_amount": null,
+      "fiscal_infonavit_amount": null,
+      "fiscal_fonacot_amount": null,
+      "fiscal_absence_amount": null,
+      "fiscal_vacation_amount": null,
+      "cash_salary_amount": 294.8,
+      "cash_vacation_amount": null,
+      "cash_isr_amount": null,
+      "transport_support_amount": null,
+      "holiday_amount": null,
+      "overtime_monetized_amount": 0.0,
+      "manual_bonus_amount": 40.0,
+      "cash_absence_deduction_amount": null,
+      "cash_infonavit_deduction_amount": null,
+      "cash_fonacot_deduction_amount": null,
+      "loan_deduction_amount": null,
+      "check_amount": 2205.4,
+      "payment_outside_amount": null,
+      "payment_channel": "mixto",
+      "payment_reference": "",
+      "fiscal_late_deduction_amount": null,
+      "cash_salary_is_manual": true
+    }
+  }
+]

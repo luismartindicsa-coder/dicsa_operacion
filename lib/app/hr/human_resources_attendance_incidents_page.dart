@@ -1,3 +1,5 @@
+import 'human_resources_lateness.dart';
+import 'human_resources_overtime.dart';
 import 'dart:async';
 import 'dart:convert';
 
@@ -11,6 +13,7 @@ import '../auth/auth_access.dart';
 import '../auth/auth_navigation.dart';
 import '../dashboard/general_dashboard_page.dart';
 import '../shared/app_shell.dart';
+import '../shared/archetypes/auxiliary_surfaces/searchable_picker.dart';
 import '../shared/archetypes/operacion_hibrida_tabs/operacion_hibrida_tabs.dart';
 import '../shared/archetypes/auxiliary_surfaces/confirmation_dialog.dart';
 import '../shared/page_routes.dart';
@@ -27,6 +30,8 @@ import 'human_resources_permissions_page.dart';
 import 'human_resources_personnel_page.dart';
 import 'human_resources_prenomina_page.dart';
 import 'human_resources_theme.dart';
+import 'human_resources_import_period.dart';
+import 'human_resources_period_context.dart';
 import 'human_resources_vacations_page.dart';
 
 class HumanResourcesAttendanceIncidentsPage extends StatefulWidget {
@@ -217,17 +222,57 @@ class _HumanResourcesAttendanceIncidentsPageState
       final file = result.files.first;
       final bytes = file.bytes;
       if (bytes == null || bytes.isEmpty) return;
-      final lot = source == _HrAttendanceImportSource.ngteco
+      final parsedLot = source == _HrAttendanceImportSource.ngteco
           ? _parseNgtecoImportLot(file.name, bytes)
           : _parseContpaqImportLot(file.name, bytes);
+      final periods = await fetchAllSupabaseRows(
+        (from, to) => Supabase.instance.client
+            .from('hr_attendance_operational_periods')
+            .select('period_label')
+            .order('start_date', ascending: false)
+            .range(from, to),
+      );
+      final matches = matchingHrImportPeriods(
+        existingPeriodLabels: periods.map((row) => row['period_label'].toString()),
+        isNgteco: source == _HrAttendanceImportSource.ngteco,
+        filePeriodLabel: parsedLot.periodLabel,
+        punchDates: parsedLot.entries
+            .map(_parseAttendanceImportedDateTime)
+            .whereType<DateTime>(),
+      );
+      if (!mounted) return;
+      if (matches.isEmpty) {
+        _showSnack('Crea primero el periodo correspondiente en Asistencia. El archivo no se importó.');
+        return;
+      }
+      final selected = await HumanResourcesPeriodContext.readSelectedLabel();
+      if (!mounted) return;
+      final String? periodLabel;
+      if (matches.length == 1) {
+        periodLabel = matches.single;
+      } else {
+        periodLabel = await showSearchablePickerDialog<String>(
+          context,
+          title: 'Periodo de la importación',
+          initialValue: matches.contains(selected) ? selected : null,
+          options: matches.map((label) =>
+              SearchablePickerOption(value: label, label: label)).toList(),
+        );
+      }
+      if (periodLabel == null || !mounted) return;
+      final lot = _HrAttendanceImportLot.fromRow({
+        ...parsedLot.toRow(),
+        'period_label': periodLabel,
+      });
       await _persistImportLot(lot);
+      await HumanResourcesPeriodContext.select(periodLabel);
       if (!mounted) return;
       setState(() {
         _importLots.insert(0, lot);
         _tabs.activateTab('importaciones');
       });
       _showSnack(
-        'Importación ${lot.source.label}: ${lot.validRows} válidas, ${lot.rejectedRows} rechazadas.',
+        '${lot.source.label} vinculado a $periodLabel: ${lot.validRows} válidas, ${lot.rejectedRows} rechazadas.',
       );
     } catch (error) {
       if (!mounted) return;
@@ -3483,7 +3528,7 @@ List<_HrAttendanceTardinessRow> _buildTardinessRows({
     );
     final effectiveWorkMinutes = _resolveEffectiveWorkMinutes(schedule);
     final lateMinutes = firstPunchAt.difference(scheduledStartAt).inMinutes;
-    final normalizedLateMinutes = lateMinutes > 0 ? lateMinutes : 0;
+    final normalizedLateMinutes = hrEligibleLateMinutes(lateMinutes);
     final lunchLateMinutes = _resolveLunchLateMinutes(
       schedule: schedule,
       firstPunchAt: firstPunchAt,
@@ -4187,7 +4232,7 @@ int _resolveOvertimeMinutes({
   required DateTime lastPunchAt,
 }) {
   final diff = lastPunchAt.difference(scheduledEndAt).inMinutes;
-  return diff > 0 ? diff : 0;
+  return hrEligibleOvertimeMinutes(diff);
 }
 
 String _formatScheduledLunch(_HrAttendanceScheduleDraft schedule) {
@@ -4432,6 +4477,7 @@ String _fmtHrCurrency(String raw) {
 
 String _describeImportPeriod(_HrAttendanceImportLot lot) {
   final raw = lot.periodLabel.trim();
+  if (RegExp(r'^Periodo\s+\d+\s+semanal\s+·').hasMatch(raw)) return raw;
   if (raw.isEmpty) return 'Periodo no detectado';
   if (lot.source == _HrAttendanceImportSource.ngteco) {
     final segments = raw.split('→').map((part) => part.trim()).toList();
@@ -4454,10 +4500,7 @@ String _describeImportPeriod(_HrAttendanceImportLot lot) {
     final week = periodMatch.group(1)!;
     final start = periodMatch.group(2)!;
     final end = periodMatch.group(3)!;
-    final time = periodMatch.group(4);
-    return time == null
-        ? 'Periodo $week semanal · $start - $end'
-        : 'Periodo $week semanal · $start - $end · Archivo $time';
+    return 'Periodo $week semanal · $start - $end';
   }
   return raw;
 }

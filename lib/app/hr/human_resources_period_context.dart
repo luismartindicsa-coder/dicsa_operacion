@@ -22,9 +22,15 @@ class HumanResourcesPeriodContext {
   }) {
     final selected = selectedLabel.trim();
     if (selected.isEmpty) return '';
-    return availableLabels.map((item) => item.trim()).contains(selected)
-        ? selected
-        : '';
+    final available = availableLabels.map((item) => item.trim()).toSet();
+    if (available.contains(selected)) return selected;
+    // Older imports appended their file time to the week. Reopen the original
+    // operational period when that obsolete import-only option disappears.
+    final withoutFileTime = selected.replaceFirst(
+      RegExp(r'\s+·\s+Archivo\s+\d{2}:\d{2}:\d{2}(?::\d+)?$'),
+      '',
+    );
+    return available.contains(withoutFileTime) ? withoutFileTime : '';
   }
 
   static List<String> normalizedOptions(Iterable<String> labels) {

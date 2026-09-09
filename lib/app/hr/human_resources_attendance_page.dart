@@ -1,3 +1,5 @@
+import 'human_resources_lateness.dart';
+import 'human_resources_overtime.dart';
 import 'dart:async';
 import 'dart:math' as math;
 import 'dart:ui';
@@ -30,6 +32,7 @@ import '../shared/ui_contract_core/theme/contract_buttons.dart';
 import '../shared/ui_contract_core/theme/glass_styles.dart';
 import '../shared/utils/fetch_all_supabase_rows.dart';
 import 'human_resources_area_chrome.dart';
+import 'human_resources_attendance_source.dart';
 import 'human_resources_attendance_incidents_page.dart';
 import 'human_resources_dashboard_page.dart';
 import 'human_resources_employee_status.dart';
@@ -245,19 +248,16 @@ class _HumanResourcesAttendancePageState
         // The operational-period migration can be deployed independently.
         operationalPeriodsResult = const <dynamic>[];
       }
-      List<dynamic> recordsResult = const <dynamic>[];
-      try {
-        recordsResult = await fetchAllSupabaseRows(
-          (from, to) => client
-              .from(_kHrAttendanceDailyRecordsTable)
-              .select()
-              .order('source_date')
-              .order('created_at')
-              .range(from, to),
-        );
-      } catch (_) {
-        recordsResult = const <dynamic>[];
-      }
+      // A failed read must never be treated as an empty attendance ledger:
+      // synchronization would otherwise replace captures it could not load.
+      final recordsResult = await fetchAllSupabaseRows(
+        (from, to) => client
+            .from(_kHrAttendanceDailyRecordsTable)
+            .select()
+            .order('source_date')
+            .order('created_at')
+            .range(from, to),
+      );
 
       final employees =
           employeesResult
@@ -298,8 +298,9 @@ class _HumanResourcesAttendancePageState
           .map(_HrAttendanceOperationalPeriod.fromRow)
           .toList(growable: false);
 
-      var records = recordsResult
+      final records = recordsResult
           .map((raw) => Map<String, dynamic>.from(raw as Map))
+          .where(isHrOperationalAttendanceRow)
           .map(_HrAttendanceStoredRecord.fromRow)
           .toList(growable: false);
 
@@ -314,18 +315,6 @@ class _HumanResourcesAttendancePageState
         selectedLabel: selectedPeriodLabel,
         availableLabels: periodOptions,
       );
-      final isOperationalDailyPeriod = operationalPeriods.any(
-        (period) => period.periodLabel == activePeriodLabel,
-      );
-      if (activePeriodLabel.isNotEmpty && !isOperationalDailyPeriod) {
-        records = await _synchronizeNgtecoAttendanceBaselines(
-          client: client,
-          employees: employees,
-          lots: lots,
-          storedRecords: records,
-          periodLabel: activePeriodLabel,
-        );
-      }
 
       if (!mounted) return;
       _employees = employees;
@@ -354,133 +343,7 @@ class _HumanResourcesAttendancePageState
     } catch (_) {
       if (!mounted) return;
       setState(() => _loading = false);
-    }
-  }
-
-  /// Persists the NGTeco baseline so Dashboard and Prenomina consume the same
-  /// reliable daily rows as Attendance. User-owned records are represented by
-  /// the summary builder as `manual` or `ajuste` and are never included here.
-  Future<List<_HrAttendanceStoredRecord>>
-  _synchronizeNgtecoAttendanceBaselines({
-    required SupabaseClient client,
-    required List<_HrAttendanceEmployeeMaster> employees,
-    required List<_HrAttendanceImportLotLite> lots,
-    required List<_HrAttendanceStoredRecord> storedRecords,
-    required String periodLabel,
-  }) async {
-    final ngtecoLot = _attendanceLotForPeriod(
-      lots,
-      _HrAttendanceImportSource.ngteco,
-      periodLabel,
-    );
-    if (ngtecoLot == null) return storedRecords;
-
-    try {
-      final contpaqLot = _attendanceLotForPeriod(
-        lots,
-        _HrAttendanceImportSource.contpaq,
-        periodLabel,
-      );
-      final summaryRows = _buildAttendanceSummaryRows(
-        employees: employees,
-        ngtecoLot: ngtecoLot,
-        contpaqLot: contpaqLot,
-        storedRecords: storedRecords,
-        periodLabel: periodLabel,
-      );
-      final periodRange = _resolveAttendanceActiveRange(
-        ngtecoLot: ngtecoLot,
-        contpaqLot: contpaqLot,
-        activePeriodLabel: periodLabel,
-      );
-      final existingByDay = <String, List<_HrAttendanceStoredRecord>>{};
-      for (final record in storedRecords.where(
-        (item) => item.periodLabel == periodLabel,
-      )) {
-        for (final key in _attendanceStoredRecordKeys(
-          record,
-          periodRange: periodRange,
-        )) {
-          existingByDay
-              .putIfAbsent(key, () => <_HrAttendanceStoredRecord>[])
-              .add(record);
-        }
-      }
-
-      final repairs = <_HrAttendanceStoredRecord>[];
-      for (final row in summaryRows) {
-        for (final day in row.days.where(
-          (item) => item.sourceMode == 'importado',
-        )) {
-          final key = _attendanceEmployeeDateKey(
-            row.employeeId,
-            day.sourceDate,
-          );
-          final existing =
-              existingByDay[key] ?? const <_HrAttendanceStoredRecord>[];
-          if (existing.isEmpty) {
-            repairs.add(
-              _attendanceStoredRecordFromDay(
-                employeeId: row.employeeId,
-                employeeName: row.displayName,
-                periodLabel: periodLabel,
-                day: day,
-              ),
-            );
-            continue;
-          }
-          // Manual capture and explicit RH adjustments are authoritative.
-          // NGTeco may refresh its own baseline, but it can never replace a
-          // human correction recorded for the same employee and day.
-          if (existing.any((record) => record.sourceMode != 'importado')) {
-            continue;
-          }
-          for (final record in existing) {
-            if (_attendanceStoredRecordMatchesDay(record, day)) continue;
-            repairs.add(
-              _attendanceStoredRecordFromDay(
-                employeeId: row.employeeId,
-                employeeName: row.displayName,
-                periodLabel: periodLabel,
-                sourceDate: record.sourceDate,
-                day: day,
-              ),
-            );
-          }
-        }
-      }
-      if (repairs.isEmpty) return storedRecords;
-
-      await client
-          .from(_kHrAttendanceDailyRecordsTable)
-          .upsert(
-            repairs.map((item) => item.toRow()).toList(growable: false),
-            onConflict: 'period_label,employee_id,source_date',
-          );
-      final refreshedResult = await fetchAllSupabaseRows(
-        (from, to) => client
-            .from(_kHrAttendanceDailyRecordsTable)
-            .select()
-            .eq('period_label', periodLabel)
-            .order('source_date')
-            .order('created_at')
-            .range(from, to),
-      );
-      final refreshed = refreshedResult
-          .map((raw) => Map<String, dynamic>.from(raw))
-          .map(_HrAttendanceStoredRecord.fromRow)
-          .toList(growable: false);
-      return <_HrAttendanceStoredRecord>[
-        ...storedRecords.where((item) => item.periodLabel != periodLabel),
-        ...refreshed,
-      ];
-    } catch (error, stackTrace) {
-      // Rendering from the saved NGTeco lot remains available if an older
-      // deployment has not yet created the daily-records table. Keep the
-      // failure visible in development instead of silently losing the sync.
-      debugPrint('No se pudo sincronizar NGTeco en Asistencia: $error');
-      debugPrintStack(stackTrace: stackTrace);
-      return storedRecords;
+      _showSnack('No se pudo cargar la asistencia. Se conservaron los datos guardados.');
     }
   }
 
@@ -499,17 +362,12 @@ class _HumanResourcesAttendancePageState
       _HrAttendanceImportSource.contpaq,
       periodLabel,
     );
-    final usesDailyOperationalTruth = _operationalPeriods.any(
-      (period) => period.periodLabel == periodLabel,
-    );
     final rows = _buildAttendanceSummaryRows(
       employees: _employees,
-      ngtecoLot: usesDailyOperationalTruth ? null : ngtecoLot,
+      ngtecoLot: ngtecoLot,
       contpaqLot: contpaqLot,
       storedRecords: _storedRecords,
       periodLabel: periodLabel,
-      includeImportedStoredRows: !usesDailyOperationalTruth,
-      defaultSchedulePending: usesDailyOperationalTruth,
     );
     final filteredRows = _applyAttendanceFilters(rows);
     final pageCount = filteredRows.isEmpty
@@ -1123,7 +981,8 @@ class _HumanResourcesAttendancePageState
         .order('source_date');
     final refreshed = (refreshedResult as List)
         .map((raw) => Map<String, dynamic>.from(raw as Map))
-        .map(_HrAttendanceStoredRecord.fromRow)
+        .where(isHrOperationalAttendanceRow)
+          .map(_HrAttendanceStoredRecord.fromRow)
         .toList(growable: false);
 
     _storedRecords.removeWhere(
@@ -1975,7 +1834,9 @@ class _HrAttendanceDailyGridState extends State<_HrAttendanceDailyGrid> {
         ngtecoTimes: importedTimes
             .map(_fmtAttendanceTime)
             .toList(growable: false),
-      )..recalculate();
+      )
+        ..lateMinutes = storedDraft?.lateMinutes ?? 0
+        ..overtimeMinutes = storedDraft?.overtimeMinutes ?? 0;
     }
     _navigation.configure(
       insertColumnCount: 0,
@@ -2142,7 +2003,8 @@ class _HrAttendanceDailyGridState extends State<_HrAttendanceDailyGrid> {
           );
         }
       }
-      draft.recalculate();
+      // Relevant user edits already recalculate; saving a note or reopening
+      // a row must not replace previously captured RH totals.
       await widget.onPersist(draft);
     } catch (_) {
       _error =
@@ -2659,8 +2521,8 @@ class _HrAttendanceDailySheet extends StatelessWidget {
           const SizedBox(height: 2),
           Text(
             draft.ngtecoTimes.isEmpty
-                ? 'NGTeco: sin lectura'
-                : 'NGTeco: ${draft.ngtecoTimes.join(' · ')}',
+                ? 'NGTeco (referencia): sin lectura'
+                : 'NGTeco (referencia): ${draft.ngtecoTimes.join(' · ')}',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
@@ -3839,7 +3701,7 @@ class _HrAttendanceMetricCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final allDays = rows.expand((row) => row.days).toList(growable: false);
-    final importedDays = allDays.where(_attendanceDayIsImported).length;
+    final referenceDays = allDays.where((day) => day.ngtecoReferenceTimeline.isNotEmpty).length;
     final manualDays = allDays.where(_attendanceDayIsManual).length;
     final adjustedDays = allDays.where(_attendanceDayIsAdjusted).length;
     final justifiedDays = allDays.where(_attendanceDayIsJustified).length;
@@ -3913,7 +3775,7 @@ class _HrAttendanceMetricCard extends StatelessWidget {
                 runSpacing: 8,
                 children: [
                   _HrAttendanceMetricPill(
-                    label: 'Importado: ${_fmtAttendanceInt(importedDays)}',
+                    label: 'Ref. NGTeco: ${_fmtAttendanceInt(referenceDays)}',
                   ),
                   _HrAttendanceMetricPill(
                     label:
@@ -4129,7 +3991,7 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
   @override
   void initState() {
     super.initState();
-    _applySelectedScheduleToDays();
+    // Opening the editor must preserve RH's saved totals verbatim.
     _syncWeeklyAdjustmentInputs();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) _dialogFocusNode.requestFocus();
@@ -4147,10 +4009,10 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
   }
 
   void _syncWeeklyAdjustmentInputs() {
-    final lateMinutes = _days.fold<int>(0, (sum, day) => sum + day.lateMinutes);
+    final lateMinutes = _days.fold<int>(0, (sum, day) => sum + hrEligibleLateMinutes(day.lateMinutes));
     final overtimeMinutes = _days.fold<int>(
       0,
-      (sum, day) => sum + day.overtimeMinutes,
+      (sum, day) => sum + hrEligibleOvertimeMinutes(day.overtimeMinutes),
     );
     _weeklyLateHoursController.text = _formatAttendanceHoursInput(lateMinutes);
     _weeklyOvertimeHoursController.text = _formatAttendanceHoursInput(
@@ -4407,7 +4269,7 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
               : _fmtTimeOfDay(punchlessSchedule.schedule.end),
         ),
       );
-      _applySelectedScheduleToDays();
+      _applySelectedScheduleToDays(days: [_days.last]);
       _days.sort((a, b) {
         final aDate = _parseAttendanceDateLabel(a.sourceDate);
         final bDate = _parseAttendanceDateLabel(b.sourceDate);
@@ -4423,7 +4285,10 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
     return focusedWidget is EditableText;
   }
 
-  void _applySelectedScheduleToDays({bool markAsWeeklyEdit = false}) {
+  void _applySelectedScheduleToDays({
+    bool markAsWeeklyEdit = false,
+    Iterable<_HrAttendanceDayDraft>? days,
+  }) {
     final overrideSchedule =
         _selectedWorkScheduleIndex != null &&
             _selectedWorkScheduleIndex! >= 0 &&
@@ -4433,7 +4298,7 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
     final parsedOverride = overrideSchedule == null
         ? null
         : _parseAttendanceSchedule(overrideSchedule.horario);
-    for (final day in _days) {
+    for (final day in days ?? _days) {
       if (parsedOverride != null) {
         day.scheduledStart = _fmtTimeOfDay(parsedOverride.start);
         day.scheduledEnd = _fmtTimeOfDay(parsedOverride.end);
@@ -4445,7 +4310,7 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
         day.scheduledEnd = day.originalScheduledEnd;
         day.effectiveWorkMinutes = day.originalEffectiveWorkMinutes;
       }
-      if (markAsWeeklyEdit) day.captureOrigin = 'weekly';
+      if (markAsWeeklyEdit) _markAttendanceDraftAsUserAdjustment(day);
       _recalculateAttendanceDraftMetrics(day);
     }
   }
@@ -4471,13 +4336,13 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
         .length;
     final totalLateMinutes = _days.fold<int>(
       0,
-      (sum, day) => sum + day.lateMinutes,
+      (sum, day) => sum + hrEligibleLateMinutes(day.lateMinutes),
     );
     final totalExtraMinutes = _days.fold<int>(
       0,
-      (sum, day) => sum + day.overtimeMinutes,
+      (sum, day) => sum + hrEligibleOvertimeMinutes(day.overtimeMinutes),
     );
-    final importedDays = _days.where(_attendanceDraftIsImported).length;
+    final referenceDays = _days.where((day) => day.ngtecoReferenceTimeline.isNotEmpty).length;
     final scheduleDays = _days.where(_attendanceDraftIsScheduleFilled).length;
     final manualDays = _days.where(_attendanceDraftIsManual).length;
     final adjustedDays = _days.where(_attendanceDraftIsAdjusted).length;
@@ -4741,8 +4606,8 @@ class _HrAttendanceEditDialogState extends State<_HrAttendanceEditDialog> {
                                         icon: Icons.add_alarm_rounded,
                                       ),
                                       _HrAttendanceMetricMiniCard(
-                                        label: 'IMPORTADO',
-                                        value: importedDays.toString(),
+                                        label: 'REF. NGTECO',
+                                        value: referenceDays.toString(),
                                       ),
                                       _HrAttendanceMetricMiniCard(
                                         label: 'JORNADA',
@@ -5268,7 +5133,7 @@ class _HrAttendanceDayCard extends StatelessWidget {
                             ))
                           _HrAttendanceDialogPill(
                             label:
-                                'NGTeco: ${draft.ngtecoReferenceTimeline.join(' · ')}',
+                                'NGTeco (referencia): ${draft.ngtecoReferenceTimeline.join(' · ')}',
                           ),
                       ],
                     ),
@@ -6208,8 +6073,7 @@ class _HrAttendanceDailyDraft {
     if (overnightSchedule && lastPunchAt.isBefore(scheduledStartAt)) {
       lastPunchAt = lastPunchAt.add(const Duration(days: 1));
     }
-    lateMinutes = math.max(
-      0,
+    lateMinutes = hrEligibleLateMinutes(
       firstPunchAt.difference(scheduledStartAt).inMinutes,
     );
     overtimeMinutes = _resolveOvertimeMinutes(
@@ -6416,8 +6280,8 @@ class _HrAttendanceStoredRecord {
       punchTimeline: ((row['punch_timeline'] as List?) ?? const <dynamic>[])
           .map((item) => item.toString())
           .toList(growable: false),
-      lateMinutes: _asInt(row['late_minutes']),
-      overtimeMinutes: _asInt(row['overtime_minutes']),
+      lateMinutes: hrEligibleLateMinutes(_asInt(row['late_minutes'])),
+      overtimeMinutes: hrEligibleOvertimeMinutes(_asInt(row['overtime_minutes'])),
       notes: (row['notes'] ?? '').toString(),
     );
   }
@@ -6646,14 +6510,74 @@ String _attendanceCellValueForColumn(
   }
 }
 
+/// Exercises the actual weekly projection and editor without a live database.
+@visibleForTesting
+({List<Map<String, dynamic>> days, Widget editor}) hrAttendancePreviewForTesting({
+  required String periodLabel,
+  required String employeeId,
+  required List<Map<String, dynamic>> storedRows,
+  required List<Map<String, dynamic>> ngtecoEntries,
+  required String schedule,
+  required List<String> workdays,
+}) {
+  final row = _buildAttendanceSummaryRows(
+    employees: [
+      _HrAttendanceEmployeeMaster(
+        employeeId: employeeId,
+        displayName: employeeId,
+        empresa: '',
+        horario: schedule,
+        diasLabora: workdays,
+        workSchedules: [
+          _HrAttendanceWorkSchedule(horario: schedule, diasLabora: workdays),
+        ],
+        fechaIngreso: '',
+        salario: '',
+      ),
+    ],
+    ngtecoLot: _HrAttendanceImportLotLite(
+      id: 'reference',
+      source: _HrAttendanceImportSource.ngteco,
+      fileName: '',
+      importedAt: DateTime(2026),
+      periodLabel: periodLabel,
+      entries: ngtecoEntries.map(_HrAttendanceImportedEntry.fromJson).toList(),
+    ),
+    contpaqLot: null,
+    storedRecords: storedRows
+        .where(isHrOperationalAttendanceRow)
+        .map(_HrAttendanceStoredRecord.fromRow)
+        .toList(),
+    periodLabel: periodLabel,
+  ).single;
+  return (
+    days: [
+      for (final day in row.days)
+        {
+          'source_date': day.sourceDate,
+          'status': day.status.databaseValue,
+          'first_punch': day.firstPunch,
+          'last_punch': day.lastPunch,
+          'late_minutes': day.lateMinutes,
+          'overtime_minutes': day.overtimeMinutes,
+          'reference': day.ngtecoReferenceTimeline,
+        },
+    ],
+    editor: _HrAttendanceEditDialog(
+      row: row,
+      periodLabel: periodLabel,
+      canGoPrevious: false,
+      canGoNext: false,
+    ),
+  );
+}
+
 List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
   required List<_HrAttendanceEmployeeMaster> employees,
   required _HrAttendanceImportLotLite? ngtecoLot,
   required _HrAttendanceImportLotLite? contpaqLot,
   required List<_HrAttendanceStoredRecord> storedRecords,
   required String periodLabel,
-  bool includeImportedStoredRows = true,
-  bool defaultSchedulePending = false,
 }) {
   final periodRange = _resolveAttendanceActiveRange(
     ngtecoLot: ngtecoLot,
@@ -6702,73 +6626,23 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
               .toList(growable: false)
             ..sort();
       final hasPunches = importedDateTimes.isNotEmpty;
-      final resolvedSchedule = hasPunches
-          ? _resolveAttendanceScheduleForPunch(
-              schedules: employee.workSchedules,
-              weekdayLabel: weekdayLabel,
-              punchAt: importedDateTimes.first,
-            )
-          : _resolveAttendanceScheduleForPunchlessDay(
-              schedules: employee.workSchedules,
-              weekdayLabel: weekdayLabel,
-            );
+      // NGTeco supplies only the reference timeline. It never resolves the
+      // operational status, schedule, punches, lateness or overtime.
+      final resolvedSchedule = _resolveAttendanceScheduleForPunchlessDay(
+        schedules: employee.workSchedules,
+        weekdayLabel: weekdayLabel,
+      );
       final worksThatDay = resolvedSchedule?.worksThatDay ?? false;
       if (!hasPunches && !worksThatDay) continue;
-
-      var lateMinutes = 0;
-      var overtimeMinutes = 0;
-      var firstPunch = '';
-      var lastPunch = '';
-      final punchTimeline = importedDateTimes
+      final referenceTimeline = importedDateTimes
           .map(_fmtAttendanceTime)
           .toList(growable: false);
-      if (hasPunches) {
-        firstPunch = _fmtAttendanceTime(importedDateTimes.first);
-        lastPunch = _fmtAttendanceTime(importedDateTimes.last);
-        final schedule = resolvedSchedule?.schedule;
-        if (schedule != null) {
-          final scheduledStartAt = DateTime(
-            importedDateTimes.first.year,
-            importedDateTimes.first.month,
-            importedDateTimes.first.day,
-            schedule.start.hour,
-            schedule.start.minute,
-          );
-          final scheduledEndAtSameDate = DateTime(
-            importedDateTimes.first.year,
-            importedDateTimes.first.month,
-            importedDateTimes.first.day,
-            schedule.end.hour,
-            schedule.end.minute,
-          );
-          final overnightSchedule = !scheduledEndAtSameDate.isAfter(
-            scheduledStartAt,
-          );
-          final scheduledEndAt = overnightSchedule
-              ? scheduledEndAtSameDate.add(const Duration(days: 1))
-              : scheduledEndAtSameDate;
-          var lastPunchAt = importedDateTimes.last;
-          if (overnightSchedule && lastPunchAt.isBefore(scheduledStartAt)) {
-            lastPunchAt = lastPunchAt.add(const Duration(days: 1));
-          }
-          lateMinutes = importedDateTimes.first
-              .difference(scheduledStartAt)
-              .inMinutes;
-          if (lateMinutes < 0) lateMinutes = 0;
-          overtimeMinutes = _resolveOvertimeMinutes(
-            scheduledEndAt: scheduledEndAt,
-            lastPunchAt: lastPunchAt,
-          );
-        }
-      }
 
       recordMap[sourceDate] = _HrAttendanceDayRecord(
         sourceDate: sourceDate,
         weekdayLabel: weekdayLabel,
-        status: hasPunches || !defaultSchedulePending
-            ? _HrAttendanceStatus.laboro
-            : _HrAttendanceStatus.pendiente,
-        sourceMode: hasPunches ? 'importado' : 'jornada',
+        status: _HrAttendanceStatus.pendiente,
+        sourceMode: 'jornada',
         scheduledStart: resolvedSchedule == null
             ? ''
             : _fmtTimeOfDay(resolvedSchedule.schedule.start),
@@ -6778,12 +6652,12 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
         effectiveWorkMinutes: resolvedSchedule == null
             ? 0
             : _resolveAttendanceEffectiveWorkMinutes(resolvedSchedule.schedule),
-        firstPunch: firstPunch,
-        lastPunch: lastPunch,
-        punchTimeline: punchTimeline,
-        ngtecoReferenceTimeline: punchTimeline,
-        lateMinutes: lateMinutes,
-        overtimeMinutes: overtimeMinutes,
+        firstPunch: '',
+        lastPunch: '',
+        punchTimeline: const <String>[],
+        ngtecoReferenceTimeline: referenceTimeline,
+        lateMinutes: 0,
+        overtimeMinutes: 0,
         notes: '',
       );
     }
@@ -6800,11 +6674,6 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
       employeeStoredRecords.putIfAbsent(stored.id, () => stored);
     }
     for (final stored in employeeStoredRecords.values) {
-      if (!includeImportedStoredRows &&
-          stored.sourceMode == 'importado' &&
-          stored.captureOrigin != 'weekly') {
-        continue;
-      }
       final storedSourceDate = _resolveAttendanceStoredDateForRecord(
         stored: stored,
         recordMap: recordMap,
@@ -6832,23 +6701,8 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
                   weekdayLabel: storedWeekdayLabel,
                 ));
       final importedRecord = recordMap[storedSourceDate];
-      final importedPunchesAreAvailable =
-          importedRecord?.sourceMode == 'importado' &&
-          (importedRecord!.firstPunch.trim().isNotEmpty ||
-              importedRecord.punchTimeline.isNotEmpty);
-      final isUserOwnedRecord =
-          stored.sourceMode == 'manual' ||
-          stored.sourceMode == 'ajuste' ||
-          _isLegacyAttendanceUserOverride(
-            stored: stored,
-            imported: importedRecord,
-          );
-      if (importedPunchesAreAvailable && !isUserOwnedRecord) {
-        // An imported row is always a refreshable NGTeco baseline. Only a
-        // manual/adjusted row, including a detectable legacy user edit, is
-        // allowed to supersede the current source import.
-        continue;
-      }
+      // The saved RH capture is authoritative. Loading a new reference lot
+      // cannot change its status, punches or captured totals.
       recordMap[storedSourceDate] = _HrAttendanceDayRecord(
         sourceDate: storedSourceDate,
         weekdayLabel: storedWeekdayLabel,
@@ -6869,7 +6723,7 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
         lastPunch: stored.lastPunch,
         punchTimeline: stored.punchTimeline,
         ngtecoReferenceTimeline:
-            importedRecord?.punchTimeline ?? const <String>[],
+            importedRecord?.ngtecoReferenceTimeline ?? const <String>[],
         lateMinutes: stored.lateMinutes,
         overtimeMinutes: stored.overtimeMinutes,
         notes: stored.notes,
@@ -6896,10 +6750,10 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
         daysAbsentCount: days
             .where((day) => day.status == _HrAttendanceStatus.falto)
             .length,
-        lateMinutesSum: days.fold<int>(0, (sum, day) => sum + day.lateMinutes),
+        lateMinutesSum: days.fold<int>(0, (sum, day) => sum + hrEligibleLateMinutes(day.lateMinutes)),
         overtimeMinutesSum: days.fold<int>(
           0,
-          (sum, day) => sum + day.overtimeMinutes,
+          (sum, day) => sum + hrEligibleOvertimeMinutes(day.overtimeMinutes),
         ),
         days: days,
       ),
@@ -6913,30 +6767,6 @@ List<_HrAttendanceSummaryRow> _buildAttendanceSummaryRows({
     return a.employeeId.compareTo(b.employeeId);
   });
   return rows;
-}
-
-bool _isLegacyAttendanceUserOverride({
-  required _HrAttendanceStoredRecord stored,
-  required _HrAttendanceDayRecord? imported,
-}) {
-  if (stored.sourceMode != 'importado' || imported == null) return false;
-  if (stored.notes.trim().isNotEmpty) return true;
-
-  // Earlier versions persisted direct edits with sourceMode "importado".
-  // A legacy override is only credible when it still has a complete pair of
-  // RH-entered punches. Old import templates can contain an empty or partial
-  // timeline; those rows must be refreshed from the current NGTeco lot.
-  final storedFirst = stored.firstPunch.trim();
-  final storedLast = stored.lastPunch.trim();
-  if (storedFirst.isEmpty || storedLast.isEmpty) return false;
-
-  final importedFirst = imported.firstPunch.trim();
-  final importedLast = imported.lastPunch.trim();
-  if (importedFirst.isEmpty || importedLast.isEmpty) return false;
-
-  return stored.status != imported.status ||
-      storedFirst != importedFirst ||
-      storedLast != importedLast;
 }
 
 Iterable<String> _attendanceStoredRecordKeys(
@@ -6995,50 +6825,6 @@ String _attendanceEmployeeDateKey(String employeeId, String sourceDate) {
       '${_normalizeAttendanceStoredDateLabel(sourceDate)}';
 }
 
-_HrAttendanceStoredRecord _attendanceStoredRecordFromDay({
-  required String employeeId,
-  required String employeeName,
-  required String periodLabel,
-  required _HrAttendanceDayRecord day,
-  String? sourceDate,
-}) {
-  return _HrAttendanceStoredRecord(
-    id: '',
-    periodLabel: periodLabel,
-    employeeId: employeeId,
-    employeeName: employeeName,
-    sourceDate: sourceDate ?? day.sourceDate,
-    weekdayLabel: day.weekdayLabel,
-    status: day.status,
-    sourceMode: day.sourceMode,
-    captureOrigin: day.captureOrigin,
-    selectedSchedule: day.selectedSchedule,
-    firstPunch: day.firstPunch,
-    lastPunch: day.lastPunch,
-    punchTimeline: day.punchTimeline,
-    lateMinutes: day.lateMinutes,
-    overtimeMinutes: day.overtimeMinutes,
-    notes: day.notes,
-  );
-}
-
-bool _attendanceStoredRecordMatchesDay(
-  _HrAttendanceStoredRecord record,
-  _HrAttendanceDayRecord day,
-) {
-  return record.weekdayLabel == day.weekdayLabel &&
-      record.status == day.status &&
-      record.sourceMode == day.sourceMode &&
-      record.captureOrigin == day.captureOrigin &&
-      record.selectedSchedule == day.selectedSchedule &&
-      record.firstPunch == day.firstPunch &&
-      record.lastPunch == day.lastPunch &&
-      _listEquals(record.punchTimeline, day.punchTimeline) &&
-      record.lateMinutes == day.lateMinutes &&
-      record.overtimeMinutes == day.overtimeMinutes &&
-      record.notes == day.notes;
-}
-
 bool _listEquals<T>(List<T> left, List<T> right) {
   if (identical(left, right)) return true;
   if (left.length != right.length) return false;
@@ -7055,7 +6841,6 @@ List<String> _attendancePeriodOptions({
 }) {
   return HumanResourcesPeriodContext.normalizedOptions([
     ...operationalPeriodLabels,
-    for (final lot in lots) _describeImportPeriod(lot),
     for (final record in records) record.periodLabel,
   ]);
 }
@@ -7799,7 +7584,7 @@ void _recalculateAttendanceDraftMetrics(_HrAttendanceDayDraft draft) {
     lastPunchAt = lastPunchAt.add(const Duration(days: 1));
   }
   final lateMinutes = firstPunchAt.difference(scheduledStartAt).inMinutes;
-  draft.lateMinutes = lateMinutes > 0 ? lateMinutes : 0;
+  draft.lateMinutes = hrEligibleLateMinutes(lateMinutes);
   draft.overtimeMinutes = _resolveOvertimeMinutes(
     scheduledEndAt: scheduledEndAt,
     lastPunchAt: lastPunchAt,
@@ -7920,7 +7705,7 @@ int _resolveOvertimeMinutes({
   required DateTime lastPunchAt,
 }) {
   final diff = lastPunchAt.difference(scheduledEndAt).inMinutes;
-  return diff > 0 ? diff : 0;
+  return hrEligibleOvertimeMinutes(diff);
 }
 
 int _resolveAttendanceEffectiveWorkMinutes(
@@ -7941,6 +7726,7 @@ int _resolveAttendanceEffectiveWorkMinutes(
 
 String _describeImportPeriod(_HrAttendanceImportLotLite lot) {
   final raw = lot.periodLabel.trim();
+  if (RegExp(r'^Periodo\s+\d+\s+semanal\s+·').hasMatch(raw)) return raw;
   if (lot.source == _HrAttendanceImportSource.ngteco) {
     final entryRange = _attendanceImportedEntriesRange(lot.entries);
     if (entryRange != null) {
@@ -7968,10 +7754,7 @@ String _describeImportPeriod(_HrAttendanceImportLotLite lot) {
     final week = periodMatch.group(1)!;
     final start = periodMatch.group(2)!;
     final end = periodMatch.group(3)!;
-    final time = periodMatch.group(4);
-    return time == null
-        ? 'Periodo $week semanal · $start - $end'
-        : 'Periodo $week semanal · $start - $end · Archivo $time';
+    return 'Periodo $week semanal · $start - $end';
   }
   return raw;
 }

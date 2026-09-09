@@ -1,0 +1,33 @@
+{
+  "period": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+  "database_status": "abierto",
+  "employees_expected": 78,
+  "saved_drafts": 38,
+  "already_published": 1,
+  "current": {
+    "fiscal": 148725.8,
+    "fiscal_deposit": 122888.4,
+    "fiscal_cash": 25837.4,
+    "envelope": 78025.08,
+    "total": 200913.48
+  },
+  "candidate_if_all_five_confirmed": {
+    "fiscal": 148725.8,
+    "fiscal_deposit": 122888.4,
+    "fiscal_cash": 25837.4,
+    "envelope": 78904.64,
+    "total": 201793.04
+  },
+  "unconfirmed_adjustments": {
+    "132": 945.12,
+    "217": 249.48,
+    "298": -315.04,
+    "153": -24.2,
+    "157": 24.2
+  },
+  "excel_cash_completed": 78741.44,
+  "cash_difference_after_all_five": 163.2,
+  "publication_reopen_nomina_receipt_check": "passed",
+  "data_written": false,
+  "period37_touched": false
+}

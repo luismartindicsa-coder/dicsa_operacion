@@ -1,0 +1,150 @@
+{
+  "applied_at": "2026-09-08T23:48:06.605521+00:00",
+  "period": "Periodo 35 semanal · 21/08/2026 - 27/08/2026",
+  "source_sha256": "503d1125f86bf45a408487d8856d8bfb1babe5e0576d307a5e68fd19b067f596",
+  "inserted_ids": [
+    {
+      "employee_id": "2",
+      "draft_id": "0d8796a8-0e9e-43c7-ac47-5e90624ef265"
+    },
+    {
+      "employee_id": "78",
+      "draft_id": "7061c932-232c-44d2-af95-5ea6b713916d"
+    },
+    {
+      "employee_id": "84",
+      "draft_id": "e67039ab-8254-43bf-8e26-6394125be89e"
+    },
+    {
+      "employee_id": "85",
+      "draft_id": "7e66c8a8-020f-4885-81d5-0d747bd80249"
+    },
+    {
+      "employee_id": "92",
+      "draft_id": "3f991a49-7d4b-4568-9c0d-08eb4cbaab93"
+    },
+    {
+      "employee_id": "104",
+      "draft_id": "058f98d6-b7f7-49d0-bf3d-258309f5a900"
+    },
+    {
+      "employee_id": "114",
+      "draft_id": "950ac00a-ecf5-4742-82ec-806975076188"
+    },
+    {
+      "employee_id": "115",
+      "draft_id": "e8e154d8-b32c-4f88-b62f-84d0aecc933d"
+    },
+    {
+      "employee_id": "118",
+      "draft_id": "66e3a4fe-ae49-4254-9abd-9cdff7f245bc"
+    },
+    {
+      "employee_id": "120",
+      "draft_id": "ef918eb2-395d-4ad9-85c1-28989fdd4df3"
+    },
+    {
+      "employee_id": "132",
+      "draft_id": "2755cf66-47a9-48ef-a6b6-9b74f08db911"
+    },
+    {
+      "employee_id": "135",
+      "draft_id": "9e1bd231-3cb3-4086-9016-d02705bc272f"
+    },
+    {
+      "employee_id": "136",
+      "draft_id": "27733b92-094c-4916-9f6f-a082857b6ddd"
+    },
+    {
+      "employee_id": "138",
+      "draft_id": "68235646-01d4-4975-9364-254d916e7422"
+    },
+    {
+      "employee_id": "144",
+      "draft_id": "acfee18b-0c46-449b-bfcc-f6bcbb6da7c5"
+    },
+    {
+      "employee_id": "174",
+      "draft_id": "104ff034-6622-4e4e-b755-06b463b9c52e"
+    },
+    {
+      "employee_id": "179",
+      "draft_id": "f5e64a67-2733-4725-a9bc-fa650451da6a"
+    },
+    {
+      "employee_id": "190",
+      "draft_id": "de1bd309-067e-451e-a145-739fb032654b"
+    },
+    {
+      "employee_id": "191",
+      "draft_id": "aa5af839-e9c6-4ff9-ae24-0514a14cced8"
+    },
+    {
+      "employee_id": "197",
+      "draft_id": "9c4b4b07-4d57-4a91-a540-edf906ad7c9d"
+    },
+    {
+      "employee_id": "211",
+      "draft_id": "0f5d6ad1-64bd-4775-81b7-0f86fdc70a11"
+    },
+    {
+      "employee_id": "213",
+      "draft_id": "f5e56f70-865c-442c-a04f-4b41d02e4dcf"
+    },
+    {
+      "employee_id": "217",
+      "draft_id": "979970c2-070f-49e2-8d17-77038f91f80f"
+    },
+    {
+      "employee_id": "223",
+      "draft_id": "96804acf-f1b9-4f3a-b4ea-788d7c7cb510"
+    },
+    {
+      "employee_id": "226",
+      "draft_id": "bbda47d4-22e9-42d0-808e-a07d51b7ee98"
+    },
+    {
+      "employee_id": "234",
+      "draft_id": "2b924361-aeb1-4f8a-9893-d3190ff773f8"
+    },
+    {
+      "employee_id": "239",
+      "draft_id": "90c16874-9cb7-4743-a07c-c0b57053feca"
+    },
+    {
+      "employee_id": "255",
+      "draft_id": "2324c8b9-fc2d-4564-a243-970f95eed36a"
+    },
+    {
+      "employee_id": "257",
+      "draft_id": "e02385ed-4d5c-40cd-8d44-f2a15f65c470"
+    },
+    {
+      "employee_id": "262",
+      "draft_id": "90bc622a-aca6-475a-9635-dd8fb3e27f48"
+    },
+    {
+      "employee_id": "268",
+      "draft_id": "c037e691-115b-452e-8af4-8f5c30c77965"
+    },
+    {
+      "employee_id": "294",
+      "draft_id": "9f5632d7-fffe-4003-8a05-6a2ad9161f1f"
+    },
+    {
+      "employee_id": "299",
+      "draft_id": "769f7933-73e3-4164-a3f3-cca054adcd96"
+    }
+  ],
+  "verified_count": 33,
+  "existing_drafts_unchanged": true,
+  "fields_loaded": [
+    "cash_vacation_amount",
+    "transport_support_amount",
+    "overtime_monetized_amount",
+    "manual_bonus_amount",
+    "cash_infonavit_deduction_amount",
+    "loan_deduction_amount"
+  ],
+  "javier_rh_adjustment": 315.08
+}
